@@ -65,7 +65,8 @@ def attitude_quaternion(q1: float, q2: float, q3: float, q4: float) -> Tuple[flo
 
 def attitude_euler(roll: float, pitch: float, yaw: float) -> Tuple[float, float, float, float]:
     """ATTITUDE roll, pitch, yaw (rad, NED, FRD: roll right-down +, pitch nose-up +,
-    yaw clockwise from north)."""
+    yaw clockwise from north).
+    """
     cr, sr, cp, sp, cy, sy = (math.cos(roll), math.sin(roll), math.cos(pitch), math.sin(pitch),
                               math.cos(yaw), math.sin(yaw))
     R = np.array([[cy * cp, cy * sp * sr - sy * cr, cy * sp * cr + sy * sr],
@@ -81,7 +82,8 @@ def rates_frd_to_flu(rollspeed: float, pitchspeed: float, yawspeed: float) -> Tu
 def downward_range_agl(current_distance_cm: int, min_cm: int, max_cm: int, orientation: int,
                        q_enu_flu: Optional[Sequence[float]] = None) -> Optional[float]:
     """Height above ground from a downward rangefinder (m), corrected for the vehicle's
-    tilt when the attitude is known; None if not pointing down or out of range."""
+    tilt when the attitude is known; None if not pointing down or out of range.
+    """
     if orientation != MAV_SENSOR_ROTATION_PITCH_270:
         return None
     # at its limits a rangefinder reports "no echo" (many give exactly max, or min, when

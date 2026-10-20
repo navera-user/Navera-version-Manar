@@ -1,5 +1,6 @@
 """NightLocalizer.localize retries: heading offsets after a failed map check, then heights; a
-footprint too small for the stated height is only retried higher."""
+footprint too small for the stated height is only retried higher.
+"""
 import types
 
 from night_pkg.nodes.night_localizer import NightLocalizer

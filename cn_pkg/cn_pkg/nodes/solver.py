@@ -11,6 +11,7 @@ CFG = os.path.join(os.path.dirname(__file__), 'astrometry.cfg')
 # Real geolocation solver (RA/Dec + tilt/azimuth + UTC → ground lat/lon).
 DRONE_SKY_PREP = os.path.join(os.path.dirname(__file__), 'drone_sky_prep.py')
 
+
 def _run_group(cmd, timeout_s):
     """Run cmd in its own process group; on timeout kill the WHOLE group.
 
@@ -56,11 +57,10 @@ def solve_image_b64(image_b64: str) -> dict:
         wcs_path = img_path.replace('.jpg', '.wcs')
         if not os.path.exists(wcs_path):
             return {'success': False, 'error': err[-500:]}
-        from astropy.wcs import WCS
         from astropy.io import fits
         with fits.open(wcs_path) as hdul:
             h = hdul[0].header
-            ra  = float(h.get('CRVAL1', 0))
+            ra = float(h.get('CRVAL1', 0))
             dec = float(h.get('CRVAL2', 0))
         # RA/Dec is where the camera points in the SKY, not a ground position:
         # never report it as a fix.
@@ -89,8 +89,9 @@ def solve_image_b64_geoloc(image_b64: str, tilt: float, azimuth: float,
         tilt:      camera degrees above horizon (90 = straight up).
         azimuth:   compass heading the camera points at (0=N, 90=E, ...).
         utc_time:  "YYYY-MM-DD HH:MM:SS" of the exposure (UTC).
-        prior_lat, prior_lon: approximate position used to pick between the
-                   two positions one sky direction is consistent with (NaN = none).
+        prior_lat: approximate latitude used to pick between the two positions
+                   one sky direction is consistent with (NaN = none).
+        prior_lon: approximate longitude, same use as prior_lat (NaN = none).
         fov_deg:   horizontal field of view of the star camera (NaN = unknown,
                    slower wide search).
     """

@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-cn_subscriber.py — NAVERA Celestial Navigation ROS2 subscriber.
+"""cn_subscriber.py — NAVERA Celestial Navigation ROS2 subscriber.
 
 Subscribes to camera_pkg celestial topics, runs the existing
 astrometry-based solver (cn_pkg.nodes.solver.solve_image_b64),
@@ -153,20 +152,20 @@ class CNSubscriber(Node):
         # the vehicle counts as still (tilt calibration samples) below this rotation rate
         declare_float(self, "allsky_cal_still_dps", 0.5)
 
-        self.min_log_odds   = float(self.get_parameter("min_log_odds").value)
+        self.min_log_odds = float(self.get_parameter("min_log_odds").value)
         self.camera_fov_deg = float(self.get_parameter("camera_fov_deg").value)
-        image_topic   = self.get_parameter("image_topic").value
-        meta_topic    = self.get_parameter("meta_topic").value
-        fix_topic     = self.get_parameter("fix_topic").value
-        status_topic  = self.get_parameter("status_topic").value
+        image_topic = self.get_parameter("image_topic").value
+        meta_topic = self.get_parameter("meta_topic").value
+        fix_topic = self.get_parameter("fix_topic").value
+        status_topic = self.get_parameter("status_topic").value
         self.solver_mode = str(self.get_parameter("solver_mode").value).lower()
-        self.tilt        = float(self.get_parameter("tilt").value)
-        self.azimuth     = float(self.get_parameter("azimuth").value)
-        self.utc_time    = str(self.get_parameter("utc_time").value)
-        self.prior_lat   = float(self.get_parameter("prior_lat").value)
-        self.prior_lon   = float(self.get_parameter("prior_lon").value)
-        self.mount_el    = float(self.get_parameter("camera_mount_elevation_deg").value)
-        self.mount_az    = float(self.get_parameter("camera_mount_azimuth_deg").value)
+        self.tilt = float(self.get_parameter("tilt").value)
+        self.azimuth = float(self.get_parameter("azimuth").value)
+        self.utc_time = str(self.get_parameter("utc_time").value)
+        self.prior_lat = float(self.get_parameter("prior_lat").value)
+        self.prior_lon = float(self.get_parameter("prior_lon").value)
+        self.mount_el = float(self.get_parameter("camera_mount_elevation_deg").value)
+        self.mount_az = float(self.get_parameter("camera_mount_azimuth_deg").value)
         self.declination = float(self.get_parameter("magnetic_declination_deg").value)
         self.imu_timeout = float(self.get_parameter("imu_timeout_s").value)
         self.max_rot_dps = float(self.get_parameter("max_rotation_dps").value)
@@ -194,12 +193,12 @@ class CNSubscriber(Node):
                                  self._on_rtc, 10)
 
         # ── State ───────────────────────────────────────────────
-        self.bridge        = CvBridge()
-        self._busy_lock    = threading.Lock()
-        self._pairer       = FramePairer()   # image/meta matched on the image stamp
-        self._frame_count  = 0
+        self.bridge = CvBridge()
+        self._busy_lock = threading.Lock()
+        self._pairer = FramePairer()   # image/meta matched on the image stamp
+        self._frame_count = 0
         self._success_count = 0
-        self._skip_count   = 0
+        self._skip_count = 0
         self._reject_count = 0
 
         # ── QoS per topic (must match camera_pkg publisher exactly) ─
@@ -220,12 +219,12 @@ class CNSubscriber(Node):
         )
 
         # ── Publishers ──────────────────────────────────────────
-        self.pub_fix    = self.create_publisher(NavSatFix, fix_topic,    10)
+        self.pub_fix = self.create_publisher(NavSatFix, fix_topic,    10)
         self.pub_status = self.create_publisher(String,    status_topic, 10)
         # Typed source contract for navera_estimator (additive, estimator step 7).
-        self.pub_est    = self.create_publisher(PositionEstimate, "/navera/estimate/cn", 10)
+        self.pub_est = self.create_publisher(PositionEstimate, "/navera/estimate/cn", 10)
         # solved (or failed): the live star camera may send the next frame
-        self.pub_done   = self.create_publisher(Int32, "/celestial/frame_done", 1)
+        self.pub_done = self.create_publisher(Int32, "/celestial/frame_done", 1)
 
         # ── Subscribers ─────────────────────────────────────────
         self.sub_image = self.create_subscription(
@@ -296,7 +295,8 @@ class CNSubscriber(Node):
     def _imu_at(self, t_ns):
         """(orientation at t_ns, rotation rate deg/s): interpolated between the IMU samples
         around it (no more than imu_max_gap_s apart), else the nearest within imu_timeout_s;
-        the rate from _rate_at; None without one."""
+        the rate from _rate_at; None without one.
+        """
         hist = list(self._imu_hist)
         if not hist:
             return None
@@ -316,7 +316,8 @@ class CNSubscriber(Node):
         """Rotation rate around the exposure (deg/s): the gyro (80th percentile of its
         magnitude within +-0.25 s), else the attitude change over a 0.5 s baseline. Two
         attitude samples a few ms apart are no rate: autopilot messages arrive in bursts
-        stamped at reception (0.01-0.05 deg over ~1 ms read 10-90 deg/s, 2026-10-07)."""
+        stamped at reception (0.01-0.05 deg over ~1 ms read 10-90 deg/s, 2026-10-07).
+        """
         win = 0.25e9
         g = sorted(r for t, r in self._gyro if abs(t - t_ns) <= win)
         if g:
@@ -343,7 +344,8 @@ class CNSubscriber(Node):
         if got is not None:
             q, self._rate_dps = got
             if self._rate_dps > self.max_rot_dps:
-                return float("nan"), float("nan"), f"imu: rotating {self._rate_dps:.1f} deg/s (max {self.max_rot_dps:.0f})"
+                return (float("nan"), float("nan"),
+                        f"imu: rotating {self._rate_dps:.1f} deg/s (max {self.max_rot_dps:.0f})")
             alt, az = boresight_altaz(q, self.mount_el, self.mount_az, self.declination)
             return alt, az, "imu (at exposure)" if exp is not None else "imu (latest)"
         return self.tilt, self.azimuth, "parameter"
@@ -357,7 +359,8 @@ class CNSubscriber(Node):
 
     def _utc_now(self):
         """(UTC "YYYY-MM-DD HH:MM:SS", source) — RTC-based when a recent valid
-        reading exists, else the system clock."""
+        reading exists, else the system clock.
+        """
         now = time.time()
         if self._rtc_sample is not None and 0.0 <= now - self._rtc_sample[1] <= 5.0:
             rtc_epoch, sys_epoch = self._rtc_sample
@@ -534,9 +537,9 @@ class CNSubscriber(Node):
         log_odds = result.get("log_odds")
         if result.get("success") and not allsky and (log_odds is None or log_odds < self.min_log_odds):
             self._reject_count += 1
-            status["success"]   = False
-            status["rejected"]  = True
-            status["reason"]    = f"star match log-odds {log_odds} < {self.min_log_odds:.1f}"
+            status["success"] = False
+            status["rejected"] = True
+            status["reason"] = f"star match log-odds {log_odds} < {self.min_log_odds:.1f}"
             self.get_logger().warn(f"[cn] ⚠  frame={seq_id} REJECTED ({status['reason']})")
 
         if status["success"]:
@@ -573,16 +576,16 @@ class CNSubscriber(Node):
             return
 
         fix = NavSatFix()
-        fix.header.stamp    = now
+        fix.header.stamp = now
         fix.header.frame_id = "celestial_camera_link"
         # Legacy/diagnostic topic; the authoritative output is /navera/position.
         # service 0 = not a GNSS position; dead-reckoning is not a fix.
-        fix.status.status   = NavSatStatus.STATUS_FIX
-        fix.status.service  = 0
-        fix.latitude        = float(result["predicted_lat"])
-        fix.longitude       = float(result["predicted_lon"])
+        fix.status.status = NavSatStatus.STATUS_FIX
+        fix.status.service = 0
+        fix.latitude = float(result["predicted_lat"])
+        fix.longitude = float(result["predicted_lon"])
         _alt = meta.get("altitude_m")
-        fix.altitude        = float(_alt) if _alt is not None else math.nan
+        fix.altitude = float(_alt) if _alt is not None else math.nan
         fix.position_covariance_type = NavSatFix.COVARIANCE_TYPE_UNKNOWN
         self.pub_fix.publish(fix)
         self._publish_estimate(now, seq_id, fix.latitude, fix.longitude, meta,
@@ -596,18 +599,18 @@ class CNSubscriber(Node):
             f"(total: ok={self._success_count} reject={self._reject_count} skip={self._skip_count})"
         )
 
-
     def _sigma_m(self):
         """Stated 1-sigma horizontal accuracy: (attitude error + the attitude change during the
         IMU's own timing error, ~50 ms at the exposure's rotation rate) x ~111 km/deg (None =
-        unknown)."""
+        unknown).
+        """
         s = self.attitude_sigma_deg
         return (s + 0.05 * self._rate_dps) * 111_195.0 if math.isfinite(s) and s > 0 else None
 
     def _publish_estimate(self, now, seq_id, lat, lon, meta, valid, reason, details):
         """Additive: emit the typed source contract on /navera/estimate/cn."""
         est = PositionEstimate()
-        est.header.stamp    = now
+        est.header.stamp = now
         est.header.frame_id = "celestial_camera_link"
         if valid and lat is not None and lon is not None:
             est.latitude, est.longitude = float(lat), float(lon)
@@ -615,27 +618,28 @@ class CNSubscriber(Node):
             est.latitude = est.longitude = math.nan
             valid = False
         _alt = meta.get("altitude_m") if isinstance(meta, dict) else None
-        est.altitude  = float(_alt) if _alt is not None else math.nan
+        est.altitude = float(_alt) if _alt is not None else math.nan
         sigma = details.get("sigma_m") if isinstance(details, dict) and "sigma_m" in details else self._sigma_m()
         if sigma:
             est.position_covariance = [sigma ** 2, 0.0, 0.0, 0.0, sigma ** 2, 0.0, 0.0, 0.0, 0.0]
             est.position_covariance_type = PositionEstimate.COVARIANCE_TYPE_APPROXIMATED
         else:
-            est.position_covariance      = [0.0] * 9
+            est.position_covariance = [0.0] * 9
             est.position_covariance_type = PositionEstimate.COVARIANCE_TYPE_UNKNOWN
-        est.source     = PositionEstimate.SOURCE_CELESTIAL
-        est.mode       = PositionEstimate.MODE_MEASURED
-        est.valid      = bool(valid)
+        est.source = PositionEstimate.SOURCE_CELESTIAL
+        est.mode = PositionEstimate.MODE_MEASURED
+        est.valid = bool(valid)
         est.confidence = 0.0        # hard-coded 0.95 is NOT a measurement — see module doc
-        est.reason     = reason
+        est.reason = reason
         est.sensor_stamp = exposure_stamp(meta, now)
-        est.producer   = "cn_subscriber"
-        est.model_id   = "allsky360" if details.get("source") == "allsky360" else "astrometry.net"
+        est.producer = "cn_subscriber"
+        est.model_id = "allsky360" if details.get("source") == "allsky360" else "astrometry.net"
         try:
             est.frame_index = int(seq_id)
         except (TypeError, ValueError):
             est.frame_index = -1
-        est.details_json = json.dumps({**details, "utc_source": meta.get("utc_source") if isinstance(meta, dict) else None}, default=str)
+        est.details_json = json.dumps(
+            {**details, "utc_source": meta.get("utc_source") if isinstance(meta, dict) else None}, default=str)
         self.pub_est.publish(est)
 
 

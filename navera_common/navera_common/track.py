@@ -40,7 +40,8 @@ class TrackVelocity:
 
     def velocity(self, t_now: float) -> Optional[Tuple[float, float, float]]:
         """(east m/s, north m/s, 1-sigma speed error m/s) from a weighted line fit of the
-        fixes of the last window_s before their latest one, or None."""
+        fixes of the last window_s before their latest one, or None.
+        """
         pts = self._fit_points()
         if pts is None:
             return None
@@ -86,7 +87,8 @@ class TrackVelocity:
     def fit_time(self) -> Optional[float]:
         """The instant the fitted velocity is the vehicle's (the fixes' weighted mean time), or None.
         On a turn the fit is the chord of the window: its direction is the heading at this instant,
-        not at the last fix (60 m/s on a 900 m circle, 20 s window: 38 deg behind)."""
+        not at the last fix (60 m/s on a 900 m circle, 20 s window: 38 deg behind).
+        """
         pts = self._fit_points()
         if pts is None:
             return None
@@ -95,7 +97,8 @@ class TrackVelocity:
 
     def propagate(self, t_now: float, heading_change_deg: float = 0.0):
         """(lat, lon, sigma_m) of the last fix carried to t_now, or None. heading_change_deg:
-        how much the vehicle turned (IMU) since the last fix, applied to the velocity."""
+        how much the vehicle turned (IMU) since the last fix, applied to the velocity.
+        """
         vel = self.velocity(t_now)
         if vel is None:
             return None
@@ -134,7 +137,8 @@ class TrackVelocity:
         1/2 a t^2 of the time since the measurement, not 1/2 a dt^2 of each step added up —
         that sum is 1/2 a dt per second, i.e. linear, and understated the real error 5x after
         100 s (simulator, 2026-10-15: stated +-244 m, real 1205 m).
-        A turn: when it started and at what rate are not known — half its sideways reach."""
+        A turn: when it started and at what rate are not known — half its sideways reach.
+        """
         t1 = since_fix_s + dt
         return (sig_v * dt + self.heading_sigma * speed * dt
                 + 0.5 * self.accel * (t1 * t1 - since_fix_s * since_fix_s)

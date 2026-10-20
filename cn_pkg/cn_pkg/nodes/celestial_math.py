@@ -50,7 +50,8 @@ IERS_SOURCE = configure_offline_iers()
 
 def obs_time(utc) -> Time:
     """Time of an observation with UT1-UTC always set: from the IERS table, or past its ends its edge value
-    (UT1-UTC drifts < 1 ms/day and stays under 0.9 s: < 0.4 km) instead of an IERSRangeError offline."""
+    (UT1-UTC drifts < 1 ms/day and stays under 0.9 s: < 0.4 km) instead of an IERSRangeError offline.
+    """
     t = Time(utc, scale="utc")
     dut1, _ = iers.earth_orientation_table.get().ut1_utc(t, return_status=True)
     t.delta_ut1_utc = dut1

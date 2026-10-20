@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-gps.launch.py — start the NAVERA GPS node.
+"""gps.launch.py — start the NAVERA GPS node.
 
 Examples:
   ros2 launch gps_pkg gps.launch.py

@@ -1,5 +1,4 @@
-"""
-night_localizer.py  —  NAVERA Night Localization Engine
+"""night_localizer.py  —  NAVERA Night Localization Engine
 Wraps STHN local_pipeline for drone-to-satellite homography matching.
 
 Usage:
@@ -25,15 +24,15 @@ logger = logging.getLogger("night_localizer")
 # area is DATABASE_SIZE px at the tile GSD (z17 ≈ 0.97 m/px here, close to the
 # ~1 m/px STHN was trained on); both images are fed to the network at
 # RESIZE_WIDTH, and four_pred is expressed at that scale.
-STHN_RESIZE_WIDTH  = 256
+STHN_RESIZE_WIDTH = 256
 STHN_DATABASE_SIZE = 1536
-STHN_CORR_LEVEL    = 4
+STHN_CORR_LEVEL = 4
 # Ground footprint of the thermal query STHN was trained with: a 512 px crop at
 # the satellite resolution (then resized to RESIZE_WIDTH). A query at another
 # scale makes the prediction wrong while the consistency score stays high
 # (measured: 4.7 km median drift on the replay set, LOC-16), so every frame is
 # resampled to this footprint from the altitude and the camera field of view.
-STHN_QUERY_PX      = 512
+STHN_QUERY_PX = 512
 # Share of the reference square the (rotated) frame must cover. Measured on
 # synthetic frames: at 0.77 (300 m, 84 deg camera, diagonal heading) tracking
 # ran away to 2.4 km while the consistency stayed ~0.9; >= 0.88 (350 m) held
@@ -54,7 +53,8 @@ def image_valid_mask(img_bgr):
     """Pixels that carry a picture: the black wedges a straightened (tilted) frame or an
     undistorted lens leaves at its edges are not ground. Only exact-zero regions wide
     enough to survive a 7 px opening AND touching the image edge count as empty, so
-    scattered clipped pixels (AGC) and cold objects inside the frame stay valid."""
+    scattered clipped pixels (AGC) and cold objects inside the frame stay valid.
+    """
     g = img_bgr if img_bgr.ndim == 2 else cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
     zero = (g == 0).astype(np.uint8)
     if not zero.any():
@@ -154,7 +154,8 @@ def stretch_contrast(query_bgr, mask=None, lo_pct=1.0, hi_pct=99.0):
     the whole ground is left in a few grey levels, and at thermal crossover the scene
     is faint. STHN then sees an almost flat frame. Stretching the 1-99 % percentiles
     of the ground (empty borders excluded) restores the contrast; a frame already
-    stretched by the camera is left nearly unchanged. Returns a new BGR image."""
+    stretched by the camera is left nearly unchanged. Returns a new BGR image.
+    """
     g = cv2.cvtColor(query_bgr, cv2.COLOR_BGR2GRAY) if query_bgr.ndim == 3 else query_bgr
     vals = g[mask > 0] if mask is not None and np.count_nonzero(mask) > 100 else g.ravel()
     lo, hi = np.percentile(vals, (lo_pct, hi_pct))
@@ -182,7 +183,8 @@ def featureless_mask(query_bgr, mask=None):
     Local standard deviation in a FEATURELESS_WIN window; a pixel is featureless when it is
     below FEATURELESS_REL x the median over the frame's ground (or FEATURELESS_ABS grey
     levels); only patches of at least FEATURELESS_MIN_AREA of the frame, after an
-    opening, are removed, so small smooth roofs and fields stay."""
+    opening, are removed, so small smooth roofs and fields stay.
+    """
     g = cv2.cvtColor(query_bgr, cv2.COLOR_BGR2GRAY) if query_bgr.ndim == 3 else query_bgr
     g = g.astype(np.float32)
     valid = np.full(g.shape, 255, np.uint8) if mask is None else mask
@@ -206,7 +208,8 @@ def featureless_mask(query_bgr, mask=None):
 
 def _edges(grey):
     """Polarity-free structure image: gradient magnitude of the lightly smoothed picture
-    (a hot road on a cool field and a dark road on a bright field give the same edges)."""
+    (a hot road on a cool field and a dark road on a bright field give the same edges).
+    """
     g = cv2.GaussianBlur(grey.astype(np.float32), (0, 0), 1.2)
     gx = cv2.Sobel(g, cv2.CV_32F, 1, 0, ksize=3)
     gy = cv2.Sobel(g, cv2.CV_32F, 0, 1, ksize=3)
@@ -290,8 +293,8 @@ def _read_tile(conn, z, x, y):
     if row is None:
         return None
     data = row[0]
-    arr  = np.frombuffer(data, dtype=np.uint8)
-    img  = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+    arr = np.frombuffer(data, dtype=np.uint8)
+    img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
     return img
 
 
@@ -313,8 +316,7 @@ def _tile_frac_to_latlon(x, y, zoom):
 
 
 def _stitch_satellite_patch(conn, lat, lon, zoom, size):
-    """
-    Build a `size` x `size` px satellite patch CENTRED ON (lat, lon).
+    """Build a `size` x `size` px satellite patch CENTRED ON (lat, lon).
 
     The mosaic of 256 px tiles around the prior is cropped around the prior's
     own pixel position (not a tile centre, which can be half a tile away).
@@ -392,8 +394,7 @@ def _ensure_cuda_linalg(device) -> bool:
 
 
 class NightLocalizer:
-    """
-    Wraps STHN local_pipeline to produce lat/lon fixes from night drone frames.
+    """Wraps STHN local_pipeline to produce lat/lon fixes from night drone frames.
 
     Parameters
     ----------
@@ -420,7 +421,7 @@ class NightLocalizer:
         contrast_stretch: bool = True,
         mask_featureless: bool = False,
     ):
-        self.zoom           = zoom
+        self.zoom = zoom
         # leave cloud / calm water out of the query (featureless_mask). Off: night sim 2026-10-20,
         # 12 conditions x 16 frames, identical fixes with and without, +40 ms per frame
         self.mask_featureless = bool(mask_featureless)
@@ -435,7 +436,7 @@ class NightLocalizer:
         self.recheck_max_m = recheck_max_m
         self.map_offset_deg = (float(map_offset_deg[0]), float(map_offset_deg[1]))
         self.mixed_precision = bool(mixed_precision)   # fp16 autocast au forward (network.py:110/139)
-        self.device     = device or ("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
 
         # Insert STHN into sys.path
         sthn_dir = str(Path(sthn_dir).resolve())
@@ -455,8 +456,7 @@ class NightLocalizer:
     # ── Model loading ─────────────────────────────────────────────────────────
 
     def _load_model(self, weights_path: str):
-        """
-        Load the STHN local_pipeline Network with safetensors + pth support.
+        """Load the STHN local_pipeline Network with safetensors + pth support.
         Only searches local_pipeline/model/network.py — avoids global_pipeline
         which pulls torchvision and breaks on NumPy 2.x.
         """
@@ -509,7 +509,7 @@ class NightLocalizer:
                 sys.modules[_dep] = _mock.MagicMock()
                 installed.append(_dep)
             spec = importlib.util.spec_from_file_location("_sthn_local_network", candidate)
-            mod  = importlib.util.module_from_spec(spec)
+            mod = importlib.util.module_from_spec(spec)
             try:
                 try:
                     spec.loader.exec_module(mod)
@@ -542,7 +542,8 @@ class NightLocalizer:
             rw=256,
             no_cuda=(self.device == "cpu"),
             device=self.device,
-            mixed_precision=self.mixed_precision,   # fp16 SEULEMENT sur fnet1 + update_block_4 ; le solve cuSOLVER reste fp32 (hors autocast)
+            # fp16 SEULEMENT sur fnet1 + update_block_4 ; le solve cuSOLVER reste fp32 (hors autocast)
+            mixed_precision=self.mixed_precision,
             iters=6,
             weight_decay=1e-5,
             epsilon=1e-8,
@@ -719,7 +720,8 @@ class NightLocalizer:
         ~5-10 deg: the frame must be north-up). height_retry (relative, e.g. (0.1, -0.1)):
         then the frame is tried at the height scaled by each (STHN does not absorb a ~10 %
         scale error either: a barometric or terrain height, or the stated field of view).
-        Costs one more inference per retry, only on frames that failed the map check."""
+        Costs one more inference per retry, only on frames that failed the map check.
+        """
         def attempt(heading, alt):
             a = self._localize_once(query_bgr, prior_lat, prior_lon, alt, hfov_deg,
                                     heading, require_scale)
@@ -760,7 +762,8 @@ class NightLocalizer:
         """Second opinion from a search centre moved by recheck_offset_m: a frame that
         really matches the map lands on the same ground from both centres; a frame with
         no usable information (cloud, fog, sea, noise, wrong heading) stays near each
-        search centre, so the two answers differ by about the offset."""
+        search centre, so the two answers differ by about the offset.
+        """
         d = self.recheck_offset_m / math.sqrt(2.0)              # towards the north-east
         lat2 = prior_lat + d / 111_320.0
         lon2 = prior_lon + d / (111_320.0 * math.cos(math.radians(prior_lat)))
@@ -789,27 +792,26 @@ class NightLocalizer:
     def _localize_once(self, query_bgr: np.ndarray, prior_lat: float, prior_lon: float,
                        altitude_m: float = None, hfov_deg: float = None,
                        heading_deg: float = None, require_scale: bool = True) -> dict:
-        """
-        Run STHN inference.
+        """Run STHN inference.
 
-        Parameters
-        ----------
-        query_bgr  : drone camera frame (BGR, any size)
-        prior_lat  : GPS prior latitude  (or dead-reckoning estimate)
-        prior_lon  : GPS prior longitude
-        altitude_m, hfov_deg, heading_deg : camera geometry, used to resample the
-            frame to the scale STHN was trained on (normalize_query). With
-            require_scale and no altitude / field of view, no position is given.
+        Args:
+            query_bgr: drone camera frame (BGR, any size)
+            prior_lat: GPS prior latitude (or dead-reckoning estimate)
+            prior_lon: GPS prior longitude
+            altitude_m: camera geometry, with hfov_deg and heading_deg: used to
+                resample the frame to the scale STHN was trained on (normalize_query).
+            hfov_deg: horizontal field of view (deg), see altitude_m.
+            heading_deg: camera heading (deg), see altitude_m.
+            require_scale: with no altitude / field of view, no position is given.
 
-        Returns
-        -------
-        dict with keys:
-            success          bool
-            lat, lon         corrected position (float)
-            conf             confidence 0–1
-            dt_ms            inference time ms
-            raw_lat/raw_lon  uncorrected position
-            rms_px           RMS corner displacement in pixels
+        Returns:
+            dict with keys:
+                success          bool
+                lat, lon         corrected position (float)
+                conf             confidence 0–1
+                dt_ms            inference time ms
+                raw_lat/raw_lon  uncorrected position
+                rms_px           RMS corner displacement in pixels
         """
         t0 = time.perf_counter()
 
@@ -945,4 +947,3 @@ class NightLocalizer:
             "verify":  verify,
             "dt_ms":   dt_ms,
         }
-

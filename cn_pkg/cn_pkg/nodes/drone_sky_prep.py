@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-Drone GPS positioning via sky astrometry.
+"""Drone GPS positioning via sky astrometry.
 
 Usage: python3 drone_sky_prep.py <image> <YYYY-MM-DD> <HH:MM:SS> <tilt> <azimuth> [fov]
                                  [--prior-lat LAT] [--prior-lon LON]
@@ -17,7 +16,12 @@ Examples:
   python3 drone_sky_prep.py ~/Images/Tsky.jpeg 2026-03-10 20:20:00 75.46 283.18 55.89
 """
 
-import sys, os, re, time, shutil, subprocess
+import sys
+import os
+import re
+import time
+import shutil
+import subprocess
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -44,14 +48,14 @@ if len(sys.argv) < 4:
           " [--prior-lat LAT] [--prior-lon LON]")
     sys.exit(1)
 
-IMAGE    = sys.argv[1]
+IMAGE = sys.argv[1]
 DATE_STR = sys.argv[2]
 TIME_STR = sys.argv[3]
 
 # Parse remaining arguments: [tilt, az] or [tilt, az, fov]
 TILT_IN = None
-AZ_IN   = None
-FOV_IN  = None
+AZ_IN = None
+FOV_IN = None
 
 remaining = sys.argv[4:]
 if len(remaining) < 2:
@@ -64,7 +68,7 @@ elif len(remaining) == 2:
     TILT_IN, AZ_IN = float(remaining[0]), float(remaining[1])
 elif len(remaining) >= 3:
     TILT_IN, AZ_IN = float(remaining[0]), float(remaining[1])
-    FOV_IN  = float(remaining[2])
+    FOV_IN = float(remaining[2])
 
 if not os.path.exists(IMAGE):
     print(f"ERROR: File not found: {IMAGE}")
@@ -72,14 +76,14 @@ if not os.path.exists(IMAGE):
 
 try:
     hh, mm, ss = [int(x) for x in TIME_STR.split(":")]
-except:
-    print(f"ERROR: Bad time format. Use HH:MM:SS")
+except Exception:
+    print("ERROR: Bad time format. Use HH:MM:SS")
     sys.exit(1)
 
 UTC_TIME = f"{DATE_STR} {hh:02d}:{mm:02d}:{ss:02d}"
-BASE     = Path(IMAGE).stem
-OUTDIR   = Path(IMAGE).parent
-TIF_OUT  = str(OUTDIR / f"{BASE}_siril.tif")
+BASE = Path(IMAGE).stem
+OUTDIR = Path(IMAGE).parent
+TIF_OUT = str(OUTDIR / f"{BASE}_siril.tif")
 WCS_FILE = str(OUTDIR / f"{BASE}_siril.wcs")
 # Work files live next to the image (the caller's temporary directory), so
 # nothing is left behind in /tmp, whatever happens.
@@ -92,14 +96,14 @@ SOLVE_TIMEOUT_S = 240      # > solve-field's own --cpulimit 180
 
 # Scale range for solve-field
 if FOV_IN:
-    MARGIN      = 0.05
-    SCALE_LOW   = round(FOV_IN * (1 - MARGIN), 2)
-    SCALE_HIGH  = round(FOV_IN * (1 + MARGIN), 2)
+    MARGIN = 0.05
+    SCALE_LOW = round(FOV_IN * (1 - MARGIN), 2)
+    SCALE_HIGH = round(FOV_IN * (1 + MARGIN), 2)
 else:
     # Unknown camera: a wide search (slower) rather than a range that silently
     # excludes narrow-FOV star cameras.
-    SCALE_LOW   = 5
-    SCALE_HIGH  = 90
+    SCALE_LOW = 5
+    SCALE_HIGH = 90
 
 print()
 print("┌─────────────────────────────────────────────┐")
@@ -125,9 +129,9 @@ T_START = time.time()
 print("  [1/4] Preprocessing with Siril...")
 
 with open(SSF_FILE, "w") as f:
-    f.write(f"requires 1.2.0\n")
+    f.write("requires 1.2.0\n")
     f.write(f"load {IMAGE}\n")
-    f.write(f"subsky -rbf\n")
+    f.write("subsky -rbf\n")
     f.write(f"savetif {BASE}_siril\n")
 
 try:
@@ -137,7 +141,8 @@ except FileNotFoundError:
     print("  siril not installed — using PIL fallback")
 except subprocess.TimeoutExpired:
     print(f"  siril timed out after {SIRIL_TIMEOUT_S}s — using PIL fallback")
-if os.path.exists(SSF_FILE): os.remove(SSF_FILE)
+if os.path.exists(SSF_FILE):
+    os.remove(SSF_FILE)
 
 if not os.path.exists(TIF_OUT):
     if not os.path.exists(TIF_OUT):
@@ -202,7 +207,7 @@ for line in solve_output.splitlines():
     if "Field center:" in line and "RA,Dec" in line:
         m = re.search(r'RA,Dec\) = \(([^,]+),\s*([^)]+)\)', line)
         if m:
-            RA  = float(m.group(1))
+            RA = float(m.group(1))
             DEC = float(m.group(2))
     if "Field rotation angle:" in line:
         m = re.search(r'up is ([+-]?\d+\.?\d*)', line)
@@ -247,9 +252,9 @@ if result is None:
           f"prior lat={PRIOR_LAT} lon={PRIOR_LON}")
     sys.exit(1)
 
-LAT, LON      = result
+LAT, LON = result
 constellation = "N/A"
-T_TOTAL       = time.time() - T_START
+T_TOTAL = time.time() - T_START
 
 print()
 print("┌─────────────────────────────────────────────┐")

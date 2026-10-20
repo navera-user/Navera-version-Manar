@@ -33,7 +33,8 @@ class FrameBuilder:
         """max_tilt_deg: frames looking further from straight down are not compared (measured:
         straightened frames tilted 45 deg still matched 31/33 benchmark places, simulation).
         gimbal: the camera is held level by a stabiliser — only the vehicle's heading
-        turns it; its roll and pitch are ignored."""
+        turns it; its roll and pitch are ignored.
+        """
         self.cam, self.mount = camera, tuple(float(a) for a in mount_rpy_deg)
         self.max_tilt_deg, self.camera_type, self.gimbal = max_tilt_deg, camera_type, gimbal
         # without an attitude at exposure a fixed camera's tilt is unknown: assuming it
@@ -50,7 +51,8 @@ class FrameBuilder:
               gps: Optional[Tuple[float, float]] = None, utc: Optional[str] = None,
               rate_dps: Optional[float] = None):
         """(image, meta) for one frame. q_body_enu: the body attitude at exposure (None:
-        unknown); altitude: (agl_m, sigma_m, source) at exposure (None: unknown)."""
+        unknown); altitude: (agl_m, sigma_m, source) at exposure (None: unknown).
+        """
         import cv2
         out = self.cam.undistort(img)
         meta = dict(frame_id=int(frame_id), image_stamp_ns=int(exposure_ns), camera_type=self.camera_type,

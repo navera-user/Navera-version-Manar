@@ -146,7 +146,11 @@ def test_env_file_never_carries_an_injection(tmp_path):
 
 def _fake_port(payload: bytes):
     """A virtual serial port that keeps sending payload (a GPS receiver / an autopilot)."""
-    import os, pty, threading, time, tty
+    import os
+    import pty
+    import threading
+    import time
+    import tty
     master, slave = pty.openpty()
     tty.setraw(slave)
     name = os.ttyname(slave)

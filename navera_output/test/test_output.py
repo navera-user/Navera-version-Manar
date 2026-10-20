@@ -123,7 +123,8 @@ def test_gps_input_no_fix_and_unknown_altitude():
 
 def test_gps_input_never_carries_a_vision_height():
     """F7: a non-GNSS position goes out with IGNORE_ALT even when its producer attached a
-    height (here day vision at FIX and forwarded as ESTIMATED, both with altitude and geoid)."""
+    height (here day vision at FIX and forwarded as ESTIMATED, both with altitude and geoid).
+    """
     day = pos(source=DAY, alt=500.0)
     for o in (decide(Config(), STATE_FIX, 0.1, day, 0.1, DAY),
               decide(Config(forward_degraded=True, degraded_sigma_m=15.0), STATE_DEGRADED, 0.1, day, 0.1, DAY)):

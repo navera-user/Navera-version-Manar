@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-vehicle_output_node.py — NAVERA output to the vehicle's autopilot.
+"""vehicle_output_node.py — NAVERA output to the vehicle's autopilot.
 
 Turns the arbiter's decision (/navera/position + /navera/nav_status) into what
 an autopilot understands as a GPS:
@@ -286,11 +285,11 @@ class VehicleOutputNode(Node):
             self.failed = True
             self.context.try_shutdown()
 
-
     def _bridged(self, out, now):
         """`out`, or the held position carried to now when the positions stopped coming (policy.bridge),
         or None to wait (a bridge is pending: nothing is sent yet, the autopilot is not told "no fix"
-        for a gap that may be bridged)."""
+        for a gap that may be bridged).
+        """
         if out.kind == KIND_FIX:
             self._held = self._last_tx = None
             self._bridging = False
@@ -334,7 +333,8 @@ class VehicleOutputNode(Node):
 
     def _ros_output(self, out):
         """The decision for ROS: as for the autopilot, plus degraded positions with their
-        stated accuracy when ros_forward_degraded (independent of forward_degraded)."""
+        stated accuracy when ros_forward_degraded (independent of forward_degraded).
+        """
         if out.kind != KIND_NONE or self.cfg.forward_degraded or \
                 not bool(self.get_parameter("ros_forward_degraded").value):
             return out
@@ -348,7 +348,8 @@ class VehicleOutputNode(Node):
 
     def _navsatfix(self, out) -> NavSatFix:
         """The output decision as a ROS GPS message: a fix with its stated accuracy as the
-        covariance, or STATUS_NO_FIX with NaN position."""
+        covariance, or STATUS_NO_FIX with NaN position.
+        """
         f = NavSatFix()
         f.header.stamp = (self.get_clock().now() - Duration(seconds=out.age_s)).to_msg()
         f.header.frame_id = str(self.get_parameter("ros_fix_frame_id").value)

@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-cn_sim.launch.py — full NAVERA "stellar" (celestial) simulation in one command.
+"""cn_sim.launch.py — full NAVERA "stellar" (celestial) simulation in one command.
 
 Thin wrapper over the two halves of the chain:
   cn_pipeline.launch.py   camera_pkg (celestial) → cn_subscriber (astrometry)
@@ -36,7 +35,8 @@ from launch.substitutions import LaunchConfiguration
 def generate_launch_description():
     web_share = get_package_share_directory('simulation_web')
 
-    default_mbtiles = (os.environ.get('NAVERA_MBTILES') or '/home/navera/isaac_ros_common/vision_pkg/vision_pkg/dataset/sousse_satellite.mbtiles')
+    default_mbtiles = (os.environ.get('NAVERA_MBTILES')
+                       or '/home/navera/isaac_ros_common/vision_pkg/vision_pkg/dataset/sousse_satellite.mbtiles')
 
     # Public interface: same argument names and same defaults as before the split, so
     # every existing invocation (docs, CLI overrides) keeps working.

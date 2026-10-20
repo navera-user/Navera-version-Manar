@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-navera_stellar_bridge.py — ROS 2 → web bridge for NAVERA stellar (celestial) mode.
+"""navera_stellar_bridge.py — ROS 2 → web bridge for NAVERA stellar (celestial) mode.
 
 Stellar counterpart of navera_web_bridge.py. It subscribes to the celestial
 navigation output and re-publishes it over HTTP in the exact shape the stellar
@@ -87,7 +86,7 @@ class NaveraStellarBridge(Node):
         self.declare_parameter("tls_key", os.environ.get("NAVERA_TLS_KEY", ""))
 
         status_topic = self.get_parameter("status_topic").value
-        fix_topic    = self.get_parameter("fix_topic").value
+        fix_topic = self.get_parameter("fix_topic").value
         self.web_host = self.get_parameter("web_host").value
         self.web_port = int(self.get_parameter("web_port").value)
         self._control_token = str(self.get_parameter("control_token").value)
@@ -98,7 +97,7 @@ class NaveraStellarBridge(Node):
         self.mbtiles_path = mb
 
         self.resources_dir = _resolve_resources_dir()
-        self.navera_html   = os.path.join(self.resources_dir, "navera.html")
+        self.navera_html = os.path.join(self.resources_dir, "navera.html")
 
         # ── Shared state ────────────────────────────────────────
         self._state_lock = threading.Lock()
@@ -168,7 +167,7 @@ class NaveraStellarBridge(Node):
             self._gps_status = new
         self.get_logger().info(
             f"[stellar-bridge] {new['status']:9s} frame={frame_id} "
-            f"{('lat=%.5f lon=%.5f' % (new['lat'], new['lon'])) if new.get('lat') is not None else new.get('error', '')}"
+            f"{'lat=%.5f lon=%.5f' % (new['lat'], new['lon']) if new.get('lat') is not None else new.get('error', '')}"
         )
 
     def _on_fix(self, msg: NavSatFix):
@@ -191,7 +190,8 @@ class NaveraStellarBridge(Node):
 
         Makes A the FIRST position published over /gps_status.json, so the
         stellar view starts at A instead of nothing. The first real /cn/cn_status
-        solve replaces this anchor (and _on_fix won't clobber it: not 'idle')."""
+        solve replaces this anchor (and _on_fix won't clobber it: not 'idle').
+        """
         if not isinstance(pa, dict) or not valid_latlon(pa.get("lat"), pa.get("lon")):
             self.get_logger().warn(f"[stellar-bridge] set_mission: bad point_a payload: {pa!r}")
             return False
@@ -272,7 +272,8 @@ class NaveraStellarBridge(Node):
         except OSError as e:
             self.get_logger().error(f"❌ cannot bind {self.web_host}:{self.web_port} — {e}")
             raise
-        self.get_logger().info(f"✅ HTTP{'S' if self.get_parameter('tls_cert').value else ''} server up on port {self.web_port}")
+        self.get_logger().info(f"✅ HTTP{'S' if self.get_parameter('tls_cert').value else ''} "
+                               f"server up on port {self.web_port}")
 
     def destroy_node(self):
         try:

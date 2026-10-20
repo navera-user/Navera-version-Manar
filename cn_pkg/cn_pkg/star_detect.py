@@ -77,8 +77,9 @@ def _background(gray: np.ndarray) -> np.ndarray:
     return cv2.resize(small.astype(np.float32), (w, h), interpolation=cv2.INTER_LINEAR)
 
 
-NOISE_FLOOR = 1.6        # grey levels. Video JPEG flattens a dark sky into constant blocks, so the measured
-                         # noise falls to ~0 and every threshold with it (stars lost or hundreds of false ones)
+# Grey levels. Video JPEG flattens a dark sky into constant blocks, so the measured
+# noise falls to ~0 and every threshold with it (stars lost or hundreds of false ones).
+NOISE_FLOOR = 1.6
 
 
 def _mad_sigma(a: np.ndarray, floor: float = 1e-3) -> float:

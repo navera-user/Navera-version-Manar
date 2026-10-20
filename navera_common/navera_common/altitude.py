@@ -34,7 +34,8 @@ class AltitudeEstimator:
                  saved_ground: Optional[dict] = None, on_ground: Optional[Callable[[dict], None]] = None):
         """saved_ground: {altitude_m, lat, lon} written by a previous run (on_ground is
         called with that dict whenever the ground altitude is (re)determined): reused after
-        a restart in the same place — in the air the first fix is NOT the ground."""
+        a restart in the same place — in the air the first fix is NOT the ground.
+        """
         self.ground = ground_altitude_m if ground_altitude_m is not None and math.isfinite(ground_altitude_m) else None
         self.ground_source = "configured" if self.ground is not None else None
         self._saved_ground, self._on_ground = saved_ground, on_ground
@@ -78,7 +79,8 @@ class AltitudeEstimator:
 
     def _ground_from_home(self, t: float) -> bool:
         """With the vehicle's height above its home AND a GPS altitude at the same instant,
-        the home ground is GPS - height, right even when NAVERA starts in the air."""
+        the home ground is GPS - height, right even when NAVERA starts in the air.
+        """
         if self.ground_source == "configured":
             return False
         g, r = self.gps.at(t), self.relative.at(t)

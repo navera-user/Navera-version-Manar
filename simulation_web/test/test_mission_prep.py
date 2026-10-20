@@ -180,7 +180,8 @@ def test_named_missions_are_saved_replaced_and_deleted(jobs):
     assert [x["name"] for x in m] == ["Sousse coast", "Other"] and len(m[0]["route"]) == 2
     assert j.state()["missions"] == m
     assert [x["name"] for x in j.delete_mission("Other")] == ["Sousse coast"]
-    for name, route in (("", r1), ("x" * 61, r1), ("<script>", r1), ("ok", [[35.8, 10.6]]), ("ok", [[95, 10], [35, 10]])):
+    for name, route in (("", r1), ("x" * 61, r1), ("<script>", r1), ("ok", [[35.8, 10.6]]),
+                        ("ok", [[95, 10], [35, 10]])):
         with pytest.raises(ValueError):
             j.save_mission(name, route)
 

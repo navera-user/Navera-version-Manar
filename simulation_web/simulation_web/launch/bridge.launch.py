@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-bridge.launch.py — the ROS→web bridge, alone, independent of any pipeline.
+"""bridge.launch.py — the ROS→web bridge, alone, independent of any pipeline.
 
 The bridge is the only process that binds the HTTP port (8181 by default), so
 running exactly one of it is what allows the localization pipelines to coexist:
@@ -32,7 +31,8 @@ from launch_ros.actions import Node
 
 
 def generate_launch_description():
-    default_mbtiles = (os.environ.get('NAVERA_MBTILES') or '/home/navera/isaac_ros_common/vision_pkg/vision_pkg/dataset/sousse_satellite.mbtiles')
+    default_mbtiles = (os.environ.get('NAVERA_MBTILES')
+                       or '/home/navera/isaac_ros_common/vision_pkg/vision_pkg/dataset/sousse_satellite.mbtiles')
 
     return LaunchDescription([
         # Which bridge binary. navera_web_bridge serves day/night and renders the

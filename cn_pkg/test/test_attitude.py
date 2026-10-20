@@ -19,16 +19,16 @@ def q_mul(a, b):
             aw * bz + ax * by - ay * bx + az * bw, aw * bw - ax * bx - ay * by - az * bz)
 
 
-I = (0.0, 0.0, 0.0, 1.0)          # body x = east, y = north, z = up
+IDENTITY = (0.0, 0.0, 0.0, 1.0)          # body x = east, y = north, z = up
 
 
 def test_zenith_camera_level_vehicle():
-    alt, _ = boresight_altaz(I)
+    alt, _ = boresight_altaz(IDENTITY)
     assert alt == pytest.approx(90.0)
 
 
 def test_forward_camera_follows_heading():
-    assert boresight_altaz(I, 0, 0)[1] == pytest.approx(90.0)             # facing east
+    assert boresight_altaz(IDENTITY, 0, 0)[1] == pytest.approx(90.0)             # facing east
     yaw90 = q_axis((0, 0, 1), 90)                                          # nose to north
     assert boresight_altaz(yaw90, 0, 0)[1] == pytest.approx(0.0, abs=1e-9)
     assert boresight_altaz(yaw90, 0, 90)[1] == pytest.approx(90.0)        # mounted to the right

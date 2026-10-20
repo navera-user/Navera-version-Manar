@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-gps_node.py — NAVERA GPS sensor driver.
+"""gps_node.py — NAVERA GPS sensor driver.
 
 Reads NMEA sentences from a serial GPS (e.g. /dev/ttyTHS1 on Jetson UART, or
 /dev/ttyUSB0 for a USB GPS) and publishes:

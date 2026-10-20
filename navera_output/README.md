@@ -14,6 +14,39 @@ Two nodes:
 
 Wiring and autopilot parameters: [docs/ARDUPILOT_INTEGRATION.md](../docs/ARDUPILOT_INTEGRATION.md).
 
+## Nodes and topics
+
+| Executable | Node name | Unit |
+|---|---|---|
+| `vehicle_output_node.py` | `vehicle_output` | `navera-output.service` (`navera_boot_output.sh`: `ros2 launch navera_output vehicle_output.launch.py`) |
+| `vehicle_link_node.py` | `vehicle_link` | `navera-vehicle-link.service` (`navera_boot_vehicle_link.sh`: `ros2 run navera_output vehicle_link_node.py` with `mavlink_url`, `source_system`) |
+
+`vehicle_output_node` (all QoS depth 10, reliable):
+
+| | Topic | Type | |
+|---|---|---|---|
+| in | `/navera/position` | `navera_msgs/PositionEstimate` | the arbiter's elected position |
+| in | `/navera/nav_status` | `navera_msgs/NavStatus` | FIX / DEGRADED / NO_FIX |
+| in | `/navera/sensors/gps_vel` | `geometry_msgs/TwistStamped` | receiver velocity sent with a GPS position |
+| in | `/navera/vehicle/status` | `std_msgs/String` (JSON) | only when `mavlink_url` is the local relay (`udpout:127.0.0.1:…`) |
+| out | `ros_fix_topic` (default `/navera/fix`; empty = off) | `sensor_msgs/NavSatFix` | |
+| out | serial `nmea_port` / MAVLink `mavlink_url` | NMEA GGA + RMC / `GPS_INPUT` | not ROS topics |
+
+`vehicle_link_node` publishes the `/navera/vehicle/*` topics listed in
+[vehicle_link_node](#vehicle_link_node) (`/navera/vehicle/imu` depth 50, the others depth 10)
+and subscribes to nothing; its input is the autopilot's MAVLink.
+
+## How to run
+
+```bash
+ros2 launch navera_output vehicle_output.launch.py nmea_port:=/dev/ttyUSB1   # + navera.env overrides
+ros2 run navera_output vehicle_link_node.py --ros-args -p mavlink_url:=serial:/dev/ttyTHS2:921600
+```
+
+`vehicle_output.launch.py` loads `config/vehicle_output.yaml`, the `nmea_port` / `nmea_baud`
+launch arguments (defaults from `NAVERA_NMEA_PORT` / `NAVERA_NMEA_BAUD`), the environment
+overrides below and the vehicle's maximum speed (`NAVERA_MAX_SPEED_KMH`).
+
 ## What the vehicle receives
 
 | NAVERA state | NMEA | MAVLink GPS_INPUT | ROS `/navera/fix` |

@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-day_sim.launch.py — full NAVERA "day" simulation in one command.
+"""day_sim.launch.py — full NAVERA "day" simulation in one command.
 
 Thin wrapper over the two halves of the chain:
   day_pipeline.launch.py   camera_pkg (day) → day_subscriber (DayLocalizer, DINOv2, GPU)
@@ -36,7 +35,8 @@ from launch.substitutions import LaunchConfiguration
 def generate_launch_description():
     web_share = get_package_share_directory('simulation_web')
 
-    default_mbtiles = (os.environ.get('NAVERA_MBTILES') or '/home/navera/isaac_ros_common/vision_pkg/vision_pkg/dataset/sousse_satellite.mbtiles')
+    default_mbtiles = (os.environ.get('NAVERA_MBTILES')
+                       or '/home/navera/isaac_ros_common/vision_pkg/vision_pkg/dataset/sousse_satellite.mbtiles')
 
     # Public interface: same argument names and same defaults as before the split, so
     # every existing invocation (systemd service, docs, CLI overrides) keeps working.

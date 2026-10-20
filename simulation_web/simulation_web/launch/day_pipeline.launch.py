@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-day_pipeline.launch.py — the NAVERA "day" localization pipeline, WITHOUT a bridge.
+"""day_pipeline.launch.py — the NAVERA "day" localization pipeline, WITHOUT a bridge.
 
   camera_pkg (day, /day/* test images)
     → day_subscriber (DayLocalizer, DINOv2, GPU)
@@ -26,8 +25,7 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
-from navera_common.vehicle import (imu_topic_params, max_speed_mps_from_env, max_speed_params,
-                                   shadow_mode_from_env)
+from navera_common.vehicle import max_speed_mps_from_env, max_speed_params, shadow_mode_from_env
 
 
 def generate_launch_description():
@@ -37,7 +35,9 @@ def generate_launch_description():
     conf_threshold = LaunchConfiguration('conf_threshold')
 
     return LaunchDescription([
-            LogInfo(msg='WARNING: NAVERA_MAX_SPEED_KMH is not set in /etc/navera/navera.env — day vision uses its default speed limit; set the vehicle\'s maximum speed (km/h).') if not max_speed_params() else LogInfo(msg=f'vehicle maximum speed: {max_speed_mps_from_env():.1f} m/s'),
+        LogInfo(msg='WARNING: NAVERA_MAX_SPEED_KMH is not set in /etc/navera/navera.env — day vision uses its '
+                    'default speed limit; set the vehicle\'s maximum speed (km/h).')
+        if not max_speed_params() else LogInfo(msg=f'vehicle maximum speed: {max_speed_mps_from_env():.1f} m/s'),
         DeclareLaunchArgument('conf_threshold', default_value='0.75'),
         # track filter — toggle/tune without rebuild
         DeclareLaunchArgument('antijump_enabled',    default_value='true'),
@@ -73,8 +73,7 @@ def generate_launch_description():
             PythonLaunchDescriptionSource(os.path.join(camera_share, 'launch', 'live.launch.py')),
             launch_arguments={'camera_type': 'day', 'ns': 'day',
                               'ready_topic': '/day/localizer_ready'}.items(),
-        ) if (os.environ.get('NAVERA_CAMERA') or 'replay') == 'live' else
-        IncludeLaunchDescription(
+        ) if (os.environ.get('NAVERA_CAMERA') or 'replay') == 'live' else IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
                 os.path.join(camera_share, 'launch', 'day.launch.py')
             ),

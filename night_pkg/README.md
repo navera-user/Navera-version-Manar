@@ -40,18 +40,53 @@ the STHN homography network (`night_localizer.py`, one-stage weights from Huggin
 
 The weights must match the network exactly: loading refuses any missing weight.
 
-## Topics
-In: `/thermal/image_raw` (bgr8 or mono16), `/thermal/frame_meta`, `/navera/estimate/gps`,
-`/thermal/camera/start`. Out: `/navera/estimate/night`, `/night/position_estimate`,
-`/night/night_status`, `/thermal/frame_done`, `/night/localizer_ready`.
+## Node
+| Executable | Node name | Role |
+|---|---|---|
+| `night_subscriber.py` | `night_subscriber` | thermal frame → STHN → night position (`night_localizer.py`, track: `night_tracker.py`) |
 
-## Key parameters
-`sthn_dir`, `weights`, `mbtiles` (defaults from `NAVERA_STHN_DIR`, `NAVERA_STHN_WEIGHTS`,
-`NAVERA_MBTILES`), `conf_threshold` (consistency), `max_dead_reckon_s`,
-`map_offset_lat_deg` / `map_offset_lon_deg` (map calibration, 0 unless measured),
-`mixed_precision`, **`camera_hfov_deg` (required; `NAVERA_THERMAL_HFOV_DEG`)**,
-`max_speed_mps` (30), `gate_margin_m` (30), `recheck_offset_m` (150), `recheck_max_m` (25),
-`min_match_ncc` (0.05) — ≤ −1 disables a check — and `heading_retry_deg` (default `"-10,10,-20,20"`, `""` turns it
+## Topics
+| Direction | Topic (default; parameter) | Type | QoS |
+|---|---|---|---|
+| in | `/thermal/image_raw` (`image_topic`) | `sensor_msgs/Image` (bgr8 or mono16) | RELIABLE, depth 10 |
+| in | `/thermal/frame_meta` (`meta_topic`) | `std_msgs/String` (JSON) | RELIABLE, depth 10 |
+| in | `/navera/position` (`gps_topic`) | `navera_msgs/PositionEstimate` — the prior while GPS is the source in use | depth 10 |
+| in | `/navera/nav_status` | `navera_msgs/NavStatus` | depth 10 |
+| in | `/navera/sensors/imu` (`imu_topic`) | `sensor_msgs/Imu` (heading when frame_meta has none) | sensor QoS (BEST_EFFORT) |
+| in | `/thermal/camera/start` (`start_topic`) | `std_msgs/Bool` | RELIABLE, TRANSIENT_LOCAL, depth 1 |
+| out | `/navera/estimate/night` | `navera_msgs/PositionEstimate` (the estimator's contract) | depth 10 |
+| out | `/night/position_estimate` (`fix_topic`) | `sensor_msgs/NavSatFix` | depth 10 |
+| out | `/night/night_status` (`status_topic`) | `std_msgs/String` (JSON) | depth 10 |
+| out | `/thermal/frame_done` (`done_topic`) | `std_msgs/Int32` (ack, back-pressure) | RELIABLE, depth 1 |
+| out | `/night/localizer_ready` (`ready_topic`) | `std_msgs/Bool` (handshake) | RELIABLE, TRANSIENT_LOCAL, depth 1 |
+
+## Parameters
+| Parameter | Default | Notes |
+|---|---|---|
+| `sthn_dir` | `$NAVERA_STHN_DIR`, else `/home/navera/isaac_ros_common/night_pkg/STHN` | |
+| `weights` | `$NAVERA_STHN_WEIGHTS`, else `/home/navera/isaac_ros_common/night_pkg/STHN/weights/one_stage/model.safetensors` | |
+| `mbtiles` | `$NAVERA_MBTILES`, else the legacy Sousse MBTiles path | |
+| `zoom` | `17` | |
+| `conf_threshold` | `0.30` | geometric consistency |
+| `state_sim_calibrated_sigma` | `false` | publish `sigma_m` as covariance |
+| `map_offset_lat_deg`, `map_offset_lon_deg` | `0.0` | map calibration, 0 unless measured |
+| `gps_prior_timeout_s` | `2.0` | |
+| `shadow_mode` | `false` | test flights: run beside a valid GPS (launch: `$NAVERA_SHADOW_MODE`) |
+| `max_dead_reckon_s` | `30.0` | |
+| `mixed_precision` | `"false"` | string |
+| **`camera_hfov_deg`** | `nan` | **required** (launch: `$NAVERA_THERMAL_HFOV_DEG`); NaN = no night position |
+| `max_altitude_rel_sigma` | `0.15` | |
+| `imu_heading_timeout_s` | `1.0` | |
+| `max_speed_mps` | `30.0` | motion gate (launch: from `$NAVERA_MAX_SPEED_KMH`) |
+| `gate_margin_m` | `30.0` | |
+| `max_single_jump_m` | `150.0` | ≤ 0 = no limit |
+| `reacquire_n`, `reacquire_confirmed_n` | `3`, `5` | |
+| `min_match_ncc` | `0.05` | ≤ −1 disables |
+| `recheck_offset_m`, `recheck_max_m` | `150.0`, `25.0` | ≤ −1 disables |
+| `heading_retry_deg` | `"-10,10,-20,20"` | `""` = off |
+| `height_retry` | `"0.1,-0.1,0.2"` | `""` = off |
+
+Retry checks: `heading_retry_deg` (default `"-10,10,-20,20"`, `""` turns it
 off: a heading 10–30° off is tried again turned by each offset, only on frames that failed the map
 check; synthetic 30 frames: 10° off 19 → 29/30, 20° off 0 → 29/30, 30° off 0 → 19/30, nominal
 unchanged, no new wrong fix; ~1.7 s per failed frame instead of ~0.5 s) and `height_retry` (default `"0.1,-0.1,0.2"`: then the
@@ -60,6 +95,17 @@ height −10 % 13 → 28/30, −20 % 0 → 29/30, field of view −10 % 6 → 30
 with no information still 0/30 but ~2.4 s each). `night_status` also carries the search square
 (`search_center`, `search_size_m`), the matched footprint (`footprint_quad`) and the query
 geometry.
+
+## How to run
+```bash
+ros2 launch night_pkg night_subscriber.launch.py          # the node alone
+ros2 launch simulation_web night_pipeline.launch.py       # camera + node (what the box runs)
+ros2 launch simulation_web night_sim.launch.py            # + web bridge on :8181
+```
+`night_subscriber.launch.py` arguments: `sthn_dir`, `weights`, `mbtiles` (env defaults above),
+`zoom` (`17`), `conf_threshold` (`0.30`), `image_topic`, `meta_topic`, `fix_topic`,
+`status_topic` (defaults above), `camera_hfov_deg` (`$NAVERA_THERMAL_HFOV_DEG`, else `nan`).
+On the box: `navera-pipeline-night.service` (`deploy/systemd/navera_boot_pipeline_night.sh`).
 
 ## Limits
 - Minimum altitude: the frame must cover ≥ 85 % of the 512 px (~500 m) reference — about

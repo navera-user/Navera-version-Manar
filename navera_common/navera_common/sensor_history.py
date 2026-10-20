@@ -64,7 +64,8 @@ class History:
 
     def at(self, t: float):
         """The value at time t, or None when no sample is within max_gap_s of t
-        (before the first, after the last, or across a gap in the data)."""
+        (before the first, after the last, or across a gap in the data).
+        """
         with self._lock:
             ts, vs = list(self._t), list(self._v)
         if not ts:
