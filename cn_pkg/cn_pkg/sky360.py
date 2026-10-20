@@ -66,12 +66,13 @@ F_GUESS = 1040.0 / math.radians(100.0)         # circle edge taken as 100 degree
 LENS_FILE = os.environ.get("NAVERA_INSTA360_LENS", os.path.expanduser("~/.navera_sim/insta360_usb_lens.json"))
 
 
-def default_lenses() -> List[Lens]:
-    """The two lenses: measured values (bench/lens_calib_screen.py) where there are some, else the first guess."""
+def default_lenses(path: Optional[str] = None) -> List[Lens]:
+    """The two lenses: measured values (bench/lens_calib_screen.py, lens_calib_wide.py) where there are some, else
+    the first guess. path: the lens file (default LENS_FILE, read at each call so a live change applies)."""
     lenses = [Lens("left", 938.5, 969.5, F_GUESS, R_LEFT), Lens("right", 2906.7, 966.2, F_GUESS, R_RIGHT)]
     try:
         import json
-        with open(LENS_FILE) as fh:
+        with open(path or LENS_FILE) as fh:
             measured = json.load(fh)
     except (OSError, ValueError):
         return lenses

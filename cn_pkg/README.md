@@ -16,6 +16,33 @@ direction into a ground position (`celestial_math.py`).
    of the observer latitude are computed; the one consistent with the prior position
    (`prior_lat`, `prior_lon`) is kept. If the prior cannot separate them: no position.
 
+## 360 all-sky mode (`solver_mode:=allsky360`)
+For the Insta360's full dual-fisheye frame (3840x1920): no astrometry.net, no heading, no prior.
+The bright spots of both fisheye circles become rays in the camera frame, are identified
+lost-in-space against the bright-star catalogue (pairs + TRIAD + Wahba), and the zenith among
+the stars ('up' through the solution) is the position. Code shared with the field tools
+(`navera_tools/field/allsky.py`, `sky360.py` are aliases of `cn_pkg/allsky.py`, `cn_pkg/sky360.py`):
+- **Quality gate** `allsky.accept`: >= 7 stars and rms <= 0.2 deg and chance probability
+  p <= 1e-6, or p <= 1e-4 with rms <= 0.12, or p <= 1e-2 with rms <= 0.10; lenses agree within 1 deg.
+- **'up'** (`allsky_up_source`): `camera` = frame_meta `up_imu` (the camera's accelerometer; refused
+  when frame_meta `accel_g` is off 1 g by more than `allsky.ACCEL_NORM_TOL`), `vehicle` = the IMU
+  orientation at the exposure through the full camera-to-body rotation `allsky_R_cam_body`
+  (9 values, row-major, camera vector = R @ body FLU vector; default: camera standing on a level
+  vehicle), `auto` = camera when the frame carries it.
+- **Lens model:** `allsky_lens_file` (default `~/.navera_sim/insta360_usb_lens.json`, `NAVERA_INSTA360_LENS`);
+  the focal length is searched (`allsky_f_scale_search`) on the first fix, then kept.
+- **Tilt of 'up'** (mount + accelerometer residual, 1 deg = 111 km): learned on the first
+  `allsky_cal_samples` fixes taken with a fresh GPS fix (`allsky_cal_gps_max_age_s`) while still,
+  then frozen; later fixes are corrected (`allsky_mount.TiltCalibration`, the field server's fit).
+- **Stated sigma** (`PositionEstimate` covariance): 'up' attitude (`attitude_sigma_deg`, default 0.3 deg;
+  the learned tilt's residual once calibrated) and the star fit in quadrature, + 5 deg when frame_meta
+  says `stopped: false`, + the IMU timing at the rotation rate (vehicle source).
+- **Offline:** the catalogue is `cn_pkg/data/bsc5_mag4.5.csv` (Yale BSC5, 904 stars), never downloaded;
+  time via the bundled IERS table (`celestial_math.configure_offline_iers`).
+
+Simulation only (navera_tools/sim/allsky_cn_parity.py): the node path gives the same fixes as the
+field path on the stress set; no real-sky validation of the node yet.
+
 ## Install
 
     sudo apt install astrometry.net astrometry-data-tycho2-10-19

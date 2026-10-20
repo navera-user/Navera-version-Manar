@@ -8,6 +8,7 @@ camera_pkg) and emits /cn/position_estimate + /cn/cn_status.
 Examples:
   ros2 launch cn_pkg cn_subscriber.launch.py
   ros2 launch cn_pkg cn_subscriber.launch.py min_log_odds:=30
+  ros2 launch cn_pkg cn_subscriber.launch.py solver_mode:=allsky360 allsky_up_source:=vehicle
   ros2 launch cn_pkg cn_subscriber.launch.py image_topic:=/celestial/image_raw \
                                               meta_topic:=/celestial/frame_meta
 """
@@ -27,6 +28,8 @@ def generate_launch_description():
         DeclareLaunchArgument('meta_topic',     default_value='/celestial/frame_meta'),
         DeclareLaunchArgument('fix_topic',      default_value='/cn/position_estimate'),
         DeclareLaunchArgument('status_topic',   default_value='/cn/cn_status'),
+        DeclareLaunchArgument('solver_mode',    default_value='geoloc'),        # or allsky360 (360 camera)
+        DeclareLaunchArgument('allsky_up_source', default_value='auto'),     # auto | camera | vehicle
 
         Node(
             package='cn_pkg',
@@ -40,6 +43,8 @@ def generate_launch_description():
                 'meta_topic':     LaunchConfiguration('meta_topic'),
                 'fix_topic':      LaunchConfiguration('fix_topic'),
                 'status_topic':   LaunchConfiguration('status_topic'),
+                'solver_mode':    LaunchConfiguration('solver_mode'),
+                'allsky_up_source': LaunchConfiguration('allsky_up_source'),
             }],
         ),
     ])
