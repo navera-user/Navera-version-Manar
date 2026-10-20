@@ -104,7 +104,8 @@ def test_imu_topic_and_shadow_mode_follow_the_settings():
     from navera_common.vehicle import imu_topic_params, shadow_mode_from_env
     assert imu_topic_params({}) == {"imu_topic": "/navera/sensors/imu"}
     assert imu_topic_params({"NAVERA_SENSOR_SOURCE": "vehicle"}) == {"imu_topic": "/navera/vehicle/imu"}
-    assert imu_topic_params({"NAVERA_SENSOR_SOURCE": "ros", "NAVERA_ROS_IMU_TOPIC": "/boat/imu"}) == {"imu_topic": "/boat/imu"}
+    assert (imu_topic_params({"NAVERA_SENSOR_SOURCE": "ros", "NAVERA_ROS_IMU_TOPIC": "/boat/imu"})
+            == {"imu_topic": "/boat/imu"})
     assert imu_topic_params({"NAVERA_SENSOR_SOURCE": "bad"}) == {"imu_topic": "/navera/sensors/imu"}
     assert shadow_mode_from_env({"NAVERA_SHADOW_MODE": "true"}) == "true"
     assert shadow_mode_from_env({}) == "false"

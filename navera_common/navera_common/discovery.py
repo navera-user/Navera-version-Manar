@@ -37,7 +37,8 @@ AUTO_KEYS = ("NAVERA_SENSOR_SOURCE", "NAVERA_GPS_SOURCE", "NAVERA_CAMERA_INPUT")
 # ── probes (each returns plain data; never raises) ─────────────────────────
 def probe_i2c(buses=(1, 7)) -> Dict[str, dict]:
     """{"imu": {"bus", "address"}, "rtc": {...}} for the chips that answer (or are held by a
-    kernel driver, which proves they are there)."""
+    kernel driver, which proves they are there).
+    """
     import errno
     import fcntl
     found = {}
@@ -80,7 +81,8 @@ def nmea_valid(data: bytes) -> int:
 def nmea_info(data: bytes) -> dict:
     """What the checksummed NMEA sentences in data say: {"valid", "satellites" (GSV/GSA
     seen: a receiver tracking satellites — an autopilot's NMEA output sends none), "fix"
-    (GGA quality 1/2/4/5 or RMC status A)}."""
+    (GGA quality 1/2/4/5 or RMC status A)}.
+    """
     info = {"valid": 0, "satellites": False, "fix": False}
     for m in NMEA_RE.finditer(data):
         raw = m.group(0)
@@ -126,7 +128,8 @@ def is_autopilot(hb: dict) -> bool:
 
 def system_reserved(path: str) -> Optional[str]:
     """Why the system keeps this port for itself (kernel console, a login terminal), or None.
-    Root's processes cannot be seen in /proc as the navera user: these are checked instead."""
+    Root's processes cannot be seen in /proc as the navera user: these are checked instead.
+    """
     name = os.path.basename(os.path.realpath(path))
     try:
         cmdline = open("/proc/cmdline").read()
@@ -225,7 +228,8 @@ def autopilot_streams(url: str, wait_s: float = 4.0) -> dict:
     """Ask an identified autopilot for attitude, rangefinder, second GPS and its height
     above home, and for its GPS receiver types; report what arrives:
     {"ATTITUDE": bool, ..., "GPS2_RAW": bool (sent, any fix), "gps1_type", "gps2_type"}.
-    GPS type 14 (MAV) is a GPS fed over MAVLink — NAVERA's own GPS_INPUT, never a source."""
+    GPS type 14 (MAV) is a GPS fed over MAVLink — NAVERA's own GPS_INPUT, never a source.
+    """
     want = {"ATTITUDE": 30, "DISTANCE_SENSOR": 132, "GPS2_RAW": 124, "GLOBAL_POSITION_INT": 33}
     seen = {k: False for k in want}
     seen.update(gps1_type=None, gps2_type=None)
@@ -334,7 +338,8 @@ def discover(env=None, ros_wait_s: float = 8.0) -> dict:
         run("network", probe_mavlink_url, url)
     written = str(env.get("ROS_DOMAIN_ID", "") or "").strip()     # a number, or "auto"
     domains = sorted({0} | ({int(written)} if written.isdigit() else set()) |
-                     {int(x) for x in str(env.get("NAVERA_DISCOVER_ROS_DOMAINS", "")).split(",") if x.strip().isdigit()})
+                     {int(x) for x in str(env.get("NAVERA_DISCOVER_ROS_DOMAINS", "")).split(",")
+                      if x.strip().isdigit()})
     run("ros", probe_ros, domains, ros_wait_s)
     for t in threads:
         t.start()
@@ -361,7 +366,8 @@ def _port_rank(p: str) -> int:
 def decide(found: dict, env) -> dict:
     """{"settings": {KEY: value}, "report": [lines]} — values only for settings left to
     "auto" or unset in env; the report says what was found and why each choice. Lines
-    with "NO " or "CHECK" are warnings (check_box)."""
+    with "NO " or "CHECK" are warnings (check_box).
+    """
     get = lambda k: str(env.get(k, "") or "").strip()                       # noqa: E731
     auto = lambda k: get(k).lower() in ("", "auto")                         # noqa: E731
     out, rep = {}, []

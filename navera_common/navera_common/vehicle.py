@@ -41,7 +41,8 @@ ENV_DECLINATION_DEG = "NAVERA_DECLINATION_DEG"      # deg, east positive
 
 def imu_params(environ=None) -> dict:
     """imu_node parameters from the installation's settings (mounting, declination),
-    or {} for what is unset (the yaml/node defaults apply). Raises ValueError."""
+    or {} for what is unset (the yaml/node defaults apply). Raises ValueError.
+    """
     env = os.environ if environ is None else environ
     out = {}
     raw = str(env.get(ENV_IMU_MOUNT_RPY, "")).strip()
@@ -68,7 +69,8 @@ def imu_params(environ=None) -> dict:
 
 def max_speed_params(environ=None) -> dict:
     """{'max_speed_mps': value} for a launch file's parameters, or {} when unset
-    (the node keeps its own default; the launch file warns)."""
+    (the node keeps its own default; the launch file warns).
+    """
     v = max_speed_mps_from_env(environ)
     return {} if v is None else {"max_speed_mps": v}
 
@@ -85,7 +87,8 @@ def sensor_topics(environ=None) -> dict:
                rangefinder, height above home (the GPS source is NAVERA_GPS_SOURCE)
       ros      the vehicle's ROS topics: NAVERA_ROS_IMU_TOPIC (sensor_msgs/Imu, ENU),
                NAVERA_ROS_GPS_TOPIC (NavSatFix), NAVERA_ROS_ALTITUDE_TOPIC (Range, AGL)
-    Raises ValueError on an unknown source or a missing ROS IMU topic."""
+    Raises ValueError on an unknown source or a missing ROS IMU topic.
+    """
     env = os.environ if environ is None else environ
     src = str(env.get(ENV_SENSOR_SOURCE, "") or "box").strip().lower()
     if src == "auto":                       # not decided by navera-discover: the box's sensors
@@ -110,13 +113,15 @@ def sensor_topics(environ=None) -> dict:
 
 def live_camera_params(environ=None, prefix: str = "NAVERA_CAMERA_") -> dict:
     """live_camera parameters from the installation settings (NAVERA_CAMERA_*; the star
-    camera of the celestial pipeline: prefix NAVERA_STAR_CAMERA_)."""
+    camera of the celestial pipeline: prefix NAVERA_STAR_CAMERA_).
+    """
     env = os.environ if environ is None else environ
     get = lambda k, d="": str(env.get(k, "") or d).strip()     # noqa: E731
     size = get(prefix + "SIZE", "1920x1080").lower().split("x")
     if len(size) != 2 or not all(s.isdigit() for s in size):
         raise ValueError(f"{prefix}SIZE={get(prefix + 'SIZE')!r}: expected WIDTHxHEIGHT, e.g. 1920x1080")
-    p = {"input": get(prefix + "INPUT", "usb").lower().replace("auto", "usb"), "device": get(prefix + "DEVICE", "/dev/video0"),
+    p = {"input": get(prefix + "INPUT", "usb").lower().replace("auto", "usb"),
+         "device": get(prefix + "DEVICE", "/dev/video0"),
          "input_topic": get(prefix + "TOPIC", "/vehicle/camera/image_raw"),
          "width": int(size[0]), "height": int(size[1]),
          "fps": float(get(prefix + "FPS", "1.0")),
@@ -172,7 +177,8 @@ def camera_mount_advice(vehicle_type: str, max_speed_mps, gimbal: bool):
     """None, or a warning when a FIXED camera will often be too tilted to use: a
     multirotor leans forward to fly fast (the simulator's quad: 45 deg at 43 km/h), and
     frames tilted over 45 deg are dropped. A plane banks in turns only; boats and
-    robots stay roughly level."""
+    robots stay roughly level.
+    """
     if gimbal or str(vehicle_type).lower() != "drone" or not max_speed_mps:
         return None
     if max_speed_mps > 10.0:
@@ -185,7 +191,8 @@ def camera_mount_advice(vehicle_type: str, max_speed_mps, gimbal: bool):
 def camera_identity(device: str, by_id_dir: str = "/dev/v4l/by-id"):
     """The stable name of a V4L2 camera (its /dev/v4l/by-id link: maker, model and
     serial number), or None. /dev/videoN numbers change with plug order; a lens
-    calibration belongs to ONE camera."""
+    calibration belongs to ONE camera.
+    """
     try:
         target = os.path.realpath(device)
         for name in sorted(os.listdir(by_id_dir)):
@@ -200,7 +207,8 @@ def imu_topic_params(environ=None) -> dict:
     """{"imu_topic": ...} for any node reading the attitude (night heading, star camera,
     estimator liveness): the box's IMU, the vehicle's (MAVLink) or its ROS topic, by
     NAVERA_SENSOR_SOURCE. A wrong setting is reported by the live camera; here the box
-    IMU is kept so these pipelines still start."""
+    IMU is kept so these pipelines still start.
+    """
     try:
         return {"imu_topic": sensor_topics(environ)["imu_topic"]}
     except ValueError:
@@ -209,6 +217,7 @@ def imu_topic_params(environ=None) -> dict:
 
 def shadow_mode_from_env(environ=None) -> str:
     """'true' when NAVERA_SHADOW_MODE asks the pipelines to run beside a working GPS,
-    publishing their own positions for comparison (field recording)."""
+    publishing their own positions for comparison (field recording).
+    """
     env = os.environ if environ is None else environ
     return "true" if str(env.get("NAVERA_SHADOW_MODE", "")).strip().lower() in ("1", "true", "yes") else "false"

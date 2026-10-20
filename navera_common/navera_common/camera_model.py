@@ -52,7 +52,8 @@ def rpy_to_matrix(roll: float, pitch: float, yaw: float) -> np.ndarray:
 
 def body_rpy_enu(q: Sequence[float]) -> Tuple[float, float, float]:
     """(roll, pitch, heading) in degrees from a body ENU quaternion; heading clockwise
-    from north, pitch positive nose up, roll positive right wing down."""
+    from north, pitch positive nose up, roll positive right wing down.
+    """
     R = quat_to_matrix(q)
     yaw = math.atan2(R[1, 0], R[0, 0])                       # ENU, counter-clockwise from east
     pitch = -math.asin(max(-1.0, min(1.0, R[2, 0])))         # FLU: +y left, nose up = negative rot about y
@@ -68,7 +69,8 @@ class CameraModel:
     The undistorted image keeps the same size; its horizontal field of view is
     `out_hfov_deg` (default: the field of view of the central row, slightly
     cropped so no black border shows; never wider than max_out_hfov_deg(), which keeps
-    the lens' resolution at the centre)."""
+    the lens' resolution at the centre).
+    """
 
     def __init__(self, K, D, size: Tuple[int, int], model: str = "pinhole",
                  out_hfov_deg: Optional[float] = None, balance: float = 0.0):
@@ -100,7 +102,8 @@ class CameraModel:
     @classmethod
     def from_calibration(cls, d: dict) -> "CameraModel":
         """From a calibration dict (navera_tools/calibrate_camera.py writes it as YAML):
-        {model, image_width, image_height, camera_matrix: [9], distortion: [n]}."""
+        {model, image_width, image_height, camera_matrix: [9], distortion: [n]}.
+        """
         try:
             return cls(d["camera_matrix"], d.get("distortion", []),
                        (d["image_width"], d["image_height"]), d.get("model", "pinhole"),
@@ -116,7 +119,8 @@ class CameraModel:
         """Horizontal field of view of the lens along the central image row. A fisheye's angle
         comes from its own model (theta_d = theta (1 + k1 theta^2 + ...)), up to the angle where
         that model stops increasing: past it OpenCV returns -1e6 and the Insta360 strip read
-        180 deg (its rows reach beyond what its calibration describes)."""
+        180 deg (its rows reach beyond what its calibration describes).
+        """
         w, h = self.size
         if self.model == "fisheye":
             return math.degrees(self._fisheye_theta(abs(self.K[0, 2]) / self.K[0, 0])
@@ -138,7 +142,7 @@ class CameraModel:
         return math.pi
 
     def _fisheye_theta(self, theta_d: float) -> float:
-        """theta (rad) of a normalised fisheye radius theta_d, capped at fisheye_valid_theta()."""
+        """Return theta (rad) of a normalised fisheye radius theta_d, capped at fisheye_valid_theta()."""
         k = list(self.D[:4]) + [0.0] * (4 - min(4, self.D.size))
 
         def f(t):
@@ -154,7 +158,8 @@ class CameraModel:
 
     def undistort_points(self, pts, to_normalised: bool = False) -> np.ndarray:
         """Distorted pixel points (N,1,2) → undistorted pixels of the output image
-        (or normalised coordinates)."""
+        (or normalised coordinates).
+        """
         import cv2
         pts = np.asarray(pts, dtype=np.float64).reshape(-1, 1, 2)
         P = None if to_normalised else self.K_out
@@ -184,7 +189,8 @@ class CameraModel:
 
 def camera_rotation(q_body_enu: Sequence[float], mount_rpy_deg: Sequence[float] = (0.0, 0.0, 0.0)) -> np.ndarray:
     """R_world_cam for a camera mounted on the body: the nadir mount, then rotated by
-    mount roll/pitch/yaw (deg, body frame) — e.g. pitch -30 tilts it 30 deg forward."""
+    mount roll/pitch/yaw (deg, body frame) — e.g. pitch -30 tilts it 30 deg forward.
+    """
     R_wb = quat_to_matrix(q_body_enu)
     R_mount = rpy_to_matrix(*(math.radians(float(a)) for a in mount_rpy_deg))
     return R_wb @ R_mount @ R_BODY_NADIR_CAM
@@ -192,7 +198,8 @@ def camera_rotation(q_body_enu: Sequence[float], mount_rpy_deg: Sequence[float] 
 
 def level_nadir_rotation(R_world_cam: np.ndarray) -> np.ndarray:
     """R_world_virt of a level camera looking straight down whose image top points
-    where the real camera's image top points on the ground (same heading)."""
+    where the real camera's image top points on the ground (same heading).
+    """
     up_img = R_world_cam @ np.array([0.0, -1.0, 0.0])        # image "up" in the world
     yaw = math.atan2(up_img[1], up_img[0])                    # ENU azimuth of image-up
     if math.hypot(up_img[0], up_img[1]) < 1e-6:              # looking at the horizon: no heading
@@ -209,7 +216,8 @@ def tilt_deg(R_world_cam: np.ndarray) -> float:
 
 def nadir_homography(K: np.ndarray, R_world_cam: np.ndarray, K_virt: Optional[np.ndarray] = None) -> np.ndarray:
     """Pixel homography from the real (undistorted) camera to the level nadir camera
-    at the same place: x_virt ~ K_v R_virt_cam K^-1 x_cam."""
+    at the same place: x_virt ~ K_v R_virt_cam K^-1 x_cam.
+    """
     R_world_virt = level_nadir_rotation(R_world_cam)
     R_virt_cam = R_world_virt.T @ R_world_cam
     Kv = K if K_virt is None else K_virt
@@ -229,7 +237,8 @@ def ground_m_per_px(altitude_agl_m: float, hfov_deg: float, width_px: int) -> fl
 def altitude_from_scale(predicted_altitude_m: float, fitted_scale: float) -> float:
     """Height above ground that a map match measures. The frame was scaled for
     predicted_altitude_m; a fitted scale s (frame ground size / predicted) means the
-    camera saw s times more ground: it was s times higher."""
+    camera saw s times more ground: it was s times higher.
+    """
     return predicted_altitude_m * fitted_scale
 
 
@@ -237,7 +246,8 @@ def parse_crop(spec, width: int, height: int):
     """The part of the camera's picture NAVERA uses, as (x, y, w, h), or None for all of it.
     spec: "" (all), "top" / "bottom" / "left" / "right" (that half — a 360 camera's two
     lenses side by side or one above the other), or "x,y,w,h" in pixels.
-    Raises ValueError for a region outside the picture."""
+    Raises ValueError for a region outside the picture.
+    """
     s = str(spec or "").strip().lower()
     if not s:
         return None

@@ -84,7 +84,8 @@ def test_no_velocity_across_a_gap_and_the_turn_widens_the_sigma():
 def test_a_position_carried_step_by_step_grows_like_one_carried_at_once():
     """day_subscriber carries the position once a second: the stated accuracy must grow with the
     time since the last MEASURED fix, not as a sum of per-step terms (simulator 2026-10-15: the
-    sum made 1/2 a dt per second — +-244 m stated, 1205 m real, after 99 s)."""
+    sum made 1/2 a dt per second — +-244 m stated, 1205 m real, after 99 s).
+    """
     tr = TrackVelocity(accel_mps2=0.5)
     once = tr.sigma_growth(2.0, 15.0, 99.0, 0.0, 0.0)
     stepped, t = 0.0, 0.0

@@ -70,7 +70,8 @@ def test_straightened_frame_centre_is_the_point_under_the_vehicle(roll, up, hdg)
 
 def test_why_it_matters_tilt_moves_the_image_centre():
     """Without straightening, 10 deg nose-up at 150 m: the image centre is 26 m ahead
-    (the belly, and the camera, swing forward)."""
+    (the belly, and the camera, swing forward).
+    """
     R = camera_rotation(body_q(0, 10, 0))
     centre_ground = np.array([0, 0, 150.0]) + R @ np.array([0, 0, 1.0]) * (150.0 / -(R @ [0, 0, 1.0])[2])
     assert math.hypot(*centre_ground[:2]) == pytest.approx(150.0 * math.tan(math.radians(10)), rel=1e-9)
@@ -149,7 +150,8 @@ def test_crop_one_lens_of_a_360_camera():
 def test_wide_fisheye_keeps_its_centre_resolution():
     """The Insta360 One R top lens (calibrated 2026-10-06): 1920x540, fx 660. A straight view
     169 deg wide would give the centre 7x fewer pixels per degree than the lens: capped at
-    2 atan(960 / 660) = 111 deg, even when an old calibration file asks for more."""
+    2 atan(960 / 660) = 111 deg, even when an old calibration file asks for more.
+    """
     K = [660.48, 0, 937.06, 0, 721.40, 317.66, 0, 0, 1]
     D = [0.2319, -0.4170, 0.5338, -0.2386]
     for asked in (None, 169.2):
@@ -162,7 +164,8 @@ def test_wide_fisheye_keeps_its_centre_resolution():
 
 def test_fisheye_native_fov_stays_inside_the_model_b2():
     """The Insta360 strip calibration (2026-10-06): its edge pixels lie past the angle where the
-    fisheye model stops growing; OpenCV returned -1e6 there and the native FOV read 180 deg."""
+    fisheye model stops growing; OpenCV returned -1e6 there and the native FOV read 180 deg.
+    """
     K = [660.4827, 0, 937.0585, 0, 721.3969, 317.6612, 0, 0, 1]
     D = [0.23188, -0.41701, 0.53385, -0.23863]
     m = CameraModel(K, D, (1920, 540), "fisheye", out_hfov_deg=111.0)

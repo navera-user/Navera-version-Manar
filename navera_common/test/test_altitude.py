@@ -115,9 +115,9 @@ def _ref(sigma_ref, agl, relief=30.0, frac=0.02):
 
 def test_a_barometer_height_at_400_m_passes_the_night_gate():
     """Night matching needs the height within 15 %: with 25 % of the height for the terrain
-    no reference could ever pass (2026-10-07, simulator: night refused every frame)."""
+    no reference could ever pass (2026-10-07, simulator: night refused every frame).
+    """
     a = AltitudeEstimator()
     a.add_relative(0.0, 400.0)
     agl, sigma, _ = a.estimate(0.0)
     assert sigma / agl < 0.15
-
