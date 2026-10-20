@@ -207,7 +207,7 @@ class DaySubscriber(Node):
         self.declare_parameter("gyro_heading", True)
         self.declare_parameter("gyro_imu_topic", "")
         declare_float(self, "gyro_heading_bias_dps", 0.1)
-        declare_float(self, "gyro_heading_noise_dps_rthz", 0.02)
+        declare_float(self, "gyro_heading_noise_dps_rthz", 0.004)   # Insta360 One R measured 0.0025-0.0033
         declare_float(self, "gyro_heading_reset_sigma_deg", 2.0)
         declare_float(self, "gyro_heading_max_sigma_deg", 10.0)
         self.declare_parameter("gyro_heading_min_inliers", 20)
@@ -236,6 +236,10 @@ class DaySubscriber(Node):
         # Never calibrated (GPS denied from take-off): at least sigma_floor_no_cal_m.
         declare_float(self, "sigma_floor_no_cal_m", 30.0)
         self.declare_parameter("sigma_cal_min_samples", 15)
+        # A slowly spoofed GPS stays trusted for a while (refused at ~35-100 m of drift, gps_crosscheck):
+        # when GPS stops being trusted, the sigma calibration and the map bias forget what they
+        # learned in the last calib_rollback_s, so the drift is not kept as "vision error" or "map shift"
+        declare_float(self, "calib_rollback_s", 60.0)
         # Local matching keeps its last position when frames fail (uniform ground, blur) and
         # widens the search by max_speed_mps x the time since its last match, up to this
         # radius, instead of dropping it after max_consecutive_rejects (a retrieval-era rule).
@@ -344,6 +348,7 @@ class DaySubscriber(Node):
         self.attitude_sigma_deg = float(self.get_parameter("attitude_sigma_deg").value)
         self.sigma_cal = SigmaCalibration(float(self.get_parameter("sigma_floor_no_cal_m").value),
                                           int(self.get_parameter("sigma_cal_min_samples").value))
+        self.calib_rollback_s = float(self.get_parameter("calib_rollback_s").value)
         self._last_fix_sigma = self.local_sigma_m
         self.local_max_radius_m = float(self.get_parameter("local_max_radius_m").value)
         self.local_scale_tol_max = float(self.get_parameter("local_scale_tol_max").value)
@@ -621,6 +626,7 @@ class DaySubscriber(Node):
             if self._gps_was_trusted and not trusted:
                 self._handover_from_gps()
                 self.latency_cal.freeze("GPS lost or not trusted", self.latency_rollback_s)
+                self._rollback_gps_learning()
             self._gps_was_trusted = trusted
             # Live GPS healthy → it is the position source; no inference needed.
             if trusted and not self.shadow_mode:
@@ -792,6 +798,17 @@ class DaySubscriber(Node):
             self.track.reset()                      # its GPS points were the spoofed ones
             self.track.add(c[2], c[0], c[1], self.local_sigma_m)
 
+    def _rollback_gps_learning(self):
+        """GPS just stopped being trusted: forget the sigma-calibration and map-bias samples of the
+        last calib_rollback_s (a slow spoof is trusted until refused; its drift must not be learned)."""
+        if self.calib_rollback_s <= 0:
+            return
+        since = time.time() - self.calib_rollback_s
+        n_sig, n_bias = self.sigma_cal.rollback(since), self.map_bias.rollback_bias(since)
+        if n_sig or n_bias:
+            self.get_logger().info(f"[day] GPS no longer trusted: forgot the last {self.calib_rollback_s:.0f} s of "
+                                   f"GPS-learned samples (sigma calibration {n_sig}, map bias {n_bias})")
+
     def _calibrate_altitude(self, seq_id, img, meta):
         """GPS trusted: every gps_check_period_s, match this frame within gps_check_radius_m
         of the GPS position. A match is published as an independent day-vision estimate
@@ -819,11 +836,12 @@ class DaySubscriber(Node):
             self._gyro_reset(int(ns) / 1e9 if ns else time.time(), res)   # heading known at the GPS loss
             g = self._gps_hist.at(int(ns) / 1e9) if ns else None
             if g is not None:                       # no GPS at the frame's instant: no sample
-                self.map_bias.bias_sample(self._check_fix[:2], g, self._heading_for_match(meta))
+                self.map_bias.bias_sample(self._check_fix[:2], g, self._heading_for_match(meta), t=self._check_fix[2])
                 # this flight's real vision error, the map bias removed as it will be after a GPS loss
                 de, dn = self.map_bias.bias(self._check_fix[:2])
                 v = _move(self._check_fix[:2], de, dn)
-                self.sigma_cal.add(haversine_m(v[0], v[1], g[0], g[1]), self._model_sigma(res, meta))
+                self.sigma_cal.add(haversine_m(v[0], v[1], g[0], g[1]), self._model_sigma(res, meta),
+                                   t=self._check_fix[2])
             st = {}
             self._publish_vision_altitude(meta, res, st)
             self._publish_estimate(exposure_stamp(meta, self.get_clock().now().to_msg()), seq_id, "local_match",

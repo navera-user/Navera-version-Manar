@@ -63,11 +63,26 @@ class SigmaCalibration:
         self.min_samples = int(min_samples)
         self.max_factor = float(max_factor)
         self._s = deque(maxlen=int(window))           # (error m, model sigma m)
+        self._t = deque(maxlen=int(window))           # when each sample was taken (s)
 
-    def add(self, err_m: float, stated_sigma_m: float) -> None:
-        """One vision fix compared with the trusted GPS at the same instant."""
+    def add(self, err_m: float, stated_sigma_m: float, t: Optional[float] = None) -> None:
+        """One vision fix compared with the trusted GPS at the same instant (t: when)."""
         if stated_sigma_m and stated_sigma_m > 0 and math.isfinite(err_m):
             self._s.append((float(err_m), float(stated_sigma_m)))
+            self._t.append(float("-inf") if t is None else float(t))
+
+    def rollback(self, since_t: float) -> int:
+        """Forget the samples taken at or after since_t; returns how many.
+
+        A slowly spoofed GPS is still trusted for a while before it is refused: the
+        samples of that time compare vision with a drifting GPS and would teach the
+        calibration to accept the drift."""
+        n = 0
+        while self._t and self._t[-1] >= since_t:
+            self._t.pop()
+            self._s.pop()
+            n += 1
+        return n
 
     @property
     def samples(self) -> int:

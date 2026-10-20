@@ -26,6 +26,7 @@ holds what happens between and around them — the problems a 2026-10-06 bench c
 Pure Python (no ROS): the day node and the bench use the same rules.
 """
 import math
+import time
 from collections import deque
 from typing import Optional, Tuple
 
@@ -94,6 +95,7 @@ class VisionNavigator:
         self.height = None            # (m above ground, sigma_m, t, source): the filter's state
         self.fails = 0                # matches failed in a row
         self._bias = deque(maxlen=40)  # (lat, lon, de, dn, heading): GPS minus vision, while GPS is good
+        self._bias_t = deque(maxlen=40)  # when each of them was taken (s)
         self.max_bias_m = 30.0
         self.vo_rejected = 0
         self._pending = None          # (t, lat, lon, sigma) of a fix the gate doubted
@@ -150,11 +152,22 @@ class VisionNavigator:
         return None if p is None else (p[0][0], math.sqrt(max(p[1][0][0], 1e-6)))
 
     def bias_sample(self, vision: Tuple[float, float], gps: Tuple[float, float],
-                    heading_deg: Optional[float] = None) -> None:
+                    heading_deg: Optional[float] = None, t: Optional[float] = None) -> None:
         """While GPS is good: where vision put the frame vs where GPS (at the frame's
         instant) says the camera points."""
         de, dn = _en(gps, vision)
         self._bias.append((vision[0], vision[1], de, dn, heading_deg))
+        self._bias_t.append(time.time() if t is None else float(t))
+
+    def rollback_bias(self, since_t: float) -> int:
+        """Forget the map-bias samples taken at or after since_t (a GPS trusted then may have
+        been slowly spoofed: its drift would be learned as a map shift); returns how many."""
+        n = 0
+        while self._bias_t and self._bias_t[-1] >= since_t:
+            self._bias_t.pop()
+            self._bias.pop()
+            n += 1
+        return n
 
     def odometry(self, t: float, de: float, dn: float, dt: float, quality: float) -> bool:
         """Frame-to-frame displacement (visual odometry, metres over dt): a velocity
