@@ -3,8 +3,8 @@
 Same contract as local_matcher.LocalMatcher (it is one: locate(), locate_any_height(),
 frame_m_per_px()), measured better on real aerial frames that differ from the map in
 colour, shadows and date (navera_tools/bench/learned_matchers.py, 33 frames, 600 m search,
-position carried along the velocity): 30/33 located, 0 wrong, 333 ms/frame on the Orin
-Nano — SIFT (LocalMatcher): 22/33, 0 wrong, 720 ms.
+position carried along the velocity, 8 inliers as shipped; re-measured 2026-10-20, see
+docs/VALIDATION_STATUS.md): 28/33 located, 0 wrong — SIFT (LocalMatcher): 24/33, 0 wrong.
 
 DISK and LightGlue are not rotation invariant: the frame is turned north-up from its
 heading before matching — heading_deg from the attitude, or, without an IMU, the
@@ -27,6 +27,14 @@ import numpy as np
 
 from day_pkg.local_matcher import (LocalMatcher, fix_sigma_m, inlier_spread, map_m_per_px, refine_with_pose,
                                    tile_px_to_latlon, tile_xy)
+
+
+def map_level(frame_scale: float, max_level: int = 3) -> int:
+    """Map level (the map shrunk 2**level times) to match a frame whose pixels are frame_scale map
+    pixels: 0 up to 1.3 (the frame is enlarged a little), else the level nearest its scale."""
+    if not math.isfinite(frame_scale) or frame_scale < 1.3:
+        return 0
+    return int(min(max_level, max(0, round(math.log2(frame_scale)))))
 
 
 def north_up_matrix(shape, heading_deg: float):
@@ -57,6 +65,7 @@ class LearnedMatcher(LocalMatcher):
     # each at 768 keypoints), map keypoints matched at once, and no SIFT fallback over a
     # window wider than this (it doubled the time of every failed frame: 33-64 s)
     MAX_CHUNKS = 500
+    MAX_LEVEL = 3                     # map levels: up to 8x coarser than the zoom (high frames)
     MAX_MAP_KEYPOINTS = 24000
     SIFT_FALLBACK_MAX_M = 300.0
     HEADING_MEMORY_S = 10.0           # a measured rotation stands in for the heading this long
@@ -168,20 +177,24 @@ class LearnedMatcher(LocalMatcher):
                 f = self.disk(x, n, pad_if_not_divisible=True)[0]
         return f.keypoints.float(), f.descriptors.float()
 
-    def _chunk(self, gx: int, gy: int):
-        """Features of grid chunk (gx, gy): global map pixels (N,2) and descriptors, on the CPU."""
-        key = (gx, gy)
+    def _chunk(self, gx: int, gy: int, level: int = 0):
+        """Features of grid chunk (gx, gy) of map level `level` (the map shrunk 2**level times):
+        level pixels (N,2) and descriptors, on the CPU."""
+        key = (gx, gy) if level == 0 else (level, gx, gy)
         if key in self._grid:
             self._grid.move_to_end(key)
             return self._grid[key]
-        path = os.path.join(self.cache_dir, f"{self.z}_{gx}_{gy}_k{self.PER_CHUNK}{'h' if self.half else ''}.npz")
+        lv = f"_L{level}" if level else ""
+        path = os.path.join(self.cache_dir, f"{self.z}_{gx}_{gy}{lv}_k{self.PER_CHUNK}{'h' if self.half else ''}.npz")
         out = None
         try:
             with np.load(path) as d:
                 out = (self._t.from_numpy(d["k"]), self._t.from_numpy(d["d"]))
         except (OSError, KeyError, ValueError):
-            step = self.CHUNK - self.OVERLAP
-            sub = self._pixels(gx * step, gy * step, self.CHUNK, self.CHUNK)
+            step, f = self.CHUNK - self.OVERLAP, 2 ** level
+            sub = self._pixels(gx * step * f, gy * step * f, self.CHUNK * f, self.CHUNK * f)
+            if f > 1:
+                sub = cv2.resize(sub, (self.CHUNK, self.CHUNK), interpolation=cv2.INTER_AREA)
             if sub.std() >= 3:                               # not a missing / blank area
                 k, d = self._features(sub, self.PER_CHUNK)
                 k = (k + self._t.tensor([gx * step, gy * step], device=self.dev, dtype=k.dtype)).cpu()
@@ -199,14 +212,15 @@ class LearnedMatcher(LocalMatcher):
             self._grid.popitem(last=False)
         return out
 
-    def map_features(self, x0: int, y0: int, w: int, h: int):
-        """Map features in global pixels [x0, x0+w) x [y0, y0+h), relative to (x0, y0), on the GPU."""
+    def map_features(self, x0: int, y0: int, w: int, h: int, level: int = 0):
+        """Map features in global pixels [x0, x0+w) x [y0, y0+h) of map level `level` (2**level
+        times coarser than the zoom), relative to (x0, y0), on the GPU."""
         t = self._t
         step = self.CHUNK - self.OVERLAP
         ks, ds = [], []
         for gy in range(y0 // step, (y0 + h) // step + 1):
             for gx in range(x0 // step, (x0 + w) // step + 1):
-                k, d = self._chunk(gx, gy)
+                k, d = self._chunk(gx, gy, level)
                 if len(k):
                     ks.append(k)
                     ds.append(d)
@@ -363,17 +377,23 @@ class LearnedMatcher(LocalMatcher):
         rot_m, rot_size = north_up_matrix(img.shape, hdg)
         img = cv2.warpAffine(img, rot_m, rot_size)
         mpp_map = map_m_per_px(prior[0], self.z)
-        s = frame_m_per_px / mpp_map
-        if not (math.isfinite(s) and 0.02 < s < 50):
-            res.update(reason=f"frame scale {s:.3f} of the map resolution is not plausible")
+        s0 = frame_m_per_px / mpp_map
+        if not (math.isfinite(s0) and 0.02 < s0 < 50):
+            res.update(reason=f"frame scale {s0:.3f} of the map resolution is not plausible")
             return res
+        # a high frame is not enlarged to the map's scale (2-3x: 10-15 s and 4.5 GB a frame at
+        # 1500 m): it is matched on a map level shrunk 2**level times, near its own scale
+        level = map_level(s0, self.MAX_LEVEL)
+        f = 2 ** level
+        s = s0 / f
         q = cv2.resize(img, None, fx=s, fy=s, interpolation=cv2.INTER_AREA if s < 1 else cv2.INTER_LINEAR)
         if margin_m is None:
             margin_m = 0.5 * math.hypot(*frame.shape[:2]) * frame_m_per_px
         fx, fy = tile_xy(prior[0], prior[1], self.z)
-        r = (search_m + margin_m) / mpp_map
-        x0, y0 = int(fx * 256 - r), int(fy * 256 - r)
-        k1, d1 = self.map_features(x0, y0, int(2 * r), int(2 * r))
+        r = (search_m + margin_m) / (mpp_map * f)                 # in level pixels
+        x0, y0 = int(fx * 256 / f - r), int(fy * 256 / f - r)
+        k1, d1 = self.map_features(x0, y0, int(2 * r), int(2 * r), level)
+        res["map_level"] = level
         res["n_candidates"] = int(len(k1))
         if len(k1) < 10:
             res.update(spatial_empty=True, reason="no map tiles (or no texture) in the search circle")
@@ -405,22 +425,23 @@ class LearnedMatcher(LocalMatcher):
         n_in = int(inl.sum())
         scale = math.hypot(A[0, 0], A[1, 0])
         px, py = A @ np.array([q.shape[1] / 2.0, q.shape[0] / 2.0, 1.0])
-        lat, lon = tile_px_to_latlon(float(px) + x0, float(py) + y0, self.z)
+        px, py = (float(px) + x0) * f, (float(py) + y0) * f      # global pixels of the zoom
+        lat, lon = tile_px_to_latlon(px, py, self.z)
         rot = (hdg + math.degrees(math.atan2(A[1, 0], A[0, 0])) + 180.0) % 360.0 - 180.0
         res.update(predicted_lat=lat, predicted_lon=lon, inliers=n_in, matches=good, scale_residual=round(scale, 3),
                    rotation_deg=round(rot, 1), score=float(n_in), fused_score=float(n_in),
                    match=f"{n_in} inliers / {good} matches (DISK+LightGlue)",
-                   spread=inlier_spread(src[inl.ravel() > 0], q.shape), sigma_m=fix_sigma_m(n_in, mpp_map))
+                   spread=inlier_spread(src[inl.ravel() > 0], q.shape), sigma_m=fix_sigma_m(n_in, mpp_map * f))
         # the pose from the matches near the similarity fit (loosely: a tilted frame's edges
         # depart from a similarity), its own RANSAC removing the rest
         m = np.hypot(*(src @ A[:, :2].T.astype(np.float32) + A[:, 2].astype(np.float32) - dst).T) < 16.0
         inv = cv2.invertAffineTransform(rot_m)       # north-up canvas -> frame pixels
         fp = (src / np.float32(s)) @ inv[:, :2].T.astype(np.float32) + inv[:, 2].astype(np.float32)
-        mp = dst + np.float32([x0, y0])
+        mp = (dst + np.float32([x0, y0])) * np.float32(f)
         fi = inl.ravel() > 0
         not_straight = refine_with_pose(res, (fp[fi], mp[fi]), (fp[m], mp[m]), (frame.shape[1], frame.shape[0]),
                                         hfov_deg, frame_m_per_px, scale, mpp_map, self.z,
-                                        (float(px) + x0, float(py) + y0))
+                                        (px, py))
         if n_in < need:
             res["reason"] = f"{n_in} geometric inliers (min {need})"
         elif not_straight:

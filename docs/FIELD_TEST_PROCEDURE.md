@@ -150,9 +150,13 @@ of view the camera settings FAIL; with a field of view only, "lens calibration" 
    This confirms the BNO085 frame convention (backlog IMU-3). With the box IMU, the heading
    is true north once a GPS position is known (World Magnetic Model), or uses
    `NAVERA_DECLINATION_DEG` until then.
-3. **Camera latency**: film a phone stopwatch with the camera while recording; the
-   difference between the frame's exposure stamp (`image_stamp_ns` in `/day/frame_meta`) and
-   the time shown in the image is `NAVERA_CAMERA_LATENCY_S`.
+3. **Camera latency**: film a phone stopwatch with the camera while recording. The frame's
+   exposure stamp (`image_stamp_ns` in `/day/frame_meta`) is already the grab time minus the
+   current `NAVERA_CAMERA_LATENCY_S`, so the difference between it and the time shown in the
+   image is the ERROR of the current setting, not the latency:
+   new `NAVERA_CAMERA_LATENCY_S` = current setting + (stamp - time shown). (Or set it to 0 for
+   this check: the difference stamp - time shown is then the latency itself.) On the bench, `navera_tools/bench/camera_latency.py`
+   measures it directly (screen flashes, median - frame period / 2).
 
 ## 7. Recording flights (GPS valid, vision in shadow mode)
 

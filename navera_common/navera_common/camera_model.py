@@ -113,11 +113,44 @@ class CameraModel:
         return math.degrees(2.0 * math.atan((self.size[0] / 2.0) / self.K[0, 0]))
 
     def _native_hfov_deg(self) -> float:
-        """Horizontal field of view of the lens along the central image row."""
+        """Horizontal field of view of the lens along the central image row. A fisheye's angle
+        comes from its own model (theta_d = theta (1 + k1 theta^2 + ...)), up to the angle where
+        that model stops increasing: past it OpenCV returns -1e6 and the Insta360 strip read
+        180 deg (its rows reach beyond what its calibration describes)."""
         w, h = self.size
+        if self.model == "fisheye":
+            return math.degrees(self._fisheye_theta(abs(self.K[0, 2]) / self.K[0, 0])
+                                + self._fisheye_theta(abs(w - 1.0 - self.K[0, 2]) / self.K[0, 0]))
         pts = np.array([[[0.0, h / 2.0]], [[w - 1.0, h / 2.0]]])
         und = self.undistort_points(pts, to_normalised=True)
         return math.degrees(math.atan(abs(und[0, 0])) + math.atan(abs(und[1, 0])))
+
+    def fisheye_valid_theta(self) -> float:
+        """The largest angle (rad, < pi) up to which the fisheye model's theta_d grows."""
+        k = list(self.D[:4]) + [0.0] * (4 - min(4, self.D.size))
+        last = 0.0
+        for i in range(1, 1800):
+            t = i * math.pi / 1800
+            td = t * (1 + k[0] * t ** 2 + k[1] * t ** 4 + k[2] * t ** 6 + k[3] * t ** 8)
+            if td <= last:
+                return (i - 1) * math.pi / 1800
+            last = td
+        return math.pi
+
+    def _fisheye_theta(self, theta_d: float) -> float:
+        """theta (rad) of a normalised fisheye radius theta_d, capped at fisheye_valid_theta()."""
+        k = list(self.D[:4]) + [0.0] * (4 - min(4, self.D.size))
+
+        def f(t):
+            return t * (1 + k[0] * t ** 2 + k[1] * t ** 4 + k[2] * t ** 6 + k[3] * t ** 8)
+        hi = self.fisheye_valid_theta()
+        if f(hi) <= theta_d:
+            return hi
+        lo = 0.0
+        for _ in range(60):                                   # bisection: f grows on [0, hi]
+            mid = 0.5 * (lo + hi)
+            lo, hi = (mid, hi) if f(mid) < theta_d else (lo, mid)
+        return 0.5 * (lo + hi)
 
     def undistort_points(self, pts, to_normalised: bool = False) -> np.ndarray:
         """Distorted pixel points (N,1,2) → undistorted pixels of the output image

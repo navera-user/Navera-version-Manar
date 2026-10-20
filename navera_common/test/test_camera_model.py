@@ -158,3 +158,14 @@ def test_wide_fisheye_keeps_its_centre_resolution():
         assert cam.K_out[0, 0] >= 660.0 - 1e-6          # centre: at least the lens' pixels per radian
     narrow = CameraModel(K, D, (1920, 540), "fisheye", 90.0)
     assert narrow.out_hfov_deg == 90.0                     # a narrower request is kept
+
+
+def test_fisheye_native_fov_stays_inside_the_model_b2():
+    """The Insta360 strip calibration (2026-10-06): its edge pixels lie past the angle where the
+    fisheye model stops growing; OpenCV returned -1e6 there and the native FOV read 180 deg."""
+    K = [660.4827, 0, 937.0585, 0, 721.3969, 317.6612, 0, 0, 1]
+    D = [0.23188, -0.41701, 0.53385, -0.23863]
+    m = CameraModel(K, D, (1920, 540), "fisheye", out_hfov_deg=111.0)
+    half = math.degrees(m.fisheye_valid_theta())
+    assert 60.0 < half < 75.0
+    assert abs(m._native_hfov_deg() - 2 * half) < 0.5 and m._native_hfov_deg() < 179.0
