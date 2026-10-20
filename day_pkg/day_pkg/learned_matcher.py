@@ -251,7 +251,8 @@ class LearnedMatcher(LocalMatcher):
     def locate(self, frame, prior: Tuple[float, float], search_m: float, frame_m_per_px: float,
                margin_m: Optional[float] = None, scale_tol: Optional[float] = None,
                heading_deg: Optional[float] = None, heading_tol_deg: float = 20.0,
-               hfov_deg: Optional[float] = None, heading_search: bool = False) -> dict:
+               hfov_deg: Optional[float] = None, heading_search: bool = False,
+               expected_tilt_deg: float = 0.0) -> dict:
         """As LocalMatcher.locate; res["features"] says which matcher gave the result.
         heading_search: the heading is not trusted (no magnetometer: unknown, or drifted by
         tens of degrees) — when no match is found at it, the frame is tried turned every
@@ -260,7 +261,7 @@ class LearnedMatcher(LocalMatcher):
         t0 = time.time()
         if heading_search:
             res = self._locate_heading_search(frame, prior, search_m, frame_m_per_px, margin_m, scale_tol,
-                                              heading_deg, hfov_deg)
+                                              heading_deg, hfov_deg, expected_tilt_deg)
             res["total_ms"] = (time.time() - t0) * 1000.0
             if search_m > 300.0:
                 self._t.cuda.empty_cache()
@@ -272,7 +273,7 @@ class LearnedMatcher(LocalMatcher):
         if hdg is not None:
             try:
                 res = self._locate_learned(frame, prior, search_m, frame_m_per_px, margin_m, scale_tol, hdg,
-                                           hfov_deg)
+                                           hfov_deg, expected_tilt_deg)
             except RuntimeError as e:                        # GPU out of memory, CUDA error: SIFT this frame
                 res = dict(accepted=False, reason=f"learned matcher failed: {str(e)[:120]}")
                 self._t.cuda.empty_cache()
@@ -288,7 +289,7 @@ class LearnedMatcher(LocalMatcher):
                 # 0/10 located, simulation): matched again at the scale it measured, kept only
                 # if that second match confirms it (scale within tolerance, same heading check)
                 again = self._locate_learned(frame, prior, search_m, frame_m_per_px * sc, margin_m, scale_tol,
-                                             hdg, hfov_deg)
+                                             hdg, hfov_deg, expected_tilt_deg)
                 if again["accepted"] and not (heading_deg is not None and abs(
                         (again["rotation_deg"] - heading_deg + 180) % 360 - 180) > heading_tol_deg):
                     res = dict(again, heading_source=hdg_src, rescaled_by=round(sc, 3))
@@ -296,7 +297,8 @@ class LearnedMatcher(LocalMatcher):
                 and (res is None or search_m <= self.SIFT_FALLBACK_MAX_M):
             learned = res
             res = super().locate(frame, prior, search_m, frame_m_per_px, margin_m=margin_m, scale_tol=scale_tol,
-                                 heading_deg=heading_deg, heading_tol_deg=heading_tol_deg, hfov_deg=hfov_deg)
+                                 heading_deg=heading_deg, heading_tol_deg=heading_tol_deg, hfov_deg=hfov_deg,
+                                 expected_tilt_deg=expected_tilt_deg)
             res["features"] = "sift"
             if learned is not None:
                 res["learned_reason"] = learned.get("reason")
@@ -329,13 +331,14 @@ class LearnedMatcher(LocalMatcher):
         return uniq
 
     def _locate_heading_search(self, frame, prior, search_m, frame_m_per_px, margin_m, scale_tol, heading_deg,
-                               hfov_deg) -> dict:
+                               hfov_deg, expected_tilt_deg: float = 0.0) -> dict:
         """The learned match at headings around the given one (locate(heading_search=True))."""
         res, tried = None, []
         for h in self.heading_search_order(heading_deg):
             tried.append(h)
             try:
-                r = self._locate_learned(frame, prior, search_m, frame_m_per_px, margin_m, scale_tol, h, hfov_deg)
+                r = self._locate_learned(frame, prior, search_m, frame_m_per_px, margin_m, scale_tol, h, hfov_deg,
+                                         expected_tilt_deg)
             except RuntimeError as e:                        # GPU out of memory, CUDA error
                 self._t.cuda.empty_cache()
                 r = dict(accepted=False, reason=f"learned matcher failed: {str(e)[:120]}", inliers=0)
@@ -367,7 +370,7 @@ class LearnedMatcher(LocalMatcher):
             self._no_fallback = False
 
     def _locate_learned(self, frame, prior, search_m, frame_m_per_px, margin_m, scale_tol, hdg,
-                        hfov_deg=None) -> dict:
+                        hfov_deg=None, expected_tilt_deg: float = 0.0) -> dict:
         tol = self.scale_tol if scale_tol is None else float(scale_tol)
         res = dict(spatial=True, spatial_empty=False, radius_m=float(search_m), matcher="local",
                    features="disk+lightglue", predicted_lat=None, predicted_lon=None, accepted=False, score=0.0,
@@ -441,7 +444,8 @@ class LearnedMatcher(LocalMatcher):
         fi = inl.ravel() > 0
         not_straight = refine_with_pose(res, (fp[fi], mp[fi]), (fp[m], mp[m]), (frame.shape[1], frame.shape[0]),
                                         hfov_deg, frame_m_per_px, scale, mpp_map, self.z,
-                                        (px, py))
+                                        (px, py), expected_tilt_deg=expected_tilt_deg,
+                                        tilt_guard_deg=self.pose_tilt_guard_deg)
         if n_in < need:
             res["reason"] = f"{n_in} geometric inliers (min {need})"
         elif not_straight:

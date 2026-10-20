@@ -129,7 +129,8 @@ def camera_pose_on_map(frame_pts: np.ndarray, map_pts: np.ndarray, frame_size: T
 def refine_with_pose(res: dict, fit_pts: Tuple[np.ndarray, np.ndarray], near_pts: Tuple[np.ndarray, np.ndarray],
                      frame_size: Tuple[int, int], hfov_deg: Optional[float], frame_m_per_px: float, scale: float,
                      map_mpp: float, z: int, centre_px: Tuple[float, float],
-                     max_tilt_deg: float = 35.0) -> Optional[str]:
+                     max_tilt_deg: float = 35.0, expected_tilt_deg: float = 0.0,
+                     tilt_guard_deg: float = 0.0) -> Optional[str]:
     """Replace res's position by the point under the camera (camera_pose_on_map) when the
     pose is consistent: small reprojection error, plausible tilt, the height it gives agrees
     with the fitted scale. fit_pts: (frame px, map px) of the similarity fit's inliers;
@@ -139,7 +140,13 @@ def refine_with_pose(res: dict, fit_pts: Tuple[np.ndarray, np.ndarray], near_pts
     must be refused (the frame is clearly not straight down but its pose cannot be used:
     its centre would be height x tan(tilt) off), else None.
     Simulation (navera_tools/sim/dayvision_conditions.py, cross-date 2022 imagery, 300 m):
-    attitude error 1/2/3 deg in the straightening: 5.7/12/17 m -> see the commit message."""
+    attitude error 1/2/3 deg in the straightening: 5.7/12/17 m -> see the commit message.
+    Pose-attitude guard (tilt_guard_deg > 0): a consistent pose whose tilt differs from
+    expected_tilt_deg (the tilt the attitude gives the frame: ~0 for a frame straightened
+    with the IMU) by more than tilt_guard_deg is not used — the frame centre is kept (the
+    match is not refused) and res["pose_guard"] says why. On real drone photos (UAV-VisLoc,
+    8 flights) the pose found 9-26 deg of tilt on a level drone: 70 of 2600 fixes 100-325 m
+    off with a 5-25 m sigma; with a 4 deg guard 2 (docs/VALIDATION_STATUS.md)."""
     res["position_from"] = "frame centre"
     if hfov_deg is None or not (1.0 < float(hfov_deg) < 179.0):
         return None
@@ -167,6 +174,10 @@ def refine_with_pose(res: dict, fit_pts: Tuple[np.ndarray, np.ndarray], near_pts
     shift_m = math.hypot(pose["x"] - centre_px[0], pose["y"] - centre_px[1]) * map_mpp
     if shift_m > pose["height_m"] * math.tan(math.radians(pose["tilt_deg"] + 3.0)) + 5.0:
         return tilted if pose["tilt_deg"] > NOT_STRAIGHT_DEG else None
+    if tilt_guard_deg > 0 and abs(pose["tilt_deg"] - float(expected_tilt_deg)) > tilt_guard_deg:
+        res["pose_guard"] = (f"pose tilt {pose['tilt_deg']:.1f} deg, attitude {float(expected_tilt_deg):.1f} deg "
+                             f"(> {tilt_guard_deg:g} deg apart): frame centre kept")
+        return None
     res["predicted_lat"], res["predicted_lon"] = tile_px_to_latlon(pose["x"], pose["y"], z)
     res["position_from"] = "camera pose"
     return None
@@ -292,8 +303,11 @@ class LocalMatcher:
 
     def __init__(self, images_dir: str, zoom: int = 17, min_inliers: int = 8, scale_tol: float = 0.15,
                  query_features: int = 1500, ratio: float = 0.8, ransac_px: float = 6.0, device: str = "auto",
-                 retry_features: int = 0):
+                 retry_features: int = 0, pose_tilt_guard_deg: float = 4.0):
         self.tiles = TileFeatures(images_dir, zoom)
+        # the pose position is used only when its tilt agrees with the attitude's within this
+        # (refine_with_pose's guard; 0 or less: off, the pose position whenever consistent)
+        self.pose_tilt_guard_deg = float(pose_tilt_guard_deg)
         self.z, self.min_inliers, self.scale_tol = zoom, min_inliers, scale_tol
         self.ratio, self.ransac_px = ratio, ransac_px
         self.sift = cv2.SIFT_create(nfeatures=query_features, contrastThreshold=0.02)
@@ -401,11 +415,13 @@ class LocalMatcher:
                margin_m: Optional[float] = None, scale_tol: Optional[float] = None,
                heading_deg: Optional[float] = None, heading_tol_deg: float = 20.0,
                hfov_deg: Optional[float] = None, mask: Optional[np.ndarray] = None,
-               sift=None) -> dict:
+               sift=None, expected_tilt_deg: float = 0.0) -> dict:
         """Position of the frame centre near prior, as a result dict (see keys below).
         hfov_deg (the frame's horizontal field of view): the position is then the point
         under the camera from its pose on the map (refine_with_pose), not the frame
-        centre — it removes the error of the straightening attitude (height x tan(error)).
+        centre — it removes the error of the straightening attitude (height x tan(error)) —
+        unless its tilt differs from expected_tilt_deg (the frame's tilt by the attitude: 0
+        for a straightened frame) by more than pose_tilt_guard_deg (then the frame centre).
         scale_tol: accepted |fitted scale - 1| for this frame (default self.scale_tol) —
         wider when the frame's altitude is uncertain.
         heading_deg: azimuth of the frame's top from the attitude (live camera): the fitted
@@ -476,7 +492,8 @@ class LocalMatcher:
         fi = inl.ravel() > 0
         not_straight = refine_with_pose(res, (src[fi] / np.float32(s), dst[fi]),
                                         (src[m] / np.float32(s), dst[m]), (grey.shape[1], grey.shape[0]),
-                                        hfov_deg, frame_m_per_px, scale, mpp_map, self.z, (float(px), float(py)))
+                                        hfov_deg, frame_m_per_px, scale, mpp_map, self.z, (float(px), float(py)),
+                                        expected_tilt_deg=expected_tilt_deg, tilt_guard_deg=self.pose_tilt_guard_deg)
         if n_in < self.min_inliers:
             res["reason"] = f"{n_in} geometric inliers (min {self.min_inliers})"
         elif not_straight:

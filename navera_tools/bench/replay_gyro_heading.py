@@ -218,6 +218,8 @@ def main():
     ap.add_argument("--radius", type=float, default=900.0, help="the bench circuit's radius, m")
     ap.add_argument("--hfov", type=float, default=0.0,
                     help="deg, given to the pose refinement; 0 = none (as on the bench: the screen is no ground)")
+    ap.add_argument("--pose-tilt-guard", type=float, default=4.0,
+                    help="deg, the matcher's pose_tilt_guard_deg (day_subscriber's default; 0 = off). Acts only with --hfov")
     ap.add_argument("--bias", type=float, default=0.05, help="simulated gyro bias, deg/s")
     ap.add_argument("--noise", type=float, default=0.1, help="simulated gyro noise per 50 Hz sample, deg/s")
     ap.add_argument("--arms", default="off,gyro")
@@ -230,7 +232,8 @@ def main():
     for d in a.dirs:
         name = os.path.basename(d.rstrip("/")).replace("rec_", "")
         for arm in a.arms.split(","):
-            matcher = LocalMatcher(a.area, retry_features=4000, min_inliers=8, scale_tol=0.15)
+            matcher = LocalMatcher(a.area, retry_features=4000, min_inliers=8, scale_tol=0.15,
+                                   pose_tilt_guard_deg=a.pose_tilt_guard)
             rows = run(d, matcher, arm == "gyro", a)
             s = {"denied": summary(rows), "lost": summary([r for r in rows if r.get("lost")])}
             res.setdefault(name, {})[arm] = s

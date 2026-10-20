@@ -173,6 +173,13 @@ class DaySubscriber(Node):
         declare_float(self, "min_inlier_spread", 0.25)
         self.declare_parameter("height_retry_after", 3)
         declare_float(self, "camera_hfov_deg", float("nan"))   # day camera horizontal field of view
+        # With camera_hfov_deg the position is the point under the camera from the matched pose
+        # (local_matcher.refine_with_pose); that pose is used only when its tilt agrees with the
+        # frame's tilt by the attitude (0 for a frame straightened with the IMU) within this, else
+        # the frame centre is published (the match is kept). Real drone photos (UAV-VisLoc, 8
+        # flights, 2026-10-20): the pose found 9-26 deg on a level drone, 70 of 2600 fixes 100-325 m
+        # off with a 5-25 m sigma; with 4 deg, 2 (docs/VALIDATION_STATUS.md). 0 or less: off.
+        declare_float(self, "pose_tilt_guard_deg", 4.0)
         # wrong places measured at <= 5 inliers on real aerial frames; correct ones 3-73
         self.declare_parameter("local_min_inliers", 8)
         # SIFT matcher: a frame that fills its feature budget and still finds too few inliers is described
@@ -356,7 +363,8 @@ class DaySubscriber(Node):
         self._last_calib = 0.0
         self.local = None
         kw = dict(min_inliers=int(self.get_parameter("local_min_inliers").value),
-                  scale_tol=float(self.get_parameter("local_scale_tol").value))
+                  scale_tol=float(self.get_parameter("local_scale_tol").value),
+                  pose_tilt_guard_deg=float(self.get_parameter("pose_tilt_guard_deg").value))
         if self.matcher_mode in ("learned", "auto"):
             try:
                 from day_pkg.learned_matcher import LearnedMatcher
@@ -661,7 +669,7 @@ class DaySubscriber(Node):
                     result = self.local.locate(img, center, R, mpp * f, scale_tol=self._scale_tol(meta),
                                                heading_deg=self._heading_for_match(meta),
                                                heading_tol_deg=self.local_heading_tol_deg, hfov_deg=self._hfov(meta),
-                                               **self._heading_search_kw())
+                                               expected_tilt_deg=self._expected_tilt(meta), **self._heading_search_kw())
                     if result.get("accepted"):
                         break
                 sc = float(result.get("scale_residual") or 1.0)
@@ -671,7 +679,7 @@ class DaySubscriber(Node):
                     again = self.local.locate(img, center, R, mpp * f * sc, scale_tol=self._scale_tol(meta),
                                               heading_deg=self._heading_for_match(meta),
                                               heading_tol_deg=self.local_heading_tol_deg, hfov_deg=self._hfov(meta),
-                                              **self._heading_search_kw())
+                                              expected_tilt_deg=self._expected_tilt(meta), **self._heading_search_kw())
                     if again.get("accepted") and int(again.get("inliers") or 0) >= int(result.get("inliers") or 0) // 2:
                         result, f = again, f * sc
                 result["_frame_shape"], result["_frame_mpp"] = img.shape, mpp * f
@@ -799,7 +807,8 @@ class DaySubscriber(Node):
         self._last_calib = time.time()
         res = self.local.locate(img, prior, self.calib_radius_m, mpp, scale_tol=self._scale_tol(meta),
                                 heading_deg=self._heading_for_match(meta),
-                                heading_tol_deg=self.local_heading_tol_deg, hfov_deg=self._hfov(meta))
+                                heading_tol_deg=self.local_heading_tol_deg, hfov_deg=self._hfov(meta),
+                                expected_tilt_deg=self._expected_tilt(meta))
         self.get_logger().info(
             f"[day] GPS check frame={seq_id}: " + (f"vision {haversine_m(prior[0], prior[1], res['predicted_lat'], res['predicted_lon']):.0f} m from GPS "
                                                   f"({res.get('inliers')} inliers)" if res.get("accepted") else f"no match ({res.get('reason')})"))
@@ -870,6 +879,19 @@ class DaySubscriber(Node):
         except (TypeError, ValueError):
             pass
         return self.camera_hfov_deg
+
+    @staticmethod
+    def _expected_tilt(meta) -> float:
+        """The tilt from straight down the attitude gives this frame (the pose guard's
+        reference): 0 for a frame straightened with it (live camera) or without an attitude
+        (assumed straight down); the measured tilt for a frame left as taken."""
+        if meta.get("straightened") or meta.get("attitude_source") in (None, "none"):
+            return 0.0
+        try:
+            t = float(meta.get("tilt_deg"))
+        except (TypeError, ValueError):
+            return 0.0
+        return t if math.isfinite(t) else 0.0
 
     def _scale_tol(self, meta):
         """Accepted scale error: the configured one, widened to twice the frame's relative
@@ -1394,7 +1416,13 @@ class DaySubscriber(Node):
             "scale_residual": result.get("scale_residual"),
             "rotation_deg": result.get("rotation_deg"),
             "matcher_note": result.get("matcher_note"),
+            # point under the camera ("camera pose") or "frame centre"; pose_guard: why the pose was not used
+            "position_from": result.get("position_from"),
+            "pose_tilt_deg": result.get("pose_tilt_deg"),
+            "pose_guard": result.get("pose_guard"),
         }
+        if accepted and result.get("pose_guard"):
+            self.get_logger().info(f"[day] frame={seq_id}: {result['pose_guard']}")
 
         # ───── filtre OFF → comportement BRUT historique (inchangé, pour comparaison) ─────
         if not self.antijump_enabled:
