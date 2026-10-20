@@ -35,6 +35,17 @@ failsafe (found in SITL). A position measured more than `max_measurement_age_s` 
 not sent at all. "No fix" is sent at `rate_hz`. A position is never repeated after it stops
 being current.
 
+**Altitude of a vision position: the autopilot reads 0 m.** A vision or celestial position has no
+altitude: GPS_INPUT flags it ignored (fix_type 3, `IGNORE_ALT`). ArduPilot's MAVLink GPS driver
+(AP_GPS_MAV) then stores **0 m AMSL** as the GPS altitude (SITL 2026-10-16: `GPS_RAW_INT` alt 0.0,
+fix 3, from the GPS cut on). With the defaults this altitude is not used — EKF3 takes its height
+from the barometer and fuses GPS height only with `EK3_SRC1_POSZ = 3` (GPS) or corrects its origin
+from it only with `EK3_OGN_HGT_MASK` set. **Never set either with NAVERA**: the EKF would be pulled
+towards 0 m and the vehicle would climb to hold its height. (Problems doc F7, a 140 → 569 m climb in
+SITL 2026-10-15 while a runaway dead-reckoned position was forwarded, is not explained by this with
+the default parameters; it disappeared once that position was withdrawn honestly — 142–164 m in the
+2026-10-15/16 re-runs — and the autopilot's EKF height was not logged in the climbing run.)
+
 **Gaps are bridged, but not for long.** An autopilot lands on a silence (ArduPilot Copter SITL:
 EKF failsafe → LAND about 8 s after the last position, even though the vehicle has hardly moved
 from where it was last seen). With `forward_degraded`, when no new vision position has been sent
