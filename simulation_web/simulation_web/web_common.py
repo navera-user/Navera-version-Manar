@@ -65,10 +65,10 @@ def parse_tile_path(path: str) -> Optional[Tuple[int, int, int]]:
     return z, x, y
 
 
-
 class _CodeGuard:
     """Wrong control codes: after FAILS_ALLOWED in WINDOW_S from one address, that address
-    is refused for LOCK_S (a code cannot be guessed by trying them all)."""
+    is refused for LOCK_S (a code cannot be guessed by trying them all).
+    """
     FAILS_ALLOWED, WINDOW_S, LOCK_S = 5, 60.0, 60.0
 
     def __init__(self):
@@ -94,6 +94,7 @@ class _CodeGuard:
 
 
 _GUARD = _CodeGuard()
+
 
 class MBTilesReader:
     """Thread-safe, read-only access to an MBTiles file (TMS rows)."""
@@ -155,7 +156,8 @@ class BridgeHandler(BaseHTTPRequestHandler):
     # ── control requests ───────────────────────────────────────────────
     def read_control_json(self, token: str, max_body: int = None):
         """Authorise and parse a control POST. Returns the JSON object, or
-        None after having sent the error response."""
+        None after having sent the error response.
+        """
         if not token:
             self.send_json(403, {"error": "control disabled: set NAVERA_WEB_TOKEN"})
             return None
@@ -200,7 +202,8 @@ class BridgeHandler(BaseHTTPRequestHandler):
 
     def serve_static(self, root: str, path: str) -> None:
         """Serve root/path if it stays inside root (checked on the normalised
-        path: a symlink install makes every resource a symlink into build/)."""
+        path: a symlink install makes every resource a symlink into build/).
+        """
         rel = path.lstrip("/")
         root = os.path.normpath(root)
         full = os.path.normpath(os.path.join(root, rel))

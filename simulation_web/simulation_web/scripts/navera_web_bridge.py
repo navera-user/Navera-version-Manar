@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-navera_web_bridge.py — ROS 2 → web bridge for the NAVERA simulation (day mode).
+"""navera_web_bridge.py — ROS 2 → web bridge for the NAVERA simulation (day mode).
 
 This bridge serves TWO surfaces with deliberately different sources:
 
@@ -169,17 +168,17 @@ class NaveraWebBridge(Node):
         declare_float(self, "position_timeout_s", 60.0)
 
         status_topic = self.get_parameter("status_topic").value
-        fix_topic    = self.get_parameter("fix_topic").value
+        fix_topic = self.get_parameter("fix_topic").value
         self.web_host = self.get_parameter("web_host").value
         self.web_port = int(self.get_parameter("web_port").value)
         self._control_token = str(self.get_parameter("control_token").value)
         self._status_stale_s = float(self.get_parameter("status_stale_s").value)
         self._localizer_ready = False
 
-        self._position_topic     = self.get_parameter("position_topic").value
-        nav_status_topic         = self.get_parameter("nav_status_topic").value
+        self._position_topic = self.get_parameter("position_topic").value
+        nav_status_topic = self.get_parameter("nav_status_topic").value
         self._nav_status_timeout = float(self.get_parameter("nav_status_timeout_s").value)
-        self._position_timeout   = float(self.get_parameter("position_timeout_s").value)
+        self._position_timeout = float(self.get_parameter("position_timeout_s").value)
 
         mb = self.get_parameter("mbtiles_path").value
         if not mb:
@@ -187,7 +186,7 @@ class NaveraWebBridge(Node):
         self.mbtiles_path = mb
 
         self.resources_dir = _resolve_resources_dir()
-        self.navera_html   = os.path.join(self.resources_dir, "navera.html")
+        self.navera_html = os.path.join(self.resources_dir, "navera.html")
 
         # ── Shared state ────────────────────────────────────────
         self._state_lock = threading.Lock()
@@ -330,7 +329,8 @@ class NaveraWebBridge(Node):
 
         This is the heartbeat of /operator. Its ABSENCE is information — it is
         what separates "the arbiter says no source is usable" (NO_FIX, a
-        first-class answer) from "the arbiter is dead" (no answer at all)."""
+        first-class answer) from "the arbiter is dead" (no answer at all).
+        """
         with self._state_lock:
             self._nav_status = msg
             self._nav_status_rx = time.monotonic()
@@ -340,7 +340,8 @@ class NaveraWebBridge(Node):
 
         Published ONLY while a source contributes, and never as a HELD echo —
         so this cache must never be served on its own. operator_position() gates
-        it on nav_status; see the note there."""
+        it on nav_status; see the note there.
+        """
         with self._state_lock:
             self._position = msg
             self._position_rx = time.monotonic()
@@ -355,7 +356,8 @@ class NaveraWebBridge(Node):
         Makes A the FIRST position published over /gps_status.json, so the web
         trace starts exactly at A instead of at the first CSV row. Real
         /day/day_status frames replace this anchor as soon as they arrive
-        (and _on_fix won't clobber it: status is no longer 'idle')."""
+        (and _on_fix won't clobber it: status is no longer 'idle').
+        """
         if not isinstance(pa, dict) or not valid_latlon(pa.get("lat"), pa.get("lon")):
             self.get_logger().warn(f"[bridge] set_mission: bad point_a payload: {pa!r}")
             return False
@@ -383,7 +385,8 @@ class NaveraWebBridge(Node):
 
     def gps_status_json(self):
         """Dashboard status; served as "stale" (with its age) once it stops
-        being updated, so a stalled pipeline never looks live."""
+        being updated, so a stalled pipeline never looks live.
+        """
         with self._state_lock:
             st = dict(self._gps_status)
         ts = st.get("timestamp")
@@ -751,7 +754,8 @@ class NaveraWebBridge(Node):
         except OSError as e:
             self.get_logger().error(f"❌ cannot bind {self.web_host}:{self.web_port} — {e}")
             raise
-        self.get_logger().info(f"✅ HTTP{'S' if self.get_parameter('tls_cert').value else ''} server up on port {self.web_port}")
+        self.get_logger().info(f"✅ HTTP{'S' if self.get_parameter('tls_cert').value else ''} "
+                               f"server up on port {self.web_port}")
 
     def destroy_node(self):
         try:

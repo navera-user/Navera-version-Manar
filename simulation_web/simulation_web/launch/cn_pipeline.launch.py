@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-cn_pipeline.launch.py — the NAVERA "stellar" (celestial) pipeline, WITHOUT a bridge.
+"""cn_pipeline.launch.py — the NAVERA "stellar" (celestial) pipeline, WITHOUT a bridge.
 
   camera_pkg (celestial, etoiles.jpeg + meta)
     → cn_subscriber (astrometry geolocation)
@@ -47,7 +46,6 @@ def generate_launch_description():
     live = bool((os.environ.get('NAVERA_STAR_CAMERA_INPUT') or '').strip())
     sample = (lambda value: 'nan' if live else value)
 
-
     return LaunchDescription([
         DeclareLaunchArgument('min_log_odds',   default_value='20.7'),
         DeclareLaunchArgument('camera_fov_deg', default_value=(
@@ -64,10 +62,14 @@ def generate_launch_description():
         # Star-camera attitude from the IMU (when frame_meta has none): mounting,
         # magnetic declination, and the IMU's attitude accuracy (sets the stated
         # accuracy: ~111 km per degree). See cn_pkg/README.md.
-        DeclareLaunchArgument('camera_mount_elevation_deg', default_value=(os.environ.get('NAVERA_STAR_CAMERA_ELEVATION_DEG') or '90.0')),
-        DeclareLaunchArgument('camera_mount_azimuth_deg', default_value=(os.environ.get('NAVERA_STAR_CAMERA_AZIMUTH_DEG') or '0.0')),
-        DeclareLaunchArgument('magnetic_declination_deg', default_value=(os.environ.get('NAVERA_MAGNETIC_DECLINATION_DEG') or '0.0')),
-        DeclareLaunchArgument('attitude_sigma_deg', default_value=(os.environ.get('NAVERA_ATTITUDE_SIGMA_DEG') or 'nan')),
+        DeclareLaunchArgument('camera_mount_elevation_deg',
+                              default_value=(os.environ.get('NAVERA_STAR_CAMERA_ELEVATION_DEG') or '90.0')),
+        DeclareLaunchArgument('camera_mount_azimuth_deg',
+                              default_value=(os.environ.get('NAVERA_STAR_CAMERA_AZIMUTH_DEG') or '0.0')),
+        DeclareLaunchArgument('magnetic_declination_deg',
+                              default_value=(os.environ.get('NAVERA_MAGNETIC_DECLINATION_DEG') or '0.0')),
+        DeclareLaunchArgument('attitude_sigma_deg',
+                              default_value=(os.environ.get('NAVERA_ATTITUDE_SIGMA_DEG') or 'nan')),
 
         # 1) Star camera: live, or the bundled sample (celestial namespace)
         IncludeLaunchDescription(
@@ -107,9 +109,12 @@ def generate_launch_description():
                 'utc_time':     ParameterValue(LaunchConfiguration('utc_time'), value_type=str),
                 'prior_lat':    ParameterValue(LaunchConfiguration('prior_lat'), value_type=float),
                 'prior_lon':    ParameterValue(LaunchConfiguration('prior_lon'), value_type=float),
-                'camera_mount_elevation_deg': ParameterValue(LaunchConfiguration('camera_mount_elevation_deg'), value_type=float),
-                'camera_mount_azimuth_deg': ParameterValue(LaunchConfiguration('camera_mount_azimuth_deg'), value_type=float),
-                'magnetic_declination_deg': ParameterValue(LaunchConfiguration('magnetic_declination_deg'), value_type=float),
+                'camera_mount_elevation_deg': ParameterValue(
+                    LaunchConfiguration('camera_mount_elevation_deg'), value_type=float),
+                'camera_mount_azimuth_deg': ParameterValue(
+                    LaunchConfiguration('camera_mount_azimuth_deg'), value_type=float),
+                'magnetic_declination_deg': ParameterValue(
+                    LaunchConfiguration('magnetic_declination_deg'), value_type=float),
                 'attitude_sigma_deg': ParameterValue(LaunchConfiguration('attitude_sigma_deg'), value_type=float),
             }, imu_topic_params()],          # the star camera's attitude: box, vehicle or ROS IMU
         ),

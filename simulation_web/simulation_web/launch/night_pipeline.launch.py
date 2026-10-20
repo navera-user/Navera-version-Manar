@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-night_pipeline.launch.py — the NAVERA "night" localization pipeline, WITHOUT a bridge.
+"""night_pipeline.launch.py — the NAVERA "night" localization pipeline, WITHOUT a bridge.
 
   camera_pkg (thermal, /thermal/* test images)
     → night_subscriber (NightLocalizer / STHN, GPU)
@@ -31,13 +30,16 @@ from launch_ros.parameter_descriptions import ParameterValue
 def generate_launch_description():
     camera_share = get_package_share_directory('camera_pkg')
 
-    default_mbtiles = (os.environ.get('NAVERA_MBTILES') or '/home/navera/isaac_ros_common/vision_pkg/vision_pkg/dataset/sousse_satellite.mbtiles')
+    default_mbtiles = (os.environ.get('NAVERA_MBTILES')
+                       or '/home/navera/isaac_ros_common/vision_pkg/vision_pkg/dataset/sousse_satellite.mbtiles')
 
-    mbtiles_path   = LaunchConfiguration('mbtiles_path')
+    mbtiles_path = LaunchConfiguration('mbtiles_path')
     conf_threshold = LaunchConfiguration('conf_threshold')
 
     return LaunchDescription([
-            LogInfo(msg='WARNING: NAVERA_MAX_SPEED_KMH is not set in /etc/navera/navera.env — night vision uses its default speed limit; set the vehicle\'s maximum speed (km/h).') if not max_speed_params() else LogInfo(msg=f'vehicle maximum speed: {max_speed_mps_from_env():.1f} m/s'),
+        LogInfo(msg='WARNING: NAVERA_MAX_SPEED_KMH is not set in /etc/navera/navera.env — night vision uses its '
+                    'default speed limit; set the vehicle\'s maximum speed (km/h).')
+        if not max_speed_params() else LogInfo(msg=f'vehicle maximum speed: {max_speed_mps_from_env():.1f} m/s'),
         DeclareLaunchArgument('mbtiles_path',   default_value=default_mbtiles),
         DeclareLaunchArgument('conf_threshold', default_value='0.30'),   # seuil conf STHN
         DeclareLaunchArgument('max_dead_reckon_s', default_value='30.0'),
@@ -66,12 +68,16 @@ def generate_launch_description():
         DeclareLaunchArgument('mixed_precision', default_value='false'),
         # Thermal camera horizontal field of view (deg): with the frame altitude it
         # brings each frame to STHN's scale. Unset = no night position (LOC-16).
-        DeclareLaunchArgument('camera_hfov_deg',
+        DeclareLaunchArgument(
+            'camera_hfov_deg',
             default_value=(os.environ.get('NAVERA_THERMAL_HFOV_DEG') or 'nan')),
-        DeclareLaunchArgument('sthn_dir',
+        DeclareLaunchArgument(
+            'sthn_dir',
             default_value=(os.environ.get('NAVERA_STHN_DIR') or '/home/navera/isaac_ros_common/night_pkg/STHN')),
-        DeclareLaunchArgument('weights',
-            default_value=(os.environ.get('NAVERA_STHN_WEIGHTS') or '/home/navera/isaac_ros_common/night_pkg/STHN/weights/one_stage/model.safetensors')),
+        DeclareLaunchArgument(
+            'weights',
+            default_value=(os.environ.get('NAVERA_STHN_WEIGHTS')
+                           or '/home/navera/isaac_ros_common/night_pkg/STHN/weights/one_stage/model.safetensors')),
 
         # 1) Camera publisher (thermal namespace, test images) — back-pressure + handshake
         # NAVERA_CAMERA=live: the real camera (camera_pkg live.launch.py, settings in
@@ -80,8 +86,7 @@ def generate_launch_description():
             PythonLaunchDescriptionSource(os.path.join(camera_share, 'launch', 'live.launch.py')),
             launch_arguments={'camera_type': 'thermal', 'ns': 'thermal',
                               'ready_topic': '/night/localizer_ready'}.items(),
-        ) if (os.environ.get('NAVERA_CAMERA') or 'replay') == 'live' else
-        IncludeLaunchDescription(
+        ) if (os.environ.get('NAVERA_CAMERA') or 'replay') == 'live' else IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
                 os.path.join(camera_share, 'launch', 'thermal.launch.py')
             ),

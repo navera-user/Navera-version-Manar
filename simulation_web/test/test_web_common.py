@@ -3,7 +3,6 @@
 A real threaded HTTP server is started with a minimal handler; no ROS needed.
 """
 import http.client
-import json
 import sqlite3
 
 import pytest

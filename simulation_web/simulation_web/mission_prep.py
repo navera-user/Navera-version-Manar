@@ -140,7 +140,8 @@ def parse_mission(text: str) -> List[List[float]]:
 
     Accepts "QGC WPL 110" text (.waypoints; the first row is the home position)
     and QGroundControl ".plan" JSON (mission.plannedHomePosition + items,
-    including complex items' flown points when present). Raises ValueError."""
+    including complex items' flown points when present). Raises ValueError.
+    """
     text = text.strip()
     pts: List[List[float]] = []
     if text.startswith("QGC WPL"):
@@ -195,7 +196,8 @@ def in_flight_refusal(armed: Optional[bool], nav_state: Optional[int],
     """Why restarting NAVERA's services (or loading the CPU with a map generation) must
     be refused now, or None. armed: from the autopilot (None = no vehicle link);
     nav_state: the arbiter's current state (None = not heard); speed_mps: NAVERA's own
-    measured ground speed (None = unknown) — the lock without an autopilot link."""
+    measured ground speed (None = unknown) — the lock without an autopilot link.
+    """
     if armed:
         return "the vehicle is armed: disarm it before changing NAVERA"
     if speed_mps is not None and speed_mps > MOVING_MPS:
@@ -217,7 +219,8 @@ def area_id(route) -> str:
 
 def check_area_id(aid) -> str:
     """An area id from a request: exactly what area_id() produces, nothing that could
-    reach another folder ('../', '/', a line break in the settings file)."""
+    reach another folder ('../', '/', a line break in the settings file).
+    """
     if not isinstance(aid, str) or not re.fullmatch(r"[0-9a-f]{12}", aid):
         raise ValueError("invalid map id")
     return aid
