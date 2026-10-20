@@ -31,6 +31,8 @@ from typing import Optional, Tuple
 import cv2
 import numpy as np
 
+from day_pkg import image_quality
+
 EQUATOR_M = 40075016.7
 # a pose further than this from straight down: the frame is not straight (its centre is off)
 NOT_STRAIGHT_DEG = 2.5
@@ -289,11 +291,16 @@ class LocalMatcher:
     GPU_BLOCK = 20000                 # map descriptors per GPU distance block (~120 MB)
 
     def __init__(self, images_dir: str, zoom: int = 17, min_inliers: int = 8, scale_tol: float = 0.15,
-                 query_features: int = 1500, ratio: float = 0.8, ransac_px: float = 6.0, device: str = "auto"):
+                 query_features: int = 1500, ratio: float = 0.8, ransac_px: float = 6.0, device: str = "auto",
+                 retry_features: int = 0):
         self.tiles = TileFeatures(images_dir, zoom)
         self.z, self.min_inliers, self.scale_tol = zoom, min_inliers, scale_tol
         self.ratio, self.ransac_px = ratio, ransac_px
         self.sift = cv2.SIFT_create(nfeatures=query_features, contrastThreshold=0.02)
+        self.query_features = query_features
+        # a frame that fails with too few inliers although it filled its feature budget (heavy rain: the streaks
+        # take most of the 1500 features) is described again with retry_features (0: never)
+        self.sift_more = cv2.SIFT_create(nfeatures=retry_features, contrastThreshold=0.02) if retry_features else None
         self.clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
         self.matcher = cv2.BFMatcher(cv2.NORM_L2)
         self.torch = None
@@ -377,10 +384,24 @@ class LocalMatcher:
         best["heights_tried"] = tried
         return best
 
-    def locate(self, frame, prior: Tuple[float, float], search_m: float, frame_m_per_px: float,
+    def locate(self, frame, prior: Tuple[float, float], search_m: float, frame_m_per_px: float, **kw) -> dict:
+        """Position of the frame centre near prior (see _locate_once for the arguments and the result). With
+        retry_features, a frame that fills its feature budget and still finds too few inliers is described
+        again with the larger budget; the result then has retried=True and the time of both tries."""
+        res = self._locate_once(frame, prior, search_m, frame_m_per_px, sift=self.sift, **kw)
+        if (self.sift_more is not None and not res.get("accepted") and res.get("features", 0) >= 0.9 * self.query_features
+                and (res.get("inliers") or 0) < self.min_inliers):
+            first_ms = res.get("total_ms") or 0.0
+            res = self._locate_once(frame, prior, search_m, frame_m_per_px, sift=self.sift_more, **kw)
+            res["retried"] = True
+            res["total_ms"] = (res.get("total_ms") or 0.0) + first_ms
+        return res
+
+    def _locate_once(self, frame, prior: Tuple[float, float], search_m: float, frame_m_per_px: float,
                margin_m: Optional[float] = None, scale_tol: Optional[float] = None,
                heading_deg: Optional[float] = None, heading_tol_deg: float = 20.0,
-               hfov_deg: Optional[float] = None) -> dict:
+               hfov_deg: Optional[float] = None, mask: Optional[np.ndarray] = None,
+               sift=None) -> dict:
         """Position of the frame centre near prior, as a result dict (see keys below).
         hfov_deg (the frame's horizontal field of view): the position is then the point
         under the camera from its pose on the map (refine_with_pose), not the frame
@@ -389,13 +410,17 @@ class LocalMatcher:
         wider when the frame's altitude is uncertain.
         heading_deg: azimuth of the frame's top from the attitude (live camera): the fitted
         rotation must agree within heading_tol_deg — a wrong place rarely fits with both
-        the right scale and the right rotation."""
+        the right scale and the right rotation.
+        mask (frame-sized uint8, 0 = ignore): parts of the frame not to describe (image_quality.LensMask:
+        drops, flare, glow). The result carries 'sharpness' (image_quality.sharpness: below ~0.5 on the
+        real camera the frame is too blurred to match) and 'features' (how many were described)."""
         tol = self.scale_tol if scale_tol is None else float(scale_tol)
         t0 = time.time()
         res = dict(spatial=True, spatial_empty=False, radius_m=float(search_m), matcher="local",
                    predicted_lat=None, predicted_lon=None, accepted=False, score=0.0, fused_score=0.0,
                    match=None, top5=[], n_candidates=0, inliers=0, scale_residual=None, rotation_deg=None)
         grey = frame if frame.ndim == 2 else cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        res["sharpness"] = round(image_quality.sharpness(grey), 3)
         mpp_map = map_m_per_px(prior[0], self.z)
         s = frame_m_per_px / mpp_map                     # frame pixels → map pixels
         if not (math.isfinite(s) and 0.02 < s < 50):
@@ -416,7 +441,9 @@ class LocalMatcher:
         if len(dm) < 10:
             res.update(spatial_empty=True, reason="no map tiles (or no texture) in the search circle")
             return res
-        kq, dq = self.sift.detectAndCompute(q, None)
+        qmask = None if mask is None else cv2.resize(mask, (q.shape[1], q.shape[0]), interpolation=cv2.INTER_NEAREST)
+        kq, dq = (sift or self.sift).detectAndCompute(q, qmask)
+        res["features"] = len(kq)
         if dq is None or len(kq) < 10:
             res.update(reason="too few features in the frame (uniform ground, blur, darkness)")
             return res

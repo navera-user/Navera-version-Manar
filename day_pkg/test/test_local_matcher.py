@@ -137,3 +137,25 @@ def test_heading_search_order_covers_the_circle_nearest_first():
     m._heading = (95.0, time.time())                           # a recent match's rotation: tried first
     assert LearnedMatcher.heading_search_order(m, 10.0)[0] == 95.0
     assert LearnedMatcher.heading_search_order(m, None)[:2] == [95.0, 125.0]
+
+
+def test_retry_features_only_for_a_full_budget_with_too_few_inliers(tmp_path):
+    m = LocalMatcher(str(tmp_path), device="cpu", query_features=100, retry_features=400)
+    calls = []
+
+    def once(frame, prior, search_m, mpp, sift=None, **kw):
+        calls.append(sift is m.sift_more)
+        if sift is m.sift_more:
+            return {"accepted": True, "inliers": 30, "features": 400, "total_ms": 5.0}
+        return {"accepted": False, "inliers": once.inl, "features": once.feat, "total_ms": 3.0}
+    m._locate_once = once
+    once.inl, once.feat = 4, 100                       # budget full, too few inliers: described again
+    r = m.locate(None, (0, 0), 100.0, 1.0)
+    assert calls == [False, True] and r["retried"] and r["total_ms"] == 8.0
+    calls.clear()
+    once.inl, once.feat = 4, 30                        # few features: a featureless frame, no retry
+    assert not m.locate(None, (0, 0), 100.0, 1.0)["accepted"] and calls == [False]
+    calls.clear()
+    once.inl, once.feat = 20, 100                      # enough inliers, refused for another reason: no retry
+    m.locate(None, (0, 0), 100.0, 1.0)
+    assert calls == [False]
