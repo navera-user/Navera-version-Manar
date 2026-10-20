@@ -166,6 +166,11 @@ class DaySubscriber(Node):
         declare_float(self, "camera_hfov_deg", float("nan"))   # day camera horizontal field of view
         # wrong places measured at <= 5 inliers on real aerial frames; correct ones 3-73
         self.declare_parameter("local_min_inliers", 8)
+        # SIFT matcher: a frame that fills its feature budget and still finds too few inliers is described
+        # again with this many features (heavy rain: the streaks take the budget). Real camera, screen bench
+        # 2026-10-20: heavy rain 60 m/s 22 -> 33/40 frames matched (identical recorded frames), clear, haze,
+        # flare, clouds, vibration unchanged; costs a second description on those frames only. 0 = off.
+        self.declare_parameter("local_retry_features", 4000)
         declare_float(self, "local_scale_tol", 0.15)
         # widest scale window when the frame altitude is uncertain (frame_meta altitude_sigma_m)
         declare_float(self, "local_scale_tol_max", 0.35)
@@ -306,7 +311,8 @@ class DaySubscriber(Node):
                 self.get_logger().warn(f"learned matcher unavailable ({e}): SIFT local matching instead")
             self.matcher_mode = "local"
         if self.matcher_mode == "local" and self.local is None:
-            self.local = LocalMatcher(IMAGES_DIR, **kw)
+            self.local = LocalMatcher(IMAGES_DIR, retry_features=int(self.get_parameter("local_retry_features").value),
+                                      **kw)
             self.get_logger().info(
                 f"matcher: local features vs the map ({'GPU' if self.local.torch else 'CPU'} matching), "
                 f"camera_hfov_deg={self.camera_hfov_deg}"
