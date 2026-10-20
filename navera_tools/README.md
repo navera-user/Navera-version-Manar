@@ -30,6 +30,7 @@ tools; both have `--help`.
 | `run_sim.sh` | **mission simulator** (below): control page on :8190, real NAVERA nodes, ArduPilot autopilot in the loop |
 | `run_demo.sh [measured\|target]` | **demonstration**: simulated mission over Sousse with GPS jamming, on the real arbiter and operator view (`demo_mission.py`) |
 | `tests/sitl_ardupilot.py`, `tests/sitl_vehicle_link.py`, `tests/sitl_discovery.py` | the vehicle output, vehicle link and discovery against ArduPilot SITL (needs an ArduPilot build) |
+| `tests/sitl_f7_height.py` | F7: ArduCopter SITL fed NAVERA's GPS_INPUT (vision, wrong / jumping / drifting heights): EKF height must stay on the barometer, horizontal position follow vision; `EK3_SRC1_POSZ = 3` as the sensitivity control (~9 min, dataflash log analysed) |
 | `bench/camera_chain.py`, `bench/day_wrong_altitude.py` | offline benchmarks of the camera chain |
 | `bench/night_conditions.py [--n 24] [--only names\|groups] [--csv f]` | night vision (STHN) stress test: 53 simulated conditions (thermal look, blur, lights, weather, occluders, geometry, terrain, no-information frames) with ground truth — match rate, error, wrong accepts, time. Synthetic frames from the matched map; loads one STHN model (`nice` it on a shared box) |
 
