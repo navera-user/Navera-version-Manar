@@ -277,7 +277,7 @@ clouds and light pollution, a real IMU.
 | Estimator: GPS flapping every 0.5 s | One source switch in 8 s, no zig-zag |
 | Estimator: GPS jumps 5 km in 1 s (spoofing / glitch) | Refused ("possible spoofing"), re-accepted once plausible again |
 | Estimator: GPS silent 4 s (jammed), then back 2 km away while vision (stated accuracy) disagrees ("jam, then spoof") | Refused; true GPS accepted as soon as it agrees with vision |
-| Estimator: GPS pulled away gradually (40 m/s bench, 4 m/s simulator) while vision (stated accuracy) stays on the truth | Refused once it has disagreed beyond 5 σ + 50 m for 3 s (simulator: at ~160–200 m); status says "GPS refused: … drifting away" |
+| Estimator: GPS pulled away gradually (40 m/s bench, 4 m/s simulator) while vision (stated accuracy) stays on the truth | Refused once 5 independent fixes in a row are beyond 3 σ, or beyond 5 σ + 50 m for 3 s (simulator, 4 m/s: ~140 m with the 3 σ streak rule, 2026-10-02; ~160–200 m with the 5 σ rule alone, 2026-09-28); status says "GPS refused: … drifting away" |
 | Estimator: GPS jumps 2 km and stays there, vision with a stated accuracy sees the true position | Refused for as long as it lasts (150 s tested); the true GPS re-accepted 2 s after it returns. Before the fix the spoof was accepted after offset / max speed (33 s) and then the true GPS was locked out |
 | Estimator: GPS drifting from vision (estimator test) | Shown "GPS IN DOUBT" (DEGRADED) before it is refused, never FIX meanwhile |
 | Estimator: GPS fix 0.8 s late, 60 m behind a vehicle at 75 m/s | Dropped as old news; GPS stays FIX (before: refused as "possible spoofing") |
@@ -300,7 +300,7 @@ results, not accuracy results.
 | Drone, GPS jammed in flight, vision at the target accuracy (15 m σ, simulated) | Mission continues on NAVERA's vision fix; autopilot error 2–18 m for 2.5 min, no failsafe |
 | Boat, 2 km GPS spoof for 150 s | Refused within 1 s; boat continues on vision (3–21 m) |
 | Drone, GPS jammed 30 s then spoofed 2 km for 30 s | Spoof refused throughout; true GPS re-accepted 3 s after it returns |
-| Drone, GPS spoofed by a slow drift (4 m/s) | Refused at ~160–200 m offset; the autopilot followed the drift to ~200 m, then recovered on vision without failsafe |
+| Drone, GPS spoofed by a slow drift (4 m/s) | Refused at ~160–200 m offset (2026-09-28, 5 σ rule; ~140 m since the 3 σ streak rule of 2026-10-02, item 7); the autopilot followed the drift to ~200 m, then recovered on vision without failsafe |
 | Robot, GPS jammed, vision at today's measured accuracy (DEGRADED, withheld) | Autopilot loses its position → its own failsafe (HOLD); stays in it when GPS returns (an autopilot does not resume a mission by itself after a failsafe): the operator resumes it |
 | GPS jammed + camera failed | NAVERA: NO FIX → autopilot failsafe (Copter LAND, Rover HOLD) |
 
