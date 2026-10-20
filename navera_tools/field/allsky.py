@@ -297,7 +297,8 @@ ACCEL_NORM_TOL = 0.01
 
 # quality gate: a wrong fix is worse than no fix. Accepted when
 #   matched >= MIN_MATCHED and rms <= MAX_RMS_DEG and
-#   (p_chance <= MAX_P_CHANCE  or  (p_chance <= MAX_P_CHANCE_TIGHT and rms <= MAX_RMS_TIGHT_DEG))
+#   (p_chance <= MAX_P_CHANCE  or  (p_chance <= MAX_P_CHANCE_TIGHT and rms <= MAX_RMS_TIGHT_DEG)
+#    or  (p_chance <= MAX_P_CHANCE_LOOSE and rms <= MAX_RMS_LOOSE_DEG))
 # and the two lenses agree. p_chance (chance_probability): probability that junk spots line up with this many
 # catalogue stars for one of the rotations tried; 60 spots, ~1e5 rotations: 11 matches 6e-4, 14 matches 5e-8.
 # Calibrated on the real camera bench (2026-10-17, catalogue stars on a screen, identify() before this gate):
@@ -310,6 +311,11 @@ MAX_P_CHANCE = 1e-6
 MAX_P_CHANCE_TIGHT = 1e-4       # allowed only with a residual typical of a true match
 MAX_RMS_DEG = 0.2
 MAX_RMS_TIGHT_DEG = 0.12
+# third tier (real camera, screen campaign 2026-10-19, 162 cases): the 16 right identifications refused as
+# "chance" had p <= 1.2e-2 and rms <= 0.09 deg (one 0.13); all 44 wrong ones had rms >= 0.16 deg and p >= 0.07
+# (2026-10-17: wrong ones rms >= 0.212). A small residual is what a chance alignment of junk spots cannot fake.
+MAX_P_CHANCE_LOOSE = 1e-2
+MAX_RMS_LOOSE_DEG = 0.10
 MAX_LENS_DISAGREE_DEG = 1.0     # zenith from each lens alone (when both have >= 4 stars)
 K1_FIT_MIN_STARS = 20           # the radial term is refitted only with this many matched stars
 
@@ -318,7 +324,7 @@ def accept(matched: int, rms_deg: float, p_chance: float, lens_disagree_deg: flo
     """The quality gate: None when the identification may be used, else the reason it may not."""
     if matched < MIN_MATCHED:
         return f"only {matched} stars matched (< {MIN_MATCHED})"
-    if p_chance > MAX_P_CHANCE_TIGHT:
+    if p_chance > MAX_P_CHANCE_TIGHT and not (p_chance <= MAX_P_CHANCE_LOOSE and rms_deg <= MAX_RMS_LOOSE_DEG):
         return f"match could be chance (p = {p_chance:.2g})"
     if rms_deg > MAX_RMS_DEG:
         return f"star residual {rms_deg:.2f} deg (> {MAX_RMS_DEG})"
