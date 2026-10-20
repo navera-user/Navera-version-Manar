@@ -1,5 +1,4 @@
 """Unit tests for cn_pkg.nodes.celestial_math (celestial position geometry)."""
-import math
 import random
 
 import pytest

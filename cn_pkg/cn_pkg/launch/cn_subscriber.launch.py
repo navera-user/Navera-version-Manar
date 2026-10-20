@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-cn_subscriber.launch.py — start the NAVERA celestial-navigation subscriber.
+"""cn_subscriber.launch.py — start the NAVERA celestial-navigation subscriber.
 
 It consumes /celestial/image_raw + /celestial/frame_meta (published by
 camera_pkg) and emits /cn/position_estimate + /cn/cn_status.
@@ -12,7 +11,6 @@ Examples:
   ros2 launch cn_pkg cn_subscriber.launch.py image_topic:=/celestial/image_raw \
                                               meta_topic:=/celestial/frame_meta
 """
-import os
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration

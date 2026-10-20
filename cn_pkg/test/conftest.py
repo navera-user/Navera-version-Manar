@@ -1,5 +1,6 @@
 """Test THIS checkout's cn_pkg (and its navera_tools simulator), not an installed copy that a sourced
-install/setup.bash may put first on the path."""
+install/setup.bash may put first on the path.
+"""
 import os
 import sys
 
