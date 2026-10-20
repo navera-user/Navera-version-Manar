@@ -79,3 +79,26 @@ def test_no_velocity_across_a_gap_and_the_turn_widens_the_sigma():
     fixes(tr2, ve=0.0, vn=10.0)
     s0 = tr2.propagate(19.0)[2]
     assert tr2.propagate(19.0, heading_change_deg=90.0)[2] > s0 + 70.0
+
+
+def test_a_position_carried_step_by_step_grows_like_one_carried_at_once():
+    """day_subscriber carries the position once a second: the stated accuracy must grow with the
+    time since the last MEASURED fix, not as a sum of per-step terms (simulator 2026-10-15: the
+    sum made 1/2 a dt per second — +-244 m stated, 1205 m real, after 99 s)."""
+    tr = TrackVelocity(accel_mps2=0.5)
+    once = tr.sigma_growth(2.0, 15.0, 99.0, 0.0, 0.0)
+    stepped, t = 0.0, 0.0
+    for _ in range(99):
+        stepped += tr.sigma_growth(2.0, 15.0, 1.0, t, 0.0)
+        t += 1.0
+    assert stepped == pytest.approx(once, rel=1e-9)
+    assert once > 0.5 * 0.5 * 99.0 ** 2                   # the unseen-acceleration term alone: 2450 m
+
+
+def test_propagate_is_the_one_shot_growth():
+    tr = TrackVelocity()
+    fixes(tr)
+    s0 = tr._pts[-1][3]
+    _, _, sig = tr.propagate(9.0 + 30.0)
+    ve, vn, sig_v = tr.velocity(39.0)
+    assert sig == pytest.approx(s0 + tr.sigma_growth(sig_v, math.hypot(ve, vn), 30.0), rel=1e-9)

@@ -26,6 +26,7 @@ import yaml
 
 from day_pkg.local_matcher import LocalMatcher, map_m_per_px, tile_px_to_latlon
 from day_pkg.vision_nav import VisionNavigator
+from navera_common.gps_crosscheck import GpsCrossCheck
 from navera_tools.bench.screen_overlays import KINDS as OVERLAYS, Overlays
 
 ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -218,7 +219,10 @@ def worker():
     cal_off, cal_h, cal_rot = [], [], []
     pos, pos_t, sigma = None, None, 30.0                       # NAVERA's position (output)
     vis_last, vis_vel = None, (0.0, 0.0)
-    doubt, gps_refused, refused_at = 0, False, None
+    gps_refused, refused_at = False, None
+    # the arbiter's own refusal rule (navera_estimator): vision sigma = max(fix, local_sigma_m 30 m),
+    # wide tolerance 5 sigma + gps_jump_margin_m 50 m (GPS and frame of the same instant here)
+    xcheck = GpsCrossCheck()
     height, axis, rot = a.height, None, 0.0
     src_prev = "gps"
     first = []                                                 # unconfirmed no-height matches
@@ -286,12 +290,14 @@ def worker():
         # the estimator: GPS while it agrees with vision, else vision, else carried
         if gps is not None and vis is not None and axis is not None and height is not None:
             gap = metres(gps, vis)[0]
-            if len(cal_off) >= 5:                              # the camera axis is measured
-                doubt = doubt + 1 if gap > 3 * math.hypot(5.0, 10.0) else 0
-            if doubt >= 2 and not gps_refused:
+            sig_v = max(float(r.get("sigma_m") or 0.0), 30.0)
+            if len(cal_off) >= 5 and not gps_refused and \
+                    xcheck.update(t, gap, 5.0 * sig_v + 50.0, 3.0 * sig_v, t) is not None:  # axis measured
                 gps_refused, refused_at = True, (t, drift)
                 if nav is not None:                            # hand over from vision, not the drifted GPS
                     nav.gps(t, *vis, sigma_m=10.0)
+        elif gps is not None:
+            xcheck.no_reference(t)
         gate_why = None
         if nav is not None:
             if gps is not None and not gps_refused:

@@ -94,7 +94,9 @@ from collections import deque
 from typing import Optional
 
 import rclpy
+from navera_common.covariance import covariance_sane, horizontal_sigma
 from navera_common.geo import is_finite_latlon
+from navera_common.gps_crosscheck import STREAK_N, GpsCrossCheck
 from navera_common.lifecycle import die_with_parent
 from navera_common.params import declare_float
 from rclpy.executors import ExternalShutdownException
@@ -139,8 +141,9 @@ _MODE_NAME = {
 DOUBT_MAX_M = 500.0
 # a stated horizontal accuracy below this is not one (0 = "not filled"); RTK is ~1 cm
 MIN_STATED_SIGMA_M = 0.01
-# distinct independent fixes in a row beyond 3 sigma that refuse GPS (chance: < 1e-12)
-STREAK_N = 5
+# STREAK_N (navera_common.gps_crosscheck): distinct independent fixes in a row beyond 3 sigma that
+# refuse GPS. For a 2-D error P(r > 3 sigma) = exp(-4.5) = 1.1 % per fix, so a false streak of 5 is
+# 1.7e-10 (the former "< 1e-12" was the 1-D figure, 0.27 % per fix)
 
 class EstimatorNode(Node):
     """Selects the winning position estimate and publishes the nav status."""
@@ -157,6 +160,9 @@ class EstimatorNode(Node):
         declare_float(self, "switch_holdoff_s", 2.0)
         declare_float(self, "max_speed_mps", 100.0)
         declare_float(self, "gps_jump_margin_m", 50.0)
+        # the jump gate also over this window: one margin per fix let a steady drag of
+        # max_speed + margin/period through (150 m/s with the defaults, every 1 s fix passing)
+        declare_float(self, "gps_jump_window_s", 20.0)
         # the attitude NAVERA uses (box, vehicle or ROS IMU): liveness only
         self.declare_parameter("imu_topic", "/navera/sensors/imu")
         declare_float(self, "gps_crosscheck_sigmas", 5.0)
@@ -170,14 +176,15 @@ class EstimatorNode(Node):
         self._holdoff = float(self.get_parameter("switch_holdoff_s").value)
         self._max_speed = float(self.get_parameter("max_speed_mps").value)
         self._jump_margin = float(self.get_parameter("gps_jump_margin_m").value)
+        self._jump_window = float(self.get_parameter("gps_jump_window_s").value)
+        self._trusted_hist = deque()                   # (lat, lon, Time) trusted GPS over the window
         self._crosscheck_sigmas = float(self.get_parameter("gps_crosscheck_sigmas").value)
         self._crosscheck_persist = float(self.get_parameter("gps_crosscheck_persist_s").value)
-        self._disagree_since: Optional[Time] = None   # trusted GPS vs independent source
-        self._disagree_refs = set()                    # distinct independent fixes disagreeing
+        # trusted GPS vs independent source: the refusal rule (shared with the bench)
+        self._xcheck = GpsCrossCheck(persist_s=self._crosscheck_persist, streak_n=STREAK_N)
         self._confirm_needed_since: Optional[Time] = None  # refused by the cross-check
         self._last_ref_at = Time(seconds=0, clock_type=self.get_clock().clock_type)
         self._gps_hist = deque(maxlen=50)              # (stamp ns, lat, lon) of received GPS fixes
-        self._streak = set()                           # distinct fixes beyond 3 sigma in a row
         self._gps_doubt = None                         # (gap m, source) while GPS is in doubt
         self._agree_refs = set()                       # distinct fixes agreeing (re-acceptance)
         self._fix_max_sigma = float(self.get_parameter("fix_max_sigma_m").value)
@@ -194,6 +201,9 @@ class EstimatorNode(Node):
         self._cn_timeout = float(self.get_parameter("cn_timeout_s").value)
         self._imu_timeout = float(self.get_parameter("imu_timeout_s").value)
 
+        # id(message) -> (receive Time, arrived stamped in the future), for the latest message of
+        # each source only (B6: a fix stamped ahead came back to life once the clock caught up)
+        self._rx = {}
         # Latest snapshot from each watched source. None until first heard.
         self._gps_last: Optional[PositionEstimate] = None
         self._day_last: Optional[PositionEstimate] = None
@@ -241,6 +251,7 @@ class EstimatorNode(Node):
             self.get_logger().info("GPS fix older than the last one received: dropped",
                                    throttle_duration_sec=10.0)
             return
+        self._note_rx(self._gps_last, msg)
         self._gps_last = msg
         if msg.valid and self._sane(msg):
             self._gps_hist.append((Time.from_msg(msg.header.stamp).nanoseconds, msg.latitude, msg.longitude))
@@ -268,7 +279,7 @@ class EstimatorNode(Node):
                     self._agree_refs = set()
                     self._confirm_needed_since = None
                     self._gps_suspect = None
-                    self._gps_trusted = (msg.latitude, msg.longitude, stamp)
+                    self._set_trusted(msg.latitude, msg.longitude, stamp, restart=True)
                 elif d > tol_strict:
                     if self._gps_suspect is None:
                         self.get_logger().error(
@@ -285,7 +296,7 @@ class EstimatorNode(Node):
                 self.get_logger().warn("no independent source for 120 s: GPS judged on its own again")
                 self._confirm_needed_since = None
         if self._gps_trusted is None:
-            self._gps_trusted = (msg.latitude, msg.longitude, stamp)
+            self._set_trusted(msg.latitude, msg.longitude, stamp, restart=True)
             return
         if continuous and self._drifting_away(msg, stamp):
             return
@@ -293,68 +304,66 @@ class EstimatorNode(Node):
         dt = max(0.0, (stamp - t0).nanoseconds / 1e9)
         dist = _haversine_m(lat0, lon0, msg.latitude, msg.longitude)
         reachable = self._max_speed * dt + self._jump_margin
-        if dist <= reachable:
+        drag = self._window_drag(msg, stamp) if dist <= reachable else None
+        if dist <= reachable and drag is None:
             if self._gps_suspect:
                 self.get_logger().warn("GPS plausible again — re-accepted")
             self._gps_suspect = None
-            self._gps_trusted = (msg.latitude, msg.longitude, stamp)
+            self._set_trusted(msg.latitude, msg.longitude, stamp)
         else:
-            reason = (f"implausible jump {dist:.0f} m in {dt:.1f} s "
-                      f"(max {reachable:.0f} m at {self._max_speed:.0f} m/s) — possible spoofing")
+            reason = drag or (f"implausible jump {dist:.0f} m in {dt:.1f} s "
+                              f"(max {reachable:.0f} m at {self._max_speed:.0f} m/s) — possible spoofing")
             if self._gps_suspect is None:
                 self.get_logger().error(f"GPS refused: {reason}")
             self._gps_suspect = reason
+
+    def _set_trusted(self, lat: float, lon: float, stamp: Time, restart: bool = False) -> None:
+        """The last plausible GPS fix; restart = a new trusted track (no window to compare with)."""
+        self._gps_trusted = (lat, lon, stamp)
+        if restart:
+            self._trusted_hist.clear()
+        self._trusted_hist.append((lat, lon, stamp))
+        while self._trusted_hist and (stamp - self._trusted_hist[0][2]).nanoseconds / 1e9 > self._jump_window:
+            self._trusted_hist.popleft()
+
+    def _window_drag(self, msg: PositionEstimate, stamp: Time) -> Optional[str]:
+        """The refusal reason when the fix is out of reach of a trusted fix of the window (one
+        margin over the whole window, not one per fix), else None."""
+        for lat0, lon0, t0 in self._trusted_hist:
+            dt = (stamp - t0).nanoseconds / 1e9
+            if dt <= 0.0 or dt > self._jump_window:
+                continue
+            dist = _haversine_m(lat0, lon0, msg.latitude, msg.longitude)
+            reach = self._max_speed * dt + self._jump_margin
+            if dist > reach:
+                return (f"implausible drift {dist:.0f} m in {dt:.1f} s (max {reach:.0f} m at "
+                        f"{self._max_speed:.0f} m/s) — possible spoofing")
+        return None
 
     def _drifting_away(self, msg: PositionEstimate, stamp: Time) -> bool:
         """Trusted GPS vs an independent source of stated accuracy: True (and
         GPS refused) once they have disagreed for gps_crosscheck_persist_s."""
         ref = self._independent_reference(stamp, msg.latitude, msg.longitude)
+        t = stamp.nanoseconds / 1e9
         if ref is None:
-            # between two independent fixes (vision checks every few seconds) the
-            # disagreement is kept: forgotten only when a fix agrees, or after 10 s
-            if self._disagree_since is not None and \
-                    (stamp - self._disagree_since).nanoseconds / 1e9 > 10.0 + self._crosscheck_persist:
-                self._disagree_since, self._disagree_refs = None, set()
+            self._xcheck.no_reference(t)
             return False
         name, d, tol, ref_stamp, tol_strict = ref
-        # slow drift: the same independent source disagreeing beyond 3 sigma at
-        # STREAK_N distinct measurements in a row does not happen by chance — caught
-        # before the 5-sigma gate, while the autopilot has followed the GPS less far
-        if d > tol_strict:
-            self._streak.add(ref_stamp)
-        else:
-            self._streak = set()
+        reason = self._xcheck.update(t, d, tol, tol_strict, ref_stamp, name)
         # two independent fixes in a row beyond 3 sigma: GPS is in doubt — still used, but
         # with an accuracy no better than the gap (the operator sees it, the autopilot
         # weighs it less, and a later switch to vision is no jump outside its accuracy).
         # A gap over DOUBT_MAX_M is more likely a wrong vision match: not applied.
-        self._gps_doubt = (d, name) if len(self._streak) >= 2 and d <= DOUBT_MAX_M else None
-        if len(self._streak) >= STREAK_N:
-            self._refuse(stamp, f"GPS drifting away from {name}: {STREAK_N} independent fixes in a row "
-                                f"beyond 3 sigma ({d:.0f} m apart now, 3 sigma {tol_strict:.0f} m) — possible spoofing")
-            return True
-        if d <= tol:
-            self._disagree_since = None
-            self._disagree_refs = set()
+        self._gps_doubt = (d, name) if self._xcheck.in_doubt and d <= DOUBT_MAX_M else None
+        if reason is None:
             return False
-        if self._disagree_since is None:
-            self._disagree_since = stamp
-        self._disagree_refs.add(ref_stamp)
-        # one wrong vision fix stays "fresh" for seconds: never refuse GPS on a single
-        # measurement — at least two distinct ones must disagree
-        if (stamp - self._disagree_since).nanoseconds / 1e9 < self._crosscheck_persist \
-                or len(self._disagree_refs) < 2:
-            return False
-        self._refuse(stamp, f"GPS drifting away from {name}: {d:.0f} m apart for "
-                            f"{self._crosscheck_persist:.0f} s (tolerance {tol:.0f} m) — possible spoofing")
+        self._refuse(stamp, reason)
         return True
 
     def _refuse(self, stamp: Time, reason: str) -> None:
         """GPS refused by the cross-check: only an independent fix can clear it."""
         self._gps_suspect = reason
-        self._disagree_since = None
-        self._disagree_refs = set()
-        self._streak = set()
+        self._xcheck.reset()
         self._gps_doubt = None
         self._confirm_needed_since = stamp
         self.get_logger().error(f"GPS refused: {reason}")
@@ -402,14 +411,17 @@ class EstimatorNode(Node):
         return best
 
     def _on_day(self, msg: PositionEstimate) -> None:
+        self._note_rx(self._day_last, msg)
         self._day_last = msg
         self._tick()
 
     def _on_night(self, msg: PositionEstimate) -> None:
+        self._note_rx(self._night_last, msg)
         self._night_last = msg
         self._tick()
 
     def _on_cn(self, msg: PositionEstimate) -> None:
+        self._note_rx(self._cn_last, msg)
         self._cn_last = msg
         self._tick()
 
@@ -417,6 +429,13 @@ class EstimatorNode(Node):
         # Liveness only: we keep the stamp, never the sample. The IMU feeds no
         # position in v1.
         self._imu_last_stamp = Time.from_msg(msg.header.stamp)
+
+    def _note_rx(self, old: Optional[PositionEstimate], msg: PositionEstimate) -> None:
+        """Remember when msg arrived and whether it was stamped in the future then (it replaces old)."""
+        if old is not None:
+            self._rx.pop(id(old), None)
+        now = self.get_clock().now()
+        self._rx[id(msg)] = (now, self._age_s(now, self._measured_at(msg)) < -self._future_tol)
 
     def _check_single_arbiter(self) -> None:
         n = self.count_publishers("/navera/position")
@@ -448,17 +467,7 @@ class EstimatorNode(Node):
         """A usable position: finite and in range, and a covariance that is one: finite,
         non-negative variances, symmetric, horizontal block positive semi-definite (a
         consumer's filter would break on anything else)."""
-        if not is_finite_latlon(msg.latitude, msg.longitude):
-            return False
-        cov = list(msg.position_covariance)
-        if not all(math.isfinite(c) for c in cov):
-            return False
-        if not all(cov[i] >= 0.0 for i in (0, 4, 8)):
-            return False
-        tol = 1e-9 * max(1.0, cov[0], cov[4], cov[8])
-        if any(abs(cov[i] - cov[j]) > tol for i, j in ((1, 3), (2, 6), (5, 7))):
-            return False
-        return cov[0] * cov[4] - cov[1] * cov[3] >= -tol
+        return is_finite_latlon(msg.latitude, msg.longitude) and covariance_sane(msg.position_covariance)
 
     @staticmethod
     def _stated_sigma(msg: PositionEstimate) -> Optional[float]:
@@ -469,7 +478,7 @@ class EstimatorNode(Node):
                                                 PositionEstimate.COVARIANCE_TYPE_DIAGONAL_KNOWN,
                                                 PositionEstimate.COVARIANCE_TYPE_KNOWN):
             return None
-        sigma = math.sqrt(max(msg.position_covariance[0], msg.position_covariance[4]))
+        sigma = horizontal_sigma(msg.position_covariance)     # the ellipse's long axis
         return sigma if sigma >= MIN_STATED_SIGMA_M else None
 
     def _eval_source(self, now, last, timeout):
@@ -484,6 +493,12 @@ class EstimatorNode(Node):
             return False, False, None
         age = self._age_s(now, self._measured_at(last))
         alive = -self._future_tol <= age < timeout
+        rx = self._rx.get(id(last))
+        if rx is not None:
+            # a message that ARRIVED stamped in the future never becomes alive: once the clock
+            # catches up it would look fresh although the source may have died meanwhile; and
+            # a message is not fresh when it was received longer ago than the timeout
+            alive = alive and not rx[1] and self._age_s(now, rx[0]) < timeout
         eligible = (alive and last.valid and last.mode in _ELIGIBLE_MODES
                     and self._sane(last))
         return alive, eligible, age
@@ -528,7 +543,7 @@ class EstimatorNode(Node):
         """
         name = _SOURCE_NAME.get(winner.source, "source")
         bounded = self._stated_sigma(winner) is not None
-        sigma = math.sqrt(max(winner.position_covariance[0], winner.position_covariance[4]))
+        sigma = horizontal_sigma(winner.position_covariance)
         if winner.mode == PositionEstimate.MODE_MEASURED and bounded and sigma > self._fix_max_sigma:
             return (NavStatus.STATE_DEGRADED,
                     f"{name} fix, uncertainty {sigma:.0f} m > {self._fix_max_sigma:.0f} m")

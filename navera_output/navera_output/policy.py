@@ -19,15 +19,26 @@ The vehicle's autopilot treats whatever NAVERA sends as a GPS. The rules:
 * Velocity is sent only with a GPS position, from the receiver's own velocity
   (RMC), and only while that velocity is current. Vision and celestial fixes
   carry no velocity.
+* A short gap in the vision positions is bridged, never longer than bridge_max_s:
+  the last forwarded estimate is carried along its velocity and sent again about
+  once a second, its accuracy growing with the time (velocity error, unseen
+  acceleration, or max_speed_mps x time without a velocity). An autopilot lands
+  on a 5 s silence (simulator, 2026-10-15) although the vehicle has hardly moved
+  from where it was last seen. Past the bound, or once the grown accuracy exceeds
+  max_forward_sigma_m, it is "no fix" again. Only a forwarded estimate is bridged
+  (never a GPS fix), only while the arbiter is alive.
 """
 import json
 import math
 
-from navera_common.geo import dead_reckon
 from dataclasses import dataclass
 from typing import Optional
 
+from navera_common.covariance import horizontal_sigma
+from navera_common.geo import dead_reckon
+
 # navera_msgs NavStatus states (kept literal so this module needs no ROS).
+STATE_NO_FIX = 1
 STATE_FIX = 2
 STATE_DEGRADED = 3
 SOURCE_GPS = 1
@@ -52,6 +63,8 @@ class Output:
     gnss: bool = False                  # the position comes from a satellite receiver
     vel_n_mps: float = math.nan         # ground velocity north / east, NaN if unknown
     vel_e_mps: float = math.nan
+    soft: bool = False                  # kind NONE only because no NEW position came: may be bridged
+    bridged: bool = False               # a held position carried to now (see bridge())
 
     @property
     def has_velocity(self) -> bool:
@@ -80,12 +93,24 @@ class Config:
     # a non-GPS position is carried to the present along the measured ground velocity;
     # without one, its accuracy grows by this speed x its age
     max_speed_mps: float = 30.0
+    # a gap in the forwarded vision positions is bridged this long at most (0 = never)
+    bridge_max_s: float = 10.0
+    # the bridge starts when the last send is older than this, then repeats every bridge_period_s
+    bridge_after_s: float = 2.5
+    bridge_period_s: float = 1.0
+    # unseen acceleration of the vehicle in a bridged gap (as navera_common.track, 0.5)
+    bridge_accel_mps2: float = 0.5
+    bridge_heading_sigma_deg: float = 5.0
 
     def validate(self) -> None:
         if self.forward_degraded and not (math.isfinite(self.degraded_sigma_m)
                                           and self.degraded_sigma_m > 0):
             raise ValueError("forward_degraded requires degraded_sigma_m > 0: the accuracy "
                              "sent to the vehicle must be stated, not invented")
+        if not (self.bridge_max_s >= 0 and self.bridge_after_s > 0 and self.bridge_period_s > 0
+                and self.bridge_accel_mps2 >= 0 and self.bridge_heading_sigma_deg >= 0):
+            raise ValueError("bridge_max_s >= 0, bridge_after_s > 0, bridge_period_s > 0 and the "
+                             "bridge accel / heading sigma >= 0 are required")
         if self.forward_degraded and self.degraded_sigma_m > self.max_forward_sigma_m:
             raise ValueError(f"degraded_sigma_m {self.degraded_sigma_m:g} m > max_forward_sigma_m "
                              f"{self.max_forward_sigma_m:g} m: nothing would ever be forwarded")
@@ -120,14 +145,15 @@ def decide(cfg: Config, state: Optional[int], status_age_s: Optional[float],
     if state is None or status_age_s is None or status_age_s > cfg.nav_status_timeout_s:
         return Output(KIND_NONE, "arbiter silent")
     if state not in (STATE_FIX, STATE_DEGRADED):
-        return Output(KIND_NONE, "no fix")
+        return Output(KIND_NONE, "no fix", soft=state == STATE_NO_FIX)
     if pos is None or pos_age_s is None or pos_age_s > cfg.position_timeout_s:
-        return Output(KIND_NONE, "position not current")
+        return Output(KIND_NONE, "position not current", soft=True)
     if pos.source != active_source:
         return Output(KIND_NONE, "position not from the active source")
     age = 0.0 if measured_age_s is None or not math.isfinite(measured_age_s) else float(measured_age_s)
     if age > cfg.max_measurement_age_s:
-        return Output(KIND_NONE, f"position measured {age:.1f} s ago (max {cfg.max_measurement_age_s:.1f} s)")
+        return Output(KIND_NONE, f"position measured {age:.1f} s ago (max {cfg.max_measurement_age_s:.1f} s)",
+                      soft=True)
     if age < -1.0:
         return Output(KIND_NONE, f"position stamped {-age:.1f} s in the future: clocks disagree")
     age = max(0.0, age)
@@ -160,13 +186,13 @@ def decide(cfg: Config, state: Optional[int], status_age_s: Optional[float],
         common.update(vel_n_mps=float(gps_vel_ne[0]), vel_e_mps=float(gps_vel_ne[1]))
 
     if state == STATE_FIX:
-        return Output(KIND_FIX, "fix", sigma_h_m=math.sqrt(max(cov[0], cov[4])) + lag_sigma,
+        return Output(KIND_FIX, "fix", sigma_h_m=horizontal_sigma(cov) + lag_sigma,
                       sigma_v_m=math.sqrt(cov[8]) if cov[8] > 0 else math.nan,
                       satellites=int(sats) if isinstance(sats, int) else None, **common)
     if not cfg.forward_degraded:
         return Output(KIND_NONE, "degraded position not forwarded (forward_degraded=false)")
     known = getattr(pos, "position_covariance_type", 0) != 0          # 0 = UNKNOWN
-    stated = math.sqrt(max(cov[0], cov[4])) if known else math.nan
+    stated = horizontal_sigma(cov) if known else math.nan
     candidates = [x for x in (cfg.degraded_sigma_m, stated) if math.isfinite(x) and x > 0]
     if not candidates:
         return Output(KIND_NONE, "degraded position with no stated accuracy")
@@ -176,6 +202,62 @@ def decide(cfg: Config, state: Optional[int], status_age_s: Optional[float],
                                  f"(±{sigma / 1000:.1f} km > {cfg.max_forward_sigma_m / 1000:.1f} km)")
     return Output(KIND_ESTIMATED, "estimated", sigma_h_m=sigma,
                   sigma_v_m=math.nan, satellites=0, **common)
+
+
+@dataclass
+class Held:
+    """The last forwarded estimated position, for bridging a gap after it."""
+    lat: float
+    lon: float
+    sigma_h_m: float
+    t: float                                  # monotonic instant the position describes (the send)
+    ground_vel: Optional[tuple] = None        # (east m/s, north m/s, 1-sigma speed error) at that time
+
+
+def hold(out: Output, t: float, ground_vel: Optional[tuple]) -> Optional[Held]:
+    """What to remember of a decision: only a forwarded estimate (not a GPS fix)."""
+    if out.kind != KIND_ESTIMATED or not (math.isfinite(out.lat) and math.isfinite(out.lon)
+                                          and math.isfinite(out.sigma_h_m)):
+        return None
+    gv = tuple(float(v) for v in ground_vel) if ground_vel is not None and all(
+        math.isfinite(v) for v in ground_vel) else None
+    return Held(out.lat, out.lon, out.sigma_h_m, t, gv)
+
+
+def bridge(cfg: Config, held: Optional[Held], now: float) -> Output:
+    """The held position carried to `now`, its accuracy grown by the time; "no fix" when it cannot be
+    done honestly: no held estimate, the gap longer than bridge_max_s, or the grown accuracy coarser
+    than max_forward_sigma_m.
+
+    With the ground velocity measured when it was held, the position moves along it and the
+    accuracy grows by the velocity error, the heading error x speed and half the unseen
+    acceleration x t^2. Without one the position stays and the accuracy grows by
+    max_speed_mps x t: the vehicle can have gone that far, in any direction."""
+    if held is None or not cfg.forward_degraded or cfg.bridge_max_s <= 0:
+        return Output(KIND_NONE, "no position to bridge")
+    dt = now - held.t
+    if dt < 0:
+        return Output(KIND_NONE, "bridge: clock went backwards")
+    if dt > cfg.bridge_max_s:
+        return Output(KIND_NONE, f"gap of {dt:.0f} s longer than the bridge ({cfg.bridge_max_s:.0f} s)")
+    lat, lon = held.lat, held.lon
+    if held.ground_vel is not None:
+        ve, vn, sig_v = held.ground_vel
+        speed = math.hypot(ve, vn)
+        if speed > 0.05:
+            carried = dead_reckon(lat, lon, math.degrees(math.atan2(ve, vn)) % 360.0, speed, dt)
+            if carried is not None:
+                lat, lon = carried
+        grow = (sig_v * dt + math.radians(cfg.bridge_heading_sigma_deg) * speed * dt
+                + 0.5 * cfg.bridge_accel_mps2 * dt * dt)
+    else:
+        grow = cfg.max_speed_mps * dt
+    sigma = held.sigma_h_m + grow
+    if sigma > cfg.max_forward_sigma_m:
+        return Output(KIND_NONE, f"bridged position too coarse (±{sigma / 1000:.1f} km > "
+                                 f"{cfg.max_forward_sigma_m / 1000:.1f} km)")
+    return Output(KIND_ESTIMATED, f"bridged {dt:.1f} s", lat=lat, lon=lon, sigma_h_m=sigma,
+                  satellites=0, age_s=0.0, bridged=True)
 
 
 def for_nmea(out: Output, allow_degraded: bool = False) -> Output:
