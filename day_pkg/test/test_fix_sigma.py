@@ -20,3 +20,32 @@ def test_speed_and_attitude_terms_add_in_quadrature():
 def test_unknown_height_or_speed_adds_nothing():
     assert day_fix_sigma_m(8.0, height_m=float("nan")) == 8.0
     assert day_fix_sigma_m(8.0, speed_mps=None, height_m=None) == 8.0
+
+
+def test_calibration_covers_this_flights_errors_honest_or_optimistic_model():
+    import random
+    from day_pkg.fix_sigma import SigmaCalibration
+    rng = random.Random(1)
+    for true_sigma in (10.0, 25.0):                   # model says 10 m: honest, then 2.5x optimistic
+        cal = SigmaCalibration(floor_no_cal_m=30.0)
+        draw = lambda: math.hypot(rng.gauss(0, true_sigma), rng.gauss(0, true_sigma))  # noqa: E731
+        for _ in range(200):
+            cal.add(draw(), 10.0)
+        pub = cal.apply(10.0)
+        assert pub >= 10.0
+        inside = sum(draw() <= 3 * pub for _ in range(2000)) / 2000
+        assert inside >= 0.99, (true_sigma, pub, inside)
+        assert pub < 3 * true_sigma                   # and not absurdly wide
+
+
+def test_never_calibrated_uses_the_floor_and_needs_min_samples():
+    from day_pkg.fix_sigma import SigmaCalibration
+    cal = SigmaCalibration(floor_no_cal_m=25.0, min_samples=15)
+    assert cal.apply(8.0) == 25.0 and cal.apply(40.0) == 40.0
+    for _ in range(14):
+        cal.add(1.0, 10.0)
+    assert cal.terms() is None
+    cal.add(1.0, 10.0)
+    f, b = cal.terms()
+    assert f == 1.0 and abs(b - 1.0 / 2.4477) < 1e-9 and cal.apply(8.0) >= 8.0
+    assert cal.state()["calibrated"] is True

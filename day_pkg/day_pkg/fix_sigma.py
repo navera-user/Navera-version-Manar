@@ -26,3 +26,70 @@ def day_fix_sigma_m(match_sigma_m: Optional[float], floor_m: float = 5.0,
     a = (0.5 * abs(float(height_m)) * math.tan(math.radians(float(attitude_sigma_deg)))
          if height_m is not None and math.isfinite(float(height_m)) else 0.0)
     return math.sqrt(s * s + t * t + a * a)
+
+
+# For an honest 2-D Gaussian sigma, 95 % of radial errors lie within 2.448 sigma.
+R95_2D = 2.4477
+
+
+def _quantile(v, p):
+    v = sorted(v)
+    pos = p * (len(v) - 1)
+    lo = int(math.floor(pos))
+    return v[lo] + (v[min(lo + 1, len(v) - 1)] - v[lo]) * (pos - lo)
+
+
+class SigmaCalibration:
+    """In-flight check of the stated day sigma against a trusted GPS (no test flight needed).
+
+    While GPS is trusted, every vision fix taken next to it (the GPS check frames, map bias
+    removed) gives its error |vision - GPS| (the GPS's own error is not removed: stricter).
+    Once min_samples are in, the published sigma is
+        hypot(model x f, b),  f = max(1, q95(err / model) / 2.448),  b = q95(err) / 2.448
+    f scales a model that is optimistic everywhere; b is this flight's own error level, which
+    on real drone imagery does not shrink with the inlier count as the model assumes.
+    Measured (bench/replay_sigma_cal.py, calibration on the GPS part, scored after the loss):
+      UAV-VisLoc flight 03 (real drone images, 466 m, 687 fixes): model alone 0.48 within
+        3 sigma (median 5.5 m); fixed 30 m 1.0 (30 m); this 0.999 (median 19 m);
+      real camera screen campaign (72 runs): model 0.991 (10.5 m); this 0.999 (10.8 m).
+    Never calibrated (GPS denied from take-off): at least floor_no_cal_m. The newest window
+    samples count (terrain and light change along a flight).
+    """
+
+    def __init__(self, floor_no_cal_m: float = 30.0, min_samples: int = 15, window: int = 200,
+                 max_factor: float = 20.0):
+        from collections import deque
+        self.floor_no_cal_m = float(floor_no_cal_m)
+        self.min_samples = int(min_samples)
+        self.max_factor = float(max_factor)
+        self._s = deque(maxlen=int(window))           # (error m, model sigma m)
+
+    def add(self, err_m: float, stated_sigma_m: float) -> None:
+        """One vision fix compared with the trusted GPS at the same instant."""
+        if stated_sigma_m and stated_sigma_m > 0 and math.isfinite(err_m):
+            self._s.append((float(err_m), float(stated_sigma_m)))
+
+    @property
+    def samples(self) -> int:
+        return len(self._s)
+
+    def terms(self) -> Optional[tuple]:
+        """(f, b m) of this flight, or None while not calibrated."""
+        if len(self._s) < self.min_samples:
+            return None
+        f = _quantile([e / s for e, s in self._s], 0.95) / R95_2D
+        b = _quantile([e for e, _ in self._s], 0.95) / R95_2D
+        return min(max(1.0, f), self.max_factor), b
+
+    def apply(self, stated_sigma_m: float) -> float:
+        """The sigma to publish for a fix whose model sigma is stated_sigma_m."""
+        t = self.terms()
+        if t is None:
+            return max(float(stated_sigma_m), self.floor_no_cal_m)
+        return math.hypot(float(stated_sigma_m) * t[0], t[1])
+
+    def state(self) -> dict:
+        t = self.terms()
+        return {"samples": len(self._s), "calibrated": t is not None,
+                "factor": None if t is None else round(t[0], 3), "flight_floor_m": None if t is None else round(t[1], 1),
+                "floor_no_cal_m": self.floor_no_cal_m}

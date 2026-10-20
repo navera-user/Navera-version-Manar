@@ -51,7 +51,7 @@ from navera_msgs.msg import NavStatus, PositionEstimate
 # Existing localization logic (UNMODIFIED user code).
 # DayLocalizer().predict(bgr_array, threshold=...) -> dict
 from day_pkg.nodes.day_localizer import IMAGES_DIR, DayLocalizer, haversine_m
-from day_pkg.fix_sigma import day_fix_sigma_m
+from day_pkg.fix_sigma import SigmaCalibration, day_fix_sigma_m
 from day_pkg.frame_odometry import FrameOdometry
 from day_pkg.local_matcher import LocalMatcher
 from day_pkg.vision_nav import VisionNavigator, _en, _move, kinematic_margin_m
@@ -192,13 +192,20 @@ class DaySubscriber(Node):
         declare_float(self, "gps_check_period_s", 2.0)
         declare_float(self, "gps_check_radius_m", 600.0)   # covers a GPS drifted this far
         # Stated accuracy (1 sigma, m) of a local match: day_pkg.fix_sigma.day_fix_sigma_m (the
-        # matcher's inlier-class sigma, a floor, the frame-time and attitude terms), measured on
-        # NAVERA's camera on the screen bench (2026-10-19: 99.2 % within 3 sigma, median 10.6 m).
+        # matcher's inlier-class sigma, a floor, the frame-time and attitude terms): 99.2 % within
+        # 3 sigma on NAVERA's camera on the screen bench (2026-10-19, median 10.6 m) but only 48 % on
+        # real drone imagery (UAV-VisLoc flight 03: errors ~18 m whatever the inliers) — so it is
+        # published through SigmaCalibration (below): calibrated against GPS in flight, else >= 30 m.
         # local_sigma_m is only the fallback for a result without its own sigma.
         declare_float(self, "local_sigma_m", 30.0)
         declare_float(self, "local_sigma_floor_m", 5.0)
         declare_float(self, "frame_time_sigma_s", 0.05)
         declare_float(self, "attitude_sigma_deg", 0.5)
+        # In-flight check of that sigma against the trusted GPS (fix_sigma.SigmaCalibration): the GPS check
+        # frames measure this flight's real vision error; after min_samples the stated sigma is scaled to it.
+        # Never calibrated (GPS denied from take-off): at least sigma_floor_no_cal_m.
+        declare_float(self, "sigma_floor_no_cal_m", 30.0)
+        self.declare_parameter("sigma_cal_min_samples", 15)
         # Local matching keeps its last position when frames fail (uniform ground, blur) and
         # widens the search by max_speed_mps x the time since its last match, up to this
         # radius, instead of dropping it after max_consecutive_rejects (a retrieval-era rule).
@@ -295,6 +302,8 @@ class DaySubscriber(Node):
         self.local_sigma_floor_m = float(self.get_parameter("local_sigma_floor_m").value)
         self.frame_time_sigma_s = float(self.get_parameter("frame_time_sigma_s").value)
         self.attitude_sigma_deg = float(self.get_parameter("attitude_sigma_deg").value)
+        self.sigma_cal = SigmaCalibration(float(self.get_parameter("sigma_floor_no_cal_m").value),
+                                          int(self.get_parameter("sigma_cal_min_samples").value))
         self._last_fix_sigma = self.local_sigma_m
         self.local_max_radius_m = float(self.get_parameter("local_max_radius_m").value)
         self.local_scale_tol_max = float(self.get_parameter("local_scale_tol_max").value)
@@ -730,6 +739,10 @@ class DaySubscriber(Node):
             g = self._gps_hist.at(int(ns) / 1e9) if ns else None
             if g is not None:                       # no GPS at the frame's instant: no sample
                 self.map_bias.bias_sample(self._check_fix[:2], g, self._heading_for_match(meta))
+                # this flight's real vision error, the map bias removed as it will be after a GPS loss
+                de, dn = self.map_bias.bias(self._check_fix[:2])
+                v = _move(self._check_fix[:2], de, dn)
+                self.sigma_cal.add(haversine_m(v[0], v[1], g[0], g[1]), self._model_sigma(res, meta))
             st = {}
             self._publish_vision_altitude(meta, res, st)
             self._publish_estimate(exposure_stamp(meta, self.get_clock().now().to_msg()), seq_id, "local_match",
@@ -983,6 +996,7 @@ class DaySubscriber(Node):
     def _emit_fix(self, now, seq_id, lat, lon, meta, status, src, score, jump_m, reason=None):
         status["source"], status["lat"], status["lon"] = src, lat, lon
         status["jump_m"], status["reason"] = jump_m, reason
+        status["sigma_cal"] = self.sigma_cal.state()
         status["success"] = True
         self.pub_status.publish(String(data=json.dumps(status)))
         fix = NavSatFix()
@@ -1078,7 +1092,14 @@ class DaySubscriber(Node):
     # Publish result
     # ────────────────────────────────────────────────────────────
     def _fix_sigma(self, result, meta) -> float:
-        """Stated 1-sigma (m) of a local match (day_pkg.fix_sigma), or local_sigma_m without one."""
+        """Stated 1-sigma (m) of a local match: the model (day_pkg.fix_sigma) scaled by this flight's
+        calibration against GPS (or at least the no-calibration floor), local_sigma_m without one."""
+        if not result.get("sigma_m"):
+            return self.local_sigma_m
+        return self.sigma_cal.apply(self._model_sigma(result, meta))
+
+    def _model_sigma(self, result, meta) -> float:
+        """The model sigma of a local match, before the in-flight calibration."""
         if not result.get("sigma_m"):
             return self.local_sigma_m
         v = self.track.velocity(time.time())
