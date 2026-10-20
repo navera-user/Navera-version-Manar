@@ -95,7 +95,8 @@ class LatencyCalibrator:
 
     def add_fix(self, t_arrival: float, lat: float, lon: float) -> None:
         """An accepted vision fix of a frame that arrived at t_arrival (s, same clock as the
-        GPS stamps), taken while the GPS is trusted. Used once the GPS covers its instant."""
+        GPS stamps), taken while the GPS is trusted. Used once the GPS covers its instant.
+        """
         with self._lock:
             if self.frozen:
                 self._count("gps not trusted")
@@ -108,7 +109,8 @@ class LatencyCalibrator:
         """GPS lost or untrusted: no new samples. With rollback_s, the samples of the last
         rollback_s seconds before it are dropped and the applied value goes back to the one
         applied then: a slowly spoofed GPS is trusted until refused, and its drift leaks into
-        the delay (bench replay, 3 m/s drift over 13 s: -0.1 s at 60 m/s)."""
+        the delay (bench replay, 3 m/s drift over 13 s: -0.1 s at 60 m/s).
+        """
         with self._lock:
             if self.frozen:
                 return
@@ -304,7 +306,8 @@ def from_node(node) -> Tuple[LatencyCalibrator, bool, float]:
 
 def shift_meta(meta: dict, correction_s: float) -> dict:
     """Date a frame by the estimated delay: keeps the camera's stamp in image_stamp_raw_ns
-    and moves image_stamp_ns back by correction_s (no stamp: unchanged)."""
+    and moves image_stamp_ns back by correction_s (no stamp: unchanged).
+    """
     ns = meta.get("image_stamp_ns")
     if ns is None:
         return meta

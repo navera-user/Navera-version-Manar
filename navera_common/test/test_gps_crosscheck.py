@@ -70,7 +70,8 @@ def _drift_at_refusal(v_mps, sigma, jitter, seed=1, start=60.0, dur=400.0, rate_
 
 def test_a_3_mps_drift_is_refused_before_the_size_rules_when_vision_beats_its_sigma():
     """Vision jitter 5 m under the stated 30 m floor (before calibration): the size rules wait for
-    3 sigma (90 m) at 5 fixes in a row (~105 m), the growth test for 1.5 sigma of steady growth."""
+    3 sigma (90 m) at 5 fixes in a row (~105 m), the growth test for 1.5 sigma of steady growth.
+    """
     for seed in range(5):
         at = _drift_at_refusal(3.0, 30.0, jitter=5.0, seed=seed)
         size_only = _drift_at_refusal(3.0, 30.0, jitter=5.0, seed=seed, trend=False)

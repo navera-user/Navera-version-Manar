@@ -68,7 +68,8 @@ def message_payload(code: int, seq: int, body: bytes) -> bytes:
 
 def split_packets(buf: bytearray) -> List[bytes]:
     """The whole packets at the start of buf (removed from it); a partial one stays for the next read.
-    A length out of range means the stream is out of step: everything buffered is dropped."""
+    A length out of range means the stream is out of step: everything buffered is dropped.
+    """
     out, i = [], 0
     while i + 4 <= len(buf):
         n = struct.unpack_from("<i", buf, i)[0]
@@ -106,7 +107,8 @@ def raw_files(path: str) -> List[str]:
 
 def read_raw(folder: str) -> Iterator[Tuple[float, int, int, bytes]]:
     """The records of a raw recording, in order: (t_arrival, kind, cam_ms, packet bytes). A record cut short by a
-    power loss at the end of a file is skipped. folder may also be a single raw360_NNNN.bin file."""
+    power loss at the end of a file is skipped. folder may also be a single raw360_NNNN.bin file.
+    """
     for path in raw_files(folder):
         with open(path, "rb") as f:
             if f.read(len(RAW_MAGIC)) != RAW_MAGIC:

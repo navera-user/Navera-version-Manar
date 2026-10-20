@@ -48,7 +48,8 @@ class GpsCrossCheck:
 
     def no_reference(self, t: float) -> None:
         """No independent fix this time: the disagreement is kept between fixes (vision checks every
-        few seconds) and forgotten only when one agrees, or after forget_s."""
+        few seconds) and forgotten only when one agrees, or after forget_s.
+        """
         if self._since is not None and t - self._since > self.forget_s + self.persist_s:
             self._since, self._refs = None, set()
 
@@ -57,7 +58,8 @@ class GpsCrossCheck:
         """One independent measurement (ref_id distinguishes measurements) d metres from the GPS of its
         instant; tol / tol_strict: the wide and the 3-sigma tolerances. sample: (measurement time s,
         east m, north m, combined sigma m) of GPS minus that measurement, for the growth test (only
-        when the GPS of the measurement's own instant is known). The refusal reason, or None."""
+        when the GPS of the measurement's own instant is known). The refusal reason, or None.
+        """
         trend_reason = None
         if self.trend is not None and sample is not None:
             trend_reason = self.trend.add(*sample, ref_id=ref_id)
@@ -74,7 +76,8 @@ class GpsCrossCheck:
     def back_to_baseline(self, sample: Optional[Tuple[float, float, float, float]]) -> bool:
         """After a growth refusal: True once the offset of sample (t, east, north, sigma) is back closer
         to the offset before the growth than half the growth. True when no growth refusal is pending;
-        False without a sample (GPS of the fix's instant unknown)."""
+        False without a sample (GPS of the fix's instant unknown).
+        """
         if self.baseline is None:
             return True
         if sample is None:
@@ -167,7 +170,8 @@ class GpsDriftTrend:
 
     def add(self, t: float, east_m: float, north_m: float, sigma_m: float, ref_id=None) -> Optional[str]:
         """One independent fix at time t (its measurement instant), offset GPS - fix (east, north) m,
-        sigma_m the combined 1-sigma of the two. The refusal reason, or None."""
+        sigma_m the combined 1-sigma of the two. The refusal reason, or None.
+        """
         if ref_id is not None:
             if ref_id in self._ids:
                 return None

@@ -25,7 +25,8 @@ def circle(v, radius):
 def fly(cal, track, delay, duration, period=1.0, noise=3.0, offset=(40.0, -25.0), outliers=0.0, seed=1,
         gps_hz=5.0, t0=10.0):
     """GPS at gps_hz on `track`; a vision fix every `period` s, of the ground seen at the exposure,
-    offset + noise, arriving `delay` s later."""
+    offset + noise, arriving `delay` s later.
+    """
     rng = np.random.default_rng(seed)
     tg = t0 - 6.0
     t = t0
@@ -56,7 +57,8 @@ def test_recovers_the_delay_on_a_turning_track(delay, v, radius, duration, noise
 
 def test_slow_and_noisy_is_estimated_but_not_trusted_enough_to_apply():
     """20 m/s with 3 m of vision noise: the residual spread over the velocity spread is 0.15 s,
-    the stated sigma says so and the delay is not applied (the bench at 20 m/s: 1.3 s for 1.7 s)."""
+    the stated sigma says so and the delay is not applied (the bench at 20 m/s: 1.3 s for 1.7 s).
+    """
     cal = fly(LatencyCalibrator(), circle(20.0, 300.0), 1.0, 90.0, noise=3.0)
     assert abs(cal.estimate - 1.0) < 0.15
     assert cal.sigma > 0.1 and cal.applied is None and "sigma" in cal.reason
