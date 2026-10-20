@@ -740,6 +740,8 @@ def main():
                     help="override the second-centre re-check gate (m)")
     ap.add_argument("--heading-retry", default="",
                     help="heading offsets (deg, comma-separated) retried when the map check fails")
+    ap.add_argument("--featureless-mask", action="store_true",
+                    help="leave cloud / calm water out of the query (NightLocalizer mask_featureless, off by default)")
     ap.add_argument("--height-retry", default="",
                     help="relative height changes (e.g. 0.1,-0.1) retried after the heading offsets")
     a = ap.parse_args()
@@ -767,7 +769,7 @@ def main():
     gates = {k: (v if v > -1 else None) for k, v in (("min_match_ncc", a.min_ncc),
                                                    ("recheck_max_m", a.recheck_max))
              if v is not None}
-    loc = NightLocalizer(sthn, weights, mbtiles, device=a.device, **gates)
+    loc = NightLocalizer(sthn, weights, mbtiles, device=a.device, mask_featureless=a.featureless_mask, **gates)
     save = Path(a.save_frames) if a.save_frames else None
     if save:
         save.mkdir(parents=True, exist_ok=True)

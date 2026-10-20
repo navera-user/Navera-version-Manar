@@ -166,6 +166,44 @@ def stretch_contrast(query_bgr, mask=None, lo_pct=1.0, hi_pct=99.0):
     return cv2.cvtColor(out, cv2.COLOR_GRAY2BGR)
 
 
+# Featureless areas (cloud below the aircraft, calm water: one temperature, no structure) carry no
+# position and their soft edges look like structure to STHN and to the map check. They are found
+# by their local texture relative to the frame's own, and left out like the empty borders.
+FEATURELESS_WIN = 15                # px of the 512 px query (~15-20 m): the local texture window
+FEATURELESS_REL = 0.2               # featureless: local std below this share of the frame's median
+FEATURELESS_ABS = 1.5               # ... or below this many grey levels (a flat frame)
+FEATURELESS_MIN_AREA = 0.01         # share of the frame a featureless patch must cover to be masked
+MIN_TEXTURED_SHARE = 0.25           # less textured ground than this: no position (mostly cloud/water)
+
+
+def featureless_mask(query_bgr, mask=None):
+    """(mask without the featureless areas, share of the frame that is textured ground).
+
+    Local standard deviation in a FEATURELESS_WIN window; a pixel is featureless when it is
+    below FEATURELESS_REL x the median over the frame's ground (or FEATURELESS_ABS grey
+    levels); only patches of at least FEATURELESS_MIN_AREA of the frame, after an
+    opening, are removed, so small smooth roofs and fields stay."""
+    g = cv2.cvtColor(query_bgr, cv2.COLOR_BGR2GRAY) if query_bgr.ndim == 3 else query_bgr
+    g = g.astype(np.float32)
+    valid = np.full(g.shape, 255, np.uint8) if mask is None else mask
+    k = (FEATURELESS_WIN, FEATURELESS_WIN)
+    mu = cv2.blur(g, k)
+    sd = np.sqrt(np.maximum(cv2.blur(g * g, k) - mu * mu, 0.0))
+    ground = valid > 0
+    if np.count_nonzero(ground) < 100:
+        return valid, 0.0
+    thr = max(FEATURELESS_REL * float(np.median(sd[ground])), FEATURELESS_ABS)
+    flat = ((sd < thr) & ground).astype(np.uint8)
+    flat = cv2.morphologyEx(flat, cv2.MORPH_OPEN, np.ones((9, 9), np.uint8))
+    n, lab, stats, _ = cv2.connectedComponentsWithStats(flat, connectivity=4)
+    keep = stats[:, cv2.CC_STAT_AREA] >= FEATURELESS_MIN_AREA * g.size
+    keep[0] = False                                                         # the background
+    big = keep[lab]
+    big = cv2.dilate(big.astype(np.uint8), np.ones((7, 7), np.uint8)) > 0   # its soft edge too
+    out = np.where(big, 0, valid).astype(np.uint8)
+    return out, float(np.count_nonzero(out)) / out.size
+
+
 def _edges(grey):
     """Polarity-free structure image: gradient magnitude of the lightly smoothed picture
     (a hot road on a cool field and a dark road on a bright field give the same edges)."""
@@ -380,8 +418,12 @@ class NightLocalizer:
         mixed_precision: bool = False,
         map_offset_deg: tuple = (0.0, 0.0),
         contrast_stretch: bool = True,
+        mask_featureless: bool = False,
     ):
         self.zoom           = zoom
+        # leave cloud / calm water out of the query (featureless_mask). Off: night sim 2026-10-20,
+        # 12 conditions x 16 frames, identical fixes with and without, +40 ms per frame
+        self.mask_featureless = bool(mask_featureless)
         # percentile stretch of the query before STHN (stretch_contrast)
         self.contrast_stretch = bool(contrast_stretch)
         self.conf_threshold = conf_threshold
@@ -787,6 +829,17 @@ class NightLocalizer:
                 return _FAIL
             query = query_bgr                     # legacy: unscaled (known to drift)
             qmask = None
+        if self.mask_featureless and qmask is not None:
+            qmask, textured = featureless_mask(query, qmask)
+            _FAIL["query"]["textured_share"] = round(textured, 3)
+            if textured < MIN_TEXTURED_SHARE:
+                _FAIL["reason"] = (f"only {textured:.0%} of the frame shows textured ground "
+                                   f"(cloud below, calm water): no position")
+                return _FAIL
+            if not self.contrast_stretch:
+                mean = cv2.mean(query, mask=qmask)[:3]
+                query = query.copy()
+                query[qmask == 0] = np.array(mean, dtype=np.uint8)
         if self.contrast_stretch:
             query = stretch_contrast(query, qmask)
 
