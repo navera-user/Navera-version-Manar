@@ -217,7 +217,7 @@ tilt and offset trade against each other and the pose solver picks a wrong pair 
 reprojection error; the matcher's sigma (5–25 m) does not know. On the 2 flights with few matches
 (05, 10) self-calibration never starts and the 30 m floor is published over 100–280 m errors.
 
-**Proposed (not applied; `day_subscriber`/`local_matcher` untouched): pose–attitude guard.** Use
+**Proposed, replayed on the runs above (applied since, see below): pose–attitude guard.** Use
 the pose position only when its tilt agrees with the tilt the attitude says the frame has —
 for frames straightened with the IMU, about 0° — within 4°; otherwise keep the frame centre
 (not refuse: refusing the match instead loses 13 % of the fixes overall — 47 % on flight 01,
@@ -243,6 +243,37 @@ tan(attitude) is 141 m — with the IMU straightening the frame first it would n
 Guard threshold 3° / 5°: floor 0.999 / 0.999, self-cal 0.997 / 0.996, 3 / 2 fixes > 100 m. GPS phase 10 % / 50 % of the fixes (guard 4°): self-cal 0.995 / 0.998,
 the 30 m floor 0.999 in all cases; as-is with 10 % GPS: 0.966, 51 wrong fixes inside 3σ.
 
+**Applied (VL-1, 2026-10-20): `pose_tilt_guard_deg` (default 4; `local_matcher.refine_with_pose`).**
+`day_subscriber` gives the matcher the frame's tilt by its attitude (0 for a frame straightened
+with the IMU or without attitude, else `tilt_deg`); a consistent pose further than 4° from it
+is not used: the frame centre is published (status `position_from`, `pose_guard`). Re-measured
+through the real code path (`uavvisloc_eval.py --pose-tilt-guard 4`, the photo's recorded
+attitude tilt as the expected tilt since the photos are not straightened; new runs, same
+priors and field of view; `f*_guard4.json`, `table_guard4_2026-10-20.txt`; 06_0099–0180 excluded):
+
+| Flight | Accepted | Median / p90 / max (m) | > 100 m | Pose kept / guarded | Floor 30 m | Self-cal (f, b) | > 100 m beyond 3σ: floor / self-cal |
+|---|---|---|---|---|---|---|---|
+| 03 | 694 | 12.2 / 23 / 55 | 0 | 663 / 31 | 1.000 | 1.000 (1.6, 11 m) | 0 / 0 |
+| 04 | 660 | 14.9 / 36 / 119 | 1 | 614 / 46 | 0.998 | 0.976 (2.2, 13 m) | 1 / 1 |
+| 01 | 164 | 20.1 / 43 / 76 | 0 | 85 / 79 | 1.000 | 1.000 (2.5, 21 m) | 0 / 0 |
+| 05 | 48 | 23.8 / 46 / 98 | 0 | 25 / 23 | 0.979 | 0.971 (not calibrated) | 0 / 0 |
+| 06 | 207 | 17.1 / 32 / 65 | 0 | (*) | 1.000 | 0.993 (1.1, 15 m) | 0 / 0 |
+| 08 | 284 | 18.1 / 36 / 62 | 0 | 241 / 43 | 1.000 | 1.000 (3.4, 20 m) | 0 / 0 |
+| 10 | 7 | 21.6 / 32 / 45 | 0 | 1 / 6 | 1.000 | 1.000 (not calibrated) | 0 / 0 |
+| 11 | 535 | 21.8 / 39 / 77 | 0 | 503 / 32 | 1.000 | 1.000 (3.2, 18 m) | 0 / 0 |
+| **All** | 2599 | 16.0 / 34 / 119 | **1** | | **0.999** | **0.993** | **1 / 1** |
+
+(*) flight 06 counts include the excluded photos: 256 accepted, 114 guarded. Before (same table,
+guard off): 70 fixes > 100 m, floor 0.969, self-cal 0.990, 70 / 13 hidden. The one fix left is
+04_0420 again (attitude 14.6°, pose 7.2°: the unstraightened centre, 119 m — a bench artefact).
+Self-cal 0.993 instead of the 0.998 replayed: the GPU matcher is not bit-reproducible between
+runs (inliers differ by a few), flight 04's calibration came out tighter (f 2.2 vs 2.9) and 11 of
+its fixes fall just outside 3σ, none wrong. GPS phase 10 %: self-cal 0.984, floor 0.999.
+Screen bench (`replay_gyro_heading.py`, clear_v20 / clear_v60 / heavyrain07_v20, `--hfov 100`,
+the render's field of view): guard on = identical to no pose at all (median 2.7 / 3.5 / 4.0 m,
+max 6 / 10 / 15 m, 0 wrong); guard off every clear fix 280–292 m off (the pose of a filmed
+screen is meaningless). No new wrong fix.
+
 For reference, the frame centre (the first flight-03 run, before `--position`): 21.9 m median,
 2 fixes > 100 m, floor 30 m 0.998, self-cal 0.995 (flight 03 alone reproduces the earlier
 0.998 within 3σ, median σ 17–18 m).
@@ -253,7 +284,7 @@ For reference, the frame centre (the first flight-03 run, before `--position`): 
 - In-flight self-calibration plus the 30 m floor before calibration is **safe only with the
   pose–attitude guard**: then 0.999 (floor) / 0.998 (self-cal) within 3σ pooled, every flight
   ≥ 0.993, and no fix over 100 m hidden by its stated 3σ except the eval artefact above.
-  **As the code is today it is not safe**: 70 accepted fixes 100–325 m off (2.7 %), all 70
+  **Without the guard (the code before VL-1) it is not safe**: 70 accepted fixes 100–325 m off (2.7 %), all 70
   beyond the 30 m floor's 3σ and 13 beyond the self-calibrated 3σ; flights 05 and 10 at
   0.81 / 0.83 because too few matches arrived while GPS was trusted to calibrate. The earlier
   flight-03 result (0.998) holds only for the frame centre; with the pose (product) it is 0.992
