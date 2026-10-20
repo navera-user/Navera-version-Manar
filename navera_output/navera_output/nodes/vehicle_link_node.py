@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-vehicle_link_node.py — read the vehicle's own sensors from its autopilot (MAVLink).
+"""vehicle_link_node.py — read the vehicle's own sensors from its autopilot (MAVLink).
 
 For installations where NAVERA uses the vehicle's sensors instead of (or as well as)
 its own: any MAVLink autopilot (ArduPilot, PX4, ...). Publishes, stamped on receipt:
@@ -120,7 +119,8 @@ class VehicleLink(Node):
                     m.close()
                     continue
                 self.autopilot = {mavutil.mavlink.MAV_AUTOPILOT_ARDUPILOTMEGA: "ArduPilot",
-                                  mavutil.mavlink.MAV_AUTOPILOT_PX4: "PX4"}.get(hb.autopilot, f"MAVLink autopilot {hb.autopilot}")
+                                  mavutil.mavlink.MAV_AUTOPILOT_PX4: "PX4"}.get(
+                                      hb.autopilot, f"MAVLink autopilot {hb.autopilot}")
                 self.get_logger().info(f"connected to {self.autopilot} (system {m.target_system})")
                 raw_write = m.write
                 # two writers (this loop's heartbeats, the relay): never interleave packets
@@ -151,7 +151,8 @@ class VehicleLink(Node):
 
     def _relay(self):
         """Pass MAVLink packets from local NAVERA nodes (vehicle_output's GPS_INPUT) to the
-        autopilot over this node's link."""
+        autopilot over this node's link.
+        """
         while not self._stop.is_set():
             try:
                 data, _ = self._relay_sock.recvfrom(4096)
@@ -170,7 +171,8 @@ class VehicleLink(Node):
     @staticmethod
     def _wait_autopilot(m, timeout):
         """The first heartbeat FROM AN AUTOPILOT (a ground station, camera or another
-        companion on a shared link also sends heartbeats): sets the link's target to it."""
+        companion on a shared link also sends heartbeats): sets the link's target to it.
+        """
         from pymavlink import mavutil
         end = time.monotonic() + timeout
         while time.monotonic() < end:

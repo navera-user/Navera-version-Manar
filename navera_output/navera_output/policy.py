@@ -232,7 +232,8 @@ def bridge(cfg: Config, held: Optional[Held], now: float) -> Output:
     With the ground velocity measured when it was held, the position moves along it and the
     accuracy grows by the velocity error, the heading error x speed and half the unseen
     acceleration x t^2. Without one the position stays and the accuracy grows by
-    max_speed_mps x t: the vehicle can have gone that far, in any direction."""
+    max_speed_mps x t: the vehicle can have gone that far, in any direction.
+    """
     if held is None or not cfg.forward_degraded or cfg.bridge_max_s <= 0:
         return Output(KIND_NONE, "no position to bridge")
     dt = now - held.t
@@ -263,7 +264,8 @@ def bridge(cfg: Config, held: Optional[Held], now: float) -> Output:
 def for_nmea(out: Output, allow_degraded: bool = False) -> Output:
     """What goes out over NMEA. NMEA carries no accuracy an autopilot uses (ArduPilot fuses
     GGA/RMC with its own ~0.5 m GPS noise): an estimated (vision) position is sent as
-    "no fix" unless explicitly allowed."""
+    "no fix" unless explicitly allowed.
+    """
     if out.kind == KIND_ESTIMATED and not allow_degraded:
         return Output(KIND_NONE, "degraded position not sent over NMEA (no accuracy field)")
     return out
