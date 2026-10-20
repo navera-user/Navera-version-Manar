@@ -157,15 +157,34 @@ else:
     K = np.array(cal["camera_matrix"]).reshape(3, 3)
     D = np.array(cal["distortion"]).reshape(4, 1)
     cx0, cy0, cw, ch = cal.get("crop") or (0, 0, cal["image_width"], cal["image_height"])
-    OW, OH = 1200, ch
+    OW, OH = cal.get("out_size") or (1200, ch)
     fo = (OW / 2) / math.tan(math.radians(a.hfov / 2))
     m1, m2 = cv2.fisheye.initUndistortRectifyMap(K, D, np.eye(3), np.array([[fo, 0, OW / 2], [0, fo, OH / 2], [0, 0, 1]]),
                                                  (OW, OH), cv2.CV_16SC2)
-    cap = cv2.VideoCapture(a.device, cv2.CAP_V4L2)
-    cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
+    if a.device.startswith("rtsp://"):                        # a network camera (e.g. the Hikvision's visible channel)
+        os.environ.setdefault("OPENCV_FFMPEG_CAPTURE_OPTIONS", "rtsp_transport;tcp")
+        cap = cv2.VideoCapture(a.device, cv2.CAP_FFMPEG)
+    else:
+        cap = cv2.VideoCapture(a.device, cv2.CAP_V4L2)
+        cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
     cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+stop = threading.Event()
+net_frames = None
+if a.source == "strip" and a.device.startswith("rtsp://"):
+    # RTSP decodes in FFmpeg's own buffer: a thread keeps only the newest frame and its arrival time,
+    # so a slow NAVERA frame never makes the stream fall behind or stall
+    net_frames = [(None, 0.0), 0.0]                           # [(newest frame, arrival), arrival of the last used]
+
+    def _net_reader():
+        while not stop.is_set():
+            ok, f = cap.read()
+            if ok:
+                net_frames[0] = (f, time.time())
+            else:
+                time.sleep(0.05)
+    threading.Thread(target=_net_reader, daemon=True).start()
 
 if a.matcher == "learned":
     from day_pkg.learned_matcher import LearnedMatcher
@@ -175,7 +194,6 @@ else:
     M = LocalMatcher(a.match_area or a.area, zoom=a.match_zoom, retry_features=a.retry_features)
 shown = []                                 # (time shown, map px, map py): what the screen showed
 M.tiles.around(a.lat, a.lon, a.radius + 1500)                  # warm the map features
-stop = threading.Event()
 hud = {}
 
 
@@ -218,6 +236,15 @@ def grab():
                 last_frame_t[0] = t_arr
                 return img, t_arr - t_start[0] - a.latency
             time.sleep(0.02)
+        return None, 0.0
+    if net_frames is not None:                                 # network camera: the reader thread's newest frame
+        while not stop.is_set():
+            f, t_arr = net_frames[0]
+            if f is not None and t_arr > net_frames[1]:
+                net_frames[1] = t_arr
+                img = f[cy0:cy0 + ch, cx0:cx0 + cw]
+                return cv2.remap(img, m1, m2, cv2.INTER_LINEAR), t_arr - t_start[0] - a.latency
+            time.sleep(0.01)
         return None, 0.0
     # the driver queues frames while NAVERA works: drain the queue (a frame that waited
     # is late), the time is taken when the fresh one arrives
