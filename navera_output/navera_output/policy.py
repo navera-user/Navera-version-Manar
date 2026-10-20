@@ -31,9 +31,11 @@ The vehicle's autopilot treats whatever NAVERA sends as a GPS. The rules:
 import json
 import math
 
-from navera_common.geo import dead_reckon
 from dataclasses import dataclass
 from typing import Optional
+
+from navera_common.covariance import horizontal_sigma
+from navera_common.geo import dead_reckon
 
 # navera_msgs NavStatus states (kept literal so this module needs no ROS).
 STATE_NO_FIX = 1
@@ -184,13 +186,13 @@ def decide(cfg: Config, state: Optional[int], status_age_s: Optional[float],
         common.update(vel_n_mps=float(gps_vel_ne[0]), vel_e_mps=float(gps_vel_ne[1]))
 
     if state == STATE_FIX:
-        return Output(KIND_FIX, "fix", sigma_h_m=math.sqrt(max(cov[0], cov[4])) + lag_sigma,
+        return Output(KIND_FIX, "fix", sigma_h_m=horizontal_sigma(cov) + lag_sigma,
                       sigma_v_m=math.sqrt(cov[8]) if cov[8] > 0 else math.nan,
                       satellites=int(sats) if isinstance(sats, int) else None, **common)
     if not cfg.forward_degraded:
         return Output(KIND_NONE, "degraded position not forwarded (forward_degraded=false)")
     known = getattr(pos, "position_covariance_type", 0) != 0          # 0 = UNKNOWN
-    stated = math.sqrt(max(cov[0], cov[4])) if known else math.nan
+    stated = horizontal_sigma(cov) if known else math.nan
     candidates = [x for x in (cfg.degraded_sigma_m, stated) if math.isfinite(x) and x > 0]
     if not candidates:
         return Output(KIND_NONE, "degraded position with no stated accuracy")
