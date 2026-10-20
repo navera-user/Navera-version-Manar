@@ -31,6 +31,24 @@ inliers **and** the fitted scale within `local_scale_tol` of the one the altitud
   Visual-odometry steps grow it by max(10 %, the frame height's own relative uncertainty) of
   the distance, and are used only when the previous frame's position was published. With retrieval, after `max_consecutive_rejects` the
   prior is dropped.
+- Gyro heading carry (`gyro_heading`, day_pkg/gyro_heading.py): for frames without a heading in
+  their meta (no attitude at the exposure), the heading vision measures on a good fix (the
+  matcher's fitted rotation, ≥ `gyro_heading_min_inliers`; also on the GPS-check matches) is
+  carried on by integrating the gyro's rate about the vertical (`gyro_imu_topic`, empty = the IMU
+  of `NAVERA_SENSOR_SOURCE`). The carry then follows the path that heading draws, from the
+  instant the track's velocity was fitted at (on a turn the fit is a chord, tens of degrees
+  behind), instead of straight on. Its 1 σ grows from `gyro_heading_reset_sigma_deg` with
+  `gyro_heading_bias_dps` × t and the rate noise; past `gyro_heading_max_sigma_deg` (or across a
+  gap in the gyro samples) there is no heading and the carry goes straight on as before. A vision
+  heading more than 3 σ from a valid carried one is not taken. A frame meta heading (IMU
+  attitude) always has priority. Replay of the screen bench's real recorded frames through this
+  node (`navera_tools/bench/replay_gyro_heading.py`, 900 m circuit, GPS denied from 30 s, gyro
+  simulated: route rate + 0.05 deg/s bias + noise; vision heading = route + the real fitted-rotation
+  error), output error median / p90 / max (m), off → on: heavy rain 60 m/s 6.5/61/210 → 5.1/14/54
+  (dead-reckoned max 210 → 23; the 54 m is a wrong fix both have), clouds 60 m/s 27.5/92/340 →
+  27.5/54/75 (5 → 0 outputs beyond 3 σ), heavy rain 20 m/s 4.5/11/20 → 4.1/7.8/15; clear, flare,
+  vibration, wind unchanged within ±2 m. Wrong fixes (> 50 m): identical frames in both arms in all
+  9 conditions (0 new). Gyro bias 0.5 deg/s: same results. Not yet measured on a real gyro in flight.
 - Whole-map search (no prior) is disabled by default (`allow_global_search`): its score does
   not separate good from bad matches.
 
@@ -79,6 +97,11 @@ per-tile cache build (cosine ≥ 0.9996). Progress is printed as JSON lines.
 | `camera_hfov_deg` | NaN (`NAVERA_DAY_HFOV_DEG`) | day camera horizontal field of view; unknown = retrieval |
 | `local_min_inliers` | 8 | geometric inliers required (the 2026-10-01 benchmark below was measured with 6) |
 | `local_retry_features` | 4000 | SIFT: a frame that fills its 1500-feature budget and finds too few inliers is described again with this many (heavy rain; 0 = off) |
+| `gyro_heading` | true | gyro heading carry between fixes for frames without attitude (above) |
+| `gyro_imu_topic` | "" | sensor_msgs/Imu with the gyro (angular_velocity; orientation for the vertical when given); "" = `NAVERA_SENSOR_SOURCE`'s |
+| `gyro_heading_bias_dps` / `gyro_heading_noise_dps_rthz` | 0.1 / 0.02 | gyro bias left after calibration, rate noise density: the carried heading's growing σ |
+| `gyro_heading_reset_sigma_deg` / `gyro_heading_max_sigma_deg` | 2 / 10 | σ of a vision heading; beyond the max (~100 s after the last good fix) no heading |
+| `gyro_heading_min_inliers` | 20 | inliers of a fix whose rotation restarts the carried heading |
 | `local_scale_tol` | 0.15 | accepted deviation of the fitted scale from the altitude's |
 | `local_sigma_m` | 30 | stated accuracy (1 σ) of a local match |
 | `local_max_radius_m` | 1500 | largest search radius while widening after failed frames |

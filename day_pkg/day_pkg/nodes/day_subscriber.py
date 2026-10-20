@@ -39,11 +39,12 @@ from navera_common.lifecycle import die_with_parent
 from navera_common.params import declare_float
 from navera_common.pairing import FramePairer, exposure_stamp, stamp_ns
 from navera_common.prior import GpsPrior
-from rclpy.executors import ExternalShutdownException
+from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
+from rclpy.executors import ExternalShutdownException, MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
 
-from sensor_msgs.msg import Image, NavSatFix, NavSatStatus, Range
+from sensor_msgs.msg import Image, Imu, NavSatFix, NavSatStatus, Range
 from std_msgs.msg import String, Int32, Bool
 from cv_bridge import CvBridge
 from navera_msgs.msg import NavStatus, PositionEstimate
@@ -53,6 +54,7 @@ from navera_msgs.msg import NavStatus, PositionEstimate
 from day_pkg.nodes.day_localizer import IMAGES_DIR, DayLocalizer, haversine_m
 from day_pkg.fix_sigma import SigmaCalibration, day_fix_sigma_m
 from day_pkg.frame_odometry import FrameOdometry
+from day_pkg.gyro_heading import GyroHeading, heading_rate_dps
 from day_pkg.local_matcher import LocalMatcher
 from day_pkg.vision_nav import VisionNavigator, _en, _move, kinematic_margin_m
 
@@ -186,6 +188,22 @@ class DaySubscriber(Node):
         # matcher searches the heading (every 30 deg) when the IMU's fails — simulation
         # 2026-10-19, 300 m: heading 45 deg wrong 0/30 -> 30/30 located, 0 wrong
         self.declare_parameter("local_heading_search", False)
+        # frames without a heading in their meta (no attitude at the exposure): the carry between
+        # fixes turns with the heading the vision measured on the last good fix (the matcher's
+        # rotation, >= gyro_heading_min_inliers) carried on by the gyro's rate about the vertical
+        # (gyro_imu_topic; "" = the IMU of NAVERA_SENSOR_SOURCE), until its 1-sigma (vision
+        # gyro_heading_reset_sigma_deg, + bias x time, + noise random walk) passes
+        # gyro_heading_max_sigma_deg: then straight on, as without it. Replay of the screen bench's real
+        # frames through this node (2026-10-20, navera_tools/bench/replay_gyro_heading.py): heavy rain
+        # 60 m/s max 210 -> 54 m (dead-reckoned 210 -> 23 m), clouds 340 -> 75 m, 0 new wrong fixes in 9
+        # conditions; no effect on frames with an attitude heading.
+        self.declare_parameter("gyro_heading", True)
+        self.declare_parameter("gyro_imu_topic", "")
+        declare_float(self, "gyro_heading_bias_dps", 0.1)
+        declare_float(self, "gyro_heading_noise_dps_rthz", 0.02)
+        declare_float(self, "gyro_heading_reset_sigma_deg", 2.0)
+        declare_float(self, "gyro_heading_max_sigma_deg", 10.0)
+        self.declare_parameter("gyro_heading_min_inliers", 20)
         # a height measured by a match is trusted only from a strong match confirmed by
         # the next one (a wrong match must not set the altitude the next frames are judged by)
         self.declare_parameter("altitude_min_inliers", 20)
@@ -229,6 +247,13 @@ class DaySubscriber(Node):
         self.dr_max_sigma_m      = float(self.get_parameter("dead_reckon_max_sigma_m").value)
         self.track = TrackVelocity(accel_mps2=float(self.get_parameter("dead_reckon_accel_mps2").value))
         self._track_heading = None             # frame heading (IMU) at the last measured fix
+        self.gyro = None                        # GyroHeading when gyro_heading is on
+        if bool(self.get_parameter("gyro_heading").value):
+            self.gyro = GyroHeading(float(self.get_parameter("gyro_heading_bias_dps").value),
+                                    float(self.get_parameter("gyro_heading_noise_dps_rthz").value),
+                                    float(self.get_parameter("gyro_heading_reset_sigma_deg").value),
+                                    float(self.get_parameter("gyro_heading_max_sigma_deg").value))
+        self.gyro_min_inliers = int(self.get_parameter("gyro_heading_min_inliers").value)
         self._dr_sigma = None
         self._anchor_sigma = None               # 1-sigma (m) of the anchor position, None: unknown
         p_ = lambda n: self.get_parameter(n).value               # noqa: E731
@@ -409,6 +434,21 @@ class DaySubscriber(Node):
                                history=HistoryPolicy.KEEP_LAST, depth=1)
         self.sub_start = self.create_subscription(
             Bool, self.get_parameter("start_topic").value, self.on_start_cmd, start_qos)
+        if self.gyro is not None:
+            # read in its own thread (main(): multi-threaded executor): a frame takes 0.5-1 s
+            # and the gyro must not stop being integrated meanwhile
+            imu_topic = str(self.get_parameter("gyro_imu_topic").value).strip()
+            if not imu_topic:
+                try:
+                    from navera_common.vehicle import sensor_topics
+                    imu_topic = sensor_topics()["imu_topic"]
+                except ValueError as e:
+                    imu_topic = "/navera/sensors/imu"
+                    self.get_logger().warn(f"gyro heading: {e}; reading {imu_topic}")
+            from navera_common.qos import SENSOR_QOS
+            self.create_subscription(Imu, imu_topic, self.on_imu, SENSOR_QOS,
+                                     callback_group=MutuallyExclusiveCallbackGroup())
+            self.get_logger().info(f"gyro heading carry ON: {imu_topic}")
 
         # ── Handshake "ready" ───────────────────────────────────
         # Le modèle est chargé ET les subscriptions sont en place → on signale au
@@ -435,6 +475,15 @@ class DaySubscriber(Node):
         pair = self._pairer.add_image(stamp_ns(msg.header.stamp), img)
         if pair is not None:
             self._dispatch(*pair)
+
+    def on_imu(self, msg: Imu):
+        """A gyro sample (its sensor time): the heading rate, integrated by self.gyro."""
+        t = msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
+        if t <= 0:
+            return
+        w, q = msg.angular_velocity, msg.orientation
+        att = None if msg.orientation_covariance[0] == -1.0 else (q.x, q.y, q.z, q.w)
+        self.gyro.add_rate(t, heading_rate_dps((w.x, w.y, w.z), att))
 
     def on_nav_status(self, msg: NavStatus):
         self._gps_prior.arbiter(msg.active_source == NavStatus.SOURCE_GPS
@@ -490,6 +539,8 @@ class DaySubscriber(Node):
         self._anchor_lat = self._anchor_lon = self._anchor_time = None
         self._last_measured_time = None
         self.track.reset()
+        if self.gyro is not None:
+            self.gyro.clear()
         state_store.save("day_anchor", {"lat": None, "lon": None})   # forgotten too
         self._rejects_in_row = 0
         self.get_logger().info("[day] mission rewind — tracking state reset")
@@ -745,6 +796,7 @@ class DaySubscriber(Node):
         if res.get("accepted"):
             self._check_fix = (float(res["predicted_lat"]), float(res["predicted_lon"]), time.time())
             ns = meta.get("image_stamp_ns")
+            self._gyro_reset(int(ns) / 1e9 if ns else time.time(), res)   # heading known at the GPS loss
             g = self._gps_hist.at(int(ns) / 1e9) if ns else None
             if g is not None:                       # no GPS at the frame's instant: no sample
                 self.map_bias.bias_sample(self._check_fix[:2], g, self._heading_for_match(meta))
@@ -859,8 +911,12 @@ class DaySubscriber(Node):
         t_last = self.track.last_time()
         if t_last is None:
             return None
-        h = self._heading_for_match(meta)
+        h, h_sig = self._carry_heading(meta)
         t = self._frame_time(meta)
+        if h_sig > 0.0:
+            p = self._gyro_carry(t, t_last, h_sig)
+            if p is not None:
+                return p
         c = self._carry
         if c is not None and c[2] >= t_last:
             lat, lon, tc, hc, ve, vn, sig = c
@@ -879,11 +935,52 @@ class DaySubscriber(Node):
             # the unseen acceleration grows with the time since the last MEASURED fix (not
             # of each 1 s step: that sum is linear and was 5x too small after 100 s)
             since_v = tc - (self._vel_epoch if self._vel_epoch is not None else t_last)
-            return (p[0], p[1], sig + self.track.sigma_growth(sig_v, speed, dt, max(0.0, since_v), turn))
-        turn = 0.0
-        if h is not None and self._track_heading is not None:
-            turn = (h - self._track_heading + 180.0) % 360.0 - 180.0
-        return self.track.propagate(t, turn)
+            return (p[0], p[1], sig + self.track.sigma_growth(sig_v, speed, dt, max(0.0, since_v), turn)
+                    + 0.5 * math.radians(h_sig) * speed * dt)
+        turn, hv = 0.0, self._velocity_heading(h_sig)
+        if h is not None and hv is not None:
+            turn = (h - hv + 180.0) % 360.0 - 180.0
+        p = self.track.propagate(t, turn)
+        if p is not None and h_sig > 0.0:
+            # a gyro heading's error (its sigma at t) swings the carry sideways: half its reach
+            v = self.track.velocity(t_last + 1e-3)
+            p = (p[0], p[1], p[2] + 0.5 * math.radians(h_sig) * math.hypot(v[0], v[1]) * max(0.0, t - t_last))
+        return p
+
+    GYRO_STEP_S = 0.5
+
+    def _gyro_carry(self, t, t_last, h_sig):
+        """(lat, lon, sigma_m) carried to t along the path the gyro heading draws (each 0.5 s the
+        velocity turned by the heading change since the instant it was measured at), or None when
+        the gyro heading is not known all along. The turn is measured, not assumed at a constant
+        rate: no half-turn term in the stated accuracy, but the gyro heading's own error."""
+        c = self._carry
+        if c is not None and c[2] >= t_last:
+            lat, lon, t0, h0, ve, vn, sig = c
+            v = self.track.velocity(t_last + 1e-3)
+            sig_v = v[2] if v is not None else 3.0
+            since_v = t0 - (self._vel_epoch if self._vel_epoch is not None else t_last)
+        else:
+            v, tm, last = self.track.velocity(t), self.track.fit_time(), self.track.last_fix()
+            g = self.gyro.at(tm) if v is not None and tm is not None else None
+            if g is None or last is None:
+                return None
+            (ve, vn, sig_v), h0, (t0, lat, lon, sig), since_v = v, g[0], last, 0.0
+        if h0 is None:
+            return None
+        n = max(1, int(math.ceil(max(0.0, t - t0) / self.GYRO_STEP_S)))
+        de = dn = 0.0
+        for i in range(n):
+            g = self.gyro.at(t0 + (t - t0) * (i + 0.5) / n)
+            if g is None:
+                return None
+            a = math.radians(g[0] - h0)
+            de += (ve * math.cos(a) + vn * math.sin(a)) * (t - t0) / n
+            dn += (-ve * math.sin(a) + vn * math.cos(a)) * (t - t0) / n
+        dt, speed = max(0.0, t - t0), math.hypot(ve, vn)
+        p = _move((lat, lon), de, dn)
+        return (p[0], p[1], sig + self.track.sigma_growth(sig_v, speed, dt, max(0.0, since_v))
+                + 0.5 * math.radians(h_sig) * speed * dt)
 
     def _keep_carry_velocity(self, lat, lon, t, meta, sigma, t_vel) -> None:
         """A point was just added to the track. A point after a gap of more than 5 s leaves the track
@@ -907,8 +1004,8 @@ class DaySubscriber(Node):
             return
         if v is not None:
             self._vel_epoch = None
-        h = self._heading_for_match(meta)
-        hc = self._carry[3] if self._carry is not None else self._track_heading
+        h, h_sig = self._carry_heading(meta)
+        hc = self._carry[3] if self._carry is not None else self._velocity_heading(h_sig)
         ve, vn = (self._carry[4], self._carry[5]) if self._carry is not None else (v[0], v[1])
         if h is not None and hc is not None:
             a = math.radians((h - hc + 180.0) % 360.0 - 180.0)
@@ -1026,6 +1123,35 @@ class DaySubscriber(Node):
             return float(meta["heading_deg"])
         except (TypeError, ValueError):
             return None
+
+    def _carry_heading(self, meta):
+        """(heading_deg or None, sigma_deg) the carry turns with: the frame's (its attitude; its
+        error is in the track's heading term, sigma 0), else the gyro-carried vision heading."""
+        h = self._heading_for_match(meta)
+        if h is not None:
+            return h, 0.0
+        g = self.gyro.at(self._frame_time(meta)) if getattr(self, "gyro", None) is not None else None
+        return (g[0], g[1]) if g is not None else (None, 0.0)
+
+    def _velocity_heading(self, h_sig: float):
+        """The heading the track's velocity was measured at, in the same reference as the carry's
+        heading: a gyro heading (h_sig > 0) at the velocity fit's own instant (on a turn the fit is
+        a chord: replay of the screen bench's heavy rain at 60 m/s, the velocity 37 m/s off after a
+        20 s turn), else the frame heading at the last fix (as before)."""
+        if h_sig > 0.0 and getattr(self, "gyro", None) is not None:
+            tm = self.track.fit_time()
+            g = self.gyro.at(tm) if tm is not None else None
+            if g is not None:
+                return g[0]
+        return self._track_heading
+
+    def _gyro_reset(self, t_fix, result) -> None:
+        """A good fix's fitted rotation (the frame top's azimuth, measured by vision) restarts the
+        gyro heading (GyroHeading.reset refuses one that disagrees with a valid carried heading)."""
+        if getattr(self, "gyro", None) is None or result.get("rotation_deg") is None \
+                or int(result.get("inliers") or 0) < self.gyro_min_inliers:
+            return
+        self.gyro.reset(t_fix, float(result["rotation_deg"]))
 
     def _publish_vision_altitude(self, meta, result, status):
         """The height above ground this match measured: the frame was scaled for
@@ -1309,7 +1435,8 @@ class DaySubscriber(Node):
                 ns = meta.get("image_stamp_ns")         # the photo's instant, not the processing's
                 t_vel, t_fix = self.track.last_time(), (int(ns) / 1e9 if ns else t_now)
                 self.track.add(t_fix, out_lat, out_lon, fix_sigma)
-                self._track_heading = self._heading_for_match(meta)
+                self._gyro_reset(t_fix, result)
+                self._track_heading = self._carry_heading(meta)[0]
                 self._keep_carry_velocity(out_lat, out_lon, t_fix, meta, self._dr_sigma, t_vel)
             else:
                 self._carry, self._vel_epoch = None, None
@@ -1385,7 +1512,14 @@ def main(args=None):
     node = None
     try:
         node = DaySubscriber()   # may abort if a signal lands during model load
-        rclpy.spin(node)
+        if node.gyro is not None:
+            # the gyro in its own callback group, read while a frame is processed; every other
+            # callback stays in the node's default (mutually exclusive) group, serial as before
+            ex = MultiThreadedExecutor(num_threads=2)
+            ex.add_node(node)
+            ex.spin()
+        else:
+            rclpy.spin(node)
     except (KeyboardInterrupt, ExternalShutdownException):
         pass
     finally:
