@@ -11,13 +11,30 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+"""pep257 over this package, with the repository's docstring convention (/.flake8 [pydocstyle])."""
+import configparser
+import os
 
 from ament_pep257.main import main
 import pytest
+
+_PKG = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_REPO_CONFIG = os.path.join(os.path.dirname(_PKG), '.flake8')
+
+
+def _convention_args():
+    """Return the ament_pep257 options of the repository config ([] = ament's defaults)."""
+    cfg = configparser.ConfigParser()
+    if not cfg.read(_REPO_CONFIG) or not cfg.has_section('pydocstyle'):
+        return []
+    sect = cfg['pydocstyle']
+    args = ['--convention', sect.get('convention', 'ament')]
+    ignore = [c.strip() for c in sect.get('add-ignore', '').split(',') if c.strip()]
+    return args + (['--add-ignore'] + ignore if ignore else [])
 
 
 @pytest.mark.linter
 @pytest.mark.pep257
 def test_pep257():
-    rc = main(argv=['.', 'test'])
+    rc = main(argv=_convention_args() + ['--', _PKG])
     assert rc == 0, 'Found code style errors / warnings'

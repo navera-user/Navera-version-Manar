@@ -1,0 +1,40 @@
+# NAVERA lint configuration — the single source of truth for Python style.
+#
+# Used by plain `flake8` from the repository root, and by every package's
+# test/test_flake8.py and test/test_pep257.py (which pass it to ament_flake8 /
+# read the [pydocstyle] section for ament_pep257).
+#
+# Based on ament's own defaults (ament_flake8.ini, ament_pep257 "ament" convention)
+# with two measured differences that match how this code base is actually written:
+#
+# * max-line-length 120 (ament: 99). Of 21 250 lines of NAVERA Python, 973 exceed
+#   99 columns but only 158 exceed 120: the code is written to 120 columns.
+# * docstrings follow the Google convention (summary on the first line, D212;
+#   "Args:"/"Parameters:" sections without dashed underlines) and the summary
+#   sentence may wrap over several lines (D205/D415 waived). ament selects D213
+#   (summary on the second line), which the repository never uses.
+
+[flake8]
+# D codes only apply when flake8-docstrings is installed; they mirror [pydocstyle] below.
+extend-ignore = B902,C816,I202,D100,D101,D102,D103,D104,D105,D106,D107,D205,D404,D415
+docstring-convention = google
+import-order-style = google
+max-line-length = 120
+show-source = true
+statistics = true
+exclude =
+    .git,
+    .claude,
+    __pycache__,
+    build,
+    install,
+    log,
+    archive,
+    vision_pkg,
+    isaac_*
+
+# Read by the test_pep257.py files (ament_pep257 does not read config files):
+# --convention <convention> --add-ignore <add-ignore>
+[pydocstyle]
+convention = google
+add-ignore = D100,D101,D102,D103,D104,D105,D106,D107,D205,D404,D415

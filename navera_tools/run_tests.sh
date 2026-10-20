@@ -17,7 +17,7 @@ set -u
 # skipping directories colcon ignores (vendored / legacy code).
 mapfile -t UNIT < <(find . -path ./build -prune -o -path ./install -prune -o \
     -path '*/test/test_*.py' -print \
-  | grep -vE 'test_(flake8|pep257|copyright)\.py$' \
+  | grep -vE 'test_(flake8|pep257|copyright)(_[a-z0-9_]+)?\.py$' \
   | while read -r f; do
       pkg=$(echo "$f" | cut -d/ -f2)
       [ -e "$pkg/COLCON_IGNORE" ] || echo "$f"
