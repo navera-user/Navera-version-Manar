@@ -1,11 +1,17 @@
 #!/usr/bin/env python3
 """Camera delay for NAVERA_CAMERA_LATENCY_S: the screen flashes white, the camera (facing
-the screen) sees it some time later; the median of N flashes is printed.
+the screen) sees it some time later; N flashes.
 
     python3 navera_tools/bench/camera_latency.py [--device ...] [--crop top] [--flashes 20] [--calib camera.yaml]
 
-What is measured is screen + camera + USB + decoding: the screen's own delay (typically
+What is measured is screen + camera + USB up to the frame's ARRIVAL (cap.grab() returning);
+decoding (cap.retrieve()) comes after and is not included. The screen's own delay (typically
 10-30 ms for a desktop monitor) is included, so the camera's delay is at most the result.
+
+The delay model: the flash falls at a random point of a frame period T, so the first frame
+that shows it arrives after the delay plus a uniform 0..T wait. The median of the flashes is
+then the delay + T/2 (it over-estimated by half a frame period); the estimate written is
+median - T/2, T being the measured median interval between frames (the minimum is printed too).
 """
 import argparse
 import threading
@@ -66,7 +72,7 @@ for i in range(a.flashes):
     if hi - lo < 20:
         print(f"flash {i + 1}: the camera does not see the flash (brightness {lo:.0f} -> {hi:.0f})")
         continue
-    seen = [t for t, b in samples if t > t0 - 0.2 and b > (lo + hi) / 2]
+    seen = [t for t, b in samples if t > t0 and b > (lo + hi) / 2]      # after the flash only
     if seen:
         delays.append(seen[0] - t0)
         print(f"flash {i + 1}: {1000 * delays[-1]:.0f} ms")
@@ -75,14 +81,18 @@ th.join(2)
 cap.release()
 cv2.destroyAllWindows()
 if delays:
+    ts = np.array([t for t, _ in samples])
+    period = float(np.median(np.diff(ts))) if len(ts) > 2 else 0.0
+    est = max(0.0, float(np.median(delays)) - period / 2)
     print(f"delay screen -> NAVERA: median {1000 * np.median(delays):.0f} ms "
-          f"(min {1000 * min(delays):.0f}, max {1000 * max(delays):.0f}, {len(delays)} flashes) — "
-          f"NAVERA_CAMERA_LATENCY_S={np.median(delays):.2f} (includes the screen's own delay)")
+          f"(min {1000 * min(delays):.0f}, max {1000 * max(delays):.0f}, {len(delays)} flashes), frame period "
+          f"{1000 * period:.0f} ms — NAVERA_CAMERA_LATENCY_S={est:.3f} (median - period/2; includes the "
+          f"screen's own delay)")
     if a.calib:
         import yaml
         with open(a.calib) as f:
             d = yaml.safe_load(f)
-        d["latency_s"] = round(float(np.median(delays)), 3)
+        d["latency_s"] = round(est, 3)
         with open(a.calib, "w") as f:
             yaml.safe_dump(d, f, sort_keys=False)
         print(f"latency_s {d['latency_s']} written to {a.calib}")
