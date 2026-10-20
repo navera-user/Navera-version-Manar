@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-ros_gps_node.py — a GPS that is not NAVERA's own receiver, as NAVERA's GPS source.
+"""ros_gps_node.py — a GPS that is not NAVERA's own receiver, as NAVERA's GPS source.
 
 For installations without the box's GPS: the vehicle's ROS GPS (a boat's or robot's
 NavSatFix) or the autopilot's second GPS read by vehicle_link (/navera/vehicle/gps2).
