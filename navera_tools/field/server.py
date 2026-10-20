@@ -1224,6 +1224,14 @@ def _read_json(path):
         return None
 
 
+def camera_mode(choice: str, android_360: bool, strip_device: bool) -> str:
+    """'360' or 'strip' for NAVERA_FIELD_CAMERA=choice. auto: the strip webcam only if its device is there; a 360
+    camera switched on after the Jetson (2026-10-20 boot: strip mode for good) is waited for by Camera360."""
+    if choice in ("360", "strip"):
+        return choice
+    return "strip" if strip_device and not android_360 else "360"
+
+
 def insta360_android_mode():
     """True when the Insta360 is plugged in USB mode "Android" (full 360 + its own IMU)."""
     try:
@@ -1247,7 +1255,8 @@ def main():
     if choice == "none":
         camera = NoCamera()
         log(f"camera: none (NAVERA_FIELD_CAMERA=none)\ntests saved in {root}")
-    elif choice == "360" or (choice == "auto" and insta360_android_mode()):
+    elif camera_mode(choice, insta360_android_mode(),
+                     os.path.exists(os.environ.get("NAVERA_CAMERA_DEVICE", DEFAULT_DEVICE))) == "360":
         camera = Camera360()
         log(f"camera: Insta360 full 360 over USB (Android mode), own IMU, calibration {camera.cal_path}\ntests saved in {root}")
     else:

@@ -123,3 +123,10 @@ def test_one_button_start_and_end(tmp_path):
     m = sv.app_manifest("secretkey123")
     assert m["start_url"].endswith("k=secretkey123") and m["display"] == "standalone"
     assert all(os.path.exists(os.path.join(sv.HERE, "static", n)) for n, _ in sv.PUBLIC_FILES.values())
+
+
+def test_auto_waits_for_a_360_camera_switched_on_after_the_jetson():
+    assert sv.camera_mode("auto", android_360=False, strip_device=False) == "360"   # nothing yet: wait for the 360
+    assert sv.camera_mode("auto", android_360=True, strip_device=False) == "360"
+    assert sv.camera_mode("auto", android_360=False, strip_device=True) == "strip"
+    assert sv.camera_mode("strip", android_360=True, strip_device=False) == "strip"
