@@ -21,7 +21,7 @@ import cv2
 import numpy as np
 
 KINDS = ("clouds", "cloudshadow", "haze", "fog", "dust", "smoke", "rain", "heavyrain", "snow", "glare", "flare",
-         "dusk", "night", "birds", "planes", "drones", "insects", "wind")
+         "dusk", "night", "birds", "planes", "drones", "insects", "wind", "vibration")
 
 
 def _field(rng, h: int, w: int, scale: float) -> np.ndarray:
@@ -89,6 +89,41 @@ class Overlays:
             vy -= a * 2 * math.pi * f * 0.87 * math.sin(2 * math.pi * f * 0.87 * t + 1.7 * ph)
         return dx, dy, vx, vy
 
+    def _vibration(self, out: np.ndarray, t: float, amount: float) -> np.ndarray:
+        """Airframe vibration as the camera records it, with the ground point under the screen centre unchanged
+        (so the bench truth does not depend on the frame time, unlike 'wind'): engine/rotor vibration faster than
+        the exposure is a SYMMETRIC motion blur (no mean shift), its direction and length changing with the
+        flight (gusts every ~8 s); turbulence turns the camera about its axis (+-0.3-2 deg at 3-12 Hz) with the
+        rotational blur of that rate over a 1/60 s exposure. Pitch/roll that moves the scene is 'wind'."""
+        h, w = out.shape[:2]
+        out = np.clip(out, 0, 255).astype(np.uint8)          # uint8 warps: ~4x faster than float32
+        gust = 1.0 + 1.5 * max(0.0, math.sin(2 * math.pi * t / 8.0)) ** 8
+        L = int(round((4 + 36 * amount) * gust * (0.7 + 0.3 * math.sin(2 * math.pi * 0.37 * t))))
+        if L >= 3:
+            # the blur at half resolution (a long kernel at full size took 270 ms a frame), the detail it keeps
+            # is the blur's own scale anyway
+            ang = math.radians(30 + 70 * math.sin(2 * math.pi * 0.11 * t))
+            Lh = max(3, L // 2)
+            k = np.zeros((Lh | 1, Lh | 1), np.float32)
+            c = (Lh | 1) // 2
+            cv2.line(k, (int(round(c - c * math.cos(ang))), int(round(c - c * math.sin(ang)))),
+                     (int(round(c + c * math.cos(ang))), int(round(c + c * math.sin(ang)))), 1.0, 1)
+            half = cv2.resize(out, (w // 2, h // 2), interpolation=cv2.INTER_AREA)
+            half = cv2.filter2D(half, -1, k / max(float(k.sum()), 1.0), borderType=cv2.BORDER_REFLECT)
+            out = cv2.resize(half, (w, h), interpolation=cv2.INTER_LINEAR)
+        amp = (0.3 + 1.7 * amount) * gust
+        th = amp * sum(math.sin(2 * math.pi * f * t + ph) / (1 + 0.6 * i)
+                       for i, (f, ph) in enumerate(((3.1, 0.2), (5.3, 1.3), (8.9, 2.2), (11.7, 0.9))))
+        om = amp * sum(2 * math.pi * f * math.cos(2 * math.pi * f * t + ph) / (1 + 0.6 * i)
+                       for i, (f, ph) in enumerate(((3.1, 0.2), (5.3, 1.3), (8.9, 2.2), (11.7, 0.9))))
+        sweep = om / 60.0                                   # degrees turned during a 1/60 s exposure
+        steps = np.linspace(-sweep / 2, sweep / 2, 3) if abs(sweep) > 0.05 else [0.0]
+        acc = np.zeros(out.shape, np.uint16)
+        for st in steps:
+            M = cv2.getRotationMatrix2D((w / 2.0, h / 2.0), th + st, 1.0)
+            acc += cv2.warpAffine(out, M, (w, h), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
+        return acc.astype(np.float32) / len(steps)
+
     # ── the frame ────────────────────────────────────────────────────────
     def draw(self, img: np.ndarray, t: float, kinds: Iterable[str], amount: float = 0.3):
         """(image with the conditions, (dx, dy) scene shift in px: non-zero only with wind)."""
@@ -113,6 +148,8 @@ class Overlays:
                 acc += cv2.warpAffine(img, M, (w, h), flags=cv2.INTER_NEAREST, borderMode=cv2.BORDER_REFLECT)
             out = acc.astype(np.float32) * (1.0 / len(steps))
             shift = (dx, dy)
+        if "vibration" in kinds:
+            out = self._vibration(out, t, a)
         if "cloudshadow" in kinds or "clouds" in kinds:
             fld = self._scroll(self.cloud, t, 15.0, 6.0)
             thr = float(np.quantile(fld[::4, ::4], 1 - max(a, 0.05)))
