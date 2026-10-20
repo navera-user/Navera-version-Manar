@@ -30,7 +30,7 @@ def test_rounds_come_at_10_25_40_min_one_at_a_time():
 
 def test_variants_are_accepted_live_and_never_touch_the_calibration():
     from navera_tools.field import live_lab, livectl
-    for name, sets in al.VARIANTS:
+    for name, sets in al.VARIANTS + al.REPORT_ONLY:
         assert not any(k.startswith("server.CAL") for k in sets)
         _, bad = livectl.parse_sets([f"{k}={json.dumps(v)}" for k, v in sets.items()])
         assert not bad, (name, bad)
@@ -104,7 +104,7 @@ def test_end_removes_the_change_and_reports_only(tmp_path, monkeypatch):
     runs = []
     rec = al.step(str(tmp_path), now=t0 + 31 * 60,
                   lab=lambda folder, out, r, last_min, jobs: runs.append((len(r), last_min)) or {"baseline": _score(5)})
-    assert rec["action"] == "report" and runs == [(len(al.VARIANTS) + 1, None)]
+    assert rec["action"] == "report" and runs == [(len(al.VARIANTS) + len(al.REPORT_ONLY) + 1, None)]
     assert "allsky.DETECT_K_SIGMA" not in json.load(open(tmp_path / sv.LIVE_PARAMS_FILE))
     assert al.step(str(tmp_path), now=t0 + 32 * 60, lab=lambda *a: pytest.fail("END round twice")) is None
 
@@ -146,3 +146,9 @@ def test_a_real_round_on_a_recorded_test(tmp_path, monkeypatch):
     sess, _ = _session(tmp_path)
     scores = al.run_lab(str(sess), str(tmp_path / "lab"), [("baseline", {}), al.VARIANTS[0]], None, 1)
     assert set(scores) == {"baseline", "k5"} and all(s and s["frames"] > 0 for s in scores.values())
+
+
+def test_report_only_variants_are_never_applied_live():
+    assert "stack4" in [n for n, _ in al.REPORT_ONLY]
+    for k in range(6):
+        assert all(n not in dict(al.REPORT_ONLY) for n, _ in al.round_variants(k))

@@ -53,6 +53,11 @@ VARIANTS = (
     ("stars10", {"server.MIN_STARS": 10}),
     ("still_tight", {"insta360_usb.STILL_ACC_STD_G": 0.002, "insta360_usb.STILL_RATE_DPS": 0.3}),
 )
+# Scored in the END round only, never applied during the drive: stop-frame stacking (stack.py) helps only in
+# simulation so far (a sky too faint for one frame solved from a few key frames); a real night decides.
+REPORT_ONLY = (
+    ("stack4", {"server.STACK_SECONDS": 4.0}),
+)
 
 
 # ── when ──────────────────────────────────────────────────────────────────────
@@ -244,7 +249,7 @@ def do_round(root, folder, k, st, lab=run_lab, final=False):
     runs = [("baseline", {})]
     if applied:
         runs.append(("current", applied["sets"]))
-    runs += list(VARIANTS) if final else round_variants(k, applied)
+    runs += list(VARIANTS) + list(REPORT_ONLY) if final else round_variants(k, applied)
     out = os.path.join(folder, "autolab", f"round_{k + 1}" if not final else "end")
     scores = lab(folder, out, runs, None if final else LAST_MIN, 2 if final else 1)
     action, name, why = decide(scores, applied) if not final else ("report", None, "END: report only")
@@ -263,7 +268,7 @@ def do_round(root, folder, k, st, lab=run_lab, final=False):
              f"Replayed: {'the whole test' if final else f'the last {LAST_MIN:g} min'}; decision: **{action}**"
              + (f" {name}" if name else "") + f" ({why})", "", "| run | settings | score |", "|---|---|---|"]
     for n, s in scores.items():
-        st_sets = applied["sets"] if n == "current" and applied else dict(VARIANTS).get(n, {})
+        st_sets = applied["sets"] if n == "current" and applied else dict(VARIANTS + REPORT_ONLY).get(n, {})
         lines.append(f"| {n} | {json.dumps(st_sets) if st_sets else 'defaults'} | {_fmt(s)} |")
     with open(os.path.join(folder, f"autolab_round_{'end' if final else k + 1}.md"), "w") as f:
         f.write("\n".join(lines) + "\n")
