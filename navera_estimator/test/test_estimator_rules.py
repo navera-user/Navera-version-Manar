@@ -79,3 +79,78 @@ def test_stated_sigma_is_the_long_axis_and_sanity_ignores_the_up_variance(node):
     assert node._sane(m)
     m.position_covariance = [1.0, 1.5, 0.0, 1.5, 1.0, 0.0, 0.0, 0.0, 1e12]
     assert not node._sane(m)
+
+
+class _FakeClock:
+    """A clock the test moves by hand (the node reads time only through get_clock())."""
+
+    def __init__(self, ns, clock_type):
+        self.ns, self.clock_type = ns, clock_type
+
+    def now(self):
+        from rclpy.time import Time
+        return Time(nanoseconds=self.ns, clock_type=self.clock_type)
+
+
+def _fly(drift_mps, dur_s=150.0, seed=3, vision_sigma=10.0, spoof_end_s=None, until_end=False):
+    """A vehicle at 20 m/s north; GPS at 1 Hz (truth + drift east from t=40 s), day vision every 2 s
+    0.5 s late (truth + bias + jitter, 2 % wrong fixes 100-300 m) stating vision_sigma. Returns
+    (drift m at refusal or None, reason, doubt seen)."""
+    import random
+    from rclpy.time import Time
+    rnd = random.Random(seed)
+    n = EstimatorNode()
+    real = n.get_clock()
+    clock = _FakeClock(real.now().nanoseconds, real.clock_type)
+    n.get_clock = lambda: clock
+    t0 = clock.ns
+    doubt = False
+    try:
+        for k in range(int(dur_s * 2)):
+            t = 0.5 * k
+            clock.ns = t0 + int(t * 1e9)
+            if k % 2 == 0:
+                g = _msg(n, PositionEstimate.SOURCE_GPS, north_m=20.0 * t, sigma=2.0)
+                if spoof_end_s is None or t < spoof_end_s:
+                    g.longitude += drift_mps * max(0.0, t - 40.0) * M / math.cos(math.radians(LAT))
+                n._on_gps(g)
+            tp = t - 0.5
+            if tp > 0 and k % 4 == 1:                  # the day node's GPS check: one fix per 2 s
+                v = _msg(n, PositionEstimate.SOURCE_DAY_VISION, north_m=20.0 * tp + 6.0 + rnd.gauss(0, 4.0),
+                         sigma=vision_sigma)
+                v.longitude += (-9.0 + rnd.gauss(0, 4.0)) * M / math.cos(math.radians(LAT))
+                if rnd.random() < 0.02:
+                    v.latitude += rnd.uniform(100.0, 300.0) * M
+                st = Time(nanoseconds=t0 + int(tp * 1e9)).to_msg()
+                v.header.stamp, v.sensor_stamp = clock.now().to_msg(), st
+                n._on_day(v)
+            doubt = doubt or n._gps_doubt is not None
+            if n._gps_suspect and not until_end:
+                return drift_mps * max(0.0, t - 40.0), n._gps_suspect, doubt
+            if until_end:
+                doubt = doubt if isinstance(doubt, list) else []
+                doubt.append((t, n._gps_suspect))
+        return None, None, doubt
+    finally:
+        n.destroy_node()
+
+
+def test_a_slow_gps_spoof_is_refused_by_the_growth_of_the_offset(node):
+    """3 m/s drift, vision stating the 30 m floor: the size rules alone wait for 3 sigma (90 m)."""
+    drift, why, doubt = _fly(3.0, vision_sigma=30.0)
+    assert drift is not None and drift < 85.0, (drift, why)
+    assert "slow spoofing" in why and doubt
+
+
+def test_a_good_gps_is_not_refused_by_jittery_vision_with_wrong_fixes(node):
+    drift, why, _ = _fly(0.0, dur_s=600.0, vision_sigma=15.0)
+    assert why is None, why
+
+
+def test_a_growth_refusal_holds_while_the_spoof_lasts_and_lifts_when_it_ends(node):
+    """Refused well inside 3 sigma: agreeing within 3 sigma must not bring the spoofed GPS back."""
+    _, _, log = _fly(3.0, dur_s=130.0, vision_sigma=30.0, spoof_end_s=100.0, until_end=True)
+    first = next(t for t, why in log if why)
+    assert first < 70.0
+    assert all(why for t, why in log if first <= t < 100.0)         # the drift goes on: refused
+    assert not log[-1][1]                                           # true GPS back after the spoof
