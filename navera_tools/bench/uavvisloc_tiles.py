@@ -20,7 +20,7 @@ Z = 17
 flight, out = sys.argv[1].rstrip("/"), sys.argv[2]
 idx = os.path.basename(flight)
 rng = next(r for r in csv.DictReader(open(os.path.join(os.path.dirname(flight), "satellite_ coordinates_range.csv")))
-           if r["mapname"] == f"{idx}.tif")
+           if r["mapname"] in (f"{idx}.tif", f"satellite{idx}.tif"))   # example subset / full dataset
 lat0, lon0, lat1, lon1 = (float(rng[k]) for k in ("LT_lat_map", "LT_lon_map", "RB_lat_map", "RB_lon_map"))
 im = Image.open(os.path.join(flight, f"satellite{idx}.tif")).convert("RGB")
 W, H = im.size
