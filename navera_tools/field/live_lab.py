@@ -132,7 +132,7 @@ def parse_variant(spec):
     if not sep or not re.fullmatch(r"[A-Za-z0-9_.+-]+", name):
         raise SystemExit(f"--variant {spec!r}: expected NAME:KEY=VALUE[,KEY=VALUE]")
     sets = []
-    for item in re.split(r",(?=[A-Za-z_]+\.)", rest):       # commas inside a tuple value stay with it
+    for item in re.split(r",(?=[A-Za-z_][A-Za-z0-9_]*\.)", rest):       # commas inside a tuple value stay with it
         k, eq, v = item.partition("=")
         mod = k.partition(".")[0]
         if not eq or mod not in MODULES:
