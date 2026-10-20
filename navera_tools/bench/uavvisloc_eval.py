@@ -45,6 +45,9 @@ ap.add_argument("--ground-csv", default="", help="filename,ground_m (uavvisloc_d
 ap.add_argument("--position", choices=("pose", "centre"), default="pose",
                 help="pose (as day_subscriber: hfov_deg given, the point under the camera from the fitted pose) or "
                      "centre (the frame centre; the drone's tilt then adds height x tan(tilt): 2026-10-20 runs before this option)")
+ap.add_argument("--pose-tilt-guard", type=float, default=4.0,
+                help="deg, the matcher's pose_tilt_guard_deg (day_subscriber's default 4; 0 = off, the runs before "
+                     "VL-1). The photos are not straightened: the expected tilt is the recorded attitude's")
 ap.add_argument("--seed", type=int, default=1)
 ap.add_argument("--out", default="uavvisloc_eval.json")
 a = ap.parse_args()
@@ -64,7 +67,14 @@ def _refine_keep_centre(res, *args, **kw):
 
 
 _lm.refine_with_pose = _refine_keep_centre
-M = LearnedMatcher(os.path.join(a.area, "images"), zoom=17, cache_dir=os.path.join(a.area, "learned_features"))
+M = LearnedMatcher(os.path.join(a.area, "images"), zoom=17, cache_dir=os.path.join(a.area, "learned_features"),
+                   pose_tilt_guard_deg=a.pose_tilt_guard)
+
+
+def attitude_tilt_deg(r):
+    """The photo's optical axis from straight down by its recorded attitude (Omega, Kappa)."""
+    return math.degrees(math.atan(math.hypot(math.tan(math.radians(float(r["Omega"]))),
+                                             math.tan(math.radians(float(r["Kappa"]))))))
 
 
 def load(r):
@@ -95,7 +105,7 @@ def locate(r, im, hfov, prior_m, smeters):
     prior = shifted(r, prior_m)
     t0 = time.time()
     res = M.locate(im, prior, smeters, mpp, heading_deg=(float(r["Phi2"]) + a.heading_err * rng.choice((-1, 1)) * (prior_m > 40)) % 360,
-                   hfov_deg=hfov if a.position == "pose" else None)
+                   hfov_deg=hfov if a.position == "pose" else None, expected_tilt_deg=attitude_tilt_deg(r))
     res["ms"] = (time.time() - t0) * 1000
     return res
 
@@ -150,7 +160,7 @@ for i in range(0, len(rows), a.stride):
                     match_sigma_m=res.get("sigma_m"), stated_sigma_m=None if stated is None else round(stated, 2),
                     spread=res.get("spread"), position_from=res.get("position_from"),
                     centre_east_m=None if res.get("centre_lat") is None else round(en_m(dict(predicted_lat=res["centre_lat"], predicted_lon=res["centre_lon"]), r)[0], 1),
-                    centre_north_m=None if res.get("centre_lat") is None else round(en_m(dict(predicted_lat=res["centre_lat"], predicted_lon=res["centre_lon"]), r)[1], 1), pose_tilt_deg=res.get("pose_tilt_deg"),
+                    centre_north_m=None if res.get("centre_lat") is None else round(en_m(dict(predicted_lat=res["centre_lat"], predicted_lon=res["centre_lon"]), r)[1], 1), pose_tilt_deg=res.get("pose_tilt_deg"), pose_guard=res.get("pose_guard"),
                     omega=float(r["Omega"]), kappa=float(r["Kappa"]), phi2=float(r["Phi2"]), height_m=float(r["height"]), speed_mps=None if spd is None else round(spd, 1),
                     t=r["date"], lat=float(r["lat"]), lon=float(r["lon"])))
     print(f"{r['filename']} tilt {tilt:4.1f}  {'ACC' if res['accepted'] else 'rej'}  err {'-' if e is None else round(e, 1)} m  "
@@ -172,7 +182,8 @@ summ = dict(images=len(out), bias_east_m=round(be, 1), bias_north_m=round(bn, 1)
             err_median=round(st.median(ok), 1) if ok else None,
             err_p95=round(sorted(ok)[int(0.95 * (len(ok) - 1))], 1) if ok else None,
             err_max=round(max(ok), 1) if ok else None,
-            position=a.position, accepted_from_pose=None if pose_share is None else round(pose_share, 3),
+            position=a.position, pose_tilt_guard=a.pose_tilt_guard,
+            accepted_pose_guard=sum(bool(o["pose_guard"]) for o in acc), accepted_from_pose=None if pose_share is None else round(pose_share, 3),
             ms_median=round(st.median([o["ms"] for o in out])) if out else None)
 print(json.dumps(summ))
 json.dump(dict(summary=summ, frames=out), open(a.out, "w"), indent=1)
