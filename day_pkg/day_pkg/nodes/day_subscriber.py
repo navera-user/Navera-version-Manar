@@ -127,8 +127,12 @@ class DaySubscriber(Node):
         # uncertainty stays under dead_reckon_max_sigma_m
         declare_float(self, "max_dead_reckon_s", 120.0)
         declare_float(self, "dead_reckon_max_sigma_m", 500.0)
-        # unseen acceleration allowed for in the stated accuracy (1/2 a t^2)
-        declare_float(self, "dead_reckon_accel_mps2", 0.5)
+        # unseen acceleration allowed for in the stated accuracy (1/2 a t^2). 0.25: outages
+        # replayed on the real camera campaign's fixes (2026-10-19, 1606 per gap length, true
+        # heading change given): still 100 % within 3 sigma at 5-60 s on a constant 900 m turn
+        # and on a straight track; the 60 s sigma on a straight track 1078 -> 628 m (error 15 m
+        # median, 55 m p95: the heading and velocity terms, not this one, keep it wide)
+        declare_float(self, "dead_reckon_accel_mps2", 0.25)
         # Whole-map search (no prior). Measured on labelled frames: 12 % within
         # 300 m, and the similarity score does not separate good matches from
         # bad ones (docs/VALIDATION_STATUS.md). Off: without a prior (GPS fix or
