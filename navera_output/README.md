@@ -103,6 +103,7 @@ On the box: `/etc/navera/navera.env`, read by `navera-output.service` and
 | `NAVERA_MAX_SPEED_KMH` | `max_speed_mps` | 30 m/s | the lag allowance when no ground velocity is known |
 | — | `bridge_max_s` / `bridge_after_s` / `bridge_period_s` | 10 / 2.5 / 1.0 | a gap in the forwarded vision positions is bridged this long at most (0 = never), starting after 2.5 s without one, one position per second (see "Gaps are bridged") |
 | — | `bridge_accel_mps2` / `bridge_heading_sigma_deg` | 0.5 / 5 | unseen acceleration and heading error in the accuracy growth of a bridged position |
+| — | `drift_alarm_sigma_m` | 100 | a forwarded position coarser than this logs `DRIFT ALARM: the vehicle is given a position of ±… m` every 5 s (the vehicle may be that far off: dead-reckoned or bridged) |
 | — | `max_forward_sigma_m` | 1000 | a forwarded position coarser than this is withheld (a celestial fix moved a SITL autopilot by 125 km) |
 | — | `rate_hz` | 5.0 | "no fix" rate |
 | — | `position_timeout_s` / `nav_status_timeout_s` | 5.0 / 2.0 | older = "no fix" |

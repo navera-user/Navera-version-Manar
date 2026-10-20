@@ -40,6 +40,9 @@ Parameters:
     bridge_period_s      (1.0)   and repeats at this period
     bridge_accel_mps2    (0.5)   unseen acceleration of the vehicle in the accuracy growth
     bridge_heading_sigma_deg (5.0) heading error in the accuracy growth
+    drift_alarm_sigma_m  (100)   a forwarded (estimated) position this coarse raises a drift
+                                 alarm in the log every 5 s: the vehicle is flying on a
+                                 position that may be this far off (dead-reckoned, bridged)
     position_timeout_s   (5.0)   an older position is not current
     max_measurement_age_s (5.0)  a position measured longer ago is not sent; the rest
                                  are sent stamped with their measurement instant
@@ -108,6 +111,7 @@ class VehicleOutputNode(Node):
         declare_float(self, "bridge_period_s", 1.0)
         declare_float(self, "bridge_accel_mps2", 0.5)
         declare_float(self, "bridge_heading_sigma_deg", 5.0)
+        declare_float(self, "drift_alarm_sigma_m", 100.0)
         self.declare_parameter("fix_type_without_alt", 3)
         self.declare_parameter("ros_fix_topic", "/navera/fix")
         # the frame of the vehicle's TF tree the fix refers to (robot_localization's
@@ -170,6 +174,7 @@ class VehicleOutputNode(Node):
         self._held = None                 # the last forwarded estimate, for bridging a gap after it
         self._last_tx = None              # monotonic instant of the last position sent
         self._bridging = False
+        self._drift_alarm = float(self.get_parameter("drift_alarm_sigma_m").value)
         self._vel = None                  # (north, east) m/s from the GPS receiver
         self._vel_rx = None
         self.failed = False
@@ -255,6 +260,11 @@ class VehicleOutputNode(Node):
             self._bridging = False
         if out.kind != KIND_NONE:
             self._last_tx = now
+        if out.kind == KIND_ESTIMATED and out.sigma_h_m > self._drift_alarm:
+            self.get_logger().warn(
+                f"DRIFT ALARM: the vehicle is given a position of ±{out.sigma_h_m:.0f} m "
+                f"({'bridged' if out.bridged else out.reason}) — it may be that far off",
+                throttle_duration_sec=5.0)
         # stamped with the measurement instant: GPS_INPUT time, NMEA time, NavSatFix stamp
         t_utc = datetime.now(timezone.utc) - timedelta(seconds=out.age_s)
         try:
