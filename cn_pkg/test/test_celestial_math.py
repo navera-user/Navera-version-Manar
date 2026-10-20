@@ -77,3 +77,13 @@ def test_a_candidate_far_from_the_prior_is_not_chosen():
     from cn_pkg.nodes.celestial_math import choose_candidate
     assert choose_candidate([(39.0, 10.6), (-30.0, 50.0)], 35.8, 10.6) is None
     assert choose_candidate([(36.5, 10.6), (-30.0, 50.0)], 35.8, 10.6) == (36.5, 10.6)
+
+
+def test_times_past_the_iers_table_still_give_a_fix_offline():
+    # NAVERA runs offline: a date past every IERS table must not raise (it did: IERSRangeError, no fix at all)
+    from astropy.utils import iers
+    from cn_pkg.nodes.celestial_math import gast_deg, obs_time
+    assert iers.conf.auto_download is False
+    t = obs_time("2040-06-01 21:00:00")
+    assert abs(float(t.delta_ut1_utc)) < 0.9
+    assert 0.0 <= gast_deg("2040-06-01 21:00:00") < 360.0

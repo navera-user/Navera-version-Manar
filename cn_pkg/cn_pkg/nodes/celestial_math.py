@@ -16,11 +16,45 @@ one direction alone cannot tell them apart. The caller resolves the ambiguity
 with a prior latitude (the known operating area) or gets no fix.
 """
 import math
+import os
 from typing import List, Optional, Tuple
 
 from astropy import units as u
 from astropy.coordinates import TETE, SkyCoord
 from astropy.time import Time
+from astropy.utils import iers
+
+# NAVERA runs offline in operation. Left alone, astropy downloads the IERS Earth-orientation table (UT1-UTC,
+# polar motion) and, offline with no cached copy, refuses every 2026 date (IERSRangeError: no celestial fix at
+# all). The table is fetched with the map before departure (navera_tools/fetch_iers.py) to NAVERA_IERS_FILE;
+# without it the bundled IERS-B table is extrapolated (UT1-UTC is under 0.9 s by definition: < 0.4 km).
+IERS_FILE = os.path.expanduser(os.environ.get("NAVERA_IERS_FILE", "~/navera_data/iers/finals2000A.all"))
+
+
+def configure_offline_iers(path: str = IERS_FILE) -> str:
+    """Never download at run time; use the pre-flight IERS-A file if there is one. Returns the source used."""
+    iers.conf.auto_download = False
+    iers.conf.auto_max_age = None
+    iers.conf.iers_degraded_accuracy = "warn"
+    if os.path.exists(path):
+        try:
+            iers.earth_orientation_table.set(iers.IERS_A.open(path))
+            return f"IERS-A file {path}"
+        except Exception as e:                     # a damaged file must not stop the fix
+            return f"bundled IERS-B (could not read {path}: {e})"
+    return "bundled IERS-B (no pre-flight IERS-A file)"
+
+
+IERS_SOURCE = configure_offline_iers()
+
+
+def obs_time(utc) -> Time:
+    """Time of an observation with UT1-UTC always set: from the IERS table, or past its ends its edge value
+    (UT1-UTC drifts < 1 ms/day and stays under 0.9 s: < 0.4 km) instead of an IERSRangeError offline."""
+    t = Time(utc, scale="utc")
+    dut1, _ = iers.earth_orientation_table.get().ut1_utc(t, return_status=True)
+    t.delta_ut1_utc = dut1
+    return t
 
 
 def apparent_radec(ra_icrs_deg: float, dec_icrs_deg: float, utc: str) -> Tuple[float, float]:
@@ -29,7 +63,7 @@ def apparent_radec(ra_icrs_deg: float, dec_icrs_deg: float, utc: str) -> Tuple[f
     Includes precession (~0.36° in RA over 2000→2026), nutation and aberration,
     so the result pairs with apparent Greenwich sidereal time.
     """
-    t = Time(utc, scale="utc")
+    t = obs_time(utc)
     c = SkyCoord(ra=ra_icrs_deg * u.deg, dec=dec_icrs_deg * u.deg, frame="icrs")
     app = c.transform_to(TETE(obstime=t))
     return float(app.ra.deg), float(app.dec.deg)
@@ -37,7 +71,7 @@ def apparent_radec(ra_icrs_deg: float, dec_icrs_deg: float, utc: str) -> Tuple[f
 
 def gast_deg(utc: str) -> float:
     """Greenwich apparent sidereal time, in degrees."""
-    return float(Time(utc, scale="utc").sidereal_time("apparent", "greenwich").deg)
+    return float(obs_time(utc).sidereal_time("apparent", "greenwich").deg)
 
 
 def observer_candidates(alt_deg: float, az_deg: float, ra_deg: float, dec_deg: float,

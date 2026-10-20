@@ -56,9 +56,8 @@ def zenith_icrs(lat, lon, utc):
     """Unit vector (ICRS, J2000) of the point overhead at (lat, lon) and utc."""
     import astropy.units as u
     from astropy.coordinates import TETE, SkyCoord
-    from astropy.time import Time
-    from cn_pkg.nodes.celestial_math import gast_deg
-    t = Time(utc, scale="utc")
+    from cn_pkg.nodes.celestial_math import gast_deg, obs_time
+    t = obs_time(utc)
     c = SkyCoord(ra=((gast_deg(utc) + lon) % 360.0) * u.deg, dec=lat * u.deg, frame=TETE(obstime=t)).icrs
     ra, dec = math.radians(c.ra.deg), math.radians(c.dec.deg)
     return np.array([math.cos(dec) * math.cos(ra), math.cos(dec) * math.sin(ra), math.sin(dec)])
