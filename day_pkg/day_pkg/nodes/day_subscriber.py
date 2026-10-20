@@ -51,6 +51,7 @@ from navera_msgs.msg import NavStatus, PositionEstimate
 # Existing localization logic (UNMODIFIED user code).
 # DayLocalizer().predict(bgr_array, threshold=...) -> dict
 from day_pkg.nodes.day_localizer import IMAGES_DIR, DayLocalizer, haversine_m
+from day_pkg.fix_sigma import day_fix_sigma_m
 from day_pkg.frame_odometry import FrameOdometry
 from day_pkg.local_matcher import LocalMatcher
 from day_pkg.vision_nav import VisionNavigator, _en, _move, kinematic_margin_m
@@ -184,9 +185,14 @@ class DaySubscriber(Node):
         # GPS away from it), and the height above ground known when GPS is lost. 0 = off.
         declare_float(self, "gps_check_period_s", 2.0)
         declare_float(self, "gps_check_radius_m", 600.0)   # covers a GPS drifted this far
-        # Stated accuracy (1 sigma, m) of a local match. Benchmark median 4 m on aerial frames
-        # from another source; NOT yet measured with NAVERA's camera: stated conservatively.
+        # Stated accuracy (1 sigma, m) of a local match: day_pkg.fix_sigma.day_fix_sigma_m (the
+        # matcher's inlier-class sigma, a floor, the frame-time and attitude terms), measured on
+        # NAVERA's camera on the screen bench (2026-10-19: 99.2 % within 3 sigma, median 10.6 m).
+        # local_sigma_m is only the fallback for a result without its own sigma.
         declare_float(self, "local_sigma_m", 30.0)
+        declare_float(self, "local_sigma_floor_m", 5.0)
+        declare_float(self, "frame_time_sigma_s", 0.05)
+        declare_float(self, "attitude_sigma_deg", 0.5)
         # Local matching keeps its last position when frames fail (uniform ground, blur) and
         # widens the search by max_speed_mps x the time since its last match, up to this
         # radius, instead of dropping it after max_consecutive_rejects (a retrieval-era rule).
@@ -280,6 +286,10 @@ class DaySubscriber(Node):
         self.matcher_mode = str(self.get_parameter("matcher").value)
         self.camera_hfov_deg = float(self.get_parameter("camera_hfov_deg").value)
         self.local_sigma_m = float(self.get_parameter("local_sigma_m").value)
+        self.local_sigma_floor_m = float(self.get_parameter("local_sigma_floor_m").value)
+        self.frame_time_sigma_s = float(self.get_parameter("frame_time_sigma_s").value)
+        self.attitude_sigma_deg = float(self.get_parameter("attitude_sigma_deg").value)
+        self._last_fix_sigma = self.local_sigma_m
         self.local_max_radius_m = float(self.get_parameter("local_max_radius_m").value)
         self.local_scale_tol_max = float(self.get_parameter("local_scale_tol_max").value)
         self.local_heading_tol_deg = float(self.get_parameter("local_heading_tol_deg").value)
@@ -720,7 +730,7 @@ class DaySubscriber(Node):
                                    float(res["predicted_lat"]), float(res["predicted_lon"]), meta,
                                    score=float(res.get("score") or 0.0),
                                    details={"src": "local_match", "gps_check": True,
-                                            "inliers": res.get("inliers")})
+                                            "inliers": res.get("inliers"), "sigma_m": self._fix_sigma(res, meta)})
             self.get_logger().info(f"[day] height above ground calibrated while GPS is good: "
                                    f"{st.get('altitude_measured_m')} m (frame said {meta.get('altitude_m')} m, "
                                    f"{res.get('inliers')} inliers)", throttle_duration_sec=30.0)
@@ -986,6 +996,7 @@ class DaySubscriber(Node):
         # Additive contract: same fix on the typed channel; mode derived from src.
         self._publish_estimate(now, seq_id, src, lat, lon, meta, score=score,
                                details={"src": src, "score": score, "jump_m": jump_m,
+                                        "sigma_m": self._last_fix_sigma if src == "local_match" else None,
                                         "reason": reason,
                                         "fused_score": status.get("fused_score"),
                                         "match": status.get("match")})
@@ -1032,9 +1043,11 @@ class DaySubscriber(Node):
         _alt = meta.get("altitude_m")
         est.altitude  = float(_alt) if _alt is not None else math.nan
         if src in ("local_match", "dead_reckon") and valid:
-            # stated, not measured with NAVERA's camera: local_sigma_m (conservative);
-            # dead-reckoning: that plus the growth along the track (TrackVelocity)
-            var = (self.local_sigma_m if src == "local_match" else self._dr_sigma) ** 2
+            # local match: its stated sigma (details["sigma_m"], see _fix_sigma; local_sigma_m
+            # without one); dead-reckoning: the anchor's plus the growth along the track
+            sig = (details.get("sigma_m") if src == "local_match" else None) or \
+                (self.local_sigma_m if src == "local_match" else self._dr_sigma)
+            var = float(sig) ** 2
             est.position_covariance = [var, 0.0, 0.0, 0.0, var, 0.0, 0.0, 0.0, 0.0]
             est.position_covariance_type = PositionEstimate.COVARIANCE_TYPE_APPROXIMATED
         else:
@@ -1058,6 +1071,16 @@ class DaySubscriber(Node):
     # ────────────────────────────────────────────────────────────
     # Publish result
     # ────────────────────────────────────────────────────────────
+    def _fix_sigma(self, result, meta) -> float:
+        """Stated 1-sigma (m) of a local match (day_pkg.fix_sigma), or local_sigma_m without one."""
+        if not result.get("sigma_m"):
+            return self.local_sigma_m
+        v = self.track.velocity(time.time())
+        alt = meta.get("altitude_m")
+        return day_fix_sigma_m(result.get("sigma_m"), self.local_sigma_floor_m,
+                               math.hypot(v[0], v[1]) if v else None, self.frame_time_sigma_s,
+                               float(alt) if alt is not None else None, self.attitude_sigma_deg)
+
     def _check_local_fix(self, result, meta, lat, lon, status):
         """A local match before it is believed: the map bias removed, then the quality gates.
         (lat, lon, None) when it passes, (lat, lon, why) when rejected."""
@@ -1072,7 +1095,7 @@ class DaySubscriber(Node):
             return lat, lon, (f"inliers cover {float(result.get('spread', 0)):.0%} of the frame ({inl}): "
                               "poorly conditioned — match rejected")
         pred = self._predicted(meta)
-        sig = float(result.get("sigma_m") or self.local_sigma_m)
+        sig = self._fix_sigma(result, meta)
         doubt = None
         if pred is not None and inl >= self.strong_inliers:
             d = math.hypot(*_en((lat, lon), pred[:2]))
@@ -1170,7 +1193,7 @@ class DaySubscriber(Node):
                 # a local match is a position (not a ~250 m tile): the margin is the two
                 # positions' uncertainty, never more than gate_margin_m
                 margin = kinematic_margin_m(self.gate_k, self._anchor_sigma,
-                                            float(result.get("sigma_m") or self.local_sigma_m), self.gate_margin_m)
+                                            self._fix_sigma(result, meta), self.gate_margin_m)
             reach = self.max_speed_mps * max(0.0, t_now - self._anchor_time) + margin
             if jump > reach:
                 measured = False
@@ -1192,14 +1215,15 @@ class DaySubscriber(Node):
                                      mpp=result.get("_frame_mpp"))
             self._anchor_lat, self._anchor_lon, self._anchor_time = out_lat, out_lon, t_now
             self._last_measured_time = t_now
-            self._dr_sigma = self._anchor_sigma = max(self.local_sigma_m, float(result.get("sigma_m") or 0.0))
+            fix_sigma = self._fix_sigma(result, meta) if src == "local_match" else self.local_sigma_m
+            self._dr_sigma = self._anchor_sigma = fix_sigma
+            self._last_fix_sigma = fix_sigma
             self._carry = None
             self._rejects_in_row = 0
             self._remember_anchor()
             if src == "local_match":
                 ns = meta.get("image_stamp_ns")         # the photo's instant, not the processing's
-                self.track.add(int(ns) / 1e9 if ns else t_now, out_lat, out_lon,
-                               max(self.local_sigma_m, float(result.get("sigma_m") or 0.0)))
+                self.track.add(int(ns) / 1e9 if ns else t_now, out_lat, out_lon, fix_sigma)
                 self._track_heading = self._heading_for_match(meta)
             if src == "local_match":
                 self._publish_vision_altitude(meta, result, status)
