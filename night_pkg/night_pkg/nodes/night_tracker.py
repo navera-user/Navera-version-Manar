@@ -23,7 +23,8 @@ class NightTracker:
     def __init__(self, max_speed_mps: float = 30.0, gate_margin_m: float = 30.0,
                  max_dead_reckon_s: float = 30.0, max_single_jump_m: Optional[float] = 150.0,
                  reacquire_n: int = 3, reacquire_window_s: float = 10.0,
-                 reacquire_confirmed_n: int = 5, dead_reckon_rel_err: float = 0.1):
+                 reacquire_confirmed_n: int = 5, dead_reckon_rel_err: float = 0.1,
+                 fresh_s: float = 3.0, support_cap: int = 15):
         """max_single_jump_m: a fix farther than this from the anchor is never taken on
         its own, even when the gate's reach (which grows while no fix comes) would allow
         it; it needs reacquire_n mutually consistent fixes (None: no limit).
@@ -31,7 +32,12 @@ class NightTracker:
         within the window that agree with each other (along the measured motion)
         re-anchor the track — the way out of a wrong anchor (B16). An anchor confirmed by
         reacquire_n agreeing fixes in a row (or GPS) needs reacquire_confirmed_n.
-        dead_reckon_rel_err: share of the dead-reckoned distance added to the reach."""
+        dead_reckon_rel_err: share of the dead-reckoned distance added to the reach.
+        fresh_s / support_cap: a consensus that starts within fresh_s of the last measured
+        position contradicts a track that was just confirmed: it must outnumber that track's
+        own recent agreeing fixes (counted up to support_cap) — a burst of mutually consistent
+        wrong matches (a repetitive pattern, a locked wrong lock) no longer re-anchors the track
+        (D22). After a gap (dead reckoning) the plain reacquire_* counts apply (B16)."""
         self.max_speed_mps = float(max_speed_mps)
         self.gate_margin_m = float(gate_margin_m)
         self.max_dead_reckon_s = float(max_dead_reckon_s)
@@ -40,6 +46,8 @@ class NightTracker:
         self.reacquire_confirmed_n = max(int(reacquire_confirmed_n), self.reacquire_n)
         self.reacquire_window_s = float(reacquire_window_s)
         self.dead_reckon_rel_err = float(dead_reckon_rel_err)
+        self.fresh_s = float(fresh_s)
+        self.support_cap = max(int(support_cap), self.reacquire_confirmed_n)
         self.reset()
 
     # ── state ──────────────────────────────────────────────────────────────
@@ -53,6 +61,7 @@ class NightTracker:
         self._candidates = []            # fixes refused by the gate: (t, lat, lon, heading, speed)
         self.reacquired_from: Optional[LatLon] = None
         self._support = 0                # measured positions in a row that agree with the anchor
+        self._support_long = 0           # the same, counted up to support_cap
 
     @property
     def has_anchor(self) -> bool:
@@ -74,6 +83,7 @@ class NightTracker:
         self._dr_m = 0.0
         self._candidates = []
         self._support = min(int(support), self.reacquire_confirmed_n)
+        self._support_long = min(int(support), self.support_cap)
         self.reacquired_from = None      # the anchor a consensus replaced (this frame)
 
     def note_gps_lost(self, t: float) -> None:
@@ -124,11 +134,15 @@ class NightTracker:
             # a fix after a long gap does not confirm the old anchor: support restarts
             recent = (self.last_measured_time is not None
                       and t - self.last_measured_time <= self.reacquire_window_s)
-            self._measured(lat, lon, t, support=self._support + 1 if recent else 1)
+            self._measured(lat, lon, t, support=self._support_long + 1 if recent else 1)
             return None
         self._candidates = [c for c in self._candidates if t - c[0] <= self.reacquire_window_s]
         self._candidates.append((float(t), float(lat), float(lon), heading_deg, speed_mps))
         need = self.reacquire_confirmed_n if self._support >= self.reacquire_n else self.reacquire_n
+        if (need >= 2 and len(self._candidates) >= need and self.last_measured_time is not None
+                and self._candidates[-need][0] - self.last_measured_time <= self.fresh_s
+                and self._support_long >= need):
+            need = self._support_long + 1         # a fresh, well-supported track: outnumber it
         if need >= 2 and self._consistent(self._candidates[-need:], need):
             prev = self.anchor
             self._measured(lat, lon, t, support=need)

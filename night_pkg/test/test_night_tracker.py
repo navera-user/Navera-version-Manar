@@ -105,8 +105,25 @@ def test_confirmed_track_needs_more_agreeing_contrary_fixes():
     tr = NightTracker()
     tr.set_known(LAT, LON, 0.0)
     errs = _fly(tr, 0, 40, wrong_at=set(range(20, 25)))
-    assert errs[24] > 250.0                                    # documented limit
-    assert all(e < 1.0 for e in errs[30:])
+    assert max(e for e in errs if e is not None) < 1.0         # D22: 5 do not outnumber 15 agreeing
+    tr = NightTracker()
+    tr.set_known(LAT, LON, 0.0)
+    errs = _fly(tr, 0, 50, wrong_at=set(range(20, 30)))
+    assert errs[29] > 250.0                                    # documented limit: a long burst moves it
+    assert all(e < 1.0 for e in errs[38:])
+
+
+def test_a_wrong_burst_on_a_fresh_track_is_outnumbered_but_a_gap_resets_it():
+    """D22: a consensus that starts right after the last measured fix must outnumber the
+    track's own recent support; after a gap (dead reckoning) the plain counts apply (B16)."""
+    tr = NightTracker(support_cap=15)
+    tr.set_known(LAT, LON, 0.0)
+    errs = _fly(tr, 0, 30, wrong_at=set(range(20, 26)))        # 6 wrong, fresh, support 15
+    assert max(e for e in errs if e is not None) < 1.0
+    tr = NightTracker(max_single_jump_m=None)
+    tr.set_known(LAT, LON, 0.0)
+    errs = _fly(tr, 0, 80, wrong_at={60}, lost_until=60)       # B16 path unchanged
+    assert all(e is not None and e < 1.0 for e in errs[64:])
 
 
 def test_reset_forgets_the_track():
