@@ -181,6 +181,18 @@ def reprocess(root, folder):
     return out
 
 
+def autolab_status(root):
+    """The last line autolab wrote (its rounds' decisions), for STATUS.txt."""
+    try:
+        with open(os.path.join(root, "AUTOLAB.txt"), "rb") as f:
+            f.seek(0, 2)
+            f.seek(max(0, f.tell() - 2000))
+            last = f.read().decode("utf-8", "replace").strip().splitlines()[-1:]
+        return [f"autolab: {last[0]}"] if last else []
+    except OSError:
+        return []
+
+
 def default_url():
     port = os.environ.get("NAVERA_FIELD_PORT", "8443")
     return f"http://127.0.0.1:{port}" if os.environ.get("NAVERA_FIELD_PLAIN") == "1" else f"https://127.0.0.1:{port}"
@@ -205,6 +217,7 @@ def main():
             key = ""
         folder = newest_session(a.root)
         lines, alerts = assess(fetch_state(a.url, key), folder, root=a.root)
+        lines += autolab_status(a.root)
         tmp = os.path.join(a.root, "STATUS.txt.tmp")
         with open(tmp, "w") as f:
             f.write("\n".join(lines) + "\n")

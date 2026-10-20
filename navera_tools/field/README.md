@@ -79,6 +79,19 @@ server code with any setting changed:
 
 Keep at least 10 GB free per hour of drive (STATUS.txt shows the size).
 
+## Autolab: expert rounds during the drive (360 mode)
+
+`run_field.sh` also starts `autolab.py`. Once a 360 test records it needs nobody (no Claude session, no
+internet): at T+10, T+25 and T+40 min it replays the last 5 min of the raw recording (`live_lab`, read-only on
+the live test, one replay at a time at nice 19, waiting while the load is above 4 or solves are slow) with the
+settings in use and two preset variants (`autolab.VARIANTS`: star detection threshold, spots given to the
+identification, stars needed, stillness test, residual gate; never the tilt calibration). A variant is applied
+live (`live_params.json`, by "autolab") only with MORE trusted fixes, median not worse (+0.5 km), p90 not worse,
+no fix > 50 km and no more fixes outside 3 sigma; one change per round; a change that later scores worse than
+the defaults is reverted; at END a report-only round runs and any change is removed. Each round: an `autolab`
+event, `<test>/autolab_round_N.md`, a line in `AUTOLAB.txt` (shown in STATUS.txt) and `ALERTS.log`.
+Off: `NAVERA_AUTOLAB=0` or `touch ~/navera-field/autolab_off`.
+
 ## What it measures, and what it does not
 
 * Measures the celestial METHOD with this camera: star detection, plate solving, the position, against the phone's GPS (about 5 m).
