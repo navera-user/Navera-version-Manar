@@ -21,7 +21,6 @@ Measured 2026-10-17 on the user's One R: 3840x1920 decoded at 16 fps on the Jets
 reading a FIFO); camera at rest: |accel| 0.997 g, noise 0.0017 g per sample.
 """
 import collections
-import json
 import math
 import os
 import shutil
@@ -33,21 +32,15 @@ import time
 
 import numpy as np
 
-VENDOR = 0x2E1A
-EP_OUT, EP_IN, EP_IN2 = 0x01, 0x81, 0x82
-PKT_SYNC = b"\x06\x00\x00syNceNdinS"
-PKT_KEEPALIVE = b"\x05\x00\x00"
-CMD_START_LIVE, CMD_STOP_LIVE = 1, 2
-# StartLiveStream: enableVideo, videoBitrate 40, resolution 3840x1920, enableGyro,
-# videoBitrate1 40, resolution1 3040x1520, previewStreamNum 2 (→ full resolution)
-START_FULL = bytes.fromhex("10013028380040014828500f5802")
-KIND_VIDEO, KIND_IMU, KIND_FRAME = 0x20, 0x30, 0x40
-IMU_RECORD = struct.Struct("<Q6d")
-# a video packet's camera-clock stamp is ~1.5 s after the picture was taken (on the IMU's clock): measured
-# 2026-10-19 against a dot grid on the screen while the camera was turned by hand (bench/attitude_check.py,
-# best match at -1500 ms, worse by 0.2 deg at +-50 ms; the turn error fell from 1.8 to 0.4 deg median)
-FRAME_STAMP_LAG_MS = 1500
-IMU_HZ = 500
+# the protocol, the IMU record and the raw recording format are shared with the flight camera package
+# (camera_pkg.insta360_imu publishes this IMU as sensor_msgs/Imu): one definition, in navera_common
+_COMMON = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "navera_common")
+if _COMMON not in sys.path:
+    sys.path.insert(0, _COMMON)
+from navera_common.insta360_protocol import (  # noqa: E402,F401
+    CMD_START_LIVE, CMD_STOP_LIVE, EP_IN, EP_IN2, EP_OUT, FRAME_STAMP_LAG_MS, IMU_CALIBRATION, IMU_HZ, IMU_RECORD,
+    KIND_FRAME, KIND_IMU, KIND_VIDEO, PKT_KEEPALIVE, PKT_SYNC, RAW_MAGIC, RAW_RECORD, START_FULL, VENDOR,
+    frame_packet, imu_records, load_imu_calibration, message_payload, read_raw, split_packets)
 # stillness: means over 0.2 s blocks. 0.1 s blocks left 4-cylinder idle vibration (0.05 g at 27 Hz) in the means and
 # called a parked car moving in 80% of its frames (simulated, navera_tools/sim/car360_drive.py); 0.5 s blocks average
 # out the 1-2 Hz body bounce too and called gently accelerating cars stopped
@@ -56,18 +49,6 @@ STILL_WINDOW_S = 2.0         # stopped(): the vehicle at rest over this long ...
 STILL_ACC_STD_G = 0.003      # ... with the STILL_BLOCK_S accelerometer means steady within this
 STILL_RATE_DPS = 0.5         # ... and turning slower than this
 IMU_COVERAGE = 0.9           # fraction of the stillness window the IMU rows must cover
-IMU_CALIBRATION = os.environ.get("NAVERA_INSTA360_IMU", os.path.expanduser("~/.navera_sim/insta360_usb_imu.json"))
-
-
-def load_imu_calibration(path: str = IMU_CALIBRATION):
-    """(accel bias g, accel scale, gyro bias rad/s) from a 6-position calibration, or neutral values."""
-    try:
-        with open(path) as f:
-            d = json.load(f)
-        return (np.array(d["accel_bias_g"], float), np.array(d["accel_scale"], float),
-                np.array(d["gyro_bias_rad_s"], float))
-    except (OSError, ValueError, KeyError):
-        return np.zeros(3), np.ones(3), np.zeros(3)
 
 
 def _has_keyframe(p: bytes, start: int) -> bool:
@@ -89,8 +70,6 @@ def _rotvec(w):
     return np.eye(3) + math.sin(t) * K + (1 - math.cos(t)) * K @ K
 
 
-RAW_MAGIC = b"NAVRAW360v1\n"
-RAW_RECORD = struct.Struct("<dBII")                     # Jetson arrival time, kind, camera ms, packet length
 RAW_ROTATE_BYTES = 1 << 30
 
 
@@ -192,25 +171,6 @@ class RawRecorder:
         return self.stats()
 
 
-def read_raw(folder: str):
-    """The records of a raw recording, in order: (t_arrival, kind, cam_ms, packet bytes). A record cut short by a
-    power loss at the end of a file is skipped."""
-    names = sorted(n for n in os.listdir(folder) if n.startswith("raw360_") and n.endswith(".bin"))
-    for n in names:
-        with open(os.path.join(folder, n), "rb") as f:
-            if f.read(len(RAW_MAGIC)) != RAW_MAGIC:
-                raise ValueError(f"{n}: not a NAVERA raw 360 recording")
-            while True:
-                h = f.read(RAW_RECORD.size)
-                if len(h) < RAW_RECORD.size:
-                    break
-                t, kind, cam_ms, ln = RAW_RECORD.unpack(h)
-                p = f.read(ln)
-                if len(p) < ln:
-                    break
-                yield t, kind, cam_ms, p
-
-
 class Insta360Usb:
     """Live full-360 frames and IMU. latest() → (BGR frame, Jetson time it arrived); gravity() → unit
     vector of 'down' in the camera's IMU frame, averaged over the last second, or None while moving."""
@@ -274,13 +234,12 @@ class Insta360Usb:
 
     # ── protocol ────────────────────────────────────────────────────────
     def _send(self, payload: bytes):
-        self.dev.write(EP_OUT, struct.pack("<i", len(payload) + 4) + payload, timeout=1000)
+        self.dev.write(EP_OUT, frame_packet(payload), timeout=1000)
 
     def _message(self, code: int, body: bytes):
         with self._lock:
             seq, self._seq = self._seq, self._seq + 1
-        self._send(b"\x04\x00\x00" + code.to_bytes(2, "little") + b"\x02"
-                   + struct.pack("<i", seq)[:3] + b"\x80\x00\x00" + body)
+        self._send(message_payload(code, seq, body))
 
     def _keepalive(self):
         last_restart = 0.0
@@ -315,19 +274,8 @@ class Insta360Usb:
             self._parse()
 
     def _parse(self):
-        b = self._buf
-        i = 0
-        while i + 4 <= len(b):
-            n = struct.unpack_from("<i", b, i)[0]
-            if n < 4 or n > 8_000_000:                   # out of step: drop what we have
-                i = len(b)
-                break
-            if i + n > len(b):
-                break
-            p = bytes(b[i + 4:i + n])
-            i += n
+        for p in split_packets(self._buf):               # out of step: what was buffered is dropped
             self._packet(p, time.time())
-        del b[:i]
 
     def _packet(self, p: bytes, now: float):
         """One packet from the camera, arrived at Jetson time now (replay360 feeds recorded ones here)."""
@@ -341,11 +289,9 @@ class Insta360Usb:
                 return
             self._on_video(now, p[12:], struct.unpack_from("<I", p, 4)[0])
         elif p[3] == KIND_IMU:
-            body = p[12:]
             self._imu_t = now
             with self._lock:
-                for k in range(0, len(body) - IMU_RECORD.size + 1, IMU_RECORD.size):
-                    r = IMU_RECORD.unpack_from(body, k)
+                for r in imu_records(p):
                     self._imu.append((now,) + r)
                     self._track(r)
 
