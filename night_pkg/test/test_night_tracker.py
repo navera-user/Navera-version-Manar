@@ -57,7 +57,8 @@ def test_coast_only_with_measured_motion_and_for_a_while():
 def _fly(tr, t0, t1, wrong_at=(), wrong_m=300.0, start=(LAT, LON), lost_until=None):
     """Fly east at 25 m/s from `start` at t0; a correct fix (exact) each second from t0 to
     t1, a wrong one (wrong_m north) at the seconds in wrong_at; no fix before lost_until.
-    Returns the published errors (None: no position)."""
+    Returns the published errors (None: no position).
+    """
     errs = []
     for t in range(t0, t1):
         truth = dead_reckon(start[0], start[1], 90.0, 25.0, t - t0) if t > t0 else start
@@ -75,7 +76,8 @@ def _fly(tr, t0, t1, wrong_at=(), wrong_m=300.0, start=(LAT, LON), lost_until=No
 def test_b16_one_wrong_fix_after_a_long_gap_does_not_lock_the_track():
     """B16: after a gap (dead reckoning expired) the reach is wide; a wrong fix used to
     become the anchor and dead reckoning from it kept the reach tight, refusing every
-    correct fix for 30+ s. Now a jump > max_single_jump_m needs agreeing fixes."""
+    correct fix for 30+ s. Now a jump > max_single_jump_m needs agreeing fixes.
+    """
     tr = NightTracker(max_dead_reckon_s=30.0)
     tr.set_known(LAT, LON, 0.0)
     errs = _fly(tr, 0, 120, wrong_at={60}, lost_until=60)
@@ -97,7 +99,8 @@ def test_b16_wrong_anchor_is_left_after_agreeing_fixes():
 
 def test_confirmed_track_needs_more_agreeing_contrary_fixes():
     """While tracking (each fix agrees with the last), 3 agreeing wrong fixes do not move
-    the anchor; 5 would (reacquire_confirmed_n)."""
+    the anchor; 5 would (reacquire_confirmed_n).
+    """
     tr = NightTracker()
     tr.set_known(LAT, LON, 0.0)
     errs = _fly(tr, 0, 40, wrong_at={20, 21, 22})
@@ -115,7 +118,8 @@ def test_confirmed_track_needs_more_agreeing_contrary_fixes():
 
 def test_a_wrong_burst_on_a_fresh_track_is_outnumbered_but_a_gap_resets_it():
     """D22: a consensus that starts right after the last measured fix must outnumber the
-    track's own recent support; after a gap (dead reckoning) the plain counts apply (B16)."""
+    track's own recent support; after a gap (dead reckoning) the plain counts apply (B16).
+    """
     tr = NightTracker(support_cap=15)
     tr.set_known(LAT, LON, 0.0)
     errs = _fly(tr, 0, 30, wrong_at=set(range(20, 26)))        # 6 wrong, fresh, support 15

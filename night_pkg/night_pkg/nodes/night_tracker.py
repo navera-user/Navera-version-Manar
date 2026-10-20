@@ -37,7 +37,8 @@ class NightTracker:
         position contradicts a track that was just confirmed: it must outnumber that track's
         own recent agreeing fixes (counted up to support_cap) — a burst of mutually consistent
         wrong matches (a repetitive pattern, a locked wrong lock) no longer re-anchors the track
-        (D22). After a gap (dead reckoning) the plain reacquire_* counts apply (B16)."""
+        (D22). After a gap (dead reckoning) the plain reacquire_* counts apply (B16).
+        """
         self.max_speed_mps = float(max_speed_mps)
         self.gate_margin_m = float(gate_margin_m)
         self.max_dead_reckon_s = float(max_dead_reckon_s)
@@ -94,7 +95,8 @@ class NightTracker:
     # ── per frame ──────────────────────────────────────────────────────────
     def search_centre(self, exposure_s: Optional[float], heading_deg, speed_mps) -> Optional[LatLon]:
         """The anchor carried to the frame's exposure along the measured motion (the
-        anchor can be seconds stale); the anchor itself without measured motion."""
+        anchor can be seconds stale); the anchor itself without measured motion.
+        """
         if self.anchor is None:
             return None
         if exposure_s and self.anchor_time is not None:
@@ -128,7 +130,8 @@ class NightTracker:
         motion, the newest one re-anchors the track. One wrong fix that got in (e.g.
         after a long gap, when the reach is wide) then no longer locks the track while
         dead reckoning keeps the reach tight (B16), and a correct fix far from a drifted
-        anchor is taken once it is confirmed."""
+        anchor is taken once it is confirmed.
+        """
         why = self.gate(lat, lon, t)
         if why is None:
             # a fix after a long gap does not confirm the old anchor: support restarts
@@ -152,7 +155,8 @@ class NightTracker:
 
     def _consistent(self, cands, need: int) -> bool:
         """`need` fixes, each where the previous one predicts it (measured motion, else
-        anywhere within max speed), within the gate margin + 10 % of the motion."""
+        anywhere within max speed), within the gate margin + 10 % of the motion.
+        """
         if len(cands) < need:
             return False
         for a, b in zip(cands, cands[1:]):
@@ -170,7 +174,8 @@ class NightTracker:
 
     def coast(self, t: float, heading_deg, speed_mps) -> Optional[LatLon]:
         """No fix this frame: dead-reckon the anchor along the measured motion, only for
-        max_dead_reckon_s after the last measured position; None when not possible."""
+        max_dead_reckon_s after the last measured position; None when not possible.
+        """
         if (self.anchor is None or self.last_measured_time is None
                 or t - self.last_measured_time > self.max_dead_reckon_s):
             return None

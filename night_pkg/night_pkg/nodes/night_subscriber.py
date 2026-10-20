@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-night_subscriber.py — NAVERA Night Localization ROS2 subscriber (Option A).
+"""night_subscriber.py — NAVERA Night Localization ROS2 subscriber (Option A).
 
 Calqué EXACTEMENT sur day_subscriber.py, mais la localisation GPS-denied passe
 par STHN (night_localizer) au lieu de DINOv2 :
@@ -64,14 +63,13 @@ from navera_msgs.msg import NavStatus, PositionEstimate
 _NIGHT_MODE_BY_SRC = {
     "gps":         PositionEstimate.MODE_REPLAYED,   # CSV ground truth, not a measurement
     "night_sthn":  PositionEstimate.MODE_MEASURED,   # real STHN inference
-    "dead_reckon": PositionEstimate.MODE_PROPAGATED, # heading/speed bridge from anchor
+    "dead_reckon": PositionEstimate.MODE_PROPAGATED,  # heading/speed bridge from anchor
 }
 _NIGHT_MODEL_BY_SRC = {
     "gps":         "csv_replay",
     "night_sthn":  "sthn_one_stage",
     "dead_reckon": "dead_reckon_v1",
 }
-
 
 
 def _gate(value):
@@ -82,7 +80,8 @@ def _gate(value):
 
 def image_to_bgr8(bridge, msg: Image):
     """Image → 8-bit BGR. 16-bit thermal is contrast-stretched (2nd-98th
-    percentile): a plain conversion saturates or blanks the scene."""
+    percentile): a plain conversion saturates or blanks the scene.
+    """
     if msg.encoding in ("mono16", "16UC1"):
         raw = bridge.imgmsg_to_cv2(msg, desired_encoding="passthrough").astype(np.float32)
         lo, hi = np.percentile(raw, (2.0, 98.0))
@@ -96,12 +95,17 @@ class NightSubscriber(Node):
         super().__init__("night_subscriber")
 
         # ── Parameters ──────────────────────────────────────────
-        self.declare_parameter("sthn_dir",
+        self.declare_parameter(
+            "sthn_dir",
             os.environ.get("NAVERA_STHN_DIR", "/home/navera/isaac_ros_common/night_pkg/STHN"))
-        self.declare_parameter("weights",
-            os.environ.get("NAVERA_STHN_WEIGHTS", "/home/navera/isaac_ros_common/night_pkg/STHN/weights/one_stage/model.safetensors"))
-        self.declare_parameter("mbtiles",
-            os.environ.get("NAVERA_MBTILES", "/home/navera/isaac_ros_common/vision_pkg/vision_pkg/dataset/sousse_satellite.mbtiles"))
+        self.declare_parameter(
+            "weights",
+            os.environ.get("NAVERA_STHN_WEIGHTS",
+                           "/home/navera/isaac_ros_common/night_pkg/STHN/weights/one_stage/model.safetensors"))
+        self.declare_parameter(
+            "mbtiles",
+            os.environ.get("NAVERA_MBTILES",
+                           "/home/navera/isaac_ros_common/vision_pkg/vision_pkg/dataset/sousse_satellite.mbtiles"))
         self.declare_parameter("zoom",            17)
         declare_float(self, "conf_threshold",  0.30)
         # night fixes state an accuracy (covariance) only when this is true. The sigma is
@@ -183,20 +187,20 @@ class NightSubscriber(Node):
         self.height_retry = tuple(
             float(x) for x in str(self.get_parameter("height_retry").value).split(",") if x.strip())
 
-        sthn_dir   = self.get_parameter("sthn_dir").value
-        weights    = self.get_parameter("weights").value
-        mbtiles    = self.get_parameter("mbtiles").value
-        zoom       = int(self.get_parameter("zoom").value)
+        sthn_dir = self.get_parameter("sthn_dir").value
+        weights = self.get_parameter("weights").value
+        mbtiles = self.get_parameter("mbtiles").value
+        zoom = int(self.get_parameter("zoom").value)
         self.conf_threshold = float(self.get_parameter("conf_threshold").value)
         # parse robuste string→bool (bool('false') serait True : on évite ce piège)
         self.mixed_precision = str(self.get_parameter("mixed_precision").value).strip().lower() \
             in ("1", "true", "yes", "on")
-        image_topic   = self.get_parameter("image_topic").value
-        meta_topic    = self.get_parameter("meta_topic").value
-        fix_topic     = self.get_parameter("fix_topic").value
-        status_topic  = self.get_parameter("status_topic").value
-        done_topic    = self.get_parameter("done_topic").value
-        ready_topic   = self.get_parameter("ready_topic").value
+        image_topic = self.get_parameter("image_topic").value
+        meta_topic = self.get_parameter("meta_topic").value
+        fix_topic = self.get_parameter("fix_topic").value
+        status_topic = self.get_parameter("status_topic").value
+        done_topic = self.get_parameter("done_topic").value
+        ready_topic = self.get_parameter("ready_topic").value
         self.max_dead_reckon_s = float(self.get_parameter("max_dead_reckon_s").value)
         self.camera_hfov_deg = float(self.get_parameter("camera_hfov_deg").value)
         self.max_speed_mps = float(self.get_parameter("max_speed_mps").value)
@@ -205,12 +209,12 @@ class NightSubscriber(Node):
         self._imu_timeout = float(self.get_parameter("imu_heading_timeout_s").value)
 
         # ── State ───────────────────────────────────────────────
-        self.bridge        = CvBridge()
-        self._busy_lock    = threading.Lock()
-        self._pairer       = FramePairer()   # image/meta matched on the image stamp
-        self._frame_count    = 0
-        self._success_count  = 0
-        self._reject_count   = 0
+        self.bridge = CvBridge()
+        self._busy_lock = threading.Lock()
+        self._pairer = FramePairer()   # image/meta matched on the image stamp
+        self._frame_count = 0
+        self._success_count = 0
+        self._reject_count = 0
         # the track: anchor = last retained position (GPS, STHN or dead reckoning), motion
         # gate, dead reckoning (wall-clock times)
         jump = float(self.get_parameter("max_single_jump_m").value)
@@ -276,30 +280,30 @@ class NightSubscriber(Node):
         # ── QoS (RELIABLE — match camera_publisher ack mode) ───
         image_qos = QoSProfile(reliability=ReliabilityPolicy.RELIABLE,
                                history=HistoryPolicy.KEEP_LAST, depth=10)
-        meta_qos  = QoSProfile(reliability=ReliabilityPolicy.RELIABLE,
-                               history=HistoryPolicy.KEEP_LAST, depth=10)
+        meta_qos = QoSProfile(reliability=ReliabilityPolicy.RELIABLE,
+                              history=HistoryPolicy.KEEP_LAST, depth=10)
 
         # ── Publishers ──────────────────────────────────────────
-        self.pub_fix    = self.create_publisher(NavSatFix, fix_topic,    10)
+        self.pub_fix = self.create_publisher(NavSatFix, fix_topic,    10)
         self.pub_status = self.create_publisher(String,    status_topic, 10)
         done_qos = QoSProfile(reliability=ReliabilityPolicy.RELIABLE,
                               history=HistoryPolicy.KEEP_LAST, depth=1)
-        self.pub_done   = self.create_publisher(Int32, done_topic, done_qos)
+        self.pub_done = self.create_publisher(Int32, done_topic, done_qos)
         # Typed source contract for navera_estimator (additive, estimator step 6).
-        self.pub_est    = self.create_publisher(PositionEstimate, "/navera/estimate/night", 10)
+        self.pub_est = self.create_publisher(PositionEstimate, "/navera/estimate/night", 10)
 
         # ── Subscribers ─────────────────────────────────────────
         self.sub_image = self.create_subscription(Image, image_topic, self.on_image, image_qos)
-        self.sub_meta  = self.create_subscription(String, meta_topic, self.on_meta, meta_qos)
+        self.sub_meta = self.create_subscription(String, meta_topic, self.on_meta, meta_qos)
         self._gps_prior = GpsPrior(float(self.get_parameter("gps_prior_timeout_s").value))
         # The arbiter's decision: GPS is the prior only while it is the source in use.
         self.create_subscription(NavStatus, "/navera/nav_status", self.on_nav_status, 10)
         self.shadow_mode = bool(self.get_parameter("shadow_mode").value)
         if self.shadow_mode:
             self.get_logger().warn("SHADOW MODE: vision runs while GPS is valid (test flights)")
-        self.sub_gps   = self.create_subscription(
+        self.sub_gps = self.create_subscription(
             PositionEstimate, self.get_parameter("gps_topic").value, self.on_gps, 10)
-        self.sub_imu   = self.create_subscription(
+        self.sub_imu = self.create_subscription(
             Imu, self.get_parameter("imu_topic").value, self.on_imu, SENSOR_QOS)
         # Same latched QoS as the camera's gate (TRANSIENT_LOCAL, depth 1).
         start_qos = QoSProfile(reliability=ReliabilityPolicy.RELIABLE,
@@ -340,7 +344,8 @@ class NightSubscriber(Node):
         message the arbiter refuses (spoofed, implausible) never reaches it. Taken
         from the raw GPS, the first spoofed fix of an attack became the search
         centre, 2 km off (mission simulator). Any other source is ignored.
-        In shadow mode it only seeds a missing anchor."""
+        In shadow mode it only seeds a missing anchor.
+        """
         if msg.source != PositionEstimate.SOURCE_GPS:
             return
         if self._gps_prior.update(msg.latitude, msg.longitude, msg.valid,
@@ -371,7 +376,8 @@ class NightSubscriber(Node):
 
     def on_start_cmd(self, msg: Bool):
         """Mission stop/rewind → forget the previous run's track (the next run
-        starts from GPS, or reports no position until it has a prior)."""
+        starts from GPS, or reports no position until it has a prior).
+        """
         if msg.data or self._gps_prior.fresh() is not None:
             return
         self._track.reset()
@@ -411,7 +417,8 @@ class NightSubscriber(Node):
 
     def _hfov(self, meta):
         """The live camera states the field of view of its undistorted frames; else the
-        camera_hfov_deg parameter; None when neither is known."""
+        camera_hfov_deg parameter; None when neither is known.
+        """
         try:
             v = float(meta.get("camera_hfov_deg"))
             if 1.0 < v < 179.0:
@@ -424,7 +431,8 @@ class NightSubscriber(Node):
         try:
             self._search = {}
             gps_valid = meta.get("gps_valid")
-            lat = meta.get("lat"); lon = meta.get("lon")
+            lat = meta.get("lat")
+            lon = meta.get("lon")
 
             # 1) GPS connu → naviguer directement vers ce point, sans STHN.
             if gps_valid and lat is not None and lon is not None:
@@ -490,7 +498,7 @@ class NightSubscriber(Node):
             self._search = {k: result.get(k) for k in (
                 "search_center", "search_size_m", "footprint_quad", "query", "heading_source",
                 "verify", "recheck_m", "heading_correction_deg")}
-            conf   = float(result.get("conf", 0.0) or 0.0)
+            conf = float(result.get("conf", 0.0) or 0.0)
 
             self.get_logger().info(
                 f"[night] 🔬 RAW frame={seq_id} success={result.get('success')} "
@@ -511,7 +519,8 @@ class NightSubscriber(Node):
                         f"fixes, {haversine_m(*self._track.reacquired_from, *self._track.anchor):.0f} m "
                         "from the previous anchor (it was wrong, or dead reckoning drifted)")
                 else:
-                    out_lat = float(result["lat"]); out_lon = float(result["lon"])
+                    out_lat = float(result["lat"])
+                    out_lon = float(result["lon"])
             if (gated is None and result.get("success") and conf >= self.conf_threshold
                     and is_finite_latlon(result.get("lat"), result.get("lon"))):
                 # sigma (D3): the localizer's, fitted on synthetic fixes from the agreement of
@@ -558,7 +567,8 @@ class NightSubscriber(Node):
     # ────────────────────────────────────────────────────────────
     def _publish_known(self, seq_id, meta):
         """GPS connu (vérité terrain) : publie la position du CSV, sans STHN."""
-        lat = float(meta["lat"]); lon = float(meta["lon"])
+        lat = float(meta["lat"])
+        lon = float(meta["lon"])
         self._track.set_known(lat, lon, time.time())
         self._publish_fix(seq_id, lat, lon, meta, "gps", score=1.0, conf=1.0)
 
@@ -577,17 +587,17 @@ class NightSubscriber(Node):
         self.pub_status.publish(String(data=json.dumps(status)))
 
         fix = NavSatFix()
-        fix.header.stamp    = now
+        fix.header.stamp = now
         fix.header.frame_id = "thermal_camera_link"
         # Legacy/diagnostic topic; the authoritative output is /navera/position.
         # service 0 = not a GNSS position unless replayed GPS; dead-reckoning is not a fix.
-        fix.status.status   = (NavSatStatus.STATUS_NO_FIX if src == "dead_reckon"
-                               else NavSatStatus.STATUS_FIX)
-        fix.status.service  = NavSatStatus.SERVICE_GPS if src == "gps" else 0
-        fix.latitude        = lat
-        fix.longitude       = lon
+        fix.status.status = (NavSatStatus.STATUS_NO_FIX if src == "dead_reckon"
+                             else NavSatStatus.STATUS_FIX)
+        fix.status.service = NavSatStatus.SERVICE_GPS if src == "gps" else 0
+        fix.latitude = lat
+        fix.longitude = lon
         _alt = meta.get("altitude_m")
-        fix.altitude        = float(_alt) if _alt is not None else math.nan
+        fix.altitude = float(_alt) if _alt is not None else math.nan
         fix.position_covariance_type = NavSatFix.COVARIANCE_TYPE_UNKNOWN
         self.pub_fix.publish(fix)
         self._publish_estimate(now, seq_id, src, lat, lon, meta,
@@ -642,31 +652,31 @@ class NightSubscriber(Node):
         details_json, diagnostic only.
         """
         est = PositionEstimate()
-        est.header.stamp    = now
+        est.header.stamp = now
         est.header.frame_id = "thermal_camera_link"
         mode = _NIGHT_MODE_BY_SRC.get(src)
         valid = is_finite_latlon(lat, lon) and mode not in (None, PositionEstimate.MODE_REPLAYED)
-        est.latitude  = float(lat) if valid else math.nan
+        est.latitude = float(lat) if valid else math.nan
         est.longitude = float(lon) if valid else math.nan
         _alt = meta.get("altitude_m")
-        est.altitude  = float(_alt) if _alt is not None else math.nan
-        est.position_covariance      = [0.0] * 9
+        est.altitude = float(_alt) if _alt is not None else math.nan
+        est.position_covariance = [0.0] * 9
         est.position_covariance_type = PositionEstimate.COVARIANCE_TYPE_UNKNOWN
         if self.state_sigma and src == "night_sthn" and self._fix_sigma:
             v = self._fix_sigma ** 2
             est.position_covariance = [v, 0.0, 0.0, 0.0, v, 0.0, 0.0, 0.0, 0.0]
             est.position_covariance_type = PositionEstimate.COVARIANCE_TYPE_APPROXIMATED
-        est.source     = PositionEstimate.SOURCE_NIGHT_VISION
-        est.mode       = PositionEstimate.MODE_MEASURED if mode is None else mode
-        est.valid      = valid
+        est.source = PositionEstimate.SOURCE_NIGHT_VISION
+        est.mode = PositionEstimate.MODE_MEASURED if mode is None else mode
+        est.valid = valid
         est.confidence = 0.0
-        est.reason     = ("" if valid else
-                          "replayed ground truth (test data), never a measurement"
-                          if mode == PositionEstimate.MODE_REPLAYED else
-                          f"unknown source '{src}'" if mode is None else "non-finite position")
+        est.reason = ("" if valid else
+                      "replayed ground truth (test data), never a measurement"
+                      if mode == PositionEstimate.MODE_REPLAYED else
+                      f"unknown source '{src}'" if mode is None else "non-finite position")
         est.sensor_stamp = exposure_stamp(meta, now)
-        est.producer   = "night_subscriber"
-        est.model_id   = _NIGHT_MODEL_BY_SRC.get(src, "")
+        est.producer = "night_subscriber"
+        est.model_id = _NIGHT_MODEL_BY_SRC.get(src, "")
         try:
             est.frame_index = int(seq_id)
         except (TypeError, ValueError):
