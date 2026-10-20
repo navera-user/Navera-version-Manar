@@ -71,7 +71,7 @@ per-tile cache build (cosine ≥ 0.9996). Progress is printed as JSON lines.
 |---|---|---|
 | `matcher` | `local` | `local` or `retrieval` (former method) |
 | `camera_hfov_deg` | NaN (`NAVERA_DAY_HFOV_DEG`) | day camera horizontal field of view; unknown = retrieval |
-| `local_min_inliers` | 6 | geometric inliers required |
+| `local_min_inliers` | 8 | geometric inliers required (the 2026-10-01 benchmark below was measured with 6) |
 | `local_scale_tol` | 0.15 | accepted deviation of the fitted scale from the altitude's |
 | `local_sigma_m` | 30 | stated accuracy (1 σ) of a local match |
 | `local_max_radius_m` | 1500 | largest search radius while widening after failed frames |

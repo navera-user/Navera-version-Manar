@@ -80,6 +80,18 @@ position):
 | + frame pre-scaled, map features per tile, margin 300 m | 32/33 | median 4 m, worst 9 m | 0 | 0.42 s (CPU) |
 | product module (`LocalMatcher`, ≥ 6 inliers, GPU matching) | 30/33 | median 4 m, worst 5 m | 0 | 0.11 s (GPU) |
 
+Re-measured 2026-10-20 (`navera_tools/bench/learned_matchers.py`, same 33 frames, 600 m search,
+scale ±15 %, other GPU jobs running so times are high), with the inlier minimum the product
+ships (`local_min_inliers` 8) and the 6 the table above used:
+
+| Matcher | prior = previous frame, ≥ 6 / ≥ 8 inliers | prior carried along the velocity, ≥ 6 / ≥ 8 | wrong | error median |
+|---|---|---|---|---|
+| SIFT (`LocalMatcher`) | 27/33 / 23/33 | 29/33 / 24/33 | 0 | 3.3–3.5 m |
+| DISK + LightGlue (`LearnedMatcher`, the default "auto") | 29/33 / 29/33 | 28/33 / 28/33 | 0 | 3.3–3.6 m |
+
+The minimum of 8 costs SIFT 4–5 of 33 frames and nothing to DISK + LightGlue (~190 inliers);
+neither minimum let a wrong position through.
+
 The frames are aerial images from another source and date than the map, rotated ~50° and at
 ~3× the map's resolution: a fair test of cross-source matching, **not** frames from NAVERA's
 camera (lens, blur, haze, oblique view). The benchmark camera's scale (0.62 of a 768 px frame)

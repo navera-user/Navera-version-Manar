@@ -148,8 +148,9 @@ class DaySubscriber(Node):
         # Matching method. "local": local features vs the satellite map around the prior
         # (local_matcher, SIFT; needs the frame altitude and camera_hfov_deg to know the
         # frame's scale — without them, falls back to "retrieval"); "learned": the same with
-        # DISK + LightGlue (learned_matcher, GPU; SIFT as its fallback) — 31/33 real aerial
-        # frames vs SIFT's 27/33, 0 wrong, twice as fast; "auto": "learned" when its models
+        # DISK + LightGlue (learned_matcher, GPU; SIFT as its fallback) — 28-29/33 real aerial
+        # frames vs SIFT's 23-24/33 with the shipped 8 inliers, 0 wrong (docs/VALIDATION_STATUS.md,
+        # re-measured 2026-10-20); "auto": "learned" when its models
         # load (GPU, kornia, weights), else "local"; "retrieval": DINOv2 tile retrieval
         # (the former method, ~440 m median).
         self.declare_parameter("matcher", "auto")
@@ -158,7 +159,8 @@ class DaySubscriber(Node):
         # far from the prediction (gate_k sigma) is rejected — one with strong_inliers only beyond
         # strong_gate_k_sigma (it was believed at any distance: 2026-10-19 bench, 100-150 inlier
         # matches 270-650 m off were forwarded) — unless the next fix agrees with it,
-        # one whose inliers cover < min_inlier_spread of the frame too (if < 50 inliers);
+        # one whose inliers cover < min_inlier_spread of the frame (with < 30 inliers) or at most
+        # 1/8 of it (with < 50) too;
         # after height_retry_after failures in a row, the frame is also tried 20 % lower
         # and 25 % higher (a stale height makes every match fail).
         declare_float(self, "local_min_radius_m", 80.0)

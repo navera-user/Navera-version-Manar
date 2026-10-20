@@ -3,8 +3,8 @@
 Same contract as local_matcher.LocalMatcher (it is one: locate(), locate_any_height(),
 frame_m_per_px()), measured better on real aerial frames that differ from the map in
 colour, shadows and date (navera_tools/bench/learned_matchers.py, 33 frames, 600 m search,
-position carried along the velocity): 30/33 located, 0 wrong, 333 ms/frame on the Orin
-Nano — SIFT (LocalMatcher): 22/33, 0 wrong, 720 ms.
+position carried along the velocity, 8 inliers as shipped; re-measured 2026-10-20, see
+docs/VALIDATION_STATUS.md): 28/33 located, 0 wrong — SIFT (LocalMatcher): 24/33, 0 wrong.
 
 DISK and LightGlue are not rotation invariant: the frame is turned north-up from its
 heading before matching — heading_deg from the attitude, or, without an IMU, the
