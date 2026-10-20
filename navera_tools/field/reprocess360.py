@@ -52,51 +52,8 @@ def truth_at(phone, t, max_gap_s=3.0):
     return (pts[j][1], pts[j][2]) if abs(ts[j] - t) <= max_gap_s else None
 
 
-def zenith_icrs(lat, lon, utc):
-    """Unit vector (ICRS, J2000) of the point overhead at (lat, lon) and utc."""
-    import astropy.units as u
-    from astropy.coordinates import TETE, SkyCoord
-    from cn_pkg.nodes.celestial_math import gast_deg, obs_time
-    t = obs_time(utc)
-    c = SkyCoord(ra=((gast_deg(utc) + lon) % 360.0) * u.deg, dec=lat * u.deg, frame=TETE(obstime=t)).icrs
-    ra, dec = math.radians(c.ra.deg), math.radians(c.dec.deg)
-    return np.array([math.cos(dec) * math.cos(ra), math.cos(dec) * math.sin(ra), math.sin(dec)])
-
-
-def position(z_icrs, utc):
-    from cn_pkg.nodes.celestial_math import apparent_radec, gast_deg
-    z = z_icrs / np.linalg.norm(z_icrs)
-    ra, dec = math.degrees(math.atan2(z[1], z[0])) % 360.0, math.degrees(math.asin(max(-1.0, min(1.0, z[2]))))
-    ra_a, dec_a = apparent_radec(ra, dec, utc)
-    return dec_a, (ra_a - gast_deg(utc) + 540.0) % 360.0 - 180.0
-
-
-def rotvec(w):
-    t = float(np.linalg.norm(w))
-    if t < 1e-15:
-        return np.eye(3)
-    a = w / t
-    K = np.array([[0, -a[2], a[1]], [a[2], 0, -a[0]], [-a[1], a[0], 0]])
-    return np.eye(3) + math.sin(t) * K + (1 - math.cos(t)) * K @ K
-
-
-def fit_mount(samples):
-    """Rotation vector (rad) Q with R (Q up) closest to the true zenith over the samples [(R, up, z_true)].
-    A turn about 'up' itself does not move 'up' and cannot be measured: Q is fitted as a tilt only (rotation
-    axis perpendicular to the mean 'up'), so its angle is the mounting tilt (before, the free turn about 'up'
-    came out as tens of degrees: a 1 deg simulated mount was reported as 56 deg)."""
-    from scipy.optimize import least_squares
-    u = np.mean([up / np.linalg.norm(up) for _, up, _ in samples], axis=0)
-    u /= np.linalg.norm(u)
-    e1 = np.cross(u, [1.0, 0, 0] if abs(u[0]) < 0.9 else [0, 1.0, 0])
-    e1 /= np.linalg.norm(e1)
-    e2 = np.cross(u, e1)
-
-    def res(p):
-        Q = rotvec(p[0] * e1 + p[1] * e2)
-        return np.concatenate([np.asarray(R) @ (Q @ up) - z for R, up, z in samples])
-    p = least_squares(res, np.zeros(2)).x
-    return p[0] * e1 + p[1] * e2
+# the geometry is shared with the flight node (cn_pkg.allsky_mount): the same functions, not a copy
+from cn_pkg.allsky_mount import fit_mount, position, rotvec, zenith_icrs  # noqa: E402,F401
 
 
 def main():

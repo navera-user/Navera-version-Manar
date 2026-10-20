@@ -25,6 +25,11 @@ Parameters:
                    the star match (20.7 ~ odds of 1e9, astrometry's own default).
     camera_fov_deg (float, default NaN) — star camera horizontal field of view;
                    unknown = slower wide search.
+    solver_mode    (str, default "geoloc") — "geoloc": narrow-field astrometry.net with the
+                   boresight from tilt/azimuth; "allsky360": the 360 camera's full dual-fisheye
+                   frame, all-sky star identification + quality gate (cn_pkg.allsky, the same
+                   code as the field tools) with 'up' from the camera or the vehicle IMU through
+                   the camera-to-body mount rotation (allsky_* parameters, see __init__).
     image_topic    (str,  default "/celestial/image_raw")
     meta_topic     (str,  default "/celestial/frame_meta")
     fix_topic      (str,  default "/cn/position_estimate")
@@ -62,6 +67,7 @@ from cv_bridge import CvBridge
 
 from cn_pkg.nodes import solver as cn_solver
 from cn_pkg.nodes.celestial_math import boresight_altaz
+from cn_pkg import allsky_mount
 
 
 def _rate_dps(q0, q1, dt_s: float) -> float:
@@ -130,6 +136,22 @@ class CNSubscriber(Node):
         declare_float(self, "imu_max_gap_s", 0.1)
         # Without prior_lat/lon, the last valid GPS fix is the prior.
         self.declare_parameter("gps_topic", "/navera/estimate/gps")
+        # ── 360 all-sky mode (solver_mode "allsky360") ──
+        # where 'up' comes from: "camera" (frame_meta up_imu, the camera's accelerometer), "vehicle" (the IMU
+        # orientation at the exposure through allsky_R_cam_body), "auto" (camera when the frame carries it)
+        self.declare_parameter("allsky_up_source", "auto")
+        # camera-to-body mount rotation, 9 values row-major: camera-frame vector = R @ body (FLU) vector.
+        # Default: the camera standing on a level vehicle (camera +x up, +y left, +z back).
+        self.declare_parameter("allsky_R_cam_body", [float(v) for v in allsky_mount.R_CAM_BODY_STANDING.ravel()])
+        self.declare_parameter("allsky_lens_file", "")          # "" = sky360.LENS_FILE (NAVERA_INSTA360_LENS)
+        self.declare_parameter("allsky_catalogue", "")          # "" = the bundled bright-star list (offline)
+        self.declare_parameter("allsky_f_scale_search", [0.96, 1.0, 1.04])
+        self.declare_parameter("allsky_cal_min_samples", allsky_mount.CAL_MIN_SAMPLES)
+        self.declare_parameter("allsky_cal_samples", allsky_mount.CAL_SAMPLES)
+        # a GPS fix older than this is no reference for learning the tilt of 'up'
+        declare_float(self, "allsky_cal_gps_max_age_s", 2.0)
+        # the vehicle counts as still (tilt calibration samples) below this rotation rate
+        declare_float(self, "allsky_cal_still_dps", 0.5)
 
         self.min_log_odds   = float(self.get_parameter("min_log_odds").value)
         self.camera_fov_deg = float(self.get_parameter("camera_fov_deg").value)
@@ -160,6 +182,10 @@ class CNSubscriber(Node):
         self._imu_hist = deque(maxlen=3000)
         self._gyro = deque(maxlen=3000)       # (t_ns, |angular velocity| deg/s) when the IMU gives it
         self._gps_prior = None    # last valid GPS fix (lat, lon)
+        self._gps_t = None        # time.monotonic() of that fix
+        self.allsky = None
+        if self.solver_mode == "allsky360":
+            self.allsky = self._make_allsky()
         self.create_subscription(Imu, self.get_parameter("imu_topic").value, self._on_imu, SENSOR_QOS)
         self.create_subscription(PositionEstimate, self.get_parameter("gps_topic").value,
                                  self._on_gps, 10)
@@ -228,9 +254,25 @@ class CNSubscriber(Node):
     # ────────────────────────────────────────────────────────────
     # Callbacks
     # ────────────────────────────────────────────────────────────
+    def _make_allsky(self):
+        """The 360 mode's state (catalogue loaded once, lenses, tilt calibration)."""
+        from cn_pkg.allsky_locator import AllSkyLocator
+        g = lambda n: self.get_parameter(n).value          # noqa: E731
+        att = self.attitude_sigma_deg
+        loc = AllSkyLocator(
+            catalogue_path=str(g("allsky_catalogue")) or None, lens_file=str(g("allsky_lens_file")) or None,
+            f_scale_search=list(g("allsky_f_scale_search")), R_cam_body=list(g("allsky_R_cam_body")),
+            up_source=str(g("allsky_up_source")),
+            base_sigma_deg=att if math.isfinite(att) and att > 0 else allsky_mount.ATTITUDE_SIGMA_360_DEG,
+            cal_min_samples=int(g("allsky_cal_min_samples")), cal_samples=int(g("allsky_cal_samples")),
+            cal_still_dps=float(g("allsky_cal_still_dps")))
+        self.get_logger().info(f"  allsky360       : {len(loc.cat.vec)} stars, up from {loc.up_source}, "
+                               f"R_cam_body {np.round(loc.R_cam_body, 4).tolist()}")
+        return loc
+
     def on_image(self, msg: Image):
         try:
-            img = self.bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
+            img = self.bridge.imgmsg_to_cv2(msg, desired_encoding="mono8" if self.allsky else "bgr8")
         except Exception as e:
             self.get_logger().warn(f"cv_bridge decode failed: {e}")
             img = None                      # still paired, so the frame is acked
@@ -290,6 +332,7 @@ class CNSubscriber(Node):
         if msg.valid and msg.mode == PositionEstimate.MODE_MEASURED and \
                 math.isfinite(msg.latitude) and math.isfinite(msg.longitude):
             self._gps_prior = (msg.latitude, msg.longitude)
+            self._gps_t = time.monotonic()
 
     def _attitude(self, meta):
         """(tilt, azimuth, source): frame_meta, else a fresh IMU, else parameters."""
@@ -367,8 +410,44 @@ class CNSubscriber(Node):
             target=self._process_frame, args=(seq_id, img, meta), daemon=True
         ).start()
 
+    def _utc_for(self, meta):
+        """(UTC used, source): frame_meta, else the utc_time parameter, else the RTC / system clock."""
+        utc = meta.get("utc_time") or self.utc_time
+        src = "frame" if meta.get("utc_time") else "parameter"
+        if not utc:
+            utc, src = self._utc_now()
+        return utc, src
+
+    def _solve_allsky(self, img, meta):
+        """360 mode: the whole sky above the camera, 'up' from the camera or the vehicle (AllSkyLocator)."""
+        utc, meta["utc_source"] = self._utc_for(meta)
+        meta["utc_used"] = utc
+        exp = meta.get("image_stamp_ns")
+        got = self._imu_at(int(exp) if exp is not None else self.get_clock().now().nanoseconds)
+        q, rate = got if got is not None else (None, 0.0)
+        self._rate_dps = rate
+        up, src, _ = self.allsky.up(meta, q)
+        meta.update(attitude_source=f"allsky360 up from {src}", prior=None, prior_source="none (all-sky)")
+        if src == "vehicle" and q is not None and rate > self.max_rot_dps:
+            return {"success": False, "source": "allsky360",
+                    "error": f"frame not solved: imu: rotating {rate:.1f} deg/s (max {self.max_rot_dps:.0f})"}
+        ref = None
+        if self._gps_prior and self._gps_t is not None and \
+                time.monotonic() - self._gps_t <= float(self.get_parameter("allsky_cal_gps_max_age_s").value):
+            ref = self._gps_prior
+        t0 = time.monotonic()
+        result = self.allsky.process(img, utc, meta, q, rate, ref)
+        result["solve_s"] = round(time.monotonic() - t0, 1)
+        if result.get("tilt_calibrated"):
+            self.get_logger().info(f"[cn] allsky360 tilt of 'up' learned: {result['tilt_calibrated']}")
+        return result
+
     def _process_frame(self, seq_id, img, meta):
         try:
+            if self.allsky is not None:
+                self.get_logger().info(f"[cn] 🛰  solving frame={seq_id} (mode=allsky360)…")
+                self._publish_result(seq_id, meta, self._solve_allsky(img, meta))
+                return
             ok, jpg = cv2.imencode(".jpg", img)
             if not ok:
                 self.get_logger().error(f"[cn] cv2.imencode failed frame={seq_id}")
@@ -383,10 +462,7 @@ class CNSubscriber(Node):
                 prior_lat, prior_lon, prior_src = self._prior()
                 meta.update(attitude_source=att_src, tilt_used=tilt, azimuth_used=azimuth,
                             prior=[prior_lat, prior_lon], prior_source=prior_src)
-                utc = meta.get("utc_time") or self.utc_time
-                utc_src = "frame" if meta.get("utc_time") else "parameter"
-                if not utc:
-                    utc, utc_src = self._utc_now()
+                utc, utc_src = self._utc_for(meta)
                 meta["utc_source"] = utc_src
                 meta["utc_used"] = utc
                 if att_src.startswith("imu: rotating"):
@@ -446,9 +522,17 @@ class CNSubscriber(Node):
             "sigma_m": self._sigma_m(),
             "min_log_odds": self.min_log_odds,
         }
+        allsky = result.get("source") == "allsky360"
+        if allsky:
+            # the all-sky gate (allsky.accept) already judged the match; the sigma is the fix's own
+            status["sigma_m"] = result.get("sigma_m")
+            status.update({k: result[k] for k in (
+                "up_source", "up_cam", "moving", "spots", "matched", "used", "rms_deg", "p_chance",
+                "lens_disagree_deg", "sigma_fit_deg", "f_scale", "f_scale_found", "matched_per_lens", "raw_lat",
+                "raw_lon", "tilt_cal", "cal_sample", "tilt_calibrated", "retried_with") if k in result})
 
         log_odds = result.get("log_odds")
-        if result.get("success") and (log_odds is None or log_odds < self.min_log_odds):
+        if result.get("success") and not allsky and (log_odds is None or log_odds < self.min_log_odds):
             self._reject_count += 1
             status["success"]   = False
             status["rejected"]  = True
@@ -532,7 +616,7 @@ class CNSubscriber(Node):
             valid = False
         _alt = meta.get("altitude_m") if isinstance(meta, dict) else None
         est.altitude  = float(_alt) if _alt is not None else math.nan
-        sigma = self._sigma_m()
+        sigma = details.get("sigma_m") if isinstance(details, dict) and "sigma_m" in details else self._sigma_m()
         if sigma:
             est.position_covariance = [sigma ** 2, 0.0, 0.0, 0.0, sigma ** 2, 0.0, 0.0, 0.0, 0.0]
             est.position_covariance_type = PositionEstimate.COVARIANCE_TYPE_APPROXIMATED
@@ -546,7 +630,7 @@ class CNSubscriber(Node):
         est.reason     = reason
         est.sensor_stamp = exposure_stamp(meta, now)
         est.producer   = "cn_subscriber"
-        est.model_id   = "astrometry.net"
+        est.model_id   = "allsky360" if details.get("source") == "allsky360" else "astrometry.net"
         try:
             est.frame_index = int(seq_id)
         except (TypeError, ValueError):
