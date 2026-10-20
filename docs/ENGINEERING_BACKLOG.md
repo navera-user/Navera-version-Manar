@@ -176,3 +176,13 @@ IDs QAS-n (simulator QA campaign) — distinct from the QA-n code-quality items 
 | R-11 | H | Day vision over uniform terrain (desert near Gabès): retrieval rejected ~20 % of frames, autopilot failsafe in 45–91 s (terrain, not map size). With local matching (LOC-14): 147/147 matched, autopilot held 230 s. Remaining: FEAT-2 to bridge real gaps; measure with the real camera | 🔧 |
 | R-12 | H | Simulator: a mission start could leave an orphan estimator (start raced by the watchdog) — two arbiters, decisions interleaved | ✅ 6bff3d6 |
 | R-9 | M | Camera navigation never tested above ~400 m (simulated plane capped at 1000 m); at 10 km altitude a frame covers ~18 km | ⬜ |
+
+## 9. Day vision on real drone flights (UAV-VisLoc, 8 flights, 2026-10-20)
+
+Details: VALIDATION_STATUS.md, "Day: real drone flights".
+
+| ID | Sev. | Finding | Status |
+|---|---|---|---|
+| VL-1 | C | The point under the camera from the fitted pose (`local_matcher.refine_with_pose`, used whenever `camera_hfov_deg` is known) is ill-conditioned on real drone photos: pose tilts of 9–26° while the drone was level, 70 of 2600 accepted fixes 100–325 m off, stated sigma 5–25 m (13 beyond the self-calibrated 3σ). Proposed, bench-verified on the 8 flights, **not applied**: use the pose only when its tilt agrees with the attitude's (straightened frame: ~0°) within 4°, else the frame centre → 0 such fixes (2 eval artefacts), 30 m floor 0.999 and self-cal 0.998 within 3σ | ⬜ |
+| VL-2 | H | Self-calibration needs 15 GPS-check samples: on flights that match rarely (05: 7, 10: 1) it never starts and the 30 m floor is published — safe only with VL-1 (as-is: 0.81 / 0.83 within 3σ) | ⬜ |
+| VL-3 | M | The bench does not straighten the photos with the attitude as `live_camera` does (UAV-VisLoc gives it, axes to confirm: the errors follow Kappa forward, Omega sideways); the full product chain on real drone photos is not measured | ⬜ |

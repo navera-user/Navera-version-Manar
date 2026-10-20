@@ -23,6 +23,7 @@ import time
 import cv2
 import numpy as np
 
+import day_pkg.learned_matcher as _lm
 from day_pkg.learned_matcher import LearnedMatcher
 from day_pkg.local_matcher import map_m_per_px
 from day_pkg.fix_sigma import day_fix_sigma_m
@@ -39,12 +40,30 @@ ap.add_argument("--hfov", type=float, default=0.0, help="skip the fit")
 ap.add_argument("--max-tilt", type=float, default=99.0, help="only images with |roll|,|pitch| below this (deg)")
 ap.add_argument("--heading-err", type=float, default=0.0, help="heading error given to the matcher (deg, random sign)")
 ap.add_argument("--height-err", type=float, default=0.0, help="height error given to the matcher (fraction, random sign)")
+ap.add_argument("--ground-csv", default="", help="filename,ground_m (uavvisloc_dem.py): use the height above ground "
+                "(the dataset's height is above sea level; ignored ground = flat at sea level, as flight 03)")
+ap.add_argument("--position", choices=("pose", "centre"), default="pose",
+                help="pose (as day_subscriber: hfov_deg given, the point under the camera from the fitted pose) or "
+                     "centre (the frame centre; the drone's tilt then adds height x tan(tilt): 2026-10-20 runs before this option)")
 ap.add_argument("--seed", type=int, default=1)
 ap.add_argument("--out", default="uavvisloc_eval.json")
 a = ap.parse_args()
 search_m = a.search_m or a.prior_m + 100.0
 rows = list(csv.DictReader(open(os.path.join(a.flight, os.path.basename(a.flight) + ".csv"))))
+ground = {r["filename"]: float(r["ground_m"]) for r in csv.DictReader(open(a.ground_csv))} if a.ground_csv else {}
+for r in rows:
+    r["height"] = str(float(r["height"]) - ground.get(r["filename"], 0.0))     # above ground from here on
 rng = random.Random(a.seed)
+_refine = _lm.refine_with_pose
+
+
+def _refine_keep_centre(res, *args, **kw):
+    """refine_with_pose, keeping the frame-centre position too (centre_lat/lon): both are scored from one run."""
+    res["centre_lat"], res["centre_lon"] = res.get("predicted_lat"), res.get("predicted_lon")
+    return _refine(res, *args, **kw)
+
+
+_lm.refine_with_pose = _refine_keep_centre
 M = LearnedMatcher(os.path.join(a.area, "images"), zoom=17, cache_dir=os.path.join(a.area, "learned_features"))
 
 
@@ -75,7 +94,8 @@ def locate(r, im, hfov, prior_m, smeters):
     mpp = 2 * h * math.tan(math.radians(hfov) / 2) / im.shape[1]
     prior = shifted(r, prior_m)
     t0 = time.time()
-    res = M.locate(im, prior, smeters, mpp, heading_deg=(float(r["Phi2"]) + a.heading_err * rng.choice((-1, 1)) * (prior_m > 40)) % 360)
+    res = M.locate(im, prior, smeters, mpp, heading_deg=(float(r["Phi2"]) + a.heading_err * rng.choice((-1, 1)) * (prior_m > 40)) % 360,
+                   hfov_deg=hfov if a.position == "pose" else None)
     res["ms"] = (time.time() - t0) * 1000
     return res
 
@@ -128,12 +148,16 @@ for i in range(0, len(rows), a.stride):
                     inliers=res.get("inliers"), ms=round(res["ms"]), reason=res.get("reason"),
                     # the stated accuracy (day_fix_sigma_m, as day_subscriber publishes it) and what it is built from
                     match_sigma_m=res.get("sigma_m"), stated_sigma_m=None if stated is None else round(stated, 2),
-                    spread=res.get("spread"), height_m=float(r["height"]), speed_mps=None if spd is None else round(spd, 1),
+                    spread=res.get("spread"), position_from=res.get("position_from"),
+                    centre_east_m=None if res.get("centre_lat") is None else round(en_m(dict(predicted_lat=res["centre_lat"], predicted_lon=res["centre_lon"]), r)[0], 1),
+                    centre_north_m=None if res.get("centre_lat") is None else round(en_m(dict(predicted_lat=res["centre_lat"], predicted_lon=res["centre_lon"]), r)[1], 1), pose_tilt_deg=res.get("pose_tilt_deg"),
+                    omega=float(r["Omega"]), kappa=float(r["Kappa"]), phi2=float(r["Phi2"]), height_m=float(r["height"]), speed_mps=None if spd is None else round(spd, 1),
                     t=r["date"], lat=float(r["lat"]), lon=float(r["lon"])))
     print(f"{r['filename']} tilt {tilt:4.1f}  {'ACC' if res['accepted'] else 'rej'}  err {'-' if e is None else round(e, 1)} m  "
           f"inl {res.get('inliers')}  {res['ms']:.0f} ms", flush=True)
 
 acc = [o for o in out if o["accepted"]]
+pose_share = sum(o["position_from"] not in (None, "frame centre") for o in acc) / len(acc) if acc else None
 ok = [o["err_m"] for o in acc]
 bad = [o for o in acc if o["err_m"] > 30]
 good = [o for o in acc if o["err_m"] <= 100]       # a fix within 100 m: the offset below is theirs
@@ -148,6 +172,7 @@ summ = dict(images=len(out), bias_east_m=round(be, 1), bias_north_m=round(bn, 1)
             err_median=round(st.median(ok), 1) if ok else None,
             err_p95=round(sorted(ok)[int(0.95 * (len(ok) - 1))], 1) if ok else None,
             err_max=round(max(ok), 1) if ok else None,
+            position=a.position, accepted_from_pose=None if pose_share is None else round(pose_share, 3),
             ms_median=round(st.median([o["ms"] for o in out])) if out else None)
 print(json.dumps(summ))
 json.dump(dict(summary=summ, frames=out), open(a.out, "w"), indent=1)

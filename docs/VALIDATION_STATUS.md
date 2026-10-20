@@ -16,6 +16,7 @@ been measured. Open engineering items are tracked in
 | Automatic restart after a crash | Mechanism verified; not yet reboot-tested on a deployed unit | Node exit → launch exit, verified |
 | Day vision — local feature matching (default since 2026-10-01) | **Accurate on aerial test frames; measured with NAVERA's camera on a screen bench only (not flown)** | 32/33 frames within 9 m (median 4 m), no wrong position accepted, 0.16 s/frame |
 | Day vision — DISK + LightGlue matcher, navigation between matches (2026-10-06/07) | **Screen bench with the Insta360 (other-date imagery) and simulator; not flown** | below: "Day vision with NAVERA's camera — screen bench" |
+| Day vision — stated sigma on real drone flights (UAV-VisLoc, 8 flights, 2026-10-20) | **Model alone unsafe (65 % within 3σ); self-calibration + 30 m floor safe (99.8 / 99.9 %) only with a pose–attitude guard not yet in the product — as-is 70 of 2600 fixes 100–325 m off, 13 of them beyond the self-calibrated 3σ** | below: "Day: real drone flights" |
 | Day vision — DINOv2 tile retrieval (former method, fallback) | **Not accurate enough to replace GPS** | Median 442 m on labelled replay frames |
 | Night vision (STHN homography) | Frames scaled and turned north-up from altitude, camera field of view and heading; motion gate; **simulator only — not validated on real thermal** | 8–13 m median on synthetic frames (250–600 m, any heading); simulated night mission, GPS jammed, vehicle barometer (2026-10-07): 10 m median, 21 m max, stated accuracy (simulator-calibrated) 100 % within 3 sigma; **needs an independent height (barometer) after GPS loss** |
 | Celestial (astrometry.net) | Run end to end on simulated star fields; **coarse: bounded by the IMU attitude (~111 km per degree); simulator only — not run on a real sky** | 5.5–6.5 km with a perfect attitude; 24–119 km with a BNO085-class IMU; simulated night mission without barometer (2026-10-07): 29 km median, 40 km max, 100 % within its stated sigma |
@@ -151,6 +152,118 @@ The 307 m and 554 m maxima were the carried position folding turns; fixed after
 8 years older than the map (2017): no match with any matcher. Limits: the screen is flat
 (no relief, no perspective of buildings), no vibration or real blur; the camera was
 re-aimed between campaigns. **Not a flight measurement.**
+
+### Day: real drone flights (UAV-VisLoc, 8 flights, 2026-10-20)
+
+NAVERA has not flown. The closest evidence is the public UAV-VisLoc dataset
+(github.com/IntelliSensing/UAV-VisLoc): real fixed-wing drone photos with their GPS position,
+height and attitude, and a satellite map per flight. Each photo is located by NAVERA's day
+matcher (DISK + LightGlue, `LearnedMatcher`) from a prior 250 m off in a random direction
+(search 350 m, heading from the dataset, no tracking between photos), then the stated sigma is
+scored as a flight (`replay_sigma_cal.py`): the first 30 % of the accepted fixes with GPS (every 2nd one calibrates,
+`SigmaCalibration`, min 15 samples), the rest after a GPS loss.
+
+Tools: `navera_tools/bench/uavvisloc_tiles.py` (map → z17 tiles), `uavvisloc_dem.py` (ground
+height), `uavvisloc_eval.py` (matcher, `--position pose` as `day_subscriber`), `replay_sigma_cal.py
+--table` (the tables below; `--position guard:4`, `--exclude`). Data on the ADATA disk
+(`NAVERA_TESTDATA/uavvisloc/full/`, flights downloaded from the dataset's Hugging Face mirror
+`mvidem/UAV-VisLoc`, every file checked against the size and CRC of the official zip); results
+in `~/.navera_sim/uavvisloc/more/` (`f*_pose.json`, `table_pose_2026-10-20.txt`).
+
+| Flight | Region, ground (DEM) | Date | Height above ground | Photos | Accepted |
+|---|---|---|---|---|---|
+| 03 | Taizhou, flat, 0–14 m | 2018-10 | 462 m | 768 | 693 (90 %) |
+| 04 | Taizhou, flat, 0–11 m | 2018-10 | 539 m | 738 | 661 (90 %) |
+| 01 | Yangtze (Jiujiang), flat, 9–41 m | 2018-09 | 387 m | 817 | 161 (20 %) |
+| 05 | Yunnan, hills, 1911–2125 m | 2016-06 | 375 m (190–406) | 473 | 44 (9 %) |
+| 06 | Zhuxi, mountain valley, 495–602 m | 2022-10 | 309 m | 262 (*) | 206 (79 %) |
+| 08 | Huzhou, flat, 0–10 m | 2019-06 | 549 m | 1033 | 285 (28 %) |
+| 10 | Huailai, 473–490 m | 2018-09 | 293 m | 144 | 8 (6 %) |
+| 11 | Shandan (Gansu), 1713–2013 m | 2023-10 | 778 m (246–860) | 590 | 542 (92 %) |
+
+(*) 82 photos of flight 06 (06_0099–06_0180) are left out: their GPS labels are ~360 m
+off **along the track** (cross-track < 40 m, sign flips with the flight direction, matches with up
+to 222 inliers) — a time-tagging error of the dataset, not of the matcher.
+
+Three facts about the data the first run (flight 03 only) did not need: the dataset's
+"height" is **above sea level** (Yunnan: 2313 m over ground at 1900–2125 m), so the eval
+subtracts the ground height of a public DEM (AWS Terrain Tiles, ~30 m); its positions are the
+**drone's** (under the camera), not the photo centre's — the centre errors follow
+height × tan(attitude) (correlation 0.74–0.98 on every flight); and the maps are newer than the
+photos (flight 05: fields of 2016 are greenhouses on the map — 9 % accepted). The camera field
+of view is fitted per flight (52–58°).
+
+**Product mode, as the code is today** (`hfov_deg` given: the position is the point under the
+camera from the fitted pose, `local_matcher.refine_with_pose`). Error of the accepted fixes,
+fixes > 100 m, share within 3 stated sigma: model alone (`day_fix_sigma_m`), never calibrated
+(`sigma_floor_no_cal_m` 30 m, whole flight), self-calibrated (after the GPS loss); last column:
+fixes > 100 m off **and** beyond 3 published sigma — wrong positions the stated accuracy hides:
+
+| Flight | Median / p90 / max (m) | > 100 m | Model | Floor 30 m | Self-cal (f, b) | Self-cal median σ | > 100 m beyond 3σ: floor / self-cal |
+|---|---|---|---|---|---|---|---|
+| 03 | 12.1 / 25 / 127 | 5 | 0.815 | 0.990 | 0.992 (1.9, 17 m) | 20 m | 5 / 3 |
+| 04 | 14.1 / 34 / 155 | 6 | 0.641 | 0.989 | 0.985 (2.4, 14 m) | 19 m | 6 / 2 |
+| 01 | 35.4 / 126 / 202 | 21 | 0.487 | **0.839** | 1.000 (4.4, 58 m) | 90 m | 21 / 0 |
+| 05 | 40.1 / 137 / 281 | 9 | 0.419 | **0.795** | **0.806** (not calibrated: 7 samples) | 30 m | 9 / 6 |
+| 06 | 26.5 / 58 / 121 | 1 | 0.538 | 0.990 | 1.000 (2.1, 27 m) | 32 m | 1 / 0 |
+| 08 | 20.4 / 78 / 325 | 22 | 0.620 | **0.916** | 0.995 (3.6, 32 m) | 44 m | 22 / 1 |
+| 10 | 35.4 / 78 / 115 | 1 | 0.500 | **0.875** | **0.833** (not calibrated: 1 sample) | 30 m | 1 / 1 |
+| 11 | 22.0 / 39 / 162 | 5 | 0.563 | 0.991 | 1.000 (3.9, 23 m) | 33 m | 5 / 0 |
+| **All** | 17.0 / 46 / 325 (2600 fixes) | **70** | 0.647 | 0.969 | 0.990 | 29 m | **70 / 13** |
+
+The wrong fixes are the pose's: their pose tilt is 9–26° while the drone was within 1–3° of
+level (flight 03: pose 14°, attitude 1°, 110–127 m off). On a flat scene seen through a ~52° lens,
+tilt and offset trade against each other and the pose solver picks a wrong pair with a small
+reprojection error; the matcher's sigma (5–25 m) does not know. On the 2 flights with few matches
+(05, 10) self-calibration never starts and the 30 m floor is published over 100–280 m errors.
+
+**Proposed (not applied; `day_subscriber`/`local_matcher` untouched): pose–attitude guard.** Use
+the pose position only when its tilt agrees with the tilt the attitude says the frame has —
+for frames straightened with the IMU, about 0° — within 4°; otherwise keep the frame centre
+(not refuse: refusing the match instead loses 13 % of the fixes overall — 47 % on flight 01,
+44 % on 06 — for the same safety). Scored on
+the same runs (`--position guard:4`; the eval's photos are not straightened, so a fallback to the
+centre still carries height × tan(attitude): pessimistic):
+
+| Flight | Median / p90 / max (m) | > 100 m | Model | Floor 30 m | Self-cal (f, b) | Self-cal median σ | > 100 m beyond 3σ: floor / self-cal |
+|---|---|---|---|---|---|---|---|
+| 03 | 12.0 / 23 / 50 | 0 | 0.833 | 1.000 | 1.000 (1.8, 12 m) | 15 m | 0 / 0 |
+| 04 | 14.1 / 35 / 122 | 2 | 0.644 | 0.997 | 0.996 (2.9, 16 m) | 23 m | 2 / 1 |
+| 01 | 19.7 / 39 / 89 | 0 | 0.832 | 1.000 | 1.000 (2.1, 17 m) | 37 m | 0 / 0 |
+| 05 | 27.6 / 53 / 80 | 0 | 0.839 | 1.000 | 1.000 (not calibrated) | 30 m | 0 / 0 |
+| 06 | 15.9 / 32 / 64 | 0 | 0.717 | 1.000 | 0.993 (1.6, 14 m) | 19 m | 0 / 0 |
+| 08 | 18.9 / 37 / 69 | 0 | 0.745 | 1.000 | 1.000 (2.7, 17 m) | 29 m | 0 / 0 |
+| 10 | 25.5 / 32 / 35 | 0 | 1.000 | 1.000 | 1.000 (not calibrated) | 30 m | 0 / 0 |
+| 11 | 21.8 / 37 / 78 | 0 | 0.568 | 1.000 | 1.000 (3.8, 22 m) | 32 m | 0 / 0 |
+| **All** | 15.8 / 34 / 122 | 2 | 0.712 | **0.999** | **0.998** | 23 m | 2 / 1 |
+
+The 2 fixes over 100 m left are on flight 04; 04_0420 (attitude 14.6°, pose 1.2°: the pose
+is wrong again) falls back to the eval's unstraightened centre, 122 m off where height ×
+tan(attitude) is 141 m — with the IMU straightening the frame first it would not be there.
+Guard threshold 3° / 5°: floor 0.999 / 0.999, self-cal 0.997 / 0.996, 3 / 2 fixes > 100 m. GPS phase 10 % / 50 % of the fixes (guard 4°): self-cal 0.995 / 0.998,
+the 30 m floor 0.999 in all cases; as-is with 10 % GPS: 0.966, 51 wrong fixes inside 3σ.
+
+For reference, the frame centre (the first flight-03 run, before `--position`): 21.9 m median,
+2 fixes > 100 m, floor 30 m 0.998, self-cal 0.995 (flight 03 alone reproduces the earlier
+0.998 within 3σ, median σ 17–18 m).
+
+**Verdict on the stated sigma (real drone imagery, 8 flights, 2600 accepted fixes):**
+- The model alone (`day_fix_sigma_m`, matcher sigma 5–25 m) is **unsafe on every flight**:
+  42–84 % within 3σ (100 % only on flight 10's 8 fixes), 65–71 % pooled. Confirmed on 8 flights.
+- In-flight self-calibration plus the 30 m floor before calibration is **safe only with the
+  pose–attitude guard**: then 0.999 (floor) / 0.998 (self-cal) within 3σ pooled, every flight
+  ≥ 0.993, and no fix over 100 m hidden by its stated 3σ except the eval artefact above.
+  **As the code is today it is not safe**: 70 accepted fixes 100–325 m off (2.7 %), all 70
+  beyond the 30 m floor's 3σ and 13 beyond the self-calibrated 3σ; flights 05 and 10 at
+  0.81 / 0.83 because too few matches arrived while GPS was trusted to calibrate. The earlier
+  flight-03 result (0.998) holds only for the frame centre; with the pose (product) it is 0.992
+  with 3 hidden wrong fixes.
+- The calibrated sigma is honest but not small: median 15–37 m per flight (f 1.6–3.9,
+  b 12–22 m): the error on real imagery does not shrink with the inlier count as the model
+  assumes. A flight that matches rarely never calibrates and stays at 30 m.
+- Limits: a 250 m-off prior per photo, no tracking, no IMU straightening (the dataset's
+  attitude is used only to score the guard), one camera type, maps newer than the photos by
+  up to 7 years, and the dataset's own GPS errors (flight 06). Still **not a NAVERA flight**.
 
 ### Night vision (`night_pkg`, STHN one-stage)
 
