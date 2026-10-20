@@ -105,3 +105,30 @@ per-tile cache build (cosine ≥ 0.9996). Progress is printed as JSON lines.
 | `local_scale_tol` | 0.15 | accepted deviation of the fitted scale from the altitude's |
 | `local_sigma_m` | 30 | stated accuracy (1 σ) of a local match |
 | `local_max_radius_m` | 1500 | largest search radius while widening after failed frames |
+
+## Camera delay, estimated online (`navera_common.latency_cal`)
+A frame is dated `arrival - delay`; a wrong delay puts every fix speed × error along the track.
+While the GPS is trusted, each GPS-check match is compared with the GPS track at `arrival - D`
+for every D in the search range; D and a constant east/north offset (map shift, mounting) are fitted
+together, so D is observable only from heading/speed changes (a straight line at one speed: never
+applied). Samples need ≥ `latency_min_speed_mps` and no turn faster than `latency_max_turn_dps`. The
+estimate is frozen when the GPS is lost or untrusted, the last `latency_rollback_s` of samples are then
+dropped (a slow spoof is trusted until refused). It is published in the status JSON (`latency`:
+estimate, sigma, applied, delay, samples, reason) whether or not it is applied.
+
+| Parameter | Default | Meaning |
+|---|---|---|
+| `auto_latency` | true | apply the estimate (false: estimate and publish only) |
+| `camera_latency_s` | 0.0 | the delay the camera already subtracted from its stamps (its `capture_latency_s`); the estimate replaces it only when more than `latency_change_sigmas` σ away |
+| `latency_min_s` / `latency_max_s` | 0 / 3 | search range of the total delay (s) |
+| `latency_min_samples` | 20 | samples before an estimate can be applied (one per `gps_check_period_s`: ≥ 40 s of trusted GPS in motion) |
+| `latency_max_sigma_s` | 0.1 | applied only below this σ (statistical + systematic: residual spread / velocity spread) |
+| `latency_change_sigmas` | 3 | a set delay within this many σ of the estimate is kept |
+| `latency_min_speed_mps` / `latency_max_turn_dps` | 5 / 8 | motion gates of a sample |
+| `latency_rollback_s` | 20 | samples dropped at a GPS loss/refusal |
+
+Bench replay (`navera_tools/bench/replay_latency.py`, screen-bench logs 2026-10-20, 30 s of good GPS +
+the drift phase until refused): at 60 m/s the GPS phase alone gives 0.97–0.99 s for the Hikvision
+(set 0.4 or 1.5 s: after-loss vision error 62 → 6.8 m and 49 → 6.1 m median) and 1.59–1.71 s for the
+Insta360 360 (hand value 1.71 s kept: within 3 σ); at 20 m/s (38° of heading change) σ is 0.37–0.71 s,
+nothing applied. No run got worse. Bench only (a screen, a circle flight): to confirm in flight.
