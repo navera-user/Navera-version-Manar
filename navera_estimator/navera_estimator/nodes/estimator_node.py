@@ -51,6 +51,15 @@ Scope: honest single-winner arbitration across the LIVE sources.
     gps_crosscheck_persist_s refuses it ("drifting away"). This needs a source
     with a stated accuracy — with vision of unknown accuracy a gradual spoof
     is still not detected.
+    The size rules above need the offset to exceed 3 sigma (~90 m with a 30 m vision sigma)
+    before anything happens. The GROWTH test (navera_common.GpsDriftTrend) uses the trend
+    instead: one sample per independent fix, GPS interpolated at the fix's own instant, offset
+    GPS - fix as a vector; refused when the offset grows steadily (a window of 8-128 s cut in
+    quarter / half / quarter, growing through both halves) by more than
+    gps_trend_min_growth_sigmas x the combined stated sigma and gps_trend_z x the noise the
+    fixes actually show, at gps_trend_confirm_n fixes in a row. Such a refusal is lifted only
+    once the offset is back nearer its value before the growth (agreeing within 3 sigma is not
+    enough: the growth test refuses inside 3 sigma).
   * Decisions are taken when an estimate arrives (no added latency, no
     measurement skipped when two arrive between ticks) and every
     1/publish_rate_hz to notice sources going silent.
@@ -87,6 +96,10 @@ Parameters:
                      source (in its sigmas) to re-accept a refused GPS
     gps_crosscheck_persist_s (default 3.0) — a trusted GPS that keeps disagreeing
                      with that source this long is refused (gradual spoofing)
+    gps_trend_enabled (default true) — the growth test (slow spoofing) on top of the size rules
+    gps_trend_z (6.0), gps_trend_min_growth_sigmas (1.5), gps_trend_bias_rate_mps (0.2),
+    gps_trend_min_jitter_m (3.0), gps_trend_min_fixes (6), gps_trend_confirm_n (3),
+    gps_trend_windows_s ([8, 12, 16, 24, 32, 48, 64, 96, 128]) — see navera_common.gps_crosscheck.GpsDriftTrend
 """
 import copy
 import math
@@ -96,7 +109,7 @@ from typing import Optional
 import rclpy
 from navera_common.covariance import covariance_sane, horizontal_sigma
 from navera_common.geo import is_finite_latlon
-from navera_common.gps_crosscheck import STREAK_N, GpsCrossCheck
+from navera_common.gps_crosscheck import STREAK_N, GpsCrossCheck, GpsDriftTrend
 from navera_common.lifecycle import die_with_parent
 from navera_common.params import declare_float
 from rclpy.executors import ExternalShutdownException
@@ -167,6 +180,16 @@ class EstimatorNode(Node):
         self.declare_parameter("imu_topic", "/navera/sensors/imu")
         declare_float(self, "gps_crosscheck_sigmas", 5.0)
         declare_float(self, "gps_crosscheck_persist_s", 3.0)
+        # slow spoofing: the GROWTH of the GPS - vision offset (navera_common.GpsDriftTrend)
+        self.declare_parameter("gps_trend_enabled", True)
+        declare_float(self, "gps_trend_z", 6.0, "growth needed, in the noise the fixes show")
+        declare_float(self, "gps_trend_min_growth_sigmas", 1.5,
+                      "growth needed, in the combined stated sigma of the fix and the GPS")
+        declare_float(self, "gps_trend_bias_rate_mps", 0.2, "vision bias change allowed (m/s)")
+        declare_float(self, "gps_trend_min_jitter_m", 3.0, "floor of the measured fix jitter (m)")
+        self.declare_parameter("gps_trend_min_fixes", 6)
+        self.declare_parameter("gps_trend_confirm_n", 3)
+        self.declare_parameter("gps_trend_windows_s", [8.0, 12.0, 16.0, 24.0, 32.0, 48.0, 64.0, 96.0, 128.0])
         # FIX also requires the stated horizontal sigma to be at most this.
         declare_float(self, "fix_max_sigma_m", 25.0)
         rate = float(self.get_parameter("publish_rate_hz").value)
@@ -181,7 +204,17 @@ class EstimatorNode(Node):
         self._crosscheck_sigmas = float(self.get_parameter("gps_crosscheck_sigmas").value)
         self._crosscheck_persist = float(self.get_parameter("gps_crosscheck_persist_s").value)
         # trusted GPS vs independent source: the refusal rule (shared with the bench)
-        self._xcheck = GpsCrossCheck(persist_s=self._crosscheck_persist, streak_n=STREAK_N)
+        trend = None
+        if bool(self.get_parameter("gps_trend_enabled").value):
+            trend = GpsDriftTrend(
+                windows_s=[float(w) for w in self.get_parameter("gps_trend_windows_s").value],
+                z=float(self.get_parameter("gps_trend_z").value),
+                min_growth_sigmas=float(self.get_parameter("gps_trend_min_growth_sigmas").value),
+                bias_rate_mps=float(self.get_parameter("gps_trend_bias_rate_mps").value),
+                min_jitter_m=float(self.get_parameter("gps_trend_min_jitter_m").value),
+                min_fixes=int(self.get_parameter("gps_trend_min_fixes").value),
+                confirm_n=int(self.get_parameter("gps_trend_confirm_n").value))
+        self._xcheck = GpsCrossCheck(persist_s=self._crosscheck_persist, streak_n=STREAK_N, trend=trend)
         self._confirm_needed_since: Optional[Time] = None  # refused by the cross-check
         self._last_ref_at = Time(seconds=0, clock_type=self.get_clock().clock_type)
         self._gps_hist = deque(maxlen=50)              # (stamp ns, lat, lon) of received GPS fixes
@@ -268,15 +301,18 @@ class EstimatorNode(Node):
         if not continuous:
             ref = self._independent_reference(stamp, msg.latitude, msg.longitude)
             if ref is not None:
-                name, d, tol, ref_stamp, tol_strict = ref
+                name, d, tol, ref_stamp, tol_strict, sample = ref
                 # back only when it agrees within 3 sigma with two distinct independent
-                # fixes: the 5-sigma window would "confirm" a GPS refused moments ago
-                self._agree_refs = self._agree_refs | {ref_stamp} if d <= tol_strict else set()
+                # fixes: the 5-sigma window would "confirm" a GPS refused moments ago; after a
+                # growth refusal (well inside 3 sigma) also only once the growth is undone
+                agrees = d <= tol_strict and self._xcheck.back_to_baseline(sample)
+                self._agree_refs = self._agree_refs | {ref_stamp} if agrees else set()
                 if len(self._agree_refs) >= 2:
                     self.get_logger().warn(
                         f"GPS confirmed by {name} ({d:.0f} m apart, 3 sigma {tol_strict:.0f} m, "
                         f"2 fixes) — re-accepted")
                     self._agree_refs = set()
+                    self._xcheck.baseline = None
                     self._confirm_needed_since = None
                     self._gps_suspect = None
                     self._set_trusted(msg.latitude, msg.longitude, stamp, restart=True)
@@ -286,6 +322,7 @@ class EstimatorNode(Node):
                             f"GPS refused: {d:.0f} m from {name} (3 sigma {tol_strict:.0f} m)")
                     self._gps_suspect = (f"GPS {d:.0f} m from {name} (3 sigma {tol_strict:.0f} m) "
                                          f"— possible spoofing")
+                # within 3 sigma but the growth not undone: the growth refusal (and its reason) stands
                 return
             if self._confirm_needed_since is not None:
                 # caught drifting by an independent source: comparing GPS with its own last
@@ -295,6 +332,7 @@ class EstimatorNode(Node):
                     return
                 self.get_logger().warn("no independent source for 120 s: GPS judged on its own again")
                 self._confirm_needed_since = None
+                self._xcheck.baseline = None
         if self._gps_trusted is None:
             self._set_trusted(msg.latitude, msg.longitude, stamp, restart=True)
             return
@@ -322,6 +360,7 @@ class EstimatorNode(Node):
         self._gps_trusted = (lat, lon, stamp)
         if restart:
             self._trusted_hist.clear()
+            self._xcheck.reset()              # offsets seen before belong to another GPS track
         self._trusted_hist.append((lat, lon, stamp))
         while self._trusted_hist and (stamp - self._trusted_hist[0][2]).nanoseconds / 1e9 > self._jump_window:
             self._trusted_hist.popleft()
@@ -348,17 +387,24 @@ class EstimatorNode(Node):
         if ref is None:
             self._xcheck.no_reference(t)
             return False
-        name, d, tol, ref_stamp, tol_strict = ref
-        reason = self._xcheck.update(t, d, tol, tol_strict, ref_stamp, name)
+        name, d, tol, ref_stamp, tol_strict, sample = ref
+        reason = self._xcheck.update(t, d, tol, tol_strict, ref_stamp, name, sample=sample)
         # two independent fixes in a row beyond 3 sigma: GPS is in doubt — still used, but
         # with an accuracy no better than the gap (the operator sees it, the autopilot
         # weighs it less, and a later switch to vision is no jump outside its accuracy).
         # A gap over DOUBT_MAX_M is more likely a wrong vision match: not applied.
-        self._gps_doubt = (d, name) if self._xcheck.in_doubt and d <= DOUBT_MAX_M else None
+        self._gps_doubt = (d, name, self._trend_note()) if self._xcheck.in_doubt and d <= DOUBT_MAX_M else None
         if reason is None:
             return False
         self._refuse(stamp, reason)
         return True
+
+    def _trend_note(self) -> str:
+        """', offset growing x m/s' while the growth test passes but is not confirmed, else ''."""
+        tr = self._xcheck.trend
+        if tr is None or not tr.in_doubt or not tr.last:
+            return ""
+        return f", offset growing {tr.last['rate_mps']:.1f} m/s"
 
     def _refuse(self, stamp: Time, reason: str) -> None:
         """GPS refused by the cross-check: only an independent fix can clear it."""
@@ -377,12 +423,35 @@ class EstimatorNode(Node):
                 best = (lat, lon, dt)
         return best
 
+    def _gps_at(self, t_ns: int, max_gap_s: float = 2.5):
+        """(lat, lon) of GPS at t_ns, interpolated between the two received fixes around it (at most
+        max_gap_s apart), or the received fix within 0.1 s; None otherwise (no extrapolation)."""
+        before = after = None
+        for ts, lat, lon in self._gps_hist:
+            if ts <= t_ns and (before is None or ts > before[0]):
+                before = (ts, lat, lon)
+            if ts >= t_ns and (after is None or ts < after[0]):
+                after = (ts, lat, lon)
+        for fix in (before, after):
+            if fix is not None and abs(fix[0] - t_ns) <= 1e8:
+                return fix[1], fix[2]
+        if before is None or after is None or (after[0] - before[0]) / 1e9 > max_gap_s:
+            return None
+        w = (t_ns - before[0]) / (after[0] - before[0])
+        return before[1] + w * (after[1] - before[1]), before[2] + w * (after[2] - before[2])
+
+    def _gps_sigma(self) -> float:
+        """The stated horizontal sigma of the latest GPS fix (0 when it states none)."""
+        return (self._stated_sigma(self._gps_last) or 0.0) if self._gps_last is not None else 0.0
+
     def _independent_reference(self, gps_stamp: Time, gps_lat: float, gps_lon: float):
-        """(name, distance_m, tolerance_m, ref_stamp_ns) between the most accurate fresh
-        non-GPS source with a STATED accuracy and GPS, or None. A source of unknown
+        """(name, distance_m, tolerance_m, ref_stamp_ns, tol_3sigma_m, sample) between the most
+        accurate fresh non-GPS source with a STATED accuracy and GPS, or None. A source of unknown
         accuracy cannot vouch for or against GPS. A vision fix describes the instant
         its photo was taken (0.5-1.5 s ago): it is compared with the GPS fix of THAT
-        instant when one was received, else with this one plus max_speed x the gap."""
+        instant when one was received, else with this one plus max_speed x the gap.
+        sample: (t s, east m, north m, combined sigma m) of GPS interpolated at the fix's instant
+        minus the fix, for the growth test; None when GPS around that instant is not known yet."""
         now = self.get_clock().now()
         best = None
         for last, timeout in ((self._day_last, self._day_timeout),
@@ -405,9 +474,16 @@ class EstimatorNode(Node):
                 glat, glon, gap = gps_lat, gps_lon, abs((gps_stamp - t_ref).nanoseconds) / 1e9
             tol = self._crosscheck_sigmas * sigma + self._jump_margin + self._max_speed * gap
             if best is None or tol < best[2]:
+                sample = None
+                at = self._gps_at(t_ref.nanoseconds)
+                if at is not None:
+                    m_lat = 111195.0                       # metres per degree (R = 6371 km)
+                    sample = (t_ref.nanoseconds / 1e9,
+                              (at[1] - last.longitude) * m_lat * math.cos(math.radians(last.latitude)),
+                              (at[0] - last.latitude) * m_lat, math.hypot(sigma, self._gps_sigma()))
                 best = (_SOURCE_NAME.get(last.source, "source"),
                         _haversine_m(last.latitude, last.longitude, glat, glon), tol, t_ref.nanoseconds,
-                        3.0 * sigma + self._max_speed * gap)
+                        3.0 * sigma + self._max_speed * gap, sample)
         return best
 
     def _on_day(self, msg: PositionEstimate) -> None:
@@ -585,12 +661,12 @@ class EstimatorNode(Node):
         ])
 
         if winner is not None and winner.source == PositionEstimate.SOURCE_GPS and self._gps_doubt:
-            winner = self._in_doubt(winner, *self._gps_doubt)
+            winner = self._in_doubt(winner, *self._gps_doubt[:2])
         if winner is not None:
             state, reason = self._classify(winner)
             if winner.source == PositionEstimate.SOURCE_GPS and self._gps_doubt:
                 reason = (f"{reason} — GPS IN DOUBT: {self._gps_doubt[1]} disagrees by "
-                          f"{self._gps_doubt[0]:.0f} m (possible slow spoofing)")
+                          f"{self._gps_doubt[0]:.0f} m{self._gps_doubt[2]} (possible slow spoofing)")
             if winner.source != PositionEstimate.SOURCE_GPS and gps_alive and self._gps_suspect:
                 # The operator must see WHY GPS is not used while it is still talking.
                 reason = f"{reason} — GPS refused: {self._gps_suspect}"
