@@ -95,6 +95,7 @@ per-tile cache build (cosine ≥ 0.9996). Progress is printed as JSON lines.
 |---|---|---|
 | `matcher` | `local` | `local` or `retrieval` (former method) |
 | `camera_hfov_deg` | NaN (`NAVERA_DAY_HFOV_DEG`) | day camera horizontal field of view; unknown = retrieval |
+| `pose_tilt_guard_deg` | 4 | with `camera_hfov_deg` the position is the point under the camera from the matched pose; used only when the pose's tilt agrees with the frame's attitude tilt (0 once straightened) within this, else the frame centre (status `pose_guard`); ≤ 0 = off. UAV-VisLoc, 8 real flights: fixes > 100 m 70 → 2 (VL-1) |
 | `local_min_inliers` | 8 | geometric inliers required (the 2026-10-01 benchmark below was measured with 6) |
 | `local_retry_features` | 4000 | SIFT: a frame that fills its 1500-feature budget and finds too few inliers is described again with this many (heavy rain; 0 = off) |
 | `gyro_heading` | true | gyro heading carry between fixes for frames without attitude (above) |
