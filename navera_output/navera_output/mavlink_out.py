@@ -10,6 +10,12 @@ fuse a GPS position at fix_type >= 3, so a 2D fix is never used. The default
 (3) sends such a position as 3D with the altitude flagged ignored: the
 autopilot must then take its height from the barometer (ArduPilot
 EK3_SRC1_POSZ = 1, the default; PX4 EKF2_HGT_REF = baro).
+
+Only a satellite (GNSS) position ever carries an altitude: a non-GNSS one is always
+sent with IGNORE_ALT, even if its producer attached a height, so NAVERA can never
+hand the autopilot a vision height (F7). ArduPilot then reads the altitude as 0 m:
+harmless with EK3_SRC1_POSZ = 1 (verified in SITL, navera_tools/tests/sitl_f7_height.py),
+wrong with EK3_SRC1_POSZ = 3 or EK3_OGN_HGT_MASK, which must therefore never be set.
 """
 import math
 from datetime import datetime, timezone
@@ -61,7 +67,7 @@ def gps_input_fields(out: Output, t_utc: datetime, fix_type_without_alt: int = F
 
     fields.update(lat=int(round(out.lat * 1e7)), lon=int(round(out.lon * 1e7)),
                   satellites_visible=out.satellites if out.satellites is not None else 0)
-    msl = out.alt_msl_m
+    msl = out.alt_msl_m if out.gnss else math.nan
     if math.isfinite(msl):
         fields["alt"] = float(msl)
         fix_type = FIX_3D
