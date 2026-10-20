@@ -32,7 +32,7 @@ import time
 import cv2
 
 import rclpy
-from navera_common import state_store
+from navera_common import latency_cal, state_store
 from navera_common.geo import is_finite_latlon
 from navera_common.track import TrackVelocity
 from navera_common.lifecycle import die_with_parent
@@ -348,6 +348,11 @@ class DaySubscriber(Node):
         self._gps_was_trusted = False
         self.calib_period_s = float(self.get_parameter("gps_check_period_s").value)
         self.calib_radius_m = float(self.get_parameter("gps_check_radius_m").value)
+        # ── camera delay (exposure -> arrival), estimated online against the trusted GPS ──
+        # navera_common.latency_cal: GPS-check matches vs the GPS track; applied (auto_latency)
+        # only when stable and significantly different from camera_latency_s
+        self.latency_cal, self.auto_latency, self.latency_rollback_s = latency_cal.from_node(self)
+        self._latency_applied = None
         self._last_calib = 0.0
         self.local = None
         kw = dict(min_inliers=int(self.get_parameter("local_min_inliers").value),
@@ -504,6 +509,7 @@ class DaySubscriber(Node):
             st = msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
             if st > 0:
                 self._gps_hist.add(st, (float(msg.latitude), float(msg.longitude)))
+                self.latency_cal.add_gps(st, float(msg.latitude), float(msg.longitude))
             if self.shadow_mode and self._anchor_lat is not None:
                 return
             self._anchor_lat, self._anchor_lon = msg.latitude, msg.longitude
@@ -569,6 +575,8 @@ class DaySubscriber(Node):
                 f"[day] frame={seq_id}: image missing or undecodable — acked, not localized")
             self._publish_done(seq_id)
             return
+        # camera delay hook: date the frame by the estimated delay (raw stamp kept in the meta)
+        latency_cal.shift_meta(meta, self.latency_cal.correction() if self.auto_latency else 0.0)
         self._frame_count += 1
         self._last_frame = (time.time(), meta)
         self.get_logger().info(
@@ -604,6 +612,7 @@ class DaySubscriber(Node):
             trusted = self._gps_prior.fresh() is not None
             if self._gps_was_trusted and not trusted:
                 self._handover_from_gps()
+                self.latency_cal.freeze("GPS lost or not trusted", self.latency_rollback_s)
             self._gps_was_trusted = trusted
             # Live GPS healthy → it is the position source; no inference needed.
             if trusted and not self.shadow_mode:
@@ -611,7 +620,8 @@ class DaySubscriber(Node):
                     "frame_id": seq_id, "success": False, "source": "gps_active",
                     "anchor": [self._anchor_lat, self._anchor_lon]
                     if self._anchor_lat is not None else None,
-                    "reason": "GPS valid — vision idle, tracking GPS as prior"})))
+                    "reason": "GPS valid — vision idle, tracking GPS as prior",
+                    "latency": dict(self.latency_cal.state(), auto=self.auto_latency)})))
                 self._prewarm(img, meta)
                 self._calibrate_altitude(seq_id, img, meta)
                 return
@@ -795,6 +805,7 @@ class DaySubscriber(Node):
                                                   f"({res.get('inliers')} inliers)" if res.get("accepted") else f"no match ({res.get('reason')})"))
         if res.get("accepted"):
             self._check_fix = (float(res["predicted_lat"]), float(res["predicted_lon"]), time.time())
+            self._latency_sample(meta)
             ns = meta.get("image_stamp_ns")
             self._gyro_reset(int(ns) / 1e9 if ns else time.time(), res)   # heading known at the GPS loss
             g = self._gps_hist.at(int(ns) / 1e9) if ns else None
@@ -814,6 +825,20 @@ class DaySubscriber(Node):
             self.get_logger().info(f"[day] height above ground calibrated while GPS is good: "
                                    f"{st.get('altitude_measured_m')} m (frame said {meta.get('altitude_m')} m, "
                                    f"{res.get('inliers')} inliers)", throttle_duration_sec=30.0)
+
+    def _latency_sample(self, meta):
+        """A GPS-check match is a camera-delay sample (its arrival = raw stamp + the camera's delay)."""
+        raw = meta.get("image_stamp_raw_ns")
+        if raw is None:
+            return
+        self.latency_cal.add_fix(int(raw) / 1e9 + self.latency_cal.nominal, *self._check_fix[:2])
+        st = self.latency_cal.state()
+        if st["applied_s"] != self._latency_applied:
+            self._latency_applied = st["applied_s"]
+            self.get_logger().warn(
+                f"[day] camera delay {st['delay_s']} s (estimate {st['estimate_s']} +- {st['sigma_s']} s, "
+                f"{st['samples']} samples; set {st['nominal_s']} s)"
+                + ("" if self.auto_latency else " — auto_latency off: not applied"))
 
     def _prewarm(self, img, meta):
         """While GPS is trusted, vision is idle: compute the map features around the current
@@ -1181,6 +1206,7 @@ class DaySubscriber(Node):
         status["source"], status["lat"], status["lon"] = src, lat, lon
         status["jump_m"], status["reason"] = jump_m, reason
         status["sigma_cal"] = self.sigma_cal.state()
+        status["latency"] = dict(self.latency_cal.state(), auto=self.auto_latency)
         status["success"] = True
         self.pub_status.publish(String(data=json.dumps(status)))
         fix = NavSatFix()
