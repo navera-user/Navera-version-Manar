@@ -18,6 +18,8 @@ def _node():
         tr.add(1000.0 + i, 35.8, 10.6 + 10.0 * i * lon_m, 30.0)
     n = SimpleNamespace(track=tr, _carry=None, _track_heading=None, _vel_epoch=None)
     n._heading_for_match = lambda meta: None
+    n._carry_heading = lambda meta: (None, 0.0)
+    n._velocity_heading = MethodType(DaySubscriber._velocity_heading, n)
     n._frame_time = DaySubscriber._frame_time
     n._predicted = MethodType(DaySubscriber._predicted, n)
     n._set_carry = MethodType(DaySubscriber._set_carry, n)
