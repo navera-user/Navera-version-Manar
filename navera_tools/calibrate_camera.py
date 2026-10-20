@@ -68,7 +68,9 @@ def calibrate(views, size, cols, rows, square_m, model):
                 obj = obj[:len(views)]
         dist = [float(v) for v in D.ravel()]
     else:
-        rms, K, D, _, _ = cv2.calibrateCamera(obj, views, (w, h), None, None)
+        # cv2.calibrateCamera takes float32 points only (float64 raised "Unsupported format")
+        rms, K, D, _, _ = cv2.calibrateCamera([o.astype(np.float32) for o in obj],
+                                              [v.astype(np.float32) for v in views], (w, h), None, None)
         dist = [float(v) for v in D.ravel()[:5]]
     calib = dict(model=model, image_width=w, image_height=h,
                  camera_matrix=[float(v) for v in K.ravel()], distortion=dist,
