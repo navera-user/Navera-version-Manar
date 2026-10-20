@@ -1,10 +1,16 @@
 # navera_msgs
 
 Interface definitions for NAVERA. **Interfaces only — this package contains no code**
-(ROS2 convention for `rosidl` packages). Shared fill helpers will live in a separate
-`navera_common` Python package.
+(ROS2 convention for `rosidl` packages; built with `ament_cmake` + `rosidl_generate_interfaces`).
+Shared Python helpers live in `navera_common`. No nodes, no parameters.
 
 ## Messages
+
+| Message | Published on | By | Consumed by |
+|---|---|---|---|
+| `PositionEstimate` | `/navera/estimate/{gps,day,night,cn}` | `gps_pkg`, `day_pkg`, `night_pkg`, `cn_pkg` | `navera_estimator` |
+| `PositionEstimate` | `/navera/position` (the elected position) | `navera_estimator` | `navera_output`, `simulation_web` bridges |
+| `NavStatus` (with `SourceHealth[]`) | `/navera/nav_status` | `navera_estimator` | `navera_output`, `simulation_web`, `navera_tools/check_box.py` |
 
 ### `msg/PositionEstimate.msg`
 
@@ -29,6 +35,35 @@ JSON status topic to be interpretable.
 | `producer` / `model_id` / `frame_index` | traceability |
 | `details_json` | source-specific diagnostic extras |
 
+### `msg/NavStatus.msg`
+
+The navigation system's decisional summary, published by `navera_estimator`: do we have a usable
+position and how much do we trust it, who provides it, which sources are alive.
+
+| Field | Purpose |
+|---|---|
+| `header` | `stamp` = instant this status was computed |
+| `state` | `STATE_INITIALIZING` (0) / `STATE_NO_FIX` (1) / `STATE_FIX` (2: fresh MEASURED position with bounded uncertainty) / `STATE_DEGRADED` (3: MEASURED with UNKNOWN uncertainty, or PROPAGATED / HELD) |
+| `active_source` | source owning the published solution (same `SOURCE_*` values as `PositionEstimate`); `SOURCE_UNKNOWN` while INITIALIZING / NO_FIX |
+| `active_mode` | `MODE_*` of the winning estimate (same values as `PositionEstimate`) |
+| `sources` | `SourceHealth[]`, one row per watched source |
+| `reason` | one line for display, never parsed |
+
+### `msg/SourceHealth.msg`
+
+Liveness of one source, one row per watched source inside `NavStatus.sources[]`.
+
+| Field | Purpose |
+|---|---|
+| `source` | `SOURCE_*` (same values as `PositionEstimate`) |
+| `alive` | heard from within this source's liveness timeout |
+| `last_seen` | `builtin_interfaces/Time` of the last message; zero if never heard |
+| `contributing` | true iff this source feeds the current published solution (the IMU is alive but never contributing) |
+
+`SOURCE_*` values (all three messages, append-only, keep in sync): 0 UNKNOWN, 1 GPS, 2 DAY_VISION,
+3 NIGHT_VISION, 4 CELESTIAL, 5 INERTIAL, 6 FUSED, 7 VLM (reserved), 8 EXTERNAL (reserved).
+`MODE_*`: 0 MEASURED, 1 PROPAGATED, 2 HELD, 3 REPLAYED.
+
 ## The three rules
 
 **1. Fuse on covariance, gate on confidence.** `position_covariance` is the only quantity
@@ -48,10 +83,10 @@ becomes decisional, promote it to a typed field.
 ## Honesty about uncertainty
 
 Publish `COVARIANCE_TYPE_UNKNOWN` rather than an invented matrix — downstream, a fabricated
-covariance is indistinguishable from a measured one. At the time of writing, only `gps_node`
-computes a real covariance (from HDOP). The vision pipelines need their `σ(score)` calibrated
-against ground truth before they can claim `APPROXIMATED`, and celestial has no calibrated
-uncertainty at all (its `match_score` is a hardcoded constant).
+covariance is indistinguishable from a measured one. `gps_node` derives its covariance from HDOP
+(`ros_gps_node` copies the receiver's). The day, night and celestial pipelines now state an
+`APPROXIMATED` covariance when they have a stated accuracy; how far those stated accuracies are
+measured (and on which data) is recorded in `docs/VALIDATION_STATUS.md`, not here.
 
 ## Build
 
@@ -60,6 +95,7 @@ source /opt/ros/humble/setup.bash
 colcon build --packages-select navera_msgs
 source install/setup.bash
 ros2 interface show navera_msgs/msg/PositionEstimate
+ros2 topic echo /navera/nav_status        # on a running system
 ```
 
 Changing this message requires rebuilding every package that depends on it.

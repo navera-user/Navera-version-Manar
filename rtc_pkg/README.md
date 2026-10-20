@@ -17,10 +17,12 @@ piece of work — see *Limits* below).
 
 ## Node: `rtc_node`
 
-| | Topic | Type | Rate |
-|---|---|---|---|
-| out | `/navera/sensors/rtc_time` | `sensor_msgs/TimeReference` | 1 Hz |
-| out | `/navera/sensors/rtc_status` | `std_msgs/String` (JSON) | 1 Hz |
+Executable `rtc_node.py` (node name `rtc_node`). Subscribes to nothing.
+
+| | Topic | Type | Rate | QoS |
+|---|---|---|---|---|
+| out | `/navera/sensors/rtc_time` | `sensor_msgs/TimeReference` | 1 Hz | depth 10 (reliable) |
+| out | `/navera/sensors/rtc_status` | `std_msgs/String` (JSON) | 1 Hz | depth 10 (reliable) |
 
 `TimeReference` carries **both** clocks: `header.stamp` is the system time at the
 moment of the read, `time_ref` is what the DS3231 says, `source` is `"ds3231"`. The
@@ -30,7 +32,7 @@ difference between the two is the drift — consumers get it for free.
 
 ```json
 {"valid": true, "lost_power": false, "temperature_c": 31.75,
- "drift_s": -0.412, "rtc_utc": "2026-07-14 08:58:43", "source": "ds3231"}
+ "drift_s": -0.412, "rtc_utc": "2026-07-14 08:58:43", "source": "ds3231", "reason": ""}
 ```
 
 - `lost_power` — the DS3231 oscillator-stop flag (OSF): the chip lost power since its
@@ -39,6 +41,7 @@ difference between the two is the drift — consumers get it for free.
 - `valid` — `false` when `lost_power` is set or the year is implausible (< 2024). When
   invalid, the node publishes `rtc_status` but **withholds** `rtc_time`: a
   wrong-by-decades timestamp is worse for the solver than a missing one.
+- `reason` — why the time is invalid (empty when valid), e.g. "holds local time".
 - `temperature_c` — the DS3231's internal sensor (it is what the TCXO compensates
   against; also a free board-temperature reading).
 - A chip that lost power can return a date that is not a real calendar date. The node
@@ -56,6 +59,9 @@ difference between the two is the drift — consumers get it for free.
 | `time_source` | `ds3231` | goes into `TimeReference.source` |
 | `drift_warn_s` | `2.0` | warn past this \|RTC − system\| gap |
 | `publish_when_invalid` | `false` | bench diagnostics only — see above |
+
+Defaults are also in `config/rtc_params.yaml` (loaded by `rtc.launch.py`); the launch file
+exposes `i2c_bus` and `publish_rate` as launch arguments.
 
 The DS3231's I2C address is **fixed at 0x68 in silicon**, so there is no `i2c_address`
 parameter (unlike `imu_pkg`). The module's AT24C32 EEPROM at 0x57 is unused.
@@ -89,7 +95,10 @@ ros2 topic echo /navera/sensors/rtc_time
 ros2 topic echo /navera/sensors/rtc_status
 ```
 
-At boot, via systemd: `deploy/systemd/navera-rtc.service` (see `deploy/README.md`).
+At boot, via systemd: `deploy/systemd/navera-rtc.service` (see `deploy/README.md`), which runs
+`navera_boot_rtc.sh`: `ros2 launch rtc_pkg rtc.launch.py i2c_bus:=$NAVERA_BOX_RTC_BUS
+publish_rate:=1.0` (bus default 1). When the boot discovery found no DS3231
+(`NAVERA_BOX_RTC=0`) the service stays up but idle.
 
 ## Convention: the DS3231 holds UTC
 
@@ -113,8 +122,9 @@ write it from a Python one-liner using `adafruit_ds3231` with a UTC `struct_time
   restore it — but then the kernel owns 0x68, it shows as `UU`, and **this node can no
   longer read it over I2C**. The two approaches are mutually exclusive on the bus.
   Deliberate choice for now: userspace, no risk to the running system.
-- **Nothing consumes these topics yet.** Feeding `rtc_time` into the celestial solver
-  (`cn_subscriber` currently hardcodes `utc_time`) is a separate, deliberate feature.
+- **Consumers:** `cn_subscriber` subscribes to `rtc_time` (its `rtc_topic` parameter) and uses
+  it for the current UTC when the last reading is at most 5 s old (else the system clock); `navera_tools/check_box.py` reads
+  `rtc_status` in the pre-flight check.
 
 ## Local-time detection
 
