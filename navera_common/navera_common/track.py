@@ -41,17 +41,8 @@ class TrackVelocity:
     def velocity(self, t_now: float) -> Optional[Tuple[float, float, float]]:
         """(east m/s, north m/s, 1-sigma speed error m/s) from a weighted line fit of the
         fixes of the last window_s before their latest one, or None."""
-        if not self._pts:
-            return None
-        t_end = self._pts[-1][0]
-        pts = [p for p in self._pts if t_end - p[0] <= self.window_s]
-        # never across a gap of more than 5 s between fixes: a line through the fixes on
-        # both sides of a gap with a turn in it is a chord, not the velocity (2026-10-07)
-        for i in range(len(pts) - 1, 0, -1):
-            if pts[i][0] - pts[i - 1][0] > 5.0:
-                pts = pts[i:]
-                break
-        if len(pts) < self.min_points or pts[-1][0] - pts[0][0] < self.min_span_s:
+        pts = self._fit_points()
+        if pts is None:
             return None
         lat0, lon0 = pts[-1][1], pts[-1][2]
         k = math.cos(math.radians(lat0))
@@ -75,6 +66,32 @@ class TrackVelocity:
         sig_pos = max(scatter, math.sqrt(len(pts) / sw))
         sig_v = max(self.speed_floor, sig_pos / math.sqrt(sum((ti - tm) ** 2 for ti in ts)))
         return v[0], v[1], sig_v
+
+    def _fit_points(self):
+        """The fixes the velocity is fitted on, or None when they are too few or too close in time."""
+        if not self._pts:
+            return None
+        t_end = self._pts[-1][0]
+        pts = [p for p in self._pts if t_end - p[0] <= self.window_s]
+        # never across a gap of more than 5 s between fixes: a line through the fixes on
+        # both sides of a gap with a turn in it is a chord, not the velocity (2026-10-07)
+        for i in range(len(pts) - 1, 0, -1):
+            if pts[i][0] - pts[i - 1][0] > 5.0:
+                pts = pts[i:]
+                break
+        if len(pts) < self.min_points or pts[-1][0] - pts[0][0] < self.min_span_s:
+            return None
+        return pts
+
+    def fit_time(self) -> Optional[float]:
+        """The instant the fitted velocity is the vehicle's (the fixes' weighted mean time), or None.
+        On a turn the fit is the chord of the window: its direction is the heading at this instant,
+        not at the last fix (60 m/s on a 900 m circle, 20 s window: 38 deg behind)."""
+        pts = self._fit_points()
+        if pts is None:
+            return None
+        w = [1.0 / p[3] ** 2 for p in pts]
+        return sum(wi * p[0] for wi, p in zip(w, pts)) / sum(w)
 
     def propagate(self, t_now: float, heading_change_deg: float = 0.0):
         """(lat, lon, sigma_m) of the last fix carried to t_now, or None. heading_change_deg:
@@ -125,3 +142,7 @@ class TrackVelocity:
 
     def last_time(self) -> Optional[float]:
         return self._pts[-1][0] if self._pts else None
+
+    def last_fix(self) -> Optional[Tuple[float, float, float, float]]:
+        """(t, lat, lon, sigma_m) of the latest fix, or None."""
+        return tuple(self._pts[-1]) if self._pts else None

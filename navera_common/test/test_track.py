@@ -102,3 +102,15 @@ def test_propagate_is_the_one_shot_growth():
     _, _, sig = tr.propagate(9.0 + 30.0)
     ve, vn, sig_v = tr.velocity(39.0)
     assert sig == pytest.approx(s0 + tr.sigma_growth(sig_v, math.hypot(ve, vn), 30.0), rel=1e-9)
+
+
+def test_fit_time_is_the_fixes_weighted_mean_time_and_last_fix_the_latest():
+    tr = TrackVelocity()
+    assert tr.fit_time() is None and tr.last_fix() is None
+    for i in range(11):                                   # 0..10 s, the last 5 twice as precise
+        tr.add(100.0 + i, 35.8 + i * 1e-4, 10.6, 10.0 if i < 6 else 5.0)
+    w = [1 / 100.0] * 6 + [1 / 25.0] * 5
+    assert tr.fit_time() == pytest.approx(sum(wi * (100.0 + i) for i, wi in enumerate(w)) / sum(w))
+    assert tr.last_fix() == (110.0, 35.8 + 10e-4, 10.6, 5.0)
+    tr.add(120.0, 35.81, 10.6, 5.0)                       # after a 10 s gap: alone, no fit
+    assert tr.fit_time() is None and tr.velocity(120.0) is None
