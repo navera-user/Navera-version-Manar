@@ -40,6 +40,12 @@ data_files.append((
     ['cn_pkg/data/astrometry.cfg'],
 ))
 
+# the bundled bright-star catalogue beside cn_pkg/allsky.py (it loads it via os.path.dirname(__file__))
+data_files.append((
+    _PY_SITE + '/' + package_name + '/data',
+    ['cn_pkg/data/bsc5_mag4.5.csv'],
+))
+
 setup(
     name=package_name,
     version='0.0.1',

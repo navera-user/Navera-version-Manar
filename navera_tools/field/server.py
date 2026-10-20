@@ -840,13 +840,10 @@ class Field:
         rec["cal_sample"] = len(self.cal_samples)
         if len(self.cal_samples) < CAL_MIN_SAMPLES:
             return
-        w = rp.fit_mount(self.cal_samples)
-        Q = rp.rotvec(w)
-        res = [math.degrees(math.acos(max(-1.0, min(1.0, float(np.dot(Rk @ (Q @ u) / np.linalg.norm(u), z))))))
-               for Rk, u, z in self.cal_samples]
-        n = len(res)
-        rms = math.sqrt(sum(x * x for x in res) / n) * math.sqrt(n / max(n - 2, 1))
-        self.tilt_cal = {"Q": Q, "n": n, "sigma_deg": max(rms, CAL_SIGMA_FLOOR_DEG)}
+        from cn_pkg.allsky_mount import fit_tilt                  # shared with the flight node (cn_subscriber)
+        fit = fit_tilt(self.cal_samples, CAL_SIGMA_FLOOR_DEG)
+        w, n, rms = fit["w"], fit["n"], fit["rms_deg"]
+        self.tilt_cal = {"Q": fit["Q"], "n": n, "sigma_deg": fit["sigma_deg"]}
         s.event("tilt_calibrated", samples=n, tilt_deg=round(math.degrees(float(np.linalg.norm(w))), 3),
                 rotvec_deg=[round(math.degrees(float(v)), 3) for v in w], residual_deg=round(rms, 3),
                 frozen=n >= CAL_SAMPLES)
