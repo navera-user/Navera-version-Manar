@@ -25,6 +25,7 @@ import numpy as np
 
 from day_pkg.learned_matcher import LearnedMatcher
 from day_pkg.local_matcher import map_m_per_px
+from day_pkg.fix_sigma import day_fix_sigma_m
 
 ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
 ap.add_argument("flight")
@@ -79,6 +80,20 @@ def locate(r, im, hfov, prior_m, smeters):
     return res
 
 
+def speed_mps(i):
+    """Ground speed from the neighbouring images' GPS and times (the dataset has no speed)."""
+    from datetime import datetime
+    j, k = max(i - 1, 0), min(i + 1, len(rows) - 1)
+    if j == k:
+        return None
+    dt = (datetime.fromisoformat(rows[k]["date"]) - datetime.fromisoformat(rows[j]["date"])).total_seconds()
+    if dt <= 0:
+        return None
+    de = (float(rows[k]["lon"]) - float(rows[j]["lon"])) * 111320.0 * math.cos(math.radians(float(rows[j]["lat"])))
+    dn = (float(rows[k]["lat"]) - float(rows[j]["lat"])) * 111320.0
+    return math.hypot(de, dn) / dt
+
+
 def fit_hfov():
     idx = [int(i * (len(rows) - 1) / (a.calib_n - 1)) for i in range(a.calib_n)]
     best = (-1, None)
@@ -107,8 +122,14 @@ for i in range(0, len(rows), a.stride):
     res = locate(r, load(r), hfov, a.prior_m, search_m)
     e = err_m(res, r) if res.get("predicted_lat") is not None else None
     de, dn = en_m(res, r) if e is not None else (None, None)
+    spd = speed_mps(i)
+    stated = day_fix_sigma_m(res.get("sigma_m"), speed_mps=spd, height_m=float(r["height"])) if res.get("sigma_m") else None
     out.append(dict(file=r["filename"], east_m=None if de is None else round(de, 1), north_m=None if dn is None else round(dn, 1), tilt=round(tilt, 1), accepted=bool(res["accepted"]), err_m=None if e is None else round(e, 1),
-                    inliers=res.get("inliers"), ms=round(res["ms"]), reason=res.get("reason")))
+                    inliers=res.get("inliers"), ms=round(res["ms"]), reason=res.get("reason"),
+                    # the stated accuracy (day_fix_sigma_m, as day_subscriber publishes it) and what it is built from
+                    match_sigma_m=res.get("sigma_m"), stated_sigma_m=None if stated is None else round(stated, 2),
+                    spread=res.get("spread"), height_m=float(r["height"]), speed_mps=None if spd is None else round(spd, 1),
+                    t=r["date"], lat=float(r["lat"]), lon=float(r["lon"])))
     print(f"{r['filename']} tilt {tilt:4.1f}  {'ACC' if res['accepted'] else 'rej'}  err {'-' if e is None else round(e, 1)} m  "
           f"inl {res.get('inliers')}  {res['ms']:.0f} ms", flush=True)
 
