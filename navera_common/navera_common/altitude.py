@@ -41,13 +41,17 @@ class AltitudeEstimator:
                  vision_drift_mps: float = 0.5, ref_hold_s: float = 300.0,
                  terrain_rate_mps: float = 1.0,
                  saved_ground: Optional[dict] = None, on_ground: Optional[Callable[[dict], None]] = None,
-                 terrain=None, position_max_age_s: float = 5.0, home_sigma_m: float = 1.0):
+                 terrain=None, position_max_age_s: float = 60.0, home_sigma_m: float = 1.0,
+                 position_point_sigma_m: float = 20.0):
         """saved_ground: {altitude_m, lat, lon} written by a previous run (on_ground is
         called with that dict whenever the ground altitude is (re)determined): reused after
         a restart in the same place — in the air the first fix is NOT the ground.
         terrain: a navera_common.terrain.Terrain (the corridor's DEM) or None; positions older
-        than position_max_age_s are not used for it; home_sigma_m: how far the home ground may
-        be from the DEM's surface besides the DEM's own sigma.
+        than position_max_age_s are not used for it (younger ones are moved on at their velocity,
+        their sigma growing); home_sigma_m: how far the home ground may be from the DEM's surface
+        besides the DEM's own sigma; above position_point_sigma_m the ground is the DEM's mean over
+        the disc the position may be in (its spread in the sigma), below it the point's height
+        (slope x position sigma in the sigma).
         """
         self.ground = ground_altitude_m if ground_altitude_m is not None and math.isfinite(ground_altitude_m) else None
         self.ground_source = "configured" if self.ground is not None else None
@@ -78,6 +82,7 @@ class AltitudeEstimator:
         self.terrain = terrain
         self.positions = History(maxlen=600, max_gap_s=2.5)
         self.position_max_age_s, self.home_sigma_m = position_max_age_s, home_sigma_m
+        self.position_point_sigma_m = position_point_sigma_m
         self._home: Optional[Tuple[float, float]] = None
         self._anchors: Dict[str, deque] = {"vehicle": deque(maxlen=12), "gps": deque(maxlen=12)}
 
@@ -195,7 +200,12 @@ class AltitudeEstimator:
         g = self.terrain.height(p[0], p[1])
         if g is None:
             return None
-        return g[0], math.hypot(g[1], g[2] * p[2])
+        if p[2] <= self.position_point_sigma_m:
+            return g[0], math.hypot(g[1], g[2] * p[2])
+        st = self.terrain.height_stats(p[0], p[1], 2.0 * p[2])
+        if st is None:
+            return None
+        return st[0], math.hypot(g[1], st[1])
 
     def _home_ground(self, kind: str) -> Optional[Tuple[float, float]]:
         """The home ground's height in DEM terms (weighted mean of the anchors, the ones more than
@@ -239,11 +249,10 @@ class AltitudeEstimator:
         if m is not None:
             return m[0], m[1], "measured"
         refs = self._refs(t)
+        # the DEM, once tied to the reference, knows the relief the other sources assume flat (an
+        # image carried 20 s over a valley by the barometer: 100 m off, stated 30 m — MARS-LVIG)
         dem = self._dem_estimate(t, refs) if self.terrain is not None else None
-        other = self._without_dem(t, refs)
-        if dem is not None and (other is None or dem[1] < other[1]):
-            return dem
-        return other
+        return dem if dem is not None else self._without_dem(t, refs)
 
     def _without_dem(self, t: float, refs: Dict[str, float]) -> Optional[Tuple[float, float, str]]:
         """The image carried by a reference, a reference alone, or held."""

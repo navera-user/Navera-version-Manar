@@ -228,11 +228,27 @@ def test_position_is_moved_on_at_its_velocity_then_dropped():
     assert a._position_at(0.5)[0] == pytest.approx(35.8005)
 
 
-def test_the_dem_is_used_only_when_more_certain():
-    """Right after an image height its carry (sigma ~3.6 m) beats a DEM of sigma 20 m."""
-    a = AltitudeEstimator(terrain=_valley(sigma=20.0))
-    a.set_home(35.80, 10.60)
+def test_the_dem_wins_over_an_image_carried_over_the_relief():
+    """An image height carried by the barometer assumes the ground under the vehicle has not moved;
+    the DEM, tied to that same image, knows it did.
+    """
+    a = AltitudeEstimator(terrain=_valley())
     a.add_relative(0.0, 150.0)
     a.add_position(0.0, 35.805, 10.60, 3.0)
-    a.add_vision(0.0, 101.0, 3.0)
-    assert a.estimate(0.0)[2] == "image + vehicle altitude"
+    a.add_vision(0.0, 100.0, 3.0)
+    a.add_relative(20.0, 150.0)
+    a.add_position(20.0, 35.801, 10.60, 3.0)          # 40 m lower ground
+    agl, _, src = a.estimate(20.0)
+    assert src == "vehicle altitude - DEM" and agl == pytest.approx(140.0, abs=0.05)
+
+
+def test_an_uncertain_position_reads_the_dem_over_its_disc():
+    """Position known to 150 m: the ground is the DEM's mean over the disc, its spread in the sigma."""
+    a = AltitudeEstimator(terrain=_valley())
+    a.set_home(35.80, 10.60)
+    a.add_relative(10.0, 150.0)
+    a.add_position(10.0, 35.805, 10.60, 150.0)
+    agl, sigma, src = a.estimate(10.0)
+    assert src == "vehicle altitude - DEM" and agl == pytest.approx(100.0, abs=0.5)    # a plane: mean = centre
+    slope_m = 100.0 / (0.01 * 111320.0)                     # m per m northwards
+    assert 0.3 * slope_m * 300.0 < (sigma ** 2 - 4.0 ** 2 - 3.0 ** 2 - (4.0 ** 2 + 1.0)) ** 0.5 < slope_m * 300.0

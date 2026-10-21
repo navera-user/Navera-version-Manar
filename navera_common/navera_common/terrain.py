@@ -114,6 +114,34 @@ class Terrain:
                     return s[0], p.sigma_m, s[1]
         return None
 
+    def height_stats(self, lat: float, lon: float, radius_m: float) -> Optional[Tuple[float, float]]:
+        """(mean, standard deviation) of the ground height over a disc where the position may be:
+        Gaussian weights of sigma radius_m / 2 on a 7 x 7 grid spanning the radius; None when fewer
+        than half the samples have data.
+        """
+        if not radius_m > 0:
+            h = self.height(lat, lon)
+            return None if h is None else (h[0], 0.0)
+        k = math.cos(math.radians(lat))
+        vals, wts, n = [], [], 0
+        for i in range(-3, 4):
+            for j in range(-3, 4):
+                r2 = (i * i + j * j) / 9.0
+                if r2 > 1.0:
+                    continue
+                n += 1
+                dn, de = i * radius_m / 3.0, j * radius_m / 3.0
+                h = self.height(lat + dn / M_PER_DEG, lon + de / (M_PER_DEG * k))
+                if h is not None:
+                    vals.append(h[0])
+                    wts.append(math.exp(-2.0 * r2))
+        if len(vals) * 2 < n:
+            return None
+        w = np.asarray(wts)
+        v = np.asarray(vals)
+        mean = float((w * v).sum() / w.sum())
+        return mean, float(math.sqrt((w * (v - mean) ** 2).sum() / w.sum()))
+
     def describe(self) -> str:
         i = self.info
         return (f"{i.get('source', 'DEM')} ({i.get('resolution_m', '?')} m, sigma {i.get('sigma_m', '?')} m, "

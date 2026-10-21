@@ -36,3 +36,13 @@ def test_first_piece_holding_the_point_answers():
     b = Terrain.from_grid(np.full((3, 3), 9.0), 1.1, 1.1, 0.01, 0.01)
     T = Terrain(a.pieces + b.pieces)
     assert T.height(0.99, 1.01)[0] == 5.0 and T.height(1.09, 1.11)[0] == 9.0
+
+
+def test_height_stats_over_a_disc():
+    grid = np.tile(np.arange(100, dtype=np.float32)[:, None], (1, 100))   # 1 m per row
+    T = Terrain.from_grid(grid, 1.0, 1.0, 0.0001, 0.0001)
+    lat, lon = 1.0 - 0.005, 1.005                                          # row 50
+    mean, std = T.height_stats(lat, lon, 100.0)                            # 100 m = 9 rows
+    assert abs(mean - 50.0) < 0.01 and 2.0 < std < 6.0
+    assert T.height_stats(lat, lon, 0.0) == (T.height(lat, lon)[0], 0.0)
+    assert T.height_stats(1.0 + 0.5, 1.0, 100.0) is None                   # outside: no data
