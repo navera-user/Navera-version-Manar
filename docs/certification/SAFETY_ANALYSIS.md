@@ -226,7 +226,7 @@ simulated data. Residual **Low**.
 | O-15–O-17 | trusted-time gate in product celestial (done, UT); RTC mandatory | H-08 | code / install |
 | O-20, O-21 | swap + OOM / memory limits; thermal monitoring (monitor done, UT) | H-11 | deploy |
 | O-23 | reboot validation on a deployed box (commands in DEPLOYMENT_VALIDATION.md) | H-12 | test |
-| O-27 | install from a clean release clone; install.sh copies .git and .claude/worktrees (B18) | H-12, deployment | deploy |
+| O-27 | install from a clean release clone; install.sh no longer copies .git, .claude/worktrees, caches or recordings (B18 fixed, UT) | H-12, deployment | deploy |
 | O-3, O-4 | shake / tilt gates (F20, F16) on a real vehicle | H-02 | code / test |
 | O-19 | full-chain latency on the box | H-10 | measurement |
 | O-26 | storage checks | H-14 | deploy |

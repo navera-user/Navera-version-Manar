@@ -989,14 +989,18 @@ requirements:
 - id: NAV-DEP-04
   category: DEP
   title: 'Reproducible install with least privilege'
-  text: 'deploy/install.sh shall install code, build, settings (never overwriting navera.env), wrappers and units in one command, idempotently; the web service may run as root only the exact systemctl restarts in deploy/sudoers/navera-web.'
+  text: 'deploy/install.sh shall install code, build, settings (never overwriting navera.env), wrappers and units in one command, idempotently, never copying git data, other worktrees (.claude/), build products or test data / recordings to the box; the web service may run as root only the exact systemctl restarts in deploy/sudoers/navera-web.'
   code:
     - deploy/install.sh
     - deploy/sudoers/navera-web
+    - deploy/verify_units.py::check_code_excludes
   tests:
     - deploy/verify_units.py
     - deploy/stage_check.sh
+  match:
+    - 'test_install_excludes\.py::'
   evidence:
     - {level: UT, value: 'staged install (--root) + systemd-analyze verify + visudo -c -f: PASS; real-mode dry-run output byte-identical to before the change', ref: 'docs/certification/DEPLOYMENT_VALIDATION.md'}
+    - {level: UT, value: 'B18: a staged install from a working repository with .git, .claude/worktrees, build/, caches and rosbag / mcap recordings ships the code and none of them; real-mode dry-run shows the same excludes', ref: 'deploy/test/test_install_excludes.py'}
   status: verified-UT
-  note: 'R-8 — the sudoers restart path to verify on an installed box'
+  note: 'R-8 — the sudoers restart path to verify on an installed box; excluded paths already on a box from an older install are left there (rsync --delete skips excluded paths)'
