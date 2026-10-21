@@ -27,8 +27,12 @@ simulator's true position (SIM_STATE) plus noise:
     hold       drift held at 90 m
 
 The second run (posz_gps) is identical with EK3_SRC1_POSZ 3 (GPS height), the setting the
-docs forbid, to prove the check is sensitive. The dataflash log (XKF1 PD, BARO Alt, SIM Alt,
-GPS Alt, XKF3 IPD, XKF4 SH) is analysed per phase. Exit code 0 = the recommended run keeps
+docs forbid, to prove the check is sensitive. Since F28 NAVERA states a vision velocity
+accuracy (> 1.5 m/s: "unknown" 30 m/s here), and EKF3 then stops using the GPS height by
+itself (gpsAccuracyGoodForAltitude false; SITL 2026-10-21: posz_gps stayed on the barometer):
+the control run therefore sends the pre-F28 velocity fields (flagged ignored) to stay
+sensitive. The dataflash log (XKF1 PD, BARO Alt, SIM Alt, GPS Alt, XKF3 IPD, XKF4 SH) is
+analysed per phase. Exit code 0 = the recommended run keeps
 height on the barometer, its horizontal position follows the vision spoof, and the posz_gps
 run's height does not follow the barometer.
 """
@@ -54,7 +58,7 @@ WS = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 for _pkg in ("navera_output", "navera_common"):
     sys.path.insert(0, os.path.join(WS, _pkg))
 from navera_output import mavlink_out                                    # noqa: E402
-from navera_output.policy import KIND_ESTIMATED, KIND_FIX, Output        # noqa: E402
+from navera_output.policy import KIND_ESTIMATED, KIND_FIX, Config, Output  # noqa: E402
 
 HOME = sv.HOME                               # lat, lon, ground altitude AMSL (m)
 TAKEOFF_M = {"copter": 40.0, "plane": 60.0, "rover": 0.0}
@@ -103,7 +107,7 @@ def gps_output(lat, lon, alt):
     return mavlink_out.gps_input_fields(out, datetime.now(timezone.utc))
 
 
-def vision_output(rng, phase, t, lat, lon, alt):
+def vision_output(rng, phase, t, lat, lon, alt, legacy_vel=False):
     """What reaches the autopilot in `phase`, t s into it: (GPS_INPUT fields, Output)."""
     lat, lon = offset_ll(lat, lon, rng.gauss(0, VISION_NOISE_M), rng.gauss(0, VISION_NOISE_M))
     wire_z = None                            # None: as mavlink_out built it
@@ -119,9 +123,14 @@ def vision_output(rng, phase, t, lat, lon, alt):
     # a producer-attached height is included to show mavlink_out drops it
     out = Output(KIND_ESTIMATED, "estimated", lat=lat, lon=lon,
                  alt_ellipsoid_m=wire_z if wire_z is not None else alt, geoid_sep_m=0.0,
-                 sigma_h_m=VISION_SIGMA_M, satellites=0, gnss=False)
+                 sigma_h_m=VISION_SIGMA_M, satellites=0, gnss=False,
+                 vel_sigma_mps=Config.max_speed_mps)        # horizontal velocity stated (unknown), never vertical
     f = mavlink_out.gps_input_fields(out, datetime.now(timezone.utc))
     assert f["ignore_flags"] & mavlink_out.IGNORE_ALT and f["alt"] == 0.0, "vision height sent"
+    assert f["ignore_flags"] & mavlink_out.IGNORE_VEL_VERT, "vertical velocity sent"
+    if legacy_vel:                           # the control run: velocity flagged ignored (pre-F28)
+        f.update(vn=0.0, ve=0.0, speed_accuracy=0.0)
+        f["ignore_flags"] |= mavlink_out.IGNORE_VEL_HORIZ | mavlink_out.IGNORE_SPEED_ACCURACY
     if phase == "garbage_z":
         f["alt"] = alt + 5000.0              # flag still set
     elif wire_z is not None:                 # injected: height presented as valid
@@ -193,7 +202,8 @@ def fly(vehicle, name, extra, ardupilot, work, instance=0):
             p0 = time.time()
             end = p0 + dur
             while time.time() < end:
-                nav.tick(lambda la, lo, al: vision_output(nav.rng, ph, time.time() - p0, la, lo, al))
+                nav.tick(lambda la, lo, al: vision_output(nav.rng, ph, time.time() - p0, la, lo, al,
+                                                          legacy_vel=name == "posz_gps"))
             phases[ph][1] = nav.boot_ms
         mav.close()
     finally:
