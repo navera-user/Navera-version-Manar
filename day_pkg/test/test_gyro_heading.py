@@ -4,7 +4,7 @@ from types import MethodType, SimpleNamespace
 
 import pytest
 
-from day_pkg.gyro_heading import GyroHeading, heading_rate_dps
+from day_pkg.gyro_heading import CourseReset, GyroHeading, heading_rate_dps
 from day_pkg.nodes.day_subscriber import DaySubscriber
 from navera_common.track import TrackVelocity
 
@@ -209,3 +209,84 @@ def test_only_a_good_fix_restarts_the_gyro_heading():
     assert n.gyro.at(21.0)[0] == pytest.approx(h0 + 1.0)
     n._gyro_reset(21.0, {"rotation_deg": None, "inliers": 40})            # no rotation: nothing
     assert n.gyro.at(21.0)[0] == pytest.approx(h0 + 1.0)
+
+
+# ── the GPS course reset (CourseReset) ───────────────────────────────────────
+
+def _track(course_deg, speed, t0=0.0, t1=10.0, hz=5.0):
+    """A History of GPS (lat, lon) on a straight line at this course and speed."""
+    from navera_common.sensor_history import History
+    h = History(maxlen=600, max_gap_s=1.5)
+    k = 0
+    while t0 + k / hz <= t1 + 1e-9:
+        t = t0 + k / hz
+        d = speed * t
+        h.add(t, (LAT0 + d * math.cos(math.radians(course_deg)) * M_LAT,
+                  LON0 + d * math.sin(math.radians(course_deg)) * M_LAT / math.cos(math.radians(LAT0))))
+        k += 1
+    return h
+
+
+def test_course_resets_the_heading_from_the_mount_on_a_steady_fast_course():
+    """12 m/s at 298 deg, camera mounted at yaw -92 (MARS-LVIG): the frame top is at 30 deg."""
+    g = GyroHeading()
+    _feed(g, 0.0, 10.0, 0.0)
+    c = CourseReset()
+    h, sig = c.maybe_reset(g, _track(298.0, 12.0), 10.0, -92.0)
+    chord = math.degrees(math.atan2(math.sqrt(2.0) * 0.5, 24.0))         # 0.5 m GPS noise over 24 m
+    assert h == pytest.approx(30.0, abs=0.01) and sig == pytest.approx(math.hypot(5.0, chord), abs=0.01)
+    assert g.at(10.0)[0] == pytest.approx(30.0, abs=0.01)
+    assert c.maybe_reset(g, _track(298.0, 12.0), 10.5, -92.0) is None      # once a second at most
+
+
+@pytest.mark.parametrize("why", ["slow", "turning", "no mount", "no gyro"])
+def test_no_course_reset_when_the_course_says_nothing(why):
+    g = GyroHeading()
+    _feed(g, 0.0, 10.0, 5.0 if why == "turning" else 0.0)
+    track = _track(298.0, 3.0 if why == "slow" else 12.0)
+    assert CourseReset().maybe_reset(None if why == "no gyro" else g, track, 10.0,
+                                     None if why == "no mount" else -92.0) is None
+    assert g.at(10.0) is None
+
+
+def test_the_offset_is_learned_from_vision_and_replaces_the_mount():
+    c = CourseReset()
+    for off in (88.0, 90.0, 92.0):                     # vision: frame top - course
+        c.add_offset_sample(100.0 + off, 100.0)
+    mean, sig = c.offset(-50.0)                        # the mount (wrong here) is not used any more
+    assert mean == pytest.approx(90.0, abs=0.01) and sig == pytest.approx(2.0)
+    assert CourseReset().offset(-92.0) == (92.0, 5.0) and CourseReset().offset(None) is None
+
+
+def test_a_fresher_vision_heading_is_not_replaced_by_the_course():
+    g = GyroHeading()
+    _feed(g, 0.0, 10.0, 0.0)
+    g.reset(9.5, 31.0, 2.0)                            # vision, 2 deg
+    assert CourseReset().maybe_reset(g, _track(298.0, 12.0), 10.0, -92.0) is None
+    assert g.at(10.0)[0] == pytest.approx(31.0)
+
+
+def test_match_heading_is_the_attitude_else_the_gyro_with_its_tolerance():
+    n = SimpleNamespace(local_heading_tol_deg=20.0, gyro=GyroHeading(max_sigma_deg=30.0))
+    n._frame_time = DaySubscriber._frame_time
+    n._heading_for_match = lambda meta: None
+    kw = MethodType(DaySubscriber._match_heading_kw, n)
+    assert kw(_meta(5.0)) == {"heading_deg": None, "heading_tol_deg": 20.0}      # nothing known
+    _feed(n.gyro, 0.0, 10.0, 0.0)
+    n.gyro.reset(5.0, 30.0, 9.0)
+    assert kw(_meta(5.0)) == {"heading_deg": pytest.approx(30.0), "heading_tol_deg": pytest.approx(27.0)}
+    n._heading_for_match = lambda meta: 123.0
+    assert kw(_meta(5.0)) == {"heading_deg": 123.0, "heading_tol_deg": 20.0}     # the attitude first
+
+
+def test_a_gps_check_fix_teaches_the_course_offset():
+    n = _node(True)
+    n.course = CourseReset()
+    n._gps_hist = _track(90.0, 12.0, 0.0, 30.0)
+    n._gps_prior = SimpleNamespace(fresh=lambda: (LAT0, LON0))
+    g = GyroHeading()
+    _feed(g, 0.0, 30.0, 0.0)
+    n.gyro = g
+    for t in (10.0, 12.0, 14.0):
+        n._gyro_reset(t, {"rotation_deg": 182.0, "inliers": 40})
+    assert n.course.offset(None) == (pytest.approx(92.0, abs=0.01), 2.0)

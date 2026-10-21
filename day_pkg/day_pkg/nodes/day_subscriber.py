@@ -55,7 +55,7 @@ from navera_msgs.msg import NavStatus, PositionEstimate
 from day_pkg.nodes.day_localizer import IMAGES_DIR, DayLocalizer, haversine_m
 from day_pkg.fix_sigma import SigmaCalibration, day_fix_sigma_m
 from day_pkg.frame_odometry import FrameOdometry
-from day_pkg.gyro_heading import GyroHeading, heading_rate_dps
+from day_pkg.gyro_heading import CourseReset, GyroHeading, heading_rate_dps
 from day_pkg.map_levels import area_zooms, choose_zoom
 from day_pkg.local_matcher import LocalMatcher
 from day_pkg.vision_nav import VisionNavigator, _en, _move, kinematic_margin_m
@@ -213,6 +213,15 @@ class DaySubscriber(Node):
         declare_float(self, "gyro_heading_reset_sigma_deg", 2.0)
         declare_float(self, "gyro_heading_max_sigma_deg", 10.0)
         self.declare_parameter("gyro_heading_min_inliers", 20)
+        # while the GPS is trusted the gyro heading is also reset from the GPS course (above
+        # gyro_course_min_speed_mps, on a steady course): the frame top = course + the camera's offset
+        # from it, learned from vision headings, else -mount_yaw_deg of the frame meta (nose first,
+        # 1-sigma gyro_course_crab_sigma_deg). The frames without attitude then have a heading for the
+        # matcher (tolerance max(local_heading_tol_deg, 3 sigma)): MARS-LVIG AMvalley03 without
+        # attitude, 0 fixes in 310 s before (see VALIDATION_STATUS.md)
+        self.declare_parameter("gyro_course_reset", True)
+        declare_float(self, "gyro_course_min_speed_mps", 5.0)
+        declare_float(self, "gyro_course_crab_sigma_deg", 5.0)
         # a height measured by a match is trusted only from a strong match confirmed by
         # the next one (a wrong match must not set the altitude the next frames are judged by)
         self.declare_parameter("altitude_min_inliers", 20)
@@ -275,6 +284,11 @@ class DaySubscriber(Node):
                                     float(self.get_parameter("gyro_heading_reset_sigma_deg").value),
                                     float(self.get_parameter("gyro_heading_max_sigma_deg").value))
         self.gyro_min_inliers = int(self.get_parameter("gyro_heading_min_inliers").value)
+        self.course = None                      # CourseReset while GPS is trusted
+        if self.gyro is not None and bool(self.get_parameter("gyro_course_reset").value):
+            self.course = CourseReset(min_speed_mps=float(self.get_parameter("gyro_course_min_speed_mps").value),
+                                      crab_sigma_deg=float(self.get_parameter("gyro_course_crab_sigma_deg").value))
+        self._mount_yaw = None                  # the camera mount's yaw (frame meta), for the course offset
         self._dr_sigma = None
         self._anchor_sigma = None               # 1-sigma (m) of the anchor position, None: unknown
         p_ = lambda n: self.get_parameter(n).value               # noqa: E731
@@ -550,6 +564,8 @@ class DaySubscriber(Node):
             if st > 0:
                 self._gps_hist.add(st, (float(msg.latitude), float(msg.longitude)))
                 self.latency_cal.add_gps(st, float(msg.latitude), float(msg.longitude))
+                if getattr(self, "course", None) is not None:
+                    self.course.maybe_reset(self.gyro, self._gps_hist, st, getattr(self, "_mount_yaw", None))
             if self.shadow_mode and self._anchor_lat is not None:
                 return
             self._anchor_lat, self._anchor_lon = msg.latitude, msg.longitude
@@ -703,8 +719,7 @@ class DaySubscriber(Node):
                                    and not self._compute_degraded() else [])
                 for f in factors:
                     result = self.local.locate(img, center, R, mpp * f, scale_tol=self._scale_tol(meta),
-                                               heading_deg=self._heading_for_match(meta),
-                                               heading_tol_deg=self.local_heading_tol_deg, hfov_deg=self._hfov(meta),
+                                               **self._match_heading_kw(meta), hfov_deg=self._hfov(meta),
                                                expected_tilt_deg=self._expected_tilt(meta), **self._heading_search_kw())
                     if result.get("accepted"):
                         break
@@ -713,8 +728,7 @@ class DaySubscriber(Node):
                     # the fitted scale answers only ~half of a height error (campaign 2: slope
                     # 0.45-0.6): match again at the corrected height, keep it if it holds
                     again = self.local.locate(img, center, R, mpp * f * sc, scale_tol=self._scale_tol(meta),
-                                              heading_deg=self._heading_for_match(meta),
-                                              heading_tol_deg=self.local_heading_tol_deg, hfov_deg=self._hfov(meta),
+                                              **self._match_heading_kw(meta), hfov_deg=self._hfov(meta),
                                               expected_tilt_deg=self._expected_tilt(meta), **self._heading_search_kw())
                     if again.get("accepted") and int(again.get("inliers") or 0) >= int(result.get("inliers") or 0) // 2:
                         result, f = again, f * sc
@@ -853,8 +867,7 @@ class DaySubscriber(Node):
             return
         self._last_calib = time.time()
         res = self.local.locate(img, prior, self.calib_radius_m, mpp, scale_tol=self._scale_tol(meta),
-                                heading_deg=self._heading_for_match(meta),
-                                heading_tol_deg=self.local_heading_tol_deg, hfov_deg=self._hfov(meta),
+                                **self._match_heading_kw(meta), hfov_deg=self._hfov(meta),
                                 expected_tilt_deg=self._expected_tilt(meta))
         self.get_logger().info(
             f"[day] GPS check frame={seq_id}: " + (f"vision {haversine_m(prior[0], prior[1], res['predicted_lat'], res['predicted_lon']):.0f} m from GPS "
@@ -1243,6 +1256,17 @@ class DaySubscriber(Node):
         except (TypeError, ValueError):
             return None
 
+    def _match_heading_kw(self, meta) -> dict:
+        """locate()'s heading and tolerance: the frame's attitude heading, else the gyro-carried one
+        (reset by vision fixes and the GPS course) with a tolerance of at least 3 of its sigma, else none."""
+        h = self._heading_for_match(meta)
+        tol = self.local_heading_tol_deg
+        if h is None and getattr(self, "gyro", None) is not None:
+            g = self.gyro.at(self._frame_time(meta))
+            if g is not None:
+                h, tol = g[0], max(tol, 3.0 * g[1])
+        return {"heading_deg": h, "heading_tol_deg": tol}
+
     def _carry_heading(self, meta):
         """(heading_deg or None, sigma_deg) the carry turns with: the frame's (its attitude; its
         error is in the track's heading term, sigma 0), else the gyro-carried vision heading."""
@@ -1273,7 +1297,13 @@ class DaySubscriber(Node):
         return self._track_heading
 
     def _note_frame_heading(self, meta) -> None:
-        """Remember this frame's attitude heading at its exposure (for _velocity_heading)."""
+        """Remember this frame's attitude heading at its exposure (for _velocity_heading), and the
+        camera mount's yaw (for the GPS course offset)."""
+        if meta.get("mount_yaw_deg") is not None:
+            try:
+                self._mount_yaw = float(meta["mount_yaw_deg"])
+            except (TypeError, ValueError):
+                pass
         h = self._heading_for_match(meta)
         hist = getattr(self, "_frame_headings", None)
         if h is None or hist is None:
@@ -1307,6 +1337,10 @@ class DaySubscriber(Node):
         if getattr(self, "gyro", None) is None or result.get("rotation_deg") is None \
                 or int(result.get("inliers") or 0) < self.gyro_min_inliers:
             return
+        if getattr(self, "course", None) is not None and self._gps_prior.fresh() is not None:
+            c = self.course.course(self._gps_hist, self.gyro, t_fix)     # the camera's offset from the course
+            if c is not None:
+                self.course.add_offset_sample(float(result["rotation_deg"]), c[0])
         self.gyro.reset(t_fix, float(result["rotation_deg"]))
 
     def _publish_vision_altitude(self, meta, result, status):

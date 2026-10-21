@@ -14,6 +14,14 @@ samples, there is no heading (the carry goes straight on, as without a gyro). A 
 that disagrees with a still-valid carried one by more than 3 sigma is not taken (a wrong-place
 match has a meaningless rotation): the carried heading keeps ageing until one agrees or it expires.
 
+While the GPS is trusted the heading is also reset from the GPS course (CourseReset): above
+~5 m/s, on a steady course (the gyro turned less than a few degrees over the window), the frame
+top's azimuth is the course plus the camera's offset from it — learned from vision headings
+measured while the course was known, else the camera mount's yaw for a vehicle flying nose first.
+Without it a frame with no attitude got no heading until a vision fix, and the learned matcher
+gets none without a heading: a real flight (MARS-LVIG AMvalley03, no attitude in the frames) gave 0
+fixes in 310 s after the GPS loss.
+
 Pure Python, no ROS: the day node and the bench replay use the same code.
 """
 import math
@@ -121,6 +129,14 @@ class GyroHeading:
                 return None
             return (hr + cb - ca) % 360.0, sig
 
+    def turn(self, t0: float, t1: float) -> Optional[float]:
+        """Heading change (deg) integrated from t0 to t1, or None (outside the samples, or a gap)."""
+        with self._lock:
+            if any(g0 < t1 and g1 > t0 for g0, g1 in self._gaps):
+                return None
+            a, b = self._integral(t0), self._integral(t1)
+        return None if a is None or b is None else b - a
+
     def reset(self, t: float, heading_deg: float, sigma_deg: Optional[float] = None) -> bool:
         """A vision heading at t. Taken unless a still-valid carried heading disagrees with it by
         more than 3 sigma (both); True when taken."""
@@ -136,3 +152,79 @@ class GyroHeading:
         """Forget the vision heading (mission rewind)."""
         with self._lock:
             self._ref = None
+
+
+def _bearing_deg(p0, p1) -> Tuple[float, float]:
+    """(bearing deg clockwise from north, distance m) from p0 to p1 (lat, lon), locally flat."""
+    dn = (p1[0] - p0[0]) * 111_320.0
+    de = (p1[1] - p0[1]) * 111_320.0 * math.cos(math.radians(p0[0]))
+    return math.degrees(math.atan2(de, dn)) % 360.0, math.hypot(de, dn)
+
+
+class CourseReset:
+    """The gyro heading reset from the GPS course while the GPS is trusted (module doc)."""
+
+    def __init__(self, min_speed_mps: float = 5.0, window_s: float = 2.0, max_turn_deg: float = 3.0,
+                 pos_noise_m: float = 0.5, crab_sigma_deg: float = 5.0, min_interval_s: float = 1.0,
+                 min_offset_samples: int = 3):
+        """min_speed_mps: below it the course is noise; window_s: the course is the chord of the GPS
+        track over it; max_turn_deg: the gyro turned less than this over the window (on a turn the
+        chord lags the heading); pos_noise_m: GPS noise between two fixes window_s apart (its
+        absolute error cancels in the chord); crab_sigma_deg: 1-sigma of the frame-top offset from
+        the course when it comes from the mount (crab, a vehicle not flying straight nose first);
+        min_offset_samples: vision samples before the learned offset replaces the mount's."""
+        self.min_speed, self.window, self.max_turn = min_speed_mps, window_s, max_turn_deg
+        self.pos_noise, self.crab_sigma, self.min_interval = pos_noise_m, crab_sigma_deg, min_interval_s
+        self.min_samples = min_offset_samples
+        self._offsets = deque(maxlen=30)
+        self._last_reset = -math.inf
+
+    def course(self, track, gyro: Optional[GyroHeading], t: float) -> Optional[Tuple[float, float]]:
+        """(course deg, its sigma deg) of the GPS track (a History of (lat, lon)) ending at t, or None:
+        too slow, too few fixes, or turning (gyro) — or no gyro to tell."""
+        p1, p0 = track.at(t), track.at(t - self.window)
+        if p0 is None or p1 is None or gyro is None:
+            return None
+        crs, dist = _bearing_deg(p0, p1)
+        if dist < self.min_speed * self.window:
+            return None
+        turn = gyro.turn(t - self.window, t)
+        if turn is None or abs(turn) > self.max_turn:
+            return None
+        return crs, math.degrees(math.atan2(math.sqrt(2.0) * self.pos_noise, dist))
+
+    def add_offset_sample(self, frame_heading_deg: float, course_deg: float) -> None:
+        """A vision heading (the frame top's azimuth) measured while the course was known."""
+        self._offsets.append(_wrap(frame_heading_deg - course_deg))
+
+    def offset(self, mount_yaw_deg: Optional[float]) -> Optional[Tuple[float, float]]:
+        """(frame top - course deg, sigma deg): learned from vision (circular mean, sigma its spread,
+        at least 2 deg), else -mount yaw (a downward camera on a vehicle flying nose first), else None."""
+        if len(self._offsets) >= self.min_samples:
+            sn = sum(math.sin(math.radians(o)) for o in self._offsets)
+            cs = sum(math.cos(math.radians(o)) for o in self._offsets)
+            mean = math.degrees(math.atan2(sn, cs))
+            spread = math.sqrt(sum(_wrap(o - mean) ** 2 for o in self._offsets) / len(self._offsets))
+            return mean, max(2.0, spread)
+        if mount_yaw_deg is None or not math.isfinite(mount_yaw_deg):
+            return None
+        return _wrap(-mount_yaw_deg), self.crab_sigma
+
+    def maybe_reset(self, gyro: Optional[GyroHeading], track, t: float,
+                    mount_yaw_deg: Optional[float]) -> Optional[Tuple[float, float]]:
+        """Reset the gyro heading at t from the course when it is known and more certain than the
+        carried heading; (heading, sigma) when it did."""
+        if gyro is None or t - self._last_reset < self.min_interval:
+            return None
+        c = self.course(track, gyro, t)
+        off = self.offset(mount_yaw_deg) if c is not None else None
+        if off is None:
+            return None
+        h, sig = (c[0] + off[0]) % 360.0, math.hypot(c[1], off[1])
+        cur = gyro.at(t)
+        if cur is not None and cur[1] <= sig:
+            return None                                 # a fresher vision heading is better
+        if not gyro.reset(t, h, sig):
+            return None
+        self._last_reset = t
+        return h, sig
