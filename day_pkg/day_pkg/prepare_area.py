@@ -386,8 +386,42 @@ def download_missing(plan, fetch_url, cache, mbtiles, workers=8):
         con.close()
 
 
-def prepare(mbtiles, out_dir, route, buffer_m, zoom=17, fetch_url=None, cache=None):
-    """Build the dataset in <out_dir>.partial, then move it to out_dir."""
+def _descriptors(tmp, rows):
+    """DINOv2 descriptors of the area's tiles -> <tmp>/descriptors_cache.npz; (valid indices, device)."""
+    import numpy as np
+    import torch
+    from day_pkg.nodes.day_localizer import DINOv2GeM, load_image_tensor, tile_center_latlon
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    model = DINOv2GeM().to(device).eval()
+    descs, valid, coords = [], [], []
+    batch = []
+
+    def flush():
+        with torch.no_grad():
+            out = model(torch.stack([b[1] for b in batch]).to(device)).cpu().numpy()
+        for (idx, _), d in zip(batch, out):
+            descs.append(d)
+            valid.append(idx)
+            coords.append(tile_center_latlon(rows[idx][0]))
+        batch.clear()
+
+    for i, (name, _, _) in enumerate(rows):
+        try:
+            batch.append((i, load_image_tensor(os.path.join(tmp, "images", name))))
+        except Exception as e:                       # corrupt tile in the map
+            print(json.dumps({"stage": "warning", "tile": name, "error": str(e)}), flush=True)
+        if len(batch) == 32 or (i == len(rows) - 1 and batch):
+            flush()
+            _progress("descriptors", i + 1, len(rows))
+    np.savez(os.path.join(tmp, "descriptors_cache.npz"),
+             dinov2_descriptors=np.array(descs, dtype=np.float32),
+             coords=np.array(coords, dtype=float), valid_indices=np.array(valid))
+    return valid, device
+
+
+def prepare(mbtiles, out_dir, route, buffer_m, zoom=17, fetch_url=None, cache=None, descriptors=True):
+    """Build the dataset in <out_dir>.partial, then move it to out_dir. descriptors=False: no DINOv2
+    descriptor cache (no torch needed; day_subscriber then builds it at start-up from the tiles)."""
     t0 = time.time()
     plan = plan_tiles(mbtiles, route, buffer_m, zoom, cache)
     source = mbtiles
@@ -422,46 +456,20 @@ def prepare(mbtiles, out_dir, route, buffer_m, zoom=17, fetch_url=None, cache=No
         for name, lat, lon in rows:
             f.write(f"{name},{lat},{lon}\n")
 
-    import numpy as np
-    import torch
-    from day_pkg.nodes.day_localizer import DINOv2GeM, load_image_tensor, tile_center_latlon
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    model = DINOv2GeM().to(device).eval()
-    descs, valid, coords = [], [], []
-    batch = []
-
-    def flush():
-        with torch.no_grad():
-            out = model(torch.stack([b[1] for b in batch]).to(device)).cpu().numpy()
-        for (idx, _), d in zip(batch, out):
-            descs.append(d)
-            valid.append(idx)
-            coords.append(tile_center_latlon(rows[idx][0]))
-        batch.clear()
-
-    for i, (name, _, _) in enumerate(rows):
-        try:
-            batch.append((i, load_image_tensor(os.path.join(tmp, "images", name))))
-        except Exception as e:                       # corrupt tile in the map
-            print(json.dumps({"stage": "warning", "tile": name, "error": str(e)}), flush=True)
-        if len(batch) == 32 or (i == len(rows) - 1 and batch):
-            flush()
-            _progress("descriptors", i + 1, len(rows))
-    np.savez(os.path.join(tmp, "descriptors_cache.npz"),
-             dinov2_descriptors=np.array(descs, dtype=np.float32),
-             coords=np.array(coords, dtype=float), valid_indices=np.array(valid))
+    valid, device = (_descriptors(tmp, rows) if descriptors else ([], None))
     _progress("terrain", 0, 1)
     terrain = texture_profile(os.path.join(tmp, "images"), densify_route(route), zoom)
     info = {"route": route, "buffer_m": buffer_m, "zoom": zoom, "mbtiles": os.path.abspath(source),
             "terrain": terrain,
-            "tiles": len(plan["needed"]), "prepared": len(valid),
+            "tiles": len(plan["needed"]), "prepared": len(valid) if descriptors else len(rows),
+            "descriptors": bool(descriptors),
             "missing": plan["missing"], "created": time.strftime("%Y-%m-%dT%H:%M:%S"),
             "build_s": round(time.time() - t0, 1), "device": device}
     with open(os.path.join(tmp, "area.json"), "w") as f:
         json.dump(info, f)
     shutil.rmtree(out_dir, ignore_errors=True)
     os.replace(tmp, out_dir)
-    _progress("done", len(valid), len(plan["needed"]), missing=len(plan["missing"]),
+    _progress("done", info["prepared"], len(plan["needed"]), missing=len(plan["missing"]),
               build_s=info["build_s"], terrain=terrain)
     return info
 
@@ -476,6 +484,8 @@ def main():
     ap.add_argument("--check", action="store_true", help="coverage report only")
     ap.add_argument("--fetch-url", help="XYZ tile URL template ({z} {x} {y}) for missing tiles")
     ap.add_argument("--cache", help="MBTiles file receiving downloaded tiles")
+    ap.add_argument("--no-descriptors", action="store_true",
+                    help="no DINOv2 descriptor cache (day_subscriber builds it at start-up)")
     a = ap.parse_args()
     route = [tuple(float(v) for v in p.split(",")) for p in a.route]
     if a.check:
@@ -485,7 +495,7 @@ def main():
         return 0
     if not a.out:
         ap.error("--out is required unless --check")
-    prepare(a.mbtiles, a.out, route, a.buffer_m, a.zoom, a.fetch_url, a.cache)
+    prepare(a.mbtiles, a.out, route, a.buffer_m, a.zoom, a.fetch_url, a.cache, descriptors=not a.no_descriptors)
     return 0
 
 
