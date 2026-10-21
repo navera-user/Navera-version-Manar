@@ -37,7 +37,7 @@ public-data evidence, not a field rate.
 | H-13 | Autopilot misconfigured (`EK3_SRC1_POSZ = 3`, velocity sources, `GPS_AUTO_SWITCH`) | Cat: EKF height −277 m in 20 s, vehicle climbs to 825 m (SITL) | **High** | NAVERA cannot read or enforce autopilot parameters; documentation only |
 | H-01b | Camera image frozen (same picture delivered again) | Haz: a static vision fix repeated as fresh; with GPS trusted, the growth test may refuse the GOOD GPS | **Medium** | frame-content freeze detector + UT (NAV-SAF-19); not yet seen on a real stuck driver |
 | H-03 | Wrong night (thermal) fix accepted | Haz if forwarded | **High** (unvalidated) | 0 wrong accepts is on synthetic grey renders only; real LWIR never run (B4/B14, D22, F24) |
-| H-11 | Compute overload / out of memory / thermal throttling | Maj: OOM kill ends navigation (F5); stale fixes | **Medium** | no swap installed, no OOM protection, no thermal monitoring; integrity kept by freshness windows |
+| H-11 | Compute overload / out of memory / thermal throttling | Maj: OOM kill ends navigation (F5); stale fixes | **Medium** | compute health monitor + degraded flag (NAV-SAF-21, UT); no OOM protection in the units; integrity kept by freshness windows |
 | H-02 | Wrong day-vision fix accepted | Haz if forwarded: 100–650 m jumps (F16 tilted camera, F20 shake) | **Medium** | 1 / 2599 > 100 m on real drone data (PUB) but 2–7 wrong fixes per run under shake on the bench; F16/F20 open |
 | H-08 | Clock wrong (no battery RTC, F27) | Haz for celestial (≈28 km per minute of error, thousands of km at 16 h); wrong GPS time sent to the autopilot | **Medium** | celestial now solves only on a trusted time (NAV-SAF-20, UT); GPS_INPUT / NMEA time still from the system clock; a box can lack the DS3231 |
 | H-10 | Latency mismatch camera ↔ position | Haz/Min: along-track error (1.71 s uncompensated: 39.8 m at 80 m/s, F9) | **Medium** | per-camera delay is a setting / online fit; `GPS_DELAY_MS` recommendation not verified |
@@ -163,11 +163,11 @@ H-14 storage full (Low–Medium), H-15 integrator settings (Medium), H-16 simula
 | | |
 |---|---|
 | Effect | frames processed late or not at all (F4: failed frames 6–20 s), OOM kill of the day pipeline after 4.6 min without swap (F5), GPU clocks throttled |
-| Detection | none for temperature or memory; freshness windows make late fixes ineligible (`EstimatorNode._eval_source`); output refuses measurements > 5 s old |
-| Mitigation | strictly serial back-pressure camera → localizer (camera waits for `frame_done`); one GPU pipeline (`Conflicts=`); coarser map level at height (D14); uniform frames rejected early (3180629); restart after a kill (`Restart=always`) |
-| Evidence | BENCH: F5, D14 (3.7 GB RSS at 1500 m) |
+| Detection | `navera_estimator/nodes/compute_health_node.py::ComputeHealthNode` (`navera_common/compute_health.py`): temperatures, memory, swap, GPU load, throttling from /sys and /proc without root → `/diagnostics`, `/navera/compute_health`; no swap reported at start; freshness windows make late fixes ineligible (`EstimatorNode._eval_source`); output refuses measurements > 5 s old |
+| Mitigation | at 95 C or ≤ 8 % memory available the latched `/navera/compute/degraded` makes day and night skip their optional height / heading retries (`compute_health.py::watch_degraded`); strictly serial back-pressure camera → localizer (camera waits for `frame_done`); one GPU pipeline (`Conflicts=`); coarser map level at height (D14); uniform frames rejected early (3180629); restart after a kill (`Restart=always`) |
+| Evidence | BENCH: F5, D14 (3.7 GB RSS at 1500 m); UT `test_compute_health.py`, `test_compute_health_node.py`; read without root on the Orin Nano |
 | Residual | **Medium** (integrity protected; availability not) |
-| Open items | O-20 swap file and `OOMScoreAdjust=` / `MemoryHigh=` in the units; O-21 tegrastats temperature / throttle in check_box and the operator view; O-22 TensorRT (latency) |
+| Open items | O-20 swap file and `OOMScoreAdjust=` / `MemoryHigh=` in the units; O-21 temperature / throttle monitor done (NAV-SAF-21) — still to show on the operator view and in check_box; O-22 TensorRT (latency) |
 
 ### H-12 Power loss or reboot in flight
 
@@ -224,7 +224,7 @@ simulated data. Residual **Low**.
 | O-13 | inertial dead-reckoning as an independent source (FEAT-2) | H-07 | code |
 | O-7, O-8 | real LWIR data; re-fit night thresholds | H-03 | data |
 | O-15–O-17 | trusted-time gate in product celestial (done, UT); RTC mandatory | H-08 | code / install |
-| O-20, O-21 | swap + OOM / memory limits; thermal monitoring | H-11 | deploy |
+| O-20, O-21 | swap + OOM / memory limits; thermal monitoring (monitor done, UT) | H-11 | deploy |
 | O-23 | reboot validation on a deployed box (commands in DEPLOYMENT_VALIDATION.md) | H-12 | test |
 | O-27 | install from a clean release clone; install.sh copies .git and .claude/worktrees (B18) | H-12, deployment | deploy |
 | O-3, O-4 | shake / tilt gates (F20, F16) on a real vehicle | H-02 | code / test |

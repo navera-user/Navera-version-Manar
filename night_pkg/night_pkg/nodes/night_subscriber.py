@@ -37,6 +37,7 @@ import numpy as np
 
 import rclpy
 from navera_common.qos import SENSOR_QOS
+from navera_common.compute_health import watch_degraded
 from navera_common.geo import haversine_m, is_finite_latlon
 from navera_common.lifecycle import die_with_parent
 from navera_common.params import declare_float
@@ -186,6 +187,7 @@ class NightSubscriber(Node):
         self.declare_parameter("height_retry", "0.1,-0.1,0.2")
         self.height_retry = tuple(
             float(x) for x in str(self.get_parameter("height_retry").value).split(",") if x.strip())
+        self._compute_degraded = watch_degraded(self)     # H-11: hot / short of memory -> no retries
 
         sthn_dir = self.get_parameter("sthn_dir").value
         weights = self.get_parameter("weights").value
@@ -493,7 +495,8 @@ class NightSubscriber(Node):
                 altitude_m=float(alt) if alt is not None else None,
                 hfov_deg=self._hfov(meta),
                 heading_deg=heading,
-                heading_retry_deg=self.heading_retry_deg, height_retry=self.height_retry)
+                heading_retry_deg=() if self._compute_degraded() else self.heading_retry_deg,
+                height_retry=() if self._compute_degraded() else self.height_retry)
             result["heading_source"] = heading_src
             self._search = {k: result.get(k) for k in (
                 "search_center", "search_size_m", "footprint_quad", "query", "heading_source",

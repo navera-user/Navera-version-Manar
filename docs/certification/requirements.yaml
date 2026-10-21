@@ -740,6 +740,23 @@ requirements:
   status: verified-UT
   note: 'GNSS time is as trustworthy as the GNSS (a spoofer controls it too); not yet run on the box with the DS3231 removed'
 
+- id: NAV-SAF-21
+  category: SAF
+  title: 'Compute health monitored, heavy retries shed when hot or short of memory'
+  text: 'A compute health monitor shall read the Jetson temperatures, memory, swap, GPU load and thermal throttling without root every 2 s and publish them on /diagnostics and /navera/compute_health; it shall report a box without swap at start, WARN at 85 C / 15 % memory available / throttling, and set the latched /navera/compute/degraded at 95 C / 8 % (cleared 5 C / 4 % back) so day and night skip their optional height / heading retries; its failure shall never stop the arbiter.'
+  code:
+    - navera_common/navera_common/compute_health.py::ComputeHealthMonitor
+    - navera_common/navera_common/compute_health.py::watch_degraded
+    - navera_estimator/navera_estimator/nodes/compute_health_node.py::ComputeHealthNode
+  match:
+    - 'test_compute_health\.py::'
+    - 'test_compute_health_node\.py::'
+  evidence:
+    - {level: UT, value: 'fake /sys + /proc tree: readers, WARN / DEGRADED with hysteresis, no-swap report; node: /diagnostics levels and the latched flag reaching a subscriber'}
+    - {level: BENCH, value: 'read on the Orin Nano without root (2026-10-21): 9 thermal zones (3 CV zones unreadable, skipped), GPU load from /sys/devices/platform/17000000.gpu/load, 20 GB swap', ref: 'navera_common/compute_health.py docstring'}
+  status: verified-UT
+  note: 'thresholds are starting values (Orin throttles near 99 C); not shown on the operator view yet; OOMScoreAdjust / MemoryHigh in the units still open (O-20)'
+
 # ───────────────────────────── Offline ─────────────────────────────
 - id: NAV-OFF-01
   category: OFF
