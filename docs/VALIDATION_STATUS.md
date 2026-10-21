@@ -477,13 +477,57 @@ measured: **2 more wrong accepts (Hikvision 1000 m, flat-sea coast), all on fram
 at a gate's edge before**; no systematic change, but not "0 new wrong accepts" — keep or
 revert the fix is a review decision.
 
+**Retry gate (2026-10-21, after the above).** Every hypothesis of every frame was recorded
+(`--probe-jsonl`, `night_retry_probe.py`: all retries run, not only up to the first success) and
+localize's choice replayed with and without a gate (`night_retry_gate_eval.py`). Real code
+path, Bordeaux Hikvision 1000 m: 21/60, 2 wrong (max 176 m) → 17/60, 0 wrong, 11 m median,
+max 50 m — as the replay predicted. 1940 frames: real thermal Bordeaux night (Boson 640 / Hikvision
+160 × 120 at 500/700/1000 m, black-hot, 15° heading error), Clermont day (same, plus InfiRay
+640, Boson 640 95°, Lepton 160 at 700 m), synthetic `night_conditions.py` (the 13 conditions of
+the earlier set incl. `terrain_coast_flat_sea`, the 72-pose A/B set, heading 10/20°, height
+−10/+20 %, field of view −10 %, 350 m) with the product retries on.
+
+- **What separates right from wrong retried fixes:** STHN's own quad consistency. Wrong
+  retried fixes (7 chosen, 53–176 m; 3 more, 55–228 m, behind an earlier right one): 0.85–0.97;
+  first-try right fixes ≥ 0.95 (1st percentile). The map-check NCC (wrong 0.06–0.43), the
+  second-centre distance (wrong 4–24 m: a < 15 m re-check would keep 4 of the 7), the
+  shifted-map control margin (negative for most right real-thermal fixes too: the peak is
+  broad), agreement with the other hypotheses (wrong ones 4–31 m from another answer) and
+  the number of retries did not separate them.
+- **Gate:** a retry is kept only with consistency ≥ 0.97 (`retry_min_conf`; NCC / re-check /
+  per-try penalty available, defaults as a first try: each cost more right fixes for no wrong
+  one removed — re-check 20 m kept 91 %, +0.005 NCC per try 90 %). A refused retry does not
+  stop the search. Margin: the closest wrong retry was 0.9698 (synthetic heading 20° off, 53 m,
+  +10° retry; the +20° retry is then kept, 18 m); 0.96 lets it through, 0.975 keeps 94.5 %.
+
+| Set (frames) | Accepted before → after | Wrong (> 50 m) | Right retried | Wrong retried |
+|---|---|---|---|---|
+| Bordeaux night, 640 px (180) | 61 → 61 | 0 → 0 | 19 → 19 | 0 → 0 |
+| Bordeaux night, 160 px (180) | 48 → 44 | **2 → 0** | 20 → 18 | 2 → 0 |
+| Bordeaux black-hot, Boson 700 / Hik 1000 (120) | 37 → 36 | **1 → 0** (Boson, 170 m) | 6 → 6 | 1 → 0 |
+| Bordeaux heading 15° off, 1000 m (120) | 35 → 33 | 2 → 2 (first try, 60–65 m) | 32 → 30 | 0 → 0 |
+| Clermont day, 640 / 160 px (300) | 230 → 225 | 0 → 0 | 63 → 58 | 0 → 0 |
+| Clermont heading 15° off, 700 m (100) | 79 → 77 | 2 → 2 (first try, 58–61 m) | 56 → 54 | 0 → 0 |
+| Clermont other cameras, 700 m (160) | 126 → 125 | 1 → 1 (first try, 54 m) | 13 → 12 | 0 → 0 |
+| Synthetic 13 conditions (312) | 195 → 194 | **2 → 1** (flat sea 92 m, first try) | 7 → 7 | 1 → 0 |
+| Synthetic A/B 72 poses (288) | 226 → 222 | **4 → 2** (flat sea 92 / 60 m, first try) | 16 → 14 | 2 → 0 |
+| Synthetic heading/height errors (180) | 161 → 160 | **2 → 1** (first try) | 96 → 96 | 1 → 0 |
+| **All (1940)** | 1198 → 1177 | **16 → 9** | 328 → 314 (95.7 %) | **7 → 0** |
+
+  Wrong retried accepts: 7 → 0 everywhere. The 9 left are all first tries, 51–92 m: the
+  flat-sea coast (92 m; it was a first try too in the 2026-10-21 runs, not a retry), and a 15°
+  heading error accepted at the given heading. They are outside a retry gate. The Lepton 171 m
+  retry accept seen before the centring fix did not recur. One frame at a time; the tracker
+  (`night_track.py`) only sees fewer retried fixes and was not re-run.
+
 **Camera verdict (what resolution / field of view is needed).**
 - **Resolution:** STHN works at ~1.7 m/px internally, so the Boson 640 (0.7–1.5 m/px at
   500–1000 m) and the 160 × 120 Hikvision (3–6 m/px) reach similar availability by day and at
   night; but the 160 px camera is less accurate at night (p90 22–50 m vs 20–26 m) and produced
   the only wrong accepts > 100 m. **640 × 512 is the requirement for flight**; a 160 × 120
-  camera (Hikvision bench unit, Lepton) is usable on the bench and only with the retries
-  turned off (`heading_retry_deg:=""`, `height_retry:=""`).
+  camera (Hikvision bench unit, Lepton) is usable on the bench; since the retry gate its retries
+  made no wrong accept (they did before: turn them off, `heading_retry_deg:=""`,
+  `height_retry:=""`, if the gate is disabled).
 - **Field of view / height:** with 50° the footprint covers the 433 m reference from ~540 m;
   at 500 m most frames are refused (or pass only through the +10/+20 % height retry). Fly
   ≥ 600–700 m with a 50° lens, or use a wider lens (62.9° InfiRay / 95° Boson worked at 700 m
