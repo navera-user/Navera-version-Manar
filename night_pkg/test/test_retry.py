@@ -15,7 +15,9 @@ def _stub(good_heading=None, good_alt=None, small_below=None):
             return {"success": False, "reason": "camera footprint too small for night matching", "dt_ms": 1.0}
         ok = (good_heading is None or heading == good_heading) and (good_alt is None or abs(alt - good_alt) < 1e-6)
         return {"success": ok, "map_check_failed": not ok, "reason": "" if ok else "map check failed", "dt_ms": 1.0}
-    return types.SimpleNamespace(_localize_once=types.MethodType(once, object()), recheck_offset_m=0), calls
+    ns = types.SimpleNamespace(_localize_once=types.MethodType(once, object()), recheck_offset_m=0)
+    ns._attempt = types.MethodType(NightLocalizer._attempt, ns)
+    return ns, calls
 
 
 def _run(stub, **kw):

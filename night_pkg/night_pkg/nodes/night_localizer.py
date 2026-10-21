@@ -251,7 +251,7 @@ def fix_sigma_m(altitude_m, recheck_m):
     return math.hypot(base, SIGMA_RECHECK_K * float(recheck_m))
 
 
-def verify_match(query_bgr, query_mask, sat_bgr, corners_rw, resize_width=256):
+def verify_match(query_bgr, query_mask, sat_bgr, corners_rw, resize_width=256, shifts_px=()):
     """Does the satellite map, cut where STHN put the frame, look like the frame?
 
     STHN always returns a quad, even for a frame with no information (fog, cloud,
@@ -264,6 +264,11 @@ def verify_match(query_bgr, query_mask, sat_bgr, corners_rw, resize_width=256):
     Returns {"ncc": the correlation}; the threshold is the caller's. Synthetic
     frames: correct fixes 0.08 (5th percentile) to 0.30 (median); a real thermal
     camera will score lower against a daylight map (not measured).
+
+    shifts_px (satellite-patch pixels): also correlate the frame with the map displaced by
+    each distance in 8 directions (a shifted-map control: how well this frame correlates
+    with this map at places that are NOT the answer); "ncc_ctrl" is then the highest of
+    those and "ncc_margin" ncc minus it.
     """
     n = VERIFY_SIZE
     q = cv2.cvtColor(query_bgr, cv2.COLOR_BGR2GRAY) if query_bgr.ndim == 3 else query_bgr
@@ -275,10 +280,34 @@ def verify_match(query_bgr, query_mask, sat_bgr, corners_rw, resize_width=256):
     k = s.shape[1] / float(resize_width)                   # rw pixel -> satellite patch pixel
     src = np.array([[0, 0], [n - 1, 0], [n - 1, n - 1], [0, n - 1]], np.float32)
     dst = ((np.asarray(corners_rw, np.float64) + 0.5) * k - 0.5).astype(np.float32)
-    H = cv2.getPerspectiveTransform(src, dst)              # frame pixel -> satellite pixel
-    w = cv2.warpPerspective(s, H, (n, n), flags=cv2.INTER_LINEAR | cv2.WARP_INVERSE_MAP,
-                            borderMode=cv2.BORDER_REFLECT)
-    return {"ncc": _ncc(_edges(q), _edges(w), m)}
+    eq = _edges(q)
+
+    def at(dx, dy):
+        H = cv2.getPerspectiveTransform(src, dst + np.float32([dx, dy]))   # frame px -> satellite px
+        w = cv2.warpPerspective(s, H, (n, n), flags=cv2.INTER_LINEAR | cv2.WARP_INVERSE_MAP,
+                                borderMode=cv2.BORDER_REFLECT)
+        return _ncc(eq, _edges(w), m)
+    out = {"ncc": at(0.0, 0.0)}
+    if shifts_px:
+        ctrl = [at(r * math.cos(a), r * math.sin(a)) for r in shifts_px
+                for a in np.arange(8) * (math.pi / 4.0)]
+        out["ncc_ctrl"] = max(ctrl)
+        out["ncc_margin"] = out["ncc"] - out["ncc_ctrl"]
+    return out
+
+
+def retry_plan(first, heading_deg, altitude_m, heading_retry_deg, height_retry):
+    """The (heading offset deg, relative height change) hypotheses NightLocalizer.localize
+    tries after the first attempt `first`: none if it succeeded or failed for another reason
+    than the map check / re-check or a too small footprint; for a footprint too small for the
+    stated height, only greater heights.
+    """
+    small = str(first.get("reason") or "").startswith("camera footprint too small")
+    if first.get("success") or not (first.get("map_check_failed") or small):
+        return []
+    tries = [] if heading_deg is None or small else [(float(d), 0.0) for d in heading_retry_deg]
+    tries += [] if not altitude_m else [(0.0, float(f)) for f in height_retry if f > 0 or not small]
+    return tries
 
 
 # ─── Tile utilities (MBTiles → numpy) ────────────────────────────────────────
@@ -434,6 +463,8 @@ class NightLocalizer:
         # largest disagreement accepted (None = measured, not enforced)
         self.recheck_offset_m = recheck_offset_m
         self.recheck_max_m = recheck_max_m
+        # shifted-map control distances (satellite px) of the map check (verify_match)
+        self.map_check_shifts_px = ()
         self.map_offset_deg = (float(map_offset_deg[0]), float(map_offset_deg[1]))
         self.mixed_precision = bool(mixed_precision)   # fp16 autocast au forward (network.py:110/139)
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
@@ -723,22 +754,10 @@ class NightLocalizer:
         Costs one more inference per retry, only on frames that failed the map check.
         """
         def attempt(heading, alt):
-            a = self._localize_once(query_bgr, prior_lat, prior_lon, alt, hfov_deg,
-                                    heading, require_scale)
-            if a.get("success") and self.recheck_offset_m:
-                a = self._recheck(a, query_bgr, prior_lat, prior_lon, alt, hfov_deg,
-                                  heading, require_scale)
-                if a.get("success") and a.get("recheck_m") is not None:
-                    a["sigma_m"] = fix_sigma_m(alt, a["recheck_m"])
-            return a
+            return self._attempt(query_bgr, prior_lat, prior_lon, alt, hfov_deg, heading, require_scale)
 
         r = attempt(heading_deg, altitude_m)
-        small = str(r.get("reason") or "").startswith("camera footprint too small")
-        if r.get("success") or not (r.get("map_check_failed") or small):
-            return r
-        # a footprint too small for the stated height: only a greater height can help
-        tries = [] if heading_deg is None or small else [(float(d), 0.0) for d in heading_retry_deg]
-        tries += [] if not altitude_m else [(0.0, float(f)) for f in height_retry if f > 0 or not small]
+        tries = retry_plan(r, heading_deg, altitude_m, heading_retry_deg, height_retry)
         if not tries:
             return r
         total = r["dt_ms"]
@@ -756,6 +775,15 @@ class NightLocalizer:
         r["reason"] += " (also tried: " + ", ".join(
             f"heading {d:+g} deg" if d else f"height {f:+.0%}" for d, f in tries) + ")"
         return r
+
+    def _attempt(self, query_bgr, prior_lat, prior_lon, alt, hfov_deg, heading, require_scale):
+        """One hypothesis (heading, height): the fix, confirmed from the second centre."""
+        a = self._localize_once(query_bgr, prior_lat, prior_lon, alt, hfov_deg, heading, require_scale)
+        if a.get("success") and self.recheck_offset_m:
+            a = self._recheck(a, query_bgr, prior_lat, prior_lon, alt, hfov_deg, heading, require_scale)
+            if a.get("success") and a.get("recheck_m") is not None:
+                a["sigma_m"] = fix_sigma_m(alt, a["recheck_m"])
+        return a
 
     def _recheck(self, r, query_bgr, prior_lat, prior_lon, altitude_m, hfov_deg, heading_deg,
                  require_scale):
@@ -777,6 +805,11 @@ class NightLocalizer:
             de = (s["lon"] - r["lon"]) * 111_320.0 * math.cos(math.radians(r["lat"]))
             gap = math.hypot(dn, de)
         r["recheck_m"] = gap
+        # the second centre's own answer (diagnostics)
+        r["recheck"] = {"lat": s.get("lat") if s.get("success") else s.get("pred_lat"),
+                        "lon": s.get("lon") if s.get("success") else s.get("pred_lon"),
+                        "ok": bool(s.get("success")), "verify": s.get("verify")}
+        r["first_lat"], r["first_lon"] = r["lat"], r["lon"]
         if self.recheck_max_m is not None and (gap is None or gap > self.recheck_max_m):
             why = ("not confirmed from a second search centre "
                    + (f"({gap:.0f} m apart, max {self.recheck_max_m:.0f} m)" if gap is not None
@@ -894,7 +927,8 @@ class NightLocalizer:
 
         verify = None
         if inside and conf >= self.conf_threshold:
-            verify = verify_match(query, qmask, sat_patch, corners, STHN_RESIZE_WIDTH)
+            verify = verify_match(query, qmask, sat_patch, corners, STHN_RESIZE_WIDTH,
+                                  shifts_px=self.map_check_shifts_px)
             dt_ms = (time.perf_counter() - t0) * 1000.0
         weak = None
         if verify is not None:
@@ -903,9 +937,12 @@ class NightLocalizer:
                         f"(min {self.min_match_ncc:.2f})")
         if weak:
             logger.warning(f"STHN prediction rejected: {weak}")
+            # where the network put the frame (diagnostics; not a position)
+            pred = _tile_frac_to_latlon(origin_x + u / 256.0, origin_y + v / 256.0, self.zoom)
             return {"success": False, "lat": prior_lat, "lon": prior_lon,
                     "conf": conf, "dt_ms": dt_ms, "rms_px": disp_px, "verify": verify,
                     "raw_lat": prior_lat, "raw_lon": prior_lon, **search,
+                    "pred_lat": pred[0] - self.map_offset_deg[0], "pred_lon": pred[1] - self.map_offset_deg[1],
                     "query": _FAIL["query"], "reason": weak, "map_check_failed": True}
         if not inside or conf < self.conf_threshold:
             logger.warning(

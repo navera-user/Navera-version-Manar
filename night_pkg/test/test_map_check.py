@@ -69,3 +69,17 @@ def test_map_check_confirms_the_right_place_and_refuses_noise():
                         _corners_for(x0, y0, side - 1, k))
     assert flat["ncc"] < 0.2
     assert STHN_QUERY_PX == side
+
+
+def test_shifted_map_control_peaks_at_the_right_place_only():
+    sat = textured(1536, 1536, seed=3)
+    x0, y0, side = 600, 500, 512
+    k = 1536 / 256.0
+    query = sat[y0:y0 + side, x0:x0 + side].copy()
+    good = verify_match(query, None, sat, _corners_for(x0, y0, side - 1, k), shifts_px=(24.0, 64.0))
+    assert good["ncc"] > 0.6 and good["ncc_ctrl"] < good["ncc"] - 0.3
+    assert abs(good["ncc_margin"] - (good["ncc"] - good["ncc_ctrl"])) < 1e-9
+    # 24 px off the truth: the control that lands on the truth beats the claimed place
+    off = verify_match(query, None, sat, _corners_for(x0 + 24, y0, side - 1, k), shifts_px=(24.0, 64.0))
+    assert off["ncc_margin"] < -0.2
+    assert "ncc_ctrl" not in verify_match(query, None, sat, _corners_for(x0, y0, side - 1, k))
