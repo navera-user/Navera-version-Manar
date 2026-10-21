@@ -80,7 +80,9 @@ State machine:
 Parameters:
     publish_rate_hz (default 5.0) — decision + nav_status cadence
     gps_timeout_s   (default 3.0)  — GPS freshness/liveness window
-    day_timeout_s   (default 3.0)  — day freshness/liveness window
+    day_timeout_s   (default 5.0)  — day freshness/liveness window (was 3 s: under load frames
+                     come every 1-4 s and NAVERA flickered NO_FIX between good fixes, the
+                     autopilot landed — e1d0674; the output carries the fix to the present)
     night_timeout_s (default 5.0)  — night freshness/liveness window
     cn_timeout_s    (default 45.0) — celestial window (a solve takes ~15 s and
                      fixes are sparse; value is a starting point, to be MEASURED
@@ -165,7 +167,7 @@ class EstimatorNode(Node):
         super().__init__("estimator_node")
         declare_float(self, "publish_rate_hz", 5.0)
         declare_float(self, "gps_timeout_s", 3.0)
-        declare_float(self, "day_timeout_s", 3.0)
+        declare_float(self, "day_timeout_s", 5.0)    # = config/estimator_params.yaml (e1d0674)
         declare_float(self, "night_timeout_s", 5.0)
         declare_float(self, "cn_timeout_s", 45.0)
         declare_float(self, "imu_timeout_s", 1.0)

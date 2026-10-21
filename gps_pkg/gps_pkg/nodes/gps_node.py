@@ -6,6 +6,9 @@ Reads NMEA sentences from a serial GPS (e.g. /dev/ttyTHS1 on Jetson UART, or
     /navera/sensors/gps_fix    sensor_msgs/NavSatFix       (unchanged, legacy sensor topic)
     /navera/sensors/gps_vel    geometry_msgs/TwistStamped  (ENU: linear.x east, linear.y north, m/s)
     /navera/estimate/gps       navera_msgs/PositionEstimate (NEW: the source contract)
+    /navera/sensors/gnss_time  sensor_msgs/TimeReference   (RMC status A: time_ref = GNSS UTC,
+                               header.stamp = system clock at reception; the trusted-time source
+                               of celestial when no RTC / NTP — navera_common.trusted_time)
 
 The PositionEstimate output is the typed contract consumed by navera_estimator.
 It is strictly additive: gps_fix / gps_vel are untouched. GPS always reports
@@ -30,9 +33,10 @@ import rclpy
 from navera_common.lifecycle import die_with_parent
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
-from sensor_msgs.msg import NavSatFix, NavSatStatus
+from sensor_msgs.msg import NavSatFix, NavSatStatus, TimeReference
 from geometry_msgs.msg import TwistStamped
 from navera_msgs.msg import PositionEstimate
+import datetime
 import json
 import math
 import sys
@@ -55,6 +59,16 @@ def _field_float(value):
         return None
 
 
+def rmc_utc_epoch(msg):
+    """UTC epoch seconds of a valid RMC sentence (status A, date and time present), else None."""
+    if getattr(msg, "status", None) != "A":
+        return None
+    d, t = getattr(msg, "datestamp", None), getattr(msg, "timestamp", None)
+    if not isinstance(d, datetime.date) or not isinstance(t, datetime.time):
+        return None
+    return datetime.datetime.combine(d, t.replace(tzinfo=None), tzinfo=datetime.timezone.utc).timestamp()
+
+
 class GPSNode(Node):
     def __init__(self):
         super().__init__("gps_node")
@@ -68,6 +82,7 @@ class GPSNode(Node):
         # Additive: the typed source contract for navera_estimator. RELIABLE
         # depth 10, same class as the sensor data topics (CLAUDE.md QoS rule).
         self.pub_est = self.create_publisher(PositionEstimate, "/navera/estimate/gps", 10)
+        self.pub_time = self.create_publisher(TimeReference, "/navera/sensors/gnss_time", 10)
         self.fix_count = 0
         self.failed = False
 
@@ -100,6 +115,7 @@ class GPSNode(Node):
                     self._publish_fix(msg)
                 elif isinstance(msg, pynmea2.types.talker.RMC):
                     self._publish_vel(msg)
+                    self._publish_time(msg)
             except serial.SerialException as e:
                 if self.running:
                     self.get_logger().fatal(f"Serial error: {e} — exiting so the service restarts")
@@ -204,6 +220,19 @@ class GPSNode(Node):
         est.frame_index = -1                      # not a camera-pipeline frame
         est.details_json = json.dumps(extras)
         self.pub_est.publish(est)
+
+    def _publish_time(self, msg):
+        """RMC (status A) → the receiver's UTC, with the system time it arrived at."""
+        epoch = rmc_utc_epoch(msg)
+        if epoch is None:
+            return
+        ref = TimeReference()
+        ref.header.stamp = self.get_clock().now().to_msg()
+        ref.header.frame_id = "gps"
+        ref.time_ref.sec = int(epoch)
+        ref.time_ref.nanosec = int(round((epoch - int(epoch)) * 1e9)) % 1_000_000_000
+        ref.source = "gnss"
+        self.pub_time.publish(ref)
 
     def _publish_vel(self, msg):
         """RMC → ground velocity in ENU (linear.x east, linear.y north), m/s."""

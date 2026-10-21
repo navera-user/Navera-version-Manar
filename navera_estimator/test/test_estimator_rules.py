@@ -154,3 +154,65 @@ def test_a_growth_refusal_holds_while_the_spoof_lasts_and_lifts_when_it_ends(nod
     assert first < 70.0
     assert all(why for t, why in log if first <= t < 100.0)         # the drift goes on: refused
     assert not log[-1][1]                                           # true GPS back after the spoof
+
+
+def test_node_freshness_defaults_are_the_deployed_ones(node):
+    """C4: the node's defaults equal config/estimator_params.yaml (the launch file loads it): day 5 s."""
+    import os
+    import yaml
+    cfg = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                       "navera_estimator", "config", "estimator_params.yaml")
+    with open(cfg) as f:
+        yml = yaml.safe_load(f)["estimator_node"]["ros__parameters"]
+    for name in ("gps_timeout_s", "day_timeout_s", "night_timeout_s", "cn_timeout_s", "imu_timeout_s"):
+        assert node.get_parameter(name).value == yml[name], name
+    assert node._day_timeout == 5.0
+
+
+def test_a_day_fix_stays_usable_5_s_then_goes_stale(node):
+    """C4 / NAV-TIM-01: a 4 s old day fix is still eligible (frames every 1-4 s under load), a 5.5 s one is not."""
+    for age, expected in ((4.0, True), (5.5, False)):
+        m = _msg(node, PositionEstimate.SOURCE_DAY_VISION, dt_s=-age, sigma=30.0)
+        node._on_day(m)
+        assert node._eval_source(node.get_clock().now(), m, node._day_timeout)[1] is expected, age
+
+
+def test_a_second_arbiter_on_the_network_is_reported_and_its_end_too(node):
+    """NAV-SAF-15 (EST-10): another publisher on /navera/position (a second arbiter, an orphan
+    simulator) is reported as an error; when it goes, the "only one arbiter again" is reported.
+    """
+    import time
+    from rclpy.node import Node
+
+    lines = []
+
+    class _Log:
+        def error(self, m, **_):
+            lines.append(("error", m))
+
+        def warn(self, m, **_):
+            lines.append(("warn", m))
+
+    real = node.get_logger
+    node.get_logger = lambda: _Log()
+    rival = Node("rival_arbiter")
+    try:
+        node._rival_reported = False
+        pub = rival.create_publisher(PositionEstimate, "/navera/position", 10)
+        end = time.time() + 10.0
+        while not node._rival_reported and time.time() < end:
+            node._check_single_arbiter()
+            time.sleep(0.1)
+        assert node._rival_reported
+        assert lines and lines[0][0] == "error" and "another arbiter" in lines[0][1]
+        node._check_single_arbiter()
+        assert len(lines) == 1                            # reported once, not every 5 s
+        rival.destroy_publisher(pub)
+        end = time.time() + 10.0
+        while node._rival_reported and time.time() < end:
+            node._check_single_arbiter()
+            time.sleep(0.1)
+        assert not node._rival_reported and lines[-1] == ("warn", "only one arbiter on /navera/position again")
+    finally:
+        node.get_logger = real
+        rival.destroy_node()

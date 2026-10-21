@@ -9,7 +9,7 @@ health, reason). Rules: [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md) §3.
 | Parameter | Default | |
 |---|---|---|
 | `publish_rate_hz` | 5.0 | decision rate |
-| `gps_timeout_s`, `day_timeout_s`, `night_timeout_s`, `cn_timeout_s` | 3, 3, 5, 45 | freshness of each source (on `sensor_stamp`) |
+| `gps_timeout_s`, `day_timeout_s`, `night_timeout_s`, `cn_timeout_s` | 3, 5, 5, 45 | freshness of each source (on `sensor_stamp`); day 5 s: under load frames come every 1-4 s and 3 s made NAVERA flicker NO_FIX (autopilot LAND, e1d0674) |
 | `imu_timeout_s` | 1.0 | IMU liveness |
 | `future_tolerance_s` | 0.5 | stamps further in the future are refused — for good: a message that arrived from the future never becomes alive when the clock catches up, and freshness also needs the receive time within the source's timeout |
 | `switch_holdoff_s` | 2.0 | dwell before a higher-priority source takes over |
@@ -31,3 +31,20 @@ refuses inside 3 sigma, so "agrees within 3 sigma" alone would let the spoofed G
 Measured (`navera_tools/bench/replay_spoof_trend.py`, real screen-bench campaigns, one vision fix
 per 2 s as the day node's GPS checks): no false refusal; a 3 m/s drift refused at ~70 m instead of
 ~120 m with the 30 m uncalibrated vision sigma — see docs/VALIDATION_STATUS.md.
+
+## `compute_health_node` — compute health (hazard H-11)
+
+Started by `estimator.launch.py` next to the arbiter (respawned on failure, never stops it).
+Every 2 s it reads, without root, the files tegrastats uses (`navera_common/compute_health.py`):
+thermal zones, throttling cooling devices, `/proc/meminfo` (memory, swap) and the GPU load, and
+publishes `/diagnostics` (one status `navera: compute health`), `/navera/compute_health` (JSON) and
+the latched `/navera/compute/degraded` (Bool). A box without swap is reported at start (F5).
+
+| Parameter | Default | |
+|---|---|---|
+| `period_s` | 2.0 | sampling period |
+| `temp_warn_c`, `temp_degrade_c` | 85, 95 | hottest zone: WARN, then degraded (cleared 5 C below) |
+| `mem_warn_pct`, `mem_degrade_pct` | 15, 8 | memory available (% of total): WARN, then degraded (cleared 4 % above) |
+
+While degraded, day vision skips its height retries and night vision its heading / height retries
+(`watch_degraded`): fewer inferences per frame on a hot or memory-starved box.

@@ -35,18 +35,18 @@ public-data evidence, not a field rate.
 |---|---|---|---|---|
 | H-07 | Slow GPS spoof where vision cannot match (sea, desert, night without thermal) | Haz: vehicle dragged 60–390 m+ while NAVERA states FIX | **High** | every spoof check needs an independent source with a stated sigma (D1); no inertial navigation (FEAT-2) |
 | H-13 | Autopilot misconfigured (`EK3_SRC1_POSZ = 3`, velocity sources, `GPS_AUTO_SWITCH`) | Cat: EKF height −277 m in 20 s, vehicle climbs to 825 m (SITL) | **High** | NAVERA cannot read or enforce autopilot parameters; documentation only |
-| H-01b | Camera image frozen (same picture delivered again) | Haz: a static vision fix repeated as fresh; with GPS trusted, the growth test may refuse the GOOD GPS | **High** | no frame-content freeze detector found in the code (only attitude/IMU freeze) — analysis, not tested |
+| H-01b | Camera image frozen (same picture delivered again) | Haz: a static vision fix repeated as fresh; with GPS trusted, the growth test may refuse the GOOD GPS | **Medium** | frame-content freeze detector + UT (NAV-SAF-19); not yet seen on a real stuck driver |
 | H-03 | Wrong night (thermal) fix accepted | Haz if forwarded | **High** (unvalidated) | 0 wrong accepts is on synthetic grey renders only; real LWIR never run (B4/B14, D22, F24) |
-| H-11 | Compute overload / out of memory / thermal throttling | Maj: OOM kill ends navigation (F5); stale fixes | **Medium** | no swap installed, no OOM protection, no thermal monitoring; integrity kept by freshness windows |
+| H-11 | Compute overload / out of memory / thermal throttling | Maj: OOM kill ends navigation (F5); stale fixes | **Medium** | compute health monitor + degraded flag (NAV-SAF-21, UT); no OOM protection in the units; integrity kept by freshness windows |
 | H-02 | Wrong day-vision fix accepted | Haz if forwarded: 100–650 m jumps (F16 tilted camera, F20 shake) | **Medium** | 1 / 2599 > 100 m on real drone data (PUB) but 2–7 wrong fixes per run under shake on the bench; F16/F20 open |
-| H-08 | Clock wrong (no battery RTC, F27) | Haz for celestial (≈28 km per minute of error, thousands of km at 16 h); wrong GPS time sent to the autopilot | **Medium** | product `cn_subscriber` falls back to the system clock without a trusted-time gate; celestial is never forwarded, which bounds the vehicle effect |
+| H-08 | Clock wrong (no battery RTC, F27) | Haz for celestial (≈28 km per minute of error, thousands of km at 16 h); wrong GPS time sent to the autopilot | **Medium** | celestial now solves only on a trusted time (NAV-SAF-20, UT); GPS_INPUT / NMEA time still from the system clock; a box can lack the DS3231 |
 | H-10 | Latency mismatch camera ↔ position | Haz/Min: along-track error (1.71 s uncompensated: 39.8 m at 80 m/s, F9) | **Medium** | per-camera delay is a setting / online fit; `GPS_DELAY_MS` recommendation not verified |
 | H-12 | Power loss / brown-out / reboot in flight | Maj: NAVERA silent ≥ boot time; GPS-denied restart needs a prior | **Medium** | boot-to-first-fix time never measured; reboot test of today's restart mechanism pending (DEP-14) |
 | H-09 | IMU bias / wrong heading / wrong mount | Haz/Min: day straightening error (4° at 300 m → 11 m median), night heading misses, celestial ~111 km/° | **Medium** | heading reference not checked on the real BNO085 (IMU-3); covariances are datasheet values |
 
 Below them: H-01a camera loss (Medium → Low for integrity), H-04 wrong celestial fix (Low:
 never forwarded), H-05 outdated map (Medium availability, Low integrity), H-06 fast spoof (Low),
-H-14 storage full (Low–Medium), H-15 integrator settings (Medium), H-16 simulation on a live box (Low).
+H-14 storage full (Low), H-15 integrator settings (Medium), H-16 simulation on a live box (Low).
 
 ## 3. FMEA / hazard log
 
@@ -56,11 +56,11 @@ H-14 storage full (Low–Medium), H-15 integrator settings (Medium), H-16 simula
 |---|---|
 | Failure modes | (a) device lost / USB reset / no frames; (b) frames frozen: driver or stream returns the same image while the vehicle moves (Insta360 IMU feed stopped after 50 samples while video went on, F14) |
 | Effect | (a) day/night vision stops → NAVERA falls back or NO_FIX → autopilot failsafe (Maj). (b) a stale picture is matched as a fresh frame; repeated agreeing fixes can re-acquire a wrong track (`vision_nav`: two agreeing fixes re-acquire); while GPS is trusted the vision–GPS offset grows with the vehicle's motion and the growth test can **refuse a good GPS** (Haz) |
-| Detection | (a) `camera_pkg/camera_pkg/nodes/live_camera.py::LiveCamera._grab_loop`: open failure or > 50 failed grabs → node exits → launch exits → `Restart=always`; estimator freshness `day_timeout_s` 3 s (`EstimatorNode._eval_source`). (b) attitude freeze only: `LiveCamera._on_imu` (identical samples 1 s → frames not used), `navera_common/health.py::FrozenSampleDetector` (IMU) |
-| Mitigation | (a) restart + fallback chain (`EstimatorNode._select`), output "no fix" / bounded bridge 10 s (`navera_output/policy.py::bridge`). (b) none specific; `LensMask` (`day_pkg/image_quality.py`) masks fixed image regions but does not detect a whole frozen frame |
-| Evidence | (a) SIM: "GPS jammed + camera failed → NO FIX → autopilot failsafe"; UT `camera_pkg/test/test_gst_capture.py::test_a_bad_pipeline_is_not_opened`, `navera_tools/tests/test_live_camera.py`. (b) A only |
-| Residual | (a) **Medium** (availability; integrity protected). (b) **High** until a freeze detector exists |
-| Open items | O-1 (problems log D24): frame-content freeze detector in `live_camera` (frame difference or hash vs. IMU / GPS motion) with a test; O-2: re-check of F14 (IMU feed dead while video runs) on the product driver |
+| Detection | (a) `camera_pkg/camera_pkg/nodes/live_camera.py::LiveCamera._grab_loop`: open failure or > 50 failed grabs → node exits → launch exits → `Restart=always`; estimator freshness `day_timeout_s` 5 s (`EstimatorNode._eval_source`). (b) frame content: `navera_common/health.py::FrozenFrameDetector` in `LiveCamera._check_frozen` — time not advancing, picture bit-identical, or nearly identical while IMU / GPS say the vehicle moved (`LiveCamera._moved`); attitude freeze: `LiveCamera._on_imu`, `FrozenSampleDetector` (IMU) |
+| Mitigation | (a) restart + fallback chain (`EstimatorNode._select`), output "no fix" / bounded bridge 10 s (`navera_output/policy.py::bridge`). (b) the frame is published unusable ("camera image frozen: …"): day / night / celestial publish no position for it (`cn_subscriber.py::CNSubscriber._process_frame`); `<ns>/camera_health` reports it; a camera device frozen > 20 s exits for a restart; the first new picture ends it (NAV-SAF-19) |
+| Evidence | (a) SIM: "GPS jammed + camera failed → NO FIX → autopilot failsafe"; UT `camera_pkg/test/test_gst_capture.py::test_a_bad_pipeline_is_not_opened`, `navera_tools/tests/test_live_camera.py`. (b) UT `navera_tools/tests/test_live_camera_frozen.py`, `test_health.py`, `cn_pkg/test/test_cn_gates.py` — not yet on a real stuck driver |
+| Residual | (a) **Medium** (availability; integrity protected). (b) **Medium** (detector tested in UT; not yet seen on a real stuck driver / RTSP stall) |
+| Open items | O-1 (problems log D24): done in code + UT (NAV-SAF-19) — reproduce a real stall (unplug / RTSP pause) on the box; O-2: re-check of F14 (IMU feed dead while video runs) on the product driver |
 
 ### H-02 Wrong day-vision fix accepted
 
@@ -133,10 +133,10 @@ H-14 storage full (Low–Medium), H-15 integrator settings (Medium), H-16 simula
 | Failure modes | no DS3231 / dead coin cell → Jetson boots at 1970 or the last saved time (16 h off on 2026-10-21), NTP step mid-mission, RTC in local time |
 | Effect | celestial ≈ 28 km per minute of error; GPS_INPUT week time and NMEA date from `datetime.now()` (`vehicle_output_node.py::VehicleOutputNode._tick`) wrong; logs misdated |
 | Detection | `rtc_pkg/rtc_pkg/nodes/rtc_node.py::RTCNode.publish_rtc` (valid only if UTC, power kept, drift explained); future stamps refused and never revived (`EstimatorNode._eval_source`, B6); clock step back resets histories (`sensor_history.py::History`) |
-| Mitigation | celestial uses the RTC time when valid (`cn_subscriber.py::CNSubscriber._utc_now`), **else the system clock** — no trusted-time gate in the product (the field tools have one, db2f95c) |
-| Evidence | HW: DS3231 reboot −0.148 s (2026-07-14); F27 shows a box can lack it |
+| Mitigation | celestial solves only on a trusted time (`navera_common/trusted_time.py::TrustedClock`, `cn_subscriber.py::CNSubscriber._utc_for`): DS3231 valid and not lost_power, a GNSS time (`gps_node.py::GPSNode._publish_time`) within 300 s, or NTP — with no wall-clock step since and none in the last 60 s; else no position, reason "no trusted time: …" (both solver modes; same rule as the field tools, db2f95c) |
+| Evidence | HW: DS3231 reboot −0.148 s (2026-07-14); F27 shows a box can lack it; UT `test_trusted_time.py`, `cn_pkg/test/test_cn_gates.py` (no source / lost power / clock step → no solve) |
 | Residual | **Medium** (celestial is never forwarded; time to the autopilot unverified) |
-| Open items | O-15 product celestial refuses to solve without a trusted time (RTC valid or GNSS time); O-16 check_box FAIL when no valid RTC; O-17 install procedure requires the coin cell / DS3231 |
+| Open items | O-15 done (UT) — run once on the box with the DS3231 removed and NTP off; O-16 check_box FAIL when no valid RTC; O-17 install procedure requires the coin cell / DS3231 |
 
 ### H-09 IMU bias, wrong heading or mount
 
@@ -163,11 +163,11 @@ H-14 storage full (Low–Medium), H-15 integrator settings (Medium), H-16 simula
 | | |
 |---|---|
 | Effect | frames processed late or not at all (F4: failed frames 6–20 s), OOM kill of the day pipeline after 4.6 min without swap (F5), GPU clocks throttled |
-| Detection | none for temperature or memory; freshness windows make late fixes ineligible (`EstimatorNode._eval_source`); output refuses measurements > 5 s old |
-| Mitigation | strictly serial back-pressure camera → localizer (camera waits for `frame_done`); one GPU pipeline (`Conflicts=`); coarser map level at height (D14); uniform frames rejected early (3180629); restart after a kill (`Restart=always`) |
-| Evidence | BENCH: F5, D14 (3.7 GB RSS at 1500 m) |
+| Detection | `navera_estimator/nodes/compute_health_node.py::ComputeHealthNode` (`navera_common/compute_health.py`): temperatures, memory, swap, GPU load, throttling from /sys and /proc without root → `/diagnostics`, `/navera/compute_health`; no swap reported at start; freshness windows make late fixes ineligible (`EstimatorNode._eval_source`); output refuses measurements > 5 s old |
+| Mitigation | at 95 C or ≤ 8 % memory available the latched `/navera/compute/degraded` makes day and night skip their optional height / heading retries (`compute_health.py::watch_degraded`); strictly serial back-pressure camera → localizer (camera waits for `frame_done`); one GPU pipeline (`Conflicts=`); coarser map level at height (D14); uniform frames rejected early (3180629); restart after a kill (`Restart=always`) |
+| Evidence | BENCH: F5, D14 (3.7 GB RSS at 1500 m); UT `test_compute_health.py`, `test_compute_health_node.py`; read without root on the Orin Nano |
 | Residual | **Medium** (integrity protected; availability not) |
-| Open items | O-20 swap file and `OOMScoreAdjust=` / `MemoryHigh=` in the units; O-21 tegrastats temperature / throttle in check_box and the operator view; O-22 TensorRT (latency) |
+| Open items | O-20 swap file and `OOMScoreAdjust=` / `MemoryHigh=` in the units; O-21 temperature / throttle monitor done (NAV-SAF-21) — still to show on the operator view and in check_box; O-22 TensorRT (latency) |
 
 ### H-12 Power loss or reboot in flight
 
@@ -196,10 +196,10 @@ H-14 storage full (Low–Medium), H-15 integrator settings (Medium), H-16 simula
 | | |
 |---|---|
 | Effect | ROS logs / recordings fill the disk: nodes cannot write logs or state; settings write fails |
-| Mitigation | ROS log folders > 7 days pruned at each unit start (`navera_boot_lib.sh::navera_prune_logs`); `state_store` never raises on an unwritable directory; recordings on the data disk; tile download checks free space (simulator) |
-| Evidence | A; UT `navera_common/test/test_state_store.py::test_an_unwritable_directory_does_not_raise` |
-| Residual | **Low–Medium** (a restart loop creates one log folder per 10 s, pruned only after 7 days) |
-| Open items | O-26 free-space check in check_box and at unit start; journald `SystemMaxUse`; prune by size |
+| Mitigation | ROS log folders > 7 days pruned at each unit start, then the oldest above 1 GB, and a warning below 2 GB free (`navera_boot_lib.sh::navera_prune_logs`); `state_store` never raises on an unwritable directory; recordings on the data disk; tile download checks free space (simulator) |
+| Evidence | A; UT `navera_common/test/test_state_store.py::test_an_unwritable_directory_does_not_raise`, `deploy/test/test_boot_logs.py` |
+| Residual | **Low** (a restart loop's log folders are capped at 1 GB) |
+| Open items | O-26 done at unit start (size cap, free-space warning; UT); still: free space in check_box, journald `SystemMaxUse` |
 
 ### H-15 Integrator settings (forwarding)
 
@@ -207,28 +207,28 @@ H-14 storage full (Low–Medium), H-15 integrator settings (Medium), H-16 simula
 or NMEA forwarding of vision. Mitigations: sigma required and never better than the source
 (`policy.py::Config.validate`, `decide`), 1 km ceiling, check_box WARNs above 100 m and on NMEA
 forwarding (`check_box.py::config_findings`), drift alarm in the log above 100 m
-(`VehicleOutputNode._tick`, e535f62 — not shown on the operator view, no test). Residual **Medium**.
+(`VehicleOutputNode._check_drift`, e535f62 — UT `test_bridge_flow.py`; not shown on the operator view). Residual **Medium**.
 
 ### H-16 Simulation or a second arbiter on a live box
 
 Fakes refuse without `NAVERA_ALLOW_SIM=1`; DDS localhost-only on an isolated domain; a second
-arbiter is reported (`EstimatorNode._check_single_arbiter`, no test); the operator view marks
+arbiter is reported (`EstimatorNode._check_single_arbiter`, UT `test_estimator_rules.py`); the operator view marks
 simulated data. Residual **Low**.
 
 ## 4. Open items (summary)
 
 | # | Item | Hazard | Kind |
 |---|---|---|---|
-| O-1 | frame-content freeze detector + test | H-01 | code |
+| O-1 | frame-content freeze detector + test — done (UT); real stall on the box to reproduce | H-01 | code / test |
 | O-25 | read and check the autopilot's EK3 / GPS parameters | H-13 | code |
 | O-13 | inertial dead-reckoning as an independent source (FEAT-2) | H-07 | code |
 | O-7, O-8 | real LWIR data; re-fit night thresholds | H-03 | data |
-| O-15–O-17 | trusted-time gate in product celestial; RTC mandatory | H-08 | code / install |
-| O-20, O-21 | swap + OOM / memory limits; thermal monitoring | H-11 | deploy |
+| O-15–O-17 | trusted-time gate in product celestial (done, UT); RTC mandatory | H-08 | code / install |
+| O-20, O-21 | swap + OOM / memory limits; thermal monitoring (monitor done, UT) | H-11 | deploy |
 | O-23 | reboot validation on a deployed box (commands in DEPLOYMENT_VALIDATION.md) | H-12 | test |
-| O-27 | install from a clean release clone; install.sh copies .git and .claude/worktrees (B18) | H-12, deployment | deploy |
+| O-27 | install from a clean release clone; install.sh no longer copies .git, .claude/worktrees, caches or recordings (B18 fixed, UT) | H-12, deployment | deploy |
 | O-3, O-4 | shake / tilt gates (F20, F16) on a real vehicle | H-02 | code / test |
 | O-19 | full-chain latency on the box | H-10 | measurement |
-| O-26 | storage checks | H-14 | deploy |
+| O-26 | storage checks (log cap + free-space warning at unit start done, UT; check_box, journald open) | H-14 | deploy |
 | O-11, O-12 | imagery date, imagery licence | H-05 | data / legal |
 | — | first recorded flight with camera + GPS + IMU (every accuracy claim) | all | test |

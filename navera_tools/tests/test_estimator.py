@@ -66,7 +66,7 @@ def main():
         pub[src].publish(m)
 
     def settle():
-        time.sleep(3.6)                   # > gps/day timeout (3 s): back to NO_FIX
+        time.sleep(5.6)                   # > gps (3 s) and day (5 s) timeouts: back to NO_FIX
 
     failures = []
 

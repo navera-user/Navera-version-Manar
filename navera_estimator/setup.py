@@ -25,6 +25,7 @@ setup(
     entry_points={
         'console_scripts': [
             'estimator_node.py=navera_estimator.nodes.estimator_node:main',
+            'compute_health_node.py=navera_estimator.nodes.compute_health_node:main',
         ],
     },
 )

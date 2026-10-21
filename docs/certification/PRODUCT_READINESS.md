@@ -18,21 +18,21 @@ real data · HW hardware in role · FLT flight.
 | Celestial (all-sky / plate solve) | **4** | BENCH (real camera, screen sky), PUB-like (one real sky photo) | 23/27 right at 0.4–9 km on the screen; 24–119 km with a BNO085-class IMU (SIM) | real night sky with known time/place/attitude |
 | Inertial navigation (FEAT-2) | **2** | — | not implemented (IMU = attitude / heading change / liveness) | implementation |
 | IMU driver (BNO085) | **5** | HW (live on the Jetson, 50 Hz) | heading reference not checked (IMU-3) | known-heading test, noise measurement |
-| Real-time clock (DS3231) | **6** module · **open** on the field box | HW (power-cycle reboot, −0.148 s vs NTP) | F27: the field Jetson booted 16 h off (no DS3231 fitted) | RTC mandatory in the build; trusted-time gate in product celestial |
+| Real-time clock (DS3231) | **6** module · **open** on the field box | HW (power-cycle reboot, −0.148 s vs NTP); UT trusted-time gate in product celestial | F27: the field Jetson booted 16 h off (no DS3231 fitted) — celestial now refuses to solve on such a clock | RTC mandatory in the build |
 | Discovery (auto configuration) | **5** | SIM (SITL), UT | own output never read back as a GPS | real autopilot + sensors |
 | Operator web / mission preparation (offline maps, token, armed lock) | **5** | UT, BENCH | 1768 km route prepared offline (79 775 tiles, 980 MB) | sudoers restart on an installed box (R-8) |
 | Deployment (systemd units, install, restart) | **5–6** | HW (reboot 2026-07-15, older mechanism), staged validation 2026-10-21 (this branch) | staged: every unit up, killed nodes restarted by systemd ([DEPLOYMENT_VALIDATION.md](DEPLOYMENT_VALIDATION.md)) | reboot test of today's units on a deployed box (DEP-14) |
 | **System as a whole** | **4–5** | SIM end to end; components on BENCH / PUB | — | first instrumented flight in shadow mode, then GPS-denied with a safety pilot |
 
-**Certification readiness** (details: [STANDARDS_MAPPING.md](STANDARDS_MAPPING.md)): 63 system
-requirements, 55 traced to automated tests, 8 without ([TRACEABILITY.md](TRACEABILITY.md));
-hazard log with 16 hazards, 4 at High residual risk ([SAFETY_ANALYSIS.md](SAFETY_ANALYSIS.md)):
-slow spoof without an independent source, autopilot misconfiguration, frozen camera image,
-unvalidated night vision. No DO-178C plans, no structural coverage, Python/ROS/ML in the
+**Certification readiness** (details: [STANDARDS_MAPPING.md](STANDARDS_MAPPING.md)): 66 system
+requirements, 62 traced to automated tests, 4 without ([TRACEABILITY.md](TRACEABILITY.md));
+hazard log with 16 hazards, 3 at High residual risk ([SAFETY_ANALYSIS.md](SAFETY_ANALYSIS.md)):
+slow spoof without an independent source, autopilot misconfiguration, unvalidated night vision
+(frozen camera image: detector + tests since 2026-10-21, Medium). No DO-178C plans, no structural coverage, Python/ROS/ML in the
 position path — a DAL C target needs a partitioned arbiter + output path.
 
 **Readiness for a first flight campaign** (shadow mode: NAVERA records and computes, GPS flies
 the vehicle): **yes**, with the stage-checked install, `check_box.py` pre-flight, an RTC fitted,
 and `NAVERA_FORWARD_DEGRADED=false`. **For GPS-denied flight on NAVERA's positions**: only with a
-safety pilot, over textured land, after the open items O-1 (frozen image), O-25 (autopilot
-parameter check) and the reboot validation are closed.
+safety pilot, over textured land, after the open items O-1 (frozen image: reproduce a real stall
+on the box), O-25 (autopilot parameter check) and the reboot validation are closed.

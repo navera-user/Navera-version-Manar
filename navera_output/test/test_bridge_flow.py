@@ -81,3 +81,37 @@ def test_a_gps_fix_clears_the_held_estimate():
     assert n._bridged(fix, 101.0) is fix
     assert n._held is None and n._last_tx is None
     assert math.isfinite(fix.lat)
+
+
+class _ThrottledLog:
+    """The rclpy logger's throttle: one line per throttle_duration_sec of the test clock."""
+
+    def __init__(self, clock):
+        self.lines, self.clock, self._last = [], clock, None
+
+    def warn(self, m, throttle_duration_sec=0.0):
+        if self._last is None or self.clock[0] - self._last >= throttle_duration_sec:
+            self.lines.append(m)
+            self._last = self.clock[0]
+
+
+def test_a_coarse_forwarded_position_raises_the_drift_alarm_every_5_s():
+    """NAV-SAF-11: an estimated position coarser than drift_alarm_sigma_m (100 m) given to the vehicle
+    is a drift alarm, at most every 5 s; a fix, a finer estimate or no fix never is.
+    """
+    clock = [0.0]
+    n = SimpleNamespace(_drift_alarm=100.0, _log=_ThrottledLog(clock))
+    n.get_logger = lambda: n._log
+    n._check_drift = MethodType(VehicleOutputNode._check_drift, n)
+    coarse = Output(KIND_ESTIMATED, "estimated (celestial)", lat=35.8, lon=10.6, sigma_h_m=180.0)
+    for k in range(11):                                   # 10 s of positions at 1 Hz
+        clock[0] = float(k)
+        assert n._check_drift(coarse)
+    assert len(n._log.lines) == 3                         # t = 0, 5, 10 s
+    assert "DRIFT ALARM" in n._log.lines[0] and "±180 m" in n._log.lines[0]
+    bridged = Output(KIND_ESTIMATED, "bridged", lat=35.8, lon=10.6, sigma_h_m=150.0, bridged=True)
+    assert n._check_drift(bridged)
+    assert not n._check_drift(Output(KIND_ESTIMATED, "estimated", lat=35.8, lon=10.6, sigma_h_m=60.0))
+    assert not n._check_drift(Output(KIND_ESTIMATED, "estimated", lat=35.8, lon=10.6, sigma_h_m=100.0))
+    assert not n._check_drift(Output(KIND_FIX, "fix", lat=35.8, lon=10.6, sigma_h_m=500.0, gnss=True))
+    assert not n._check_drift(Output(KIND_NONE, "no fix"))

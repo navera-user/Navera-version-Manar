@@ -20,6 +20,8 @@ Changes nothing outside a temporary directory. For every deploy/systemd/navera-*
     enabled          (--root) the units --units names are enabled in the staged root
     conflicts        the day and night pipelines conflict with each other (one GPU pipeline)
     sudoers          visudo -c -f deploy/sudoers/navera-web; every unit it may restart exists
+    code excludes    deploy/install.sh never copies git data, other worktrees, build products or
+                     test recordings (B18); --root: none of them in the staged workspace
 
 Exit 0 = no FAIL. WARN lines are reported but do not fail the check.
 """
@@ -40,6 +42,14 @@ INTERNAL_VARS = {'NAVERA_WS', 'NAVERA_BOX_IMU', 'NAVERA_BOX_IMU_BUS', 'NAVERA_BO
                  'NAVERA_BOX_RTC', 'NAVERA_BOX_RTC_BUS'}   # written by navera-discover (discovered.env)
 DEFAULT_UNITS = ('navera-discover navera-estimator navera-gps navera-imu navera-rtc navera-vehicle-link '
                  'navera-pipeline-day navera-output navera-web')
+
+# install.sh's CODE_EXCLUDES must hold these (B18); a staged workspace must not contain NO_SHIP
+REQUIRED_EXCLUDES = ('/.git', '/.claude/', '/build/', '/install/', '/log/', '.pytest_cache/', 'rosbag2_*/',
+                     '*.db3', '*.mcap')
+NO_SHIP_TOP = ('.git', '.claude')                       # at the workspace root
+NO_SHIP_DIRS = ('.pytest_cache',)                       # anywhere
+NO_SHIP_GLOBS = ('rosbag2_*', '*.db3', '*.mcap')        # anywhere
+BUILT_ON_BOX = ('build', 'install', 'log')              # made by colcon in the workspace itself
 
 results = []
 
@@ -172,6 +182,41 @@ def systemd_verify(unit_files, root, tmp):
     return r.returncode
 
 
+def install_excludes(path=None):
+    """The --exclude patterns of CODE_EXCLUDES in deploy/install.sh."""
+    text = open(path or os.path.join(REPO, 'deploy', 'install.sh')).read()
+    m = re.search(r'^CODE_EXCLUDES=\((.*?)\)', text, re.M | re.S)
+    if not m:
+        return []
+    return [p.strip("'\"") for p in re.findall(r'--exclude\s+(\S+)', m.group(1))]
+
+
+def shipped_junk(ws):
+    """Paths of a workspace that must never be shipped (git data, worktrees, caches, recordings)."""
+    import fnmatch
+    bad = [os.path.join(ws, n) for n in NO_SHIP_TOP if os.path.lexists(os.path.join(ws, n))]
+    for d, dirs, files in os.walk(ws):
+        if d == ws:
+            dirs[:] = [x for x in dirs if x not in BUILT_ON_BOX + NO_SHIP_TOP]
+        for name in list(dirs) + files:
+            if name in NO_SHIP_DIRS or any(fnmatch.fnmatch(name, g) for g in NO_SHIP_GLOBS):
+                bad.append(os.path.join(d, name))
+        dirs[:] = [x for x in dirs if x not in NO_SHIP_DIRS and not any(fnmatch.fnmatch(x, g) for g in NO_SHIP_GLOBS)]
+    return bad
+
+
+def check_code_excludes(root):
+    """B18: install.sh excludes what must not ship; a staged workspace contains none of it."""
+    have = install_excludes()
+    missing = [p for p in REQUIRED_EXCLUDES if p not in have]
+    report('FAIL' if missing else 'PASS', 'install.sh', 'code copy excludes git, worktrees, build, test data',
+           ('missing: ' + ' '.join(missing)) if missing else f'{len(have)} pattern(s)')
+    if root:
+        bad = shipped_junk(root + WS)
+        report('FAIL' if bad else 'PASS', 'install.sh', 'staged workspace has no git data / worktrees / recordings',
+               ', '.join(os.path.relpath(b, root + WS) for b in bad[:5]) + (' ...' if len(bad) > 5 else ''))
+
+
 def main(argv=None):
     """Run every check; return 0 when none FAILs."""
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
@@ -253,6 +298,8 @@ def main(argv=None):
             report('PASS' if mode == '0o440' else 'FAIL', 'sudoers/navera-web', 'mode 0440', mode)
     else:
         report('FAIL', 'sudoers/navera-web', 'file missing', sud)
+
+    check_code_excludes(root)
 
     n = {lv: sum(r[0] == lv for r in results) for lv in ('PASS', 'WARN', 'FAIL')}
     print(f"\n{n['PASS']} PASS, {n['WARN']} WARN, {n['FAIL']} FAIL — unit check: {'FAIL' if n['FAIL'] else 'PASS'}")

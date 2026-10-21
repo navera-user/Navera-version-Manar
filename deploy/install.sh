@@ -15,7 +15,8 @@
 # groups, the code in /home/navera/isaac_ros_common, Python packages for that user, the
 # build, /var/lib/navera, /etc/navera/navera.env if absent, sudoers, wrappers and units,
 # enabling). Safe to run again: an existing /etc/navera/navera.env is never overwritten;
-# the code is synchronised from this repository (build/, install/, log/ excluded).
+# the code is synchronised from this repository without git data, other worktrees, build
+# products, caches or test recordings (CODE_EXCLUDES below; B18 — checked by verify_units.py).
 # After it: edit /etc/navera/navera.env, calibrate the camera, then
 #   sudo reboot      and, after the reboot:      deploy/check_boot.sh
 #
@@ -34,6 +35,12 @@ WS=/home/navera/isaac_ros_common
 UNITS="navera-discover navera-estimator navera-gps navera-imu navera-rtc navera-vehicle-link navera-pipeline-day navera-output navera-web"
 DRY=0; PIP=1; APT=1; START=0; HEADLESS=0; BUILD=1
 R="${DESTDIR:-}"
+# never copied to the box (both modes): git data and the other worktrees of a working repository
+# (.claude/worktrees), build products (rebuilt there), Python / test caches, test recordings.
+# Excluded paths that already exist on the box are left as they are (rsync --delete skips them).
+CODE_EXCLUDES=(--exclude /.git --exclude /.claude/ --exclude /build/ --exclude /install/ --exclude /log/
+               --exclude .pytest_cache/ --exclude __pycache__/ --exclude 'rosbag2_*/' --exclude '*.db3'
+               --exclude '*.mcap' --exclude /test_results/)
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -61,10 +68,8 @@ if [ -n "$R" ]; then
   skip() { echo "  (staged in $R: skipped) $*"; }
   as_navera() { if [ "$DRY" = 1 ]; then echo "  + (as $(id -un)) $1"; else bash -c "$1"; fi; }
   APT=0; PIP=0
-  # the source may be a git worktree inside a repository: never copy git data or other worktrees
-  STAGE_EXCLUDES=(--exclude /.git --exclude /.claude/)
 else
-  OWN=(-o navera -g navera); OWN_ENV=(-o root -g navera); SYSTEMCTL=(systemctl); STAGE_EXCLUDES=()
+  OWN=(-o navera -g navera); OWN_ENV=(-o root -g navera); SYSTEMCTL=(systemctl)
   skip() { :; }
   as_navera() { if [ "$DRY" = 1 ]; then echo "  + (as navera) $1"; else sudo -u navera -H bash -c "$1"; fi; }
 fi
@@ -101,8 +106,7 @@ fi
 
 say "code: $SRC -> $R$WS"
 run install -d "${OWN[@]}" "$R$WS"
-run rsync -a --delete --exclude /build/ --exclude /install/ --exclude /log/ "${STAGE_EXCLUDES[@]}" \
-    "$SRC/" "$R$WS/"
+run rsync -a --delete "${CODE_EXCLUDES[@]}" "$SRC/" "$R$WS/"
 if [ -n "$R" ]; then skip "chown -R navera:navera $WS"; else run chown -R navera:navera "$WS"; fi
 
 if [ "$PIP" = 1 ]; then

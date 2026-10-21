@@ -259,11 +259,7 @@ class VehicleOutputNode(Node):
             self._bridging = False
         if out.kind != KIND_NONE:
             self._last_tx = now
-        if out.kind == KIND_ESTIMATED and out.sigma_h_m > self._drift_alarm:
-            self.get_logger().warn(
-                f"DRIFT ALARM: the vehicle is given a position of ±{out.sigma_h_m:.0f} m "
-                f"({'bridged' if out.bridged else out.reason}) — it may be that far off",
-                throttle_duration_sec=5.0)
+        self._check_drift(out)
         # stamped with the measurement instant: GPS_INPUT time, NMEA time, NavSatFix stamp
         t_utc = datetime.now(timezone.utc) - timedelta(seconds=out.age_s)
         try:
@@ -284,6 +280,18 @@ class VehicleOutputNode(Node):
             self.get_logger().fatal(f"output failed: {e} — exiting so the service restarts")
             self.failed = True
             self.context.try_shutdown()
+
+    def _check_drift(self, out) -> bool:
+        """Drift alarm (F1/F6): an estimated position coarser than drift_alarm_sigma_m given to the
+        vehicle is logged as an alarm, at most every 5 s. Returns True when it is one.
+        """
+        if out.kind != KIND_ESTIMATED or not out.sigma_h_m > self._drift_alarm:
+            return False
+        self.get_logger().warn(
+            f"DRIFT ALARM: the vehicle is given a position of ±{out.sigma_h_m:.0f} m "
+            f"({'bridged' if out.bridged else out.reason}) — it may be that far off",
+            throttle_duration_sec=5.0)
+        return True
 
     def _bridged(self, out, now):
         """`out`, or the held position carried to now when the positions stopped coming (policy.bridge),

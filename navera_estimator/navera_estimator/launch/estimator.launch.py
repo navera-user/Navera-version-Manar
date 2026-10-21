@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-estimator.launch.py — start the NAVERA position arbiter (GPS > day > night > celestial).
+estimator.launch.py — start the NAVERA position arbiter (GPS > day > night > celestial)
+and the compute health monitor (compute_health_node.py).
 
 Examples:
   ros2 launch navera_estimator estimator.launch.py
@@ -45,5 +46,15 @@ def generate_launch_description():
                 # IMU liveness on the attitude NAVERA actually uses (box, vehicle or ROS)
                 imu_topic_params(),
             ],
+        ),
+        # compute health (H-11): temperatures, memory, swap, throttling -> /diagnostics. A failure of
+        # this monitor must never stop the arbiter: respawned, not Shutdown.
+        Node(
+            package='navera_estimator',
+            executable='compute_health_node.py',
+            name='compute_health',
+            output='screen',
+            respawn=True,
+            respawn_delay=5.0,
         ),
     ])

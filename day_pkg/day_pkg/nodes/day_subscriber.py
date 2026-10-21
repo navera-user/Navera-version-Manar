@@ -33,6 +33,7 @@ import cv2
 
 import rclpy
 from navera_common import latency_cal, state_store
+from navera_common.compute_health import watch_degraded
 from navera_common.geo import is_finite_latlon
 from navera_common.track import TrackVelocity
 from navera_common.lifecycle import die_with_parent
@@ -272,6 +273,7 @@ class DaySubscriber(Node):
         self.gate_k, self.strong_inliers = float(p_("gate_k_sigma")), int(p_("strong_inliers"))
         self.strong_gate_k = float(p_("strong_gate_k_sigma"))
         self.min_spread, self.height_retry_after = float(p_("min_inlier_spread")), int(p_("height_retry_after"))
+        self._compute_degraded = watch_degraded(self)     # H-11: hot / short of memory -> no height retries
         # the map's offset from the ground (registration, camera boresight), learned from the
         # GPS-check matches while GPS is good and removed from the fixes after its loss
         self.map_bias = VisionNavigator()
@@ -670,7 +672,8 @@ class DaySubscriber(Node):
                         self._vo_step = None
             if self.local is not None and center is not None and mpp is not None:
                 # after height_retry_after failures, 20 % lower and 25 % higher too
-                factors = [1.0] + ([0.8, 1.25] if self._rejects_in_row + 1 >= self.height_retry_after else [])
+                factors = [1.0] + ([0.8, 1.25] if self._rejects_in_row + 1 >= self.height_retry_after
+                                   and not self._compute_degraded() else [])
                 for f in factors:
                     result = self.local.locate(img, center, R, mpp * f, scale_tol=self._scale_tol(meta),
                                                heading_deg=self._heading_for_match(meta),
