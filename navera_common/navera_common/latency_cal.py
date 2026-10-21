@@ -162,8 +162,14 @@ class LatencyCalibrator:
         if np.min(speed) < self.min_speed:
             self._count("too slow")
             return True
+        # the turn rate over 1 s steps of the window: between neighbouring grid points (0.02 s) the
+        # heading of a noisy GPS track jumps at every GPS sample — 0.3 m of receiver noise at 10 m/s
+        # read as > 100 deg/s, and every sample of a straight copter leg was refused as "turning"
+        # (Isaac Sim closed loop 2026-10-21: 21 of 21)
         hd = np.unwrap(np.arctan2(vel[:, 0], vel[:, 1]))
-        if len(hd) > 1 and np.max(np.abs(np.diff(hd))) / self.step_s > math.radians(self.max_turn):
+        stride = max(1, int(round(1.0 / self.step_s)))
+        hs = hd[::stride]
+        if len(hs) > 1 and np.max(np.abs(np.diff(hs))) / (stride * self.step_s) > math.radians(self.max_turn):
             self._count("turning")
             return True
         c = math.cos(math.radians(lat))
