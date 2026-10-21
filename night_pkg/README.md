@@ -4,8 +4,10 @@
 the STHN homography network (`night_localizer.py`, one-stage weights from HuggingFace
 `xjh19972/STHN`).
 
-> Validated on synthetic data only (8–13 m median, 250–600 m, any heading); **not validated
-> on real thermal imagery** — see [docs/VALIDATION_STATUS.md](../docs/VALIDATION_STATUS.md).
+> Synthetic data: 8–13 m median (250–600 m, any heading). Real aerial thermal imagery
+> (2026-10-21, frames cut from night/day thermography orthomosaics, not a NAVERA flight):
+> night LWIR ~1 frame in 3 gives a position at 700–1000 m, 10–12 m median, 0 wrong accept with
+> a 640 px camera — see [docs/VALIDATION_STATUS.md](../docs/VALIDATION_STATUS.md).
 
 ## How it works
 1. A 1536 px satellite patch (zoom 17, ≈1 m/px) is cut **centred on the prior** (last GPS fix
@@ -92,7 +94,9 @@ check; synthetic 30 frames: 10° off 19 → 29/30, 20° off 0 → 29/30, 30° of
 unchanged, no new wrong fix; ~1.7 s per failed frame instead of ~0.5 s) and `height_retry` (default `"0.1,-0.1,0.2"`: then the
 height scaled by each; a footprint too small for the stated height is only tried higher; synthetic:
 height −10 % 13 → 28/30, −20 % 0 → 29/30, field of view −10 % 6 → 30/30, 350 m 5 → 24/30; frames
-with no information still 0/30 but ~2.4 s each). `night_status` also carries the search square
+with no information still 0/30 but ~2.4 s each). Real thermal (2026-10-21): with a 160 × 120
+camera (Hikvision bench unit, Lepton) the retries produced the only accepts > 100 m (2 in 143
+retry accepts); set both to `""` for such a camera. `night_status` also carries the search square
 (`search_center`, `search_size_m`), the matched footprint (`footprint_quad`) and the query
 geometry.
 
