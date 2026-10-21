@@ -258,6 +258,10 @@ class DaySubscriber(Node):
         self.dr_max_sigma_m      = float(self.get_parameter("dead_reckon_max_sigma_m").value)
         self.track = TrackVelocity(accel_mps2=float(self.get_parameter("dead_reckon_accel_mps2").value))
         self._track_heading = None             # frame heading (IMU) at the last measured fix
+        # the frames' attitude headings by their exposure time: the heading the track velocity was
+        # measured at (its fit time) — GPS points and odometry steps have none of their own
+        from collections import deque
+        self._frame_headings = deque(maxlen=600)
         self.gyro = None                        # GyroHeading when gyro_heading is on
         if bool(self.get_parameter("gyro_heading").value):
             self.gyro = GyroHeading(float(self.get_parameter("gyro_heading_bias_dps").value),
@@ -611,6 +615,7 @@ class DaySubscriber(Node):
             if meta.get("gps_valid") and meta.get("lat") is not None and meta.get("lon") is not None:
                 self._publish_known(seq_id, meta)
                 return
+            self._note_frame_heading(meta)
             # A live frame the camera could not use (e.g. too tilted): say why, no inference.
             if meta.get("usable") is False:
                 why = meta.get("reason") or "frame marked unusable by the camera"
@@ -655,7 +660,7 @@ class DaySubscriber(Node):
             if mpp is not None:
                 ns = meta.get("image_stamp_ns")
                 t_img = int(ns) / 1e9 if ns else time.time()
-                v = self.track.velocity(time.time())
+                v = self._velocity_now(meta)
                 pred = None
                 if v is not None and self.vo._prev is not None:
                     dt = t_img - self.vo._prev[3]
@@ -1202,13 +1207,65 @@ class DaySubscriber(Node):
         """The heading the track's velocity was measured at, in the same reference as the carry's
         heading: a gyro heading (h_sig > 0) at the velocity fit's own instant (on a turn the fit is
         a chord: replay of the screen bench's heavy rain at 60 m/s, the velocity 37 m/s off after a
-        20 s turn), else the frame heading at the last fix (as before)."""
+        20 s turn), else the frames' attitude heading at that instant, else the frame heading at the
+        last vision fix. A track of GPS points or odometry steps has no vision fix: without the
+        frames' headings its velocity was never turned — a real flight (MARS-LVIG AMvalley03, a
+        U-turn 20 s after the GPS loss) was carried straight on, 100 m off in 20 s."""
+        tm = self.track.fit_time()
         if h_sig > 0.0 and getattr(self, "gyro", None) is not None:
-            tm = self.track.fit_time()
             g = self.gyro.at(tm) if tm is not None else None
             if g is not None:
                 return g[0]
+        hist = getattr(self, "_frame_headings", None)
+        if h_sig == 0.0 and tm is not None and hist:
+            h = DaySubscriber._heading_in(hist, tm)
+            if h is not None:
+                return h
         return self._track_heading
+
+    def _note_frame_heading(self, meta) -> None:
+        """Remember this frame's attitude heading at its exposure (for _velocity_heading)."""
+        h = self._heading_for_match(meta)
+        hist = getattr(self, "_frame_headings", None)
+        if h is None or hist is None:
+            return
+        t = self._frame_time(meta)
+        if hist and t <= hist[-1][0]:
+            return
+        hist.append((t, h % 360.0))
+
+    @staticmethod
+    def _heading_in(hist, t: float, gap_s: float = 1.5):
+        """The heading at t from (time, heading) samples in time order (interpolated across north
+        between the samples around t, or the nearest within gap_s), or None."""
+        if not hist:
+            return None
+        before = after = None
+        for tf, h in reversed(hist):
+            if tf <= t:
+                before = (tf, h)
+                break
+            after = (tf, h)
+        if before is not None and after is not None and after[0] - before[0] <= 2 * gap_s:
+            f = (t - before[0]) / (after[0] - before[0]) if after[0] > before[0] else 0.0
+            return (before[1] + f * ((after[1] - before[1] + 180.0) % 360.0 - 180.0)) % 360.0
+        near = [x for x in (before, after) if x is not None and abs(x[0] - t) <= gap_s]
+        return min(near, key=lambda x: abs(x[0] - t))[1] if near else None
+
+    def _velocity_now(self, meta):
+        """The track's velocity (east, north, sigma m/s) turned by the heading change since it was
+        measured (the frame's heading against the heading at its fit time), or None: what the
+        frame-to-frame odometry is predicted by and checked against. Unturned, the odometry of a
+        turning vehicle disagreed with the stale velocity and was thrown away for the whole turn."""
+        v = self.track.velocity(time.time())
+        if v is None:
+            return None
+        h, h_sig = self._carry_heading(meta)
+        hv = self._velocity_heading(h_sig)
+        if h is None or hv is None:
+            return v
+        a = math.radians((h - hv + 180.0) % 360.0 - 180.0)
+        return (v[0] * math.cos(a) + v[1] * math.sin(a), -v[0] * math.sin(a) + v[1] * math.cos(a), v[2])
 
     def _gyro_reset(self, t_fix, result) -> None:
         """A good fix's fitted rotation (the frame top's azimuth, measured by vision) restarts the
