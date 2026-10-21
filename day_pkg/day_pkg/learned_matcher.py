@@ -174,7 +174,14 @@ class LearnedMatcher(LocalMatcher):
         x = t.from_numpy(cv2.cvtColor(img, cv2.COLOR_BGR2RGB)).permute(2, 0, 1).float().div(255)[None].to(self.dev)
         with self._gpu, t.inference_mode():
             with t.autocast("cuda", dtype=t.float16, enabled=self.half):
-                f = self.disk(x, n, pad_if_not_divisible=True)[0]
+                try:
+                    f = self.disk(x, n, pad_if_not_divisible=True)[0]
+                except IndexError as e:
+                    # kornia's DISK fails (kthvalue of nothing) when no pixel passes its detection
+                    # threshold: a map chunk mostly outside the area's tiles (its edge), a dark frame
+                    if "kthvalue" not in str(e):
+                        raise
+                    return t.zeros((0, 2), device=self.dev), t.zeros((0, 128), device=self.dev)
         return f.keypoints.float(), f.descriptors.float()
 
     def _chunk(self, gx: int, gy: int, level: int = 0):
