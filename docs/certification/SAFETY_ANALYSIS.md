@@ -207,7 +207,7 @@ H-14 storage full (Low–Medium), H-15 integrator settings (Medium), H-16 simula
 or NMEA forwarding of vision. Mitigations: sigma required and never better than the source
 (`policy.py::Config.validate`, `decide`), 1 km ceiling, check_box WARNs above 100 m and on NMEA
 forwarding (`check_box.py::config_findings`), drift alarm in the log above 100 m
-(`VehicleOutputNode._tick`, e535f62 — not shown on the operator view, no test). Residual **Medium**.
+(`VehicleOutputNode._check_drift`, e535f62 — UT `test_bridge_flow.py`; not shown on the operator view). Residual **Medium**.
 
 ### H-16 Simulation or a second arbiter on a live box
 

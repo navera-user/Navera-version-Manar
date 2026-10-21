@@ -598,10 +598,14 @@ requirements:
   text: 'When the vehicle is given an estimated position coarser than drift_alarm_sigma_m (100 m), the output node shall raise a drift alarm every 5 s.'
   code:
     - navera_output/navera_output/nodes/vehicle_output_node.py::VehicleOutputNode._tick
+    - navera_output/navera_output/nodes/vehicle_output_node.py::VehicleOutputNode._check_drift
+  match:
+    - 'test_bridge_flow\.py::test_a_coarse_forwarded_position_raises_the_drift_alarm'
   evidence:
-    - {level: A, value: 'implemented e535f62 (F1/F6); log only, not on the operator view', ref: 'git log e535f62'}
-  status: open
-  note: 'no automated test of the alarm'
+    - {level: A, value: 'implemented e535f62 (F1/F6)', ref: 'git log e535f62'}
+    - {level: UT, value: '180 m estimate at 1 Hz for 10 s: 3 alarms (0, 5, 10 s); bridged 150 m alarms; 60 m / exactly 100 m estimates, GNSS fixes and no-fix never'}
+  status: verified-UT
+  note: 'log only, not on the operator view'
 
 - id: NAV-SAF-12
   category: SAF
