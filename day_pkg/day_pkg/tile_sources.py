@@ -287,13 +287,17 @@ class GeoTiff:
         self.spp = int(t.get(277, [1])[0])
         bps = t.get(258, [8])
         comp = int(t.get(259, [1])[0])
-        if any(int(b) != 8 for b in bps):
-            raise ValueError("only 8-bit imagery (gdal_translate -ot Byte -scale ...)")
+        # one 32-bit float band (a DEM: Copernicus DEM COGs) is read by values(); imagery is 8-bit
+        self.float32 = self.spp == 1 and [int(b) for b in bps] == [32] and int(t.get(339, [1])[0]) == 3
+        if not self.float32 and any(int(b) != 8 for b in bps):
+            raise ValueError("only 8-bit imagery (gdal_translate -ot Byte -scale ...) or a float32 band")
         if comp not in (1, 8, 32946):
             raise ValueError(f"TIFF compression {comp} not supported (gdal_translate -co COMPRESS=DEFLATE)")
         if int(t.get(284, [1])[0]) != 1:
             raise ValueError("planar TIFF not supported (gdal_translate -co INTERLEAVE=PIXEL)")
         self.comp, self.pred = comp, int(t.get(317, [1])[0])
+        if self.pred not in ((1, 3) if self.float32 else (1, 2)):
+            raise ValueError(f"TIFF predictor {self.pred} not supported for this sample format")
         if 322 in t:
             self.tw, self.tl = int(t[322][0]), int(t[323][0])
             self.offsets, self.counts = t[324], t[325]
@@ -353,6 +357,14 @@ class GeoTiff:
             raw = self.f.read(int(self.counts[i]))
         if self.comp != 1:
             raw = zlib.decompress(raw)
+        if self.float32:
+            a = self._float_segment(raw)
+            with self._lock:
+                self._cache[i] = a
+                self._order.append(i)
+                if len(self._order) > self.cache_segments:
+                    self._cache.pop(self._order.pop(0), None)
+            return a
         a = np.frombuffer(raw, np.uint8)
         rows = len(a) // (self.tw * self.spp)
         a = a[:rows * self.tw * self.spp].reshape(rows, self.tw, self.spp)
@@ -364,6 +376,35 @@ class GeoTiff:
             if len(self._order) > self.cache_segments:
                 self._cache.pop(self._order.pop(0), None)
         return a
+
+    def _float_segment(self, raw: bytes) -> np.ndarray:
+        """A float32 segment (rows, tile width). Predictor 3 (floating point): each row's bytes were
+        regrouped most significant first and differenced; undone here."""
+        b = np.frombuffer(raw, np.uint8)
+        rows = len(b) // (self.tw * 4)
+        b = b[:rows * self.tw * 4].reshape(rows, self.tw * 4)
+        if self.pred == 3:
+            b = np.cumsum(b, axis=1, dtype=np.uint8).reshape(rows, 4, self.tw).transpose(0, 2, 1)
+            return np.ascontiguousarray(b).view(">f4").reshape(rows, self.tw).astype(np.float32)
+        return b.view(self.e + "f4").reshape(rows, self.tw).astype(np.float32)
+
+    def values(self, c0: int, r0: int, c1: int, r1: int) -> np.ndarray:
+        """Float32 band pixels [r0:r1, c0:c1] (clipped to the image, NaN outside)."""
+        if not self.float32:
+            raise ValueError("values() reads a float32 band; window() reads imagery")
+        out = np.full((r1 - r0, c1 - c0), np.nan, np.float32)
+        cc0, rr0, cc1, rr1 = max(c0, 0), max(r0, 0), min(c1, self.w), min(r1, self.h)
+        if cc0 >= cc1 or rr0 >= rr1:
+            return out
+        for ty in range(rr0 // self.tl, (rr1 - 1) // self.tl + 1):
+            for tx in range(cc0 // self.tw, (cc1 - 1) // self.tw + 1):
+                seg = self._segment(ty * self.across + tx)
+                sy0, sx0 = ty * self.tl, tx * self.tw
+                a0, a1 = max(rr0, sy0), min(rr1, sy0 + seg.shape[0])
+                b0, b1 = max(cc0, sx0), min(cc1, sx0 + seg.shape[1])
+                if a0 < a1 and b0 < b1:
+                    out[a0 - r0:a1 - r0, b0 - c0:b1 - c0] = seg[a0 - sy0:a1 - sy0, b0 - sx0:b1 - sx0]
+        return out
 
     def window(self, c0: int, r0: int, c1: int, r1: int) -> np.ndarray:
         """Pixels [r0:r1, c0:c1] (clipped to the image, zeros outside), RGB uint8."""

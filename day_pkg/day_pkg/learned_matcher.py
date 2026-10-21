@@ -105,8 +105,10 @@ class LearnedMatcher(LocalMatcher):
     HEADING_SEARCH_MIN_INLIERS = 25
 
     def __init__(self, images_dir: str, zoom: int = 17, keypoints: int = 1536, cache_dir: Optional[str] = None,
-                 per_chunk: int = 768, half: bool = True,
+                 per_chunk: int = 768, half: bool = True, models_from: Optional["LearnedMatcher"] = None,
                  **kw):
+        """models_from: another LearnedMatcher (another zoom of the same map) whose DISK and LightGlue
+        are reused: one copy of the networks on the GPU."""
         super().__init__(images_dir, zoom=zoom, **kw)
         import torch
         import kornia.feature as KF
@@ -114,20 +116,24 @@ class LearnedMatcher(LocalMatcher):
             raise RuntimeError("learned matcher: no GPU")
         self._t, self._KF = torch, KF
         self.dev = torch.device("cuda")
-        self.disk = KF.DISK.from_pretrained("depth").to(self.dev).eval()
+        self.disk = models_from.disk if models_from is not None else \
+            KF.DISK.from_pretrained("depth").to(self.dev).eval()
         from kornia.feature.disk.detector import heatmap_to_keypoints
         self._heatmap_to_keypoints = heatmap_to_keypoints
         # half: DISK and LightGlue in fp16 on the GPU's tensor cores (LightGlue's own
         # mixed precision, "mp"); per_chunk: map keypoints per 640 px chunk
         self.half, self.PER_CHUNK = bool(half), int(per_chunk)
-        self.lg = KF.LightGlueMatcher("disk", params={"mp": self.half}).to(self.dev).eval()
-        # DISK's U-Net as a TensorRT engine when built and enabled (its features are cached apart: "t")
-        self.disk_trt = load_disk_engine() if self.half else None
+        if models_from is not None:
+            self.half, self.lg, self.disk_trt = models_from.half, models_from.lg, models_from.disk_trt
+        else:
+            self.lg = KF.LightGlueMatcher("disk", params={"mp": self.half}).to(self.dev).eval()
+            # DISK's U-Net as a TensorRT engine when built and enabled (its features are cached apart: "t")
+            self.disk_trt = load_disk_engine() if self.half else None
         self.keypoints = int(keypoints)
         self.cache_dir = cache_dir or os.path.join(os.path.dirname(os.path.abspath(images_dir)), "learned_features")
         from collections import OrderedDict
         self._grid = OrderedDict()    # chunk -> features, least recently used dropped first
-        self._gpu = threading.Lock()
+        self._gpu = models_from._gpu if models_from is not None else threading.Lock()   # one GPU user at a time
         self._tiles = {}
         self._heading = None          # (rotation deg, time) of the last learned match
         self._no_fallback = False     # inside locate_any_height: no SIFT per height tried

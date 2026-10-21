@@ -49,6 +49,19 @@ inliers **and** the fitted scale within `local_scale_tol` of the one the altitud
   27.5/54/75 (5 → 0 outputs beyond 3 σ), heavy rain 20 m/s 4.5/11/20 → 4.1/7.8/15; clear, flare,
   vibration, wind unchanged within ±2 m. Wrong fixes (> 50 m): identical frames in both arms in all
   9 conditions (0 new). Gyro bias 0.5 deg/s: same results. Not yet measured on a real gyro in flight.
+- GPS course reset (`gyro_course_reset`, `gyro_heading.CourseReset`): while the GPS is trusted, on
+  each arbiter GPS position above `gyro_course_min_speed_mps` on a steady course (the gyro turned
+  < 3° over the 2 s chord), the gyro heading is reset to the course + the camera's offset from it
+  (learned from ≥ 3 vision headings measured while the course was known, else `-mount_yaw_deg`
+  from the frame meta: a downward camera on a vehicle flying nose first, σ
+  `gyro_course_crab_sigma_deg`), never over a fresher more certain heading. Frames without
+  attitude then give the matcher the gyro-carried heading (tolerance max(`local_heading_tol_deg`,
+  3 σ)): the learned matcher needs a heading. Results: `docs/VALIDATION_STATUS.md` ("Day: a real
+  flight replayed").
+- Map zoom (`day_pkg/map_levels.py`): read from the area (`area.json` `zoom`, `zooms`; an area
+  without it is zoom 17). With several zooms (`prepare_area.py --extra-zoom 18`) each frame is
+  matched against the finest zoom at least `map_zoom_min_ratio` times coarser than the frame's
+  ground resolution, else the coarsest; the finer matcher shares the networks.
 - Whole-map search (no prior) is disabled by default (`allow_global_search`): its score does
   not separate good from bad matches.
 - Visual odometry while GPS is trusted (`gps_vo_enabled`, default true): at most once per
@@ -92,6 +105,10 @@ downloaded into the cache (8 parallel requests), and the base map's corridor til
 there too, so the cache alone covers the corridor (mission areas anywhere; measured: 195 tiles
 in Paris downloaded and prepared in 22 s). Storing online imagery offline in a product needs
 the imagery provider's licence.
+`--extra-zoom 18` stores the corridor's z18 tiles too (`area.json` `zooms`; low flights, see
+"Map zoom" above). `--dem copernicus` stores the corridor's terrain in `terrain/` (Copernicus DEM
+GLO-30, else GLO-90; free licence, attribution in `area.json` `dem`): live_camera's height above
+ground over relief (`navera_common/terrain.py`).
 Measured on the Jetson: 249 tiles (4.8 km route, ±1 km) in 16 s; descriptors identical to the
 per-tile cache build (cosine ≥ 0.9996). Progress is printed as JSON lines.
 
@@ -112,6 +129,9 @@ per-tile cache build (cosine ≥ 0.9996). Progress is printed as JSON lines.
 | `gyro_heading_bias_dps` / `gyro_heading_noise_dps_rthz` | 0.1 / 0.02 | gyro bias left after calibration, rate noise density: the carried heading's growing σ |
 | `gyro_heading_reset_sigma_deg` / `gyro_heading_max_sigma_deg` | 2 / 10 | σ of a vision heading; beyond the max (~100 s after the last good fix) no heading |
 | `gyro_heading_min_inliers` | 20 | inliers of a fix whose rotation restarts the carried heading |
+| `gyro_course_reset` | true | while GPS is trusted, reset the gyro heading from the GPS course (2 s chord, steady course) |
+| `gyro_course_min_speed_mps` / `gyro_course_crab_sigma_deg` | 5 / 5 | slower: no course; σ of the camera's offset from the course when it comes from the meta's `mount_yaw_deg` (nose first) instead of vision |
+| `map_zoom_min_ratio` | 2 | an area with several zooms (`area.json` `zooms`): the finest zoom at least this many times coarser than the frame (`day_pkg/map_levels.py`), else the coarsest |
 | `local_scale_tol` | 0.15 | accepted deviation of the fitted scale from the altitude's |
 | `local_sigma_m` | 30 | stated accuracy (1 σ) of a local match |
 | `local_max_radius_m` | 1500 | largest search radius while widening after failed frames |

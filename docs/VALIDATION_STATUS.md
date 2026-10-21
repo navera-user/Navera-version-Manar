@@ -426,6 +426,48 @@ are online Esri tiles of another date; one complete flight plus 55 s of another;
 (no DDS, no camera driver or USB delay). Data: `NAVERA_TESTDATA/mars_lvig/` on the ADATA disk
 (bags, `ext/`, `maps/`, `runs/*.json` with every frame).
 
+#### Follow-ups on the same replay (2026-10-21, branch work/day-followups-2026-10-21)
+
+Same tool and data (AMvalley03 replay 40–470 s, GPS for 120 s, 310 s without; AMtown02 first
+176 s); one run each (acceptance moves ±3 points between identical runs).
+
+**DEM in the map package** (`prepare_area --dem copernicus`, mission bundle by default;
+Copernicus DEM GLO-90 here — GLO-30 is withheld for Armenia; free licence with attribution;
+camera side: `AltitudeEstimator` with the arbiter's position, `live_camera terrain_dir`).
+Height truth uses another DEM (AWS terrarium): the two differ by 2.6 m median, 15 m p90.
+
+| Run (imu arm) | Height error median / p90 / max | Within 2σ | Fixes after loss | Fix error median / p90 / max | Output median / p90 / max |
+|---|---|---|---|---|---|
+| AMvalley03 without DEM (merge run) | +28.6 / 97.7 / 127 m | 58 % | 112 / 310 (36 %) | 6.7 / 9.3 / 12.8 m | 8.3 / 16.9 / 36.2 m |
+| AMvalley03 with DEM | −3.2 (abs 10.5) / 94 / 121 m | 94 % | 108 / 309 (35 %) | 6.0 / 9.2 / 14.1 m | 8.3 / 39.4 / 60.3 m |
+| AMtown02 without / with DEM | 2.0 / 8.9 → 0.2 / 0.8 m | 100 % | 33 → 29 / 56 | 4.5 → 5.5 m median | 4.5 / 7.9 / 11.2 → 5.5 / 7.5 / 11.1 m |
+
+The height is now right where the position is known (the large p90 left is the stretch without
+any arbiter output, read over a wide disc of the DEM with a matching sigma). It did **not** raise
+acceptance (as the rangefinder variant above predicted), and in both DEM runs the dead-reckoning
+over the low stretch (137–198 s, 25–90 m above ground) got worse: output p90 17 → 34–39 m, max
+36 → 60–63 m (0 > 100 m, 100 % within 3σ). Not understood (suspect: frame odometry scaled by the
+now-correct low height); **so the DEM is stored but live_camera uses it only on request**
+(`terrain_dir: area`).
+
+**Map zoom from the area.** The node reads `area.json` (`zoom`, `zooms`; no file = 17) and, with
+several zooms (`prepare_area --extra-zoom 18`), picks the finest zoom ≥ 2× coarser than the frame
+(`day_pkg/map_levels.py`). AMvalley03 with a z17 + z18 area: every frame chose z18; 124 / 229
+fixes (54 %) vs 112 / 310 (36 %) at z17, fix error 5.4 / 8.6 / 16.4 m, 0 > 50 m; cost: p90 2.3 s per
+frame (0.87 s at z17), so fewer frames. An area with one zoom behaves as before.
+
+**Gyro heading from the GPS course** (gyro arm: no attitude in the frames): while GPS is trusted the
+gyro heading is reset from the GPS course (camera offset from the mount yaw, then learned from
+vision) and given to the matcher. GPS-check matches 0 → 8, fixes after the loss 0 → 1, output
+error 124 / 601 / 720 → 24 / 50 / 59 m (> 100 m: 29 → 0), availability 18 % (unchanged). What still
+blocks fixes: unstraightened frames (12° tilt) are refused by the pose–tilt guard, and the heading
+ages out ~85 s after the loss.
+
+Screen bench recordings (`replay_gyro_heading.py`, 10 recordings, before / after): **not a valid
+check yet** — the tool had been crashing since the camera-delay estimation was added (fixed), and
+it now runs but publishes no output in either version (tiles of its default area missing,
+e.g. `tile_17_69415_51534.jpg`): identical 0 / 0, no evidence either way.
+
 ### Night vision (`night_pkg`, STHN one-stage)
 
 - Before 2026-09-28 the model ran with **random weights**: the checkpoint keys never

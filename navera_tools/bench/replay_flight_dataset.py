@@ -10,7 +10,8 @@ product's own code, wired in-process exactly as the ROS graph wires it, on a vir
   camera side   navera_common.frame_builder.FrameBuilder (undistort, IMU straightening, tilt and
                 rate gates, heading) + navera_common.altitude.AltitudeEstimator (height above
                 take-off = the vehicle's barometer, GPS altitude while GPS lasts, vision heights
-                published back by the day node), as camera_pkg/live_camera.py does; frames are
+                published back by the day node; with --terrain the map's DEM under the arbiter's
+                position, the drone's home = its take-off point), as camera_pkg/live_camera.py does; frames are
                 offered at most fps (1 Hz, live_camera's default) and only after the previous
                 frame's ack (back-pressure): a frame that takes 1.4 s to process delays the next.
   day_pkg       DaySubscriber, built by its own __init__ (every shipped parameter default; the
@@ -202,18 +203,7 @@ def build_world(a):
         def warm_up(self): pass
         def predict(self, *x, **k): return {"accepted": False, "error": "retrieval disabled in replay"}
     ds.DayLocalizer = NoRetrieval
-    ds.IMAGES_DIR = a.area
-    if a.map_zoom != 17:                   # experiment: a map of another zoom (the node builds z17 matchers)
-        orig_learned, orig_local = lm.LearnedMatcher, ds.LocalMatcher
-
-        class LearnedZ(orig_learned):
-            def __init__(self, d, **kw):
-                super().__init__(d, zoom=a.map_zoom, **kw)
-
-        class LocalZ(orig_local):
-            def __init__(self, d, **kw):
-                super().__init__(d, zoom=a.map_zoom, **kw)
-        lm.LearnedMatcher, ds.LocalMatcher = LearnedZ, LocalZ
+    ds.IMAGES_DIR = a.area                 # the node reads the map's zoom(s) from <area>/../area.json
     args = ["--ros-args", "--log-level", a.log_level, "-p", "gyro_imu_topic:=/replay/imu"]
     for kv in a.param:
         args += ["-p", kv]
@@ -284,6 +274,14 @@ def run(a):
                       require_attitude=(a.arm != "gyro"), max_rate_dps=30.0)
     att_hist = History(maxlen=4000, max_gap_s=0.2, interp=slerp)
     alt = AltitudeEstimator()
+    if a.terrain:                                  # the map's DEM (live_camera terrain_dir)
+        from navera_common.terrain import Terrain
+        terrain = Terrain.load(a.terrain)
+        if terrain is None:
+            raise SystemExit(f"--terrain {a.terrain}: no DEM there (prepare_area --dem copernicus)")
+        alt.set_terrain(terrain)
+        # the vehicle's home (its take-off point, which the autopilot knows): the RTK's first sample
+        alt.set_home(float(S["rtk"][0, 1]), float(S["rtk"][0, 2]))
     gps_hist = History(maxlen=600, max_gap_s=1.5)
 
     rangefinder = None
@@ -305,19 +303,37 @@ def run(a):
         sinks["vision_alt"].append((VClock.now(), m))
         alt.add_vision(m.header.stamp.sec + m.header.stamp.nanosec * 1e-9, m.range, m.field_of_view or 5.0)
     day.pub_vision_alt.fn = on_vision_alt
-    real_locate = day.local.locate
+
+    def on_position(m):                            # live_camera._on_position (the arbiter's output)
+        sinks["pos"].append((VClock.now(), m))
+        day.on_gps(m)
+        if m.valid:
+            st = m.sensor_stamp.sec + m.sensor_stamp.nanosec * 1e-9 or VClock.now()
+            alt.add_position(st, m.latitude, m.longitude, math.sqrt(max(m.position_covariance[0], 0.0)))
+    est.pub_pos.fn = on_position
     calls = []                                     # this frame's matcher calls (instrumentation only)
 
-    def locate(img, prior, search_m, *x, **k):
-        if a.arm == "dr" and VClock.now() >= t_deny:
-            r = {"accepted": False, "matcher": "local", "reason": "dr arm: no map matching after the GPS loss"}
-        else:
-            r = real_locate(img, prior, search_m, *x, **k)
-        calls.append(dict(R=round(float(search_m)), acc=bool(r.get("accepted")), inl=r.get("inliers"),
-                          why=str(r.get("reason") or "")[:70], frm=r.get("position_from"),
-                          feat=r.get("features"), scale=r.get("scale_residual")))
-        return r
-    day.local.locate = locate
+    def wrap(matcher):
+        real_locate = matcher.locate
+
+        def locate(img, prior, search_m, *x, **k):
+            if a.arm == "dr" and VClock.now() >= t_deny:
+                r = {"accepted": False, "matcher": "local", "reason": "dr arm: no map matching after the GPS loss"}
+            else:
+                r = real_locate(img, prior, search_m, *x, **k)
+            calls.append(dict(R=round(float(search_m)), acc=bool(r.get("accepted")), inl=r.get("inliers"),
+                              why=str(r.get("reason") or "")[:70], frm=r.get("position_from"),
+                              feat=r.get("features"), scale=r.get("scale_residual"), z=getattr(matcher, "z", None)))
+            return r
+        matcher.locate, matcher._replay_wrapped = locate, True
+    wrap(day.local)
+    real_select = day._select_map
+
+    def select_map(img, meta):                     # a matcher built for another zoom is instrumented too
+        real_select(img, meta)
+        if not getattr(day.local, "_replay_wrapped", False):
+            wrap(day.local)
+    day._select_map = select_map
     statuses = []
     day.pub_status = type("P", (), {"publish": staticmethod(lambda m: statuses.append(m.data)),
                                     "topic_name": "status"})()
@@ -586,7 +602,9 @@ def main():
     ap.add_argument("--yaw-error-deg", type=float, default=0.0, help="error added to the IMU heading")
     ap.add_argument("--baro-drift-mps", type=float, default=0.0, help="drift of the simulated barometer, m/s")
     ap.add_argument("--dem", default="", help="dir for AWS terrarium z14 DEM tiles (height truth)")
-    ap.add_argument("--map-zoom", type=int, default=17, help="zoom of the map tiles in --area (the node's is 17)")
+    ap.add_argument("--terrain", default="",
+                    help="the map's DEM (an area dir with terrain/, prepare_area --dem copernicus): the camera "
+                         "side's height above ground over relief")
     ap.add_argument("--rangefinder", action="store_true",
                     help="feed the true height above ground (RTK - DEM) as a measured altitude (needs --dem)")
     ap.add_argument("--takeoff-agl-m", type=float, default=0.3, help="RTK antenna above the ground at the first sample")

@@ -12,6 +12,8 @@ Meta keys (all optional except frame_id and image_stamp_ns):
   camera_hfov_deg    horizontal field of view of the published (undistorted) image
   roll_deg, pitch_deg, tilt_deg, straightened      attitude used, and whether it was applied
   attitude_source    "imu", "vehicle", ... or "none" (then the frame is assumed straight down)
+  mount_yaw_deg      the camera's yaw on the vehicle (installation): without an attitude the frame
+                     top's azimuth is the vehicle's heading minus it (the day node's GPS course reset)
   usable / reason    false + why when the frame cannot be used (e.g. camera too tilted)
   gps_lat, gps_lon   the GPS at exposure, for recording and evaluation ONLY — vision never
                      reads them (gps_valid stays false: a live frame is never ground truth)
@@ -60,7 +62,8 @@ class FrameBuilder:
                     camera_hfov_deg=round(self.cam.out_hfov_deg, 3),
                     timestamp=time.strftime("%H:%M:%S", time.gmtime(exposure_ns / 1e9)),
                     image_file=f"live_{int(frame_id):06d}.jpg", usable=True,
-                    straightened=False, attitude_source="none", heading_deg=None)
+                    straightened=False, attitude_source="none", heading_deg=None,
+                    mount_yaw_deg=self.mount[2])
         if altitude is not None:
             meta.update(altitude_m=round(altitude[0], 2), altitude_sigma_m=round(altitude[1], 2),
                         altitude_source=altitude[2])

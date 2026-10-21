@@ -116,6 +116,7 @@ sha256; a bundle without it is incomplete):
 |---|---|
 | `map/corridor.mbtiles` | corridor tiles, zoom 17; metadata `source`, `licence`, `attribution`, `imagery_date`, `downloaded`, `bounds`, `minzoom/maxzoom`, `navera_corridor` (route, half-width) → `NAVERA_MBTILES` |
 | `day/` | `prepare_area.py` area from that map: `images/`, `dataset.csv`, `area.json` (terrain), `descriptors_cache.npz` (DINOv2) → `DAY_DATASET_DIR` |
+| `day/terrain/` | the corridor's DEM (Copernicus DEM GLO-30, else GLO-90; free, commercial use with attribution; `--no-dem` to skip): the height above ground over relief (live_camera); `manifest.json` `day.dem`; `check` reads the route's heights from it offline |
 | `day/learned_features/` | DISK features of every corridor chunk at every map level the heights need (none computed in flight) |
 | `celestial/finals2000A.all` | IERS-A table (`fetch_iers.py`; `--fetch-iers` refreshes it) → `NAVERA_IERS_FILE` |
 | `celestial/bsc5_mag4.5.csv` | star catalogue → `NAVERA_STAR_CATALOGUE` (cn_subscriber `allsky_catalogue`) |
