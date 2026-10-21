@@ -25,19 +25,22 @@ import sys
 import threading
 import time
 
+from collections import deque
+from typing import Callable, Dict, List, Optional
+
+from day_pkg.prepare_area import densify_route, plan_tiles, quick_texture_profile, route_length_m
+
 
 def _named_sources():
     """Names of day_pkg.tile_sources' licence-labelled sources (empty when day_pkg is not installed):
-    NAVERA_TILE_URL may name one (e.g. sentinel2_l2a) instead of giving a tile URL."""
+    NAVERA_TILE_URL may name one (e.g. sentinel2_l2a) instead of giving a tile URL.
+    """
     try:
         from day_pkg import tile_sources
         return set(tile_sources.SOURCES)
     except ImportError:
         return set()
-from collections import deque
-from typing import Callable, Dict, List, Optional
 
-from day_pkg.prepare_area import densify_route, plan_tiles, quick_texture_profile, route_length_m
 
 SETTINGS_FILE = os.environ.get("NAVERA_SETTINGS_FILE", "/var/lib/navera/settings.env")
 BUFFER_M = 1000.0
@@ -427,7 +430,8 @@ def bundle_command(action: str, route=None, out_dir: str = "", corridor_m: float
                    max_height_m: float = 600.0, min_height_m: float = 100.0, sources=("onboard",),
                    python: str = sys.executable) -> List[str]:
     """The mission_bundle.py command line for plan / build / check (validated: the page's input
-    never reaches a shell, and only known source forms are passed)."""
+    never reaches a shell, and only known source forms are passed).
+    """
     if action not in ("plan", "build", "check"):
         raise ValueError("action: plan, build or check")
     cmd = [python, BUNDLE_TOOL, action]
