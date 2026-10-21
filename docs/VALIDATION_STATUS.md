@@ -19,6 +19,7 @@ been measured. Open engineering items are tracked in
 | Day vision — stated sigma on real drone flights (UAV-VisLoc, 8 flights, 2026-10-20) | **Model alone unsafe (65 % within 3σ); self-calibration + 30 m floor safe (99.8 / 99.9 %) only with a pose–attitude guard not yet in the product — as-is 70 of 2600 fixes 100–325 m off, 13 of them beyond the self-calibrated 3σ** | below: "Day: real drone flights" |
 | Day vision — DINOv2 tile retrieval (former method, fallback) | **Not accurate enough to replace GPS** | Median 442 m on labelled replay frames |
 | Night vision (STHN homography) | Frames scaled and turned north-up from altitude, camera field of view and heading; motion gate; **simulator only — not validated on real thermal** | 8–13 m median on synthetic frames (250–600 m, any heading); simulated night mission, GPS jammed, vehicle barometer (2026-10-07): 10 m median, 21 m max, stated accuracy (simulator-calibrated) 100 % within 3 sigma; **needs an independent height (barometer) after GPS loss** |
+| Celestial 360 all-sky solver (`cn_pkg.allsky`) on **real night skies** (public ESO all-sky cameras, 2026-10-21) | **Real sky, but single up-looking fisheye cameras, not NAVERA's Insta360; mount 'up' known (fixed camera / truth fit)** | 559 real frames: 0 wrong positions accepted (61 wrong identifications all refused); clear moonless nights 100 % solved, 2.9 km median; below: "Celestial 360 on real night skies" |
 | Celestial (astrometry.net) | Run end to end on simulated star fields; **coarse: bounded by the IMU attitude (~111 km per degree); simulator only — not run on a real sky** | 5.5–6.5 km with a perfect attitude; 24–119 km with a BNO085-class IMU; simulated night mission without barometer (2026-10-07): 29 km median, 40 km max, 100 % within its stated sigma |
 | Day vision dead-reckoning along the measured track (no match: sea, uniform ground, frame unusable) | Implemented 2026-10-02; **simulator only** | Land route: no failsafe, error median 10 m, max 33 m; across the bay: carried 90 s over the sea stating ±300 m, true error at most 146 m |
 | Vision position carried to the present (output, operator view) | Implemented; unit tests and simulator only | 1.5 s old photo at 40 m/s: moved 60 m, stated ±31.5 m |
@@ -419,7 +420,105 @@ STHN's consistency score does not detect a wrong match; the re-check and the mot
   (`np.bool` in astrometry.net's line removal) — fixed.
 
 **Not validated:** a real sky image with known time, place and attitude (position accuracy),
-clouds and light pollution, a real IMU.
+clouds and light pollution, a real IMU (for the 360 all-sky solver, real skies with known time
+and place: next section).
+
+### Celestial 360 on real night skies — public all-sky cameras (2026-10-21)
+
+The 360 all-sky solver (`cn_pkg/allsky.py`: detector, lost-in-space identification, focal
+refinement, quality gate — the code the flight node `solver_mode allsky360` and the field
+service run) on **real** night-sky frames with an exact UTC and a surveyed position, before its
+first real drive. Tool: `navera_tools/bench/realsky_validate.py`; data and per-frame results
+(JSON lines) on the data disk under `NAVERA_TESTDATA/sky/` (frames from the ESO archive).
+
+**Sources** (ESO Science Archive, public, FITS with `DATE-OBS`; site VLT platform, Paranal,
+-24.6276°, -70.4051°, 2635 m):
+
+| Camera | Frames used | What it is | Pixel |
+|---|---|---|---|
+| MASCOT | 343 (38 nights, Jan 2023–Oct 2026, 9 per night spread dusk to dawn) + 168 (14 nights picked for clouds) | cheap CCD + fisheye, fixed; 8 s exposures with the moon up, 90 s without; hot pixels, blooming, vignetting, VLT laser guide stars | 0.22°/px |
+| ALPACA | 48 (12 nights, 2023–2026) | science CMOS + Canon 12 mm fisheye on a **tracking** mount, 120 s; binned to 2048 px | 0.084°/px (≈ the Insta360's 0.10°/px) |
+
+Conditions covered: moonless and full-moon nights, moon glare at any altitude, real clouds
+(thin cirrus to overcast, moonlit altocumulus), nautical/astronomical twilight, airglow,
+satellite and laser streaks, real noise, real PSFs and vignetting. Not covered: colour
+(both cameras are monochrome; the Insta360 is a Bayer sensor), H.264, two lenses (the
+lens-agreement test cannot be exercised), a moving vehicle.
+
+**Adapter (honest about what differs):** each camera is ONE fisheye lens looking up, given to
+the solver as one `sky360.Lens` with its own frame as the "IMU" frame; the frame is turned into
+the 8-bit, gamma-encoded image NAVERA's camera delivers and passed **unchanged** to
+`allsky.locate` (calibrated focal, `f_scales=(1.0,)`, bundled BSC5 catalogue to mag 4.0). Lens
+(centre, f, k1, mirror) and mount (camera-to-ENU rotation → 'up') are measured from the stars of
+separate calibration nights at their true alt/az (astropy, site pressure) by a brute-force
+grid + least squares on pixel residuals — not with the solver under test (MASCOT 0.23 px rms,
+941 stars, 5 frames of 2023-08-12; ALPACA 0.35–0.42 px, three lens epochs: the lens or its
+focus changed in 2023-10 and again before 2025-01, seen as a 1.6 % focal change). Calibration
+nights are excluded from the results. 'up': MASCOT is bolted down → one fixed 'up' for all
+3.8 years (exactly NAVERA's situation, mount known once); ALPACA's tracking mount moves
+0.0–0.5° between frames → its 'up' is fitted per frame on the truth, so ALPACA errors are the
+star fit alone (identification and refinement), not a mount test.
+
+**Results** (fix = accepted by the gate; error = great circle to the truth; "wrong" > 50 km;
+"wrong ids" = identifications > 50 km off seen with the gate opened, all refused):
+
+| Set | Night (sun < -18°) solved | median / p90 / max km | Moon down | Moon up | Twilight (-18..-6°) | Wrong accepted | Wrong ids refused | Right ids refused |
+|---|---|---|---|---|---|---|---|---|
+| MASCOT | 248/263 (94 %) | 3.7 / 12.0 / 17.6 | 117/117, 2.9 km | 131/146, 4.4 km | 38/80 | **0** | 12 | 6 |
+| MASCOT cloudy nights | 70/139 (50 %) | 8.7 / 14.4 / 19.4 | 10/14 | 60/125 | 9/29 | **0** | 21 | 13 |
+| ALPACA (star fit only) | 24/24 (100 %) | 1.1 / 2.0 / 2.1 | 18/18 | 6/6 | 24/24 | **0** | 0 | 0 |
+| MASCOT, shallow copy | 144/263 (55 %) | 3.4 / 10.2 / 16.8 | 112/117 | 32/146 | 0/80 | **0** | 23 | 8 |
+| MASCOT cloudy, shallow | 11/139 (8 %) | 12.6 / 15.1 / 16.4 | 7/14 | 4/125 | 0/29 | **0** | 5 | 2 |
+| ALPACA, Insta360-depth copy | 18/24 (75 %) | 0.9 / 4.1 / 6.1 | 18/18 | **0/6** | 3/24 | **0** | 20 | 3 |
+
+"Shallow" copies (`--degrade`): the real frame with the sky above background scaled down
+(MASCOT ×0.15, ALPACA ×0.01: ~29 spots, matched stars to mag ~3.9), 2 DN noise and JPEG q75 —
+real positions, PSFs, glare and clouds, but a depth like a short video exposure. The Insta360's
+real depth on a real sky is still unknown; these bracket it.
+
+- **No wrong position was accepted in 1 118 frame solves** (559 real frames, each also as a shallow copy).
+  Pooled, 702 identifications were made with the gate opened: 621 right, 81 wrong; the gate
+  accepts 587 right and 0 wrong. The wrong ones had m ≤ 6 (41, refused by `MIN_MATCHED`) or
+  m 7–10 with rms ≥ 0.151° (40; one with p 0.0098 — a third-tier p — refused by its rms ≤ 0.10°).
+- **The 2026-10-19 third tier (p ≤ 1e-2 and rms ≤ 0.10°) is confirmed on real skies**: it adds
+  21 right fixes (566 → 587) and no wrong one; the closest wrong identification is 0.05° above
+  its rms limit. Loosening was replayed and is **not proposed**: rms ≤ 0.12/0.14 (+2), p ≤ 0.1
+  (+4), 6 stars with rms ≤ 0.06 (+12) or ≤ 0.10 (+16) all stay at 0 wrong here, but the margins
+  shrink (a wrong 6-star identification at rms 0.114°, right ones up to 0.095°). Gate unchanged.
+- **Error budget, fixed camera (MASCOT):** within a night the solver scatters 1.7 km median
+  (p90 3.8 km) about the night's mean; the night's mean wanders 0–14 km over 3.8 years because
+  the camera's tilt drifted ~0.13° (one calibration from 2023 used throughout). Learning the
+  tilt on each night's first 3 fixes (what the field's `TiltCalibration` does with the phone)
+  gives 2.7 km median, 5.1 km p90, 8.2 km max on the later fixes. **'up' — not the stars —
+  sets the accuracy.**
+- **Time stamp:** MASCOT's `DATE-OBS` is the exposure start; a fixed camera's trailed stars are
+  centred at mid-exposure. Using the start put every 8 s frame 16 km east-west of the 90 s
+  frames (the sky turns 0.46 km/s). The solver must be given the exposure's **middle** — the
+  field server's frame stamp (exposure + `FRAME_STAMP_LAG_MS`) must keep meaning that.
+- **Moon:** at full depth the moon costs little (MASCOT 90 % solved, 4.4 km); at an
+  Insta360-like depth a moon ≥ 50 % lit leaves too few stars (ALPACA copy 0/6, MASCOT copy
+  22 %): the gate refuses, it does not guess.
+- **Clouds:** on the cloudy nights, the frames where < 30 % of the mag ≤ 3 stars show
+  (overcast, or cloud lit by the moon) → 36/104 solved at full depth, 2/130 shallow; 0 wrong.
+- **Twilight:** MASCOT starts at sun ≈ -10°: at -9..-12° 35/77 solved at full depth, 0/77
+  shallow; ALPACA (120 s) 23/23 at -9..-15°, its Insta360-depth copy 3/24 in twilight. Plan on
+  the sun below -12° (better -15°).
+- **Junk:** the detector's hot-pixel test rejected 263 spots that are not catalogue stars
+  (≤ mag 4.5) and 1 that is, on 12 MASCOT frames (one frame: 18 → 45 stars among the 60
+  brightest thanks to it); on 3 binned ALPACA frames it lost 2 of 1 134 catalogue stars.
+  Lasers, satellites and lit clouds are rejected as `extended` (≤ 11 per frame) or end in
+  refused identifications.
+- **Time on the Jetson** (2 cores, `nice 19`, machine shared with other jobs — load 7–18):
+  `locate` median 2.1 s (MASCOT 580×512) and 2.7 s (ALPACA 2048×2048, one lens); half of it
+  was building rays one spot at a time in the focal refinement. Vectorised (commit
+  `perf(allsky)`, identical answers on 33 real frames): median 3.6 → 2.3 s.
+
+**For the real drive:** (1) the moon is 81–100 % lit 21–27 Oct and high most of the night —
+expect many refusals; the moon-down windows are short (e.g. 22 Oct after ~02:15 UT); (2) count on
+fixes only once the sun is below -12°; (3) let the tilt calibration learn on the first stopped
+fixes (it removes the dominant error); (4) keep the raw recorder on — the real Insta360 depth
+(how many stars a video frame shows) is the remaining unknown; (5) a refusal is the expected
+answer under cloud or bright moon, not a fault.
 
 ### Robustness (bench)
 
