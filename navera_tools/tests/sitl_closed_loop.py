@@ -25,10 +25,12 @@ where it is pure Python:
   * the estimator: GPS > day, GPS refused by navera_common.gps_crosscheck (3-sigma streak, wide
     window, slow-drift trend) exactly as navera_estimator calls it, GPS in doubt widened to the
     gap; a source stale after 3 s;
-  * the output: navera_output.policy.decide / hold / bridge + navera_common.track.TrackVelocity
-    and the vehicle_output_node send logic (carry to the present, bridge a gap up to 10 s, "no
-    fix" after), GPS_INPUT from mavlink_out.gps_input_fields(), forward_degraded with
-    degraded_sigma_m = --sigma. Clock: the autopilot's (SITL) time.
+  * the output: navera_output.policy.decide / hold / bridge / reacquire +
+    navera_common.track.TrackVelocity and the vehicle_output_node send logic (carry to the
+    present, bridge a gap up to 10 s, "no fix" after, velocity with every position, hold back
+    after a gap until the new fixes' velocity is known), GPS_INPUT from
+    mavlink_out.gps_input_fields(), forward_degraded with degraded_sigma_m = --sigma. Clock: the
+    autopilot's (SITL) time.
 
 Mission (relative to home): Copter 80 m, 10 m/s, 4 legs (300 / 400 / 400 / 400 m), RTL + land;
 Plane 100 m, ~22 m/s, 5 legs of 0.6-1.2 km, RTL (loiter over home). GPS is lost when waypoint 1 is reached and never
@@ -70,7 +72,7 @@ from navera_common.gps_crosscheck import STREAK_N, GpsCrossCheck, GpsDriftTrend 
 from navera_common.track import TrackVelocity                                   # noqa: E402
 from navera_output import mavlink_out                                           # noqa: E402
 from navera_output.policy import (KIND_ESTIMATED, KIND_FIX, KIND_NONE, STATE_DEGRADED,  # noqa: E402
-                                  STATE_FIX, STATE_NO_FIX, Config, bridge, decide, hold)
+                                  STATE_FIX, STATE_NO_FIX, Config, bridge, decide, hold, reacquire)
 
 HOME = sv.HOME
 SOURCE_GPS, SOURCE_DAY = 1, 2
@@ -204,13 +206,22 @@ class Output:
         self.status = None                   # (state, active, t)
         self.pos, self.pos_rx, self.sent_pos = None, None, None
         self.held, self.last_tx, self.bridging = None, None, False
+        self.last_pos_tx = None
         self.gps_vel = None
+        self.held_back = 0                   # positions held back by reacquire()
+        self.counted_pos = None
 
     def ground_velocity(self, t):
         last = self.track.last_time()
         if last is None or t - last > 5.0:
             return None
         return self.track.velocity(t)
+
+    def autopilot_velocity(self, t):
+        last = self.track.last_time()
+        if last is None or t - last > 5.0:
+            return None
+        return self.track.autopilot_velocity(t)
 
     def on_position(self, t, msg):
         self.pos, self.pos_rx = msg, t
@@ -224,10 +235,16 @@ class Output:
         age = None if self.pos is None else t - self.pos.t_meas
         out = decide(self.cfg, st[0] if st else None, t - st[2] if st else None, self.pos,
                      t - self.pos_rx if self.pos else None, st[1] if st else None, vel, age,
-                     self.ground_velocity(t))
+                     self.ground_velocity(t), self.autopilot_velocity(t))
         out = self._bridged(out, t)
         if out is None:
             return None
+        gated = reacquire(self.cfg, out, None if self.last_pos_tx is None else t - self.last_pos_tx)
+        if gated is not out:                 # "no fix" at the tick rate, as the node
+            if self.pos is not self.counted_pos:
+                self.counted_pos = self.pos
+                self.held_back += 1
+            return gated
         if out.kind != KIND_NONE and not out.bridged:
             if self.pos is self.sent_pos:
                 return None
@@ -235,7 +252,7 @@ class Output:
             self.held = hold(out, t, self.ground_velocity(t))
             self.bridging = False
         if out.kind != KIND_NONE:
-            self.last_tx = t
+            self.last_tx = self.last_pos_tx = t
         return out
 
     def _bridged(self, out, t):
@@ -268,7 +285,9 @@ class Run:
         self.mission = MISSIONS[vehicle]
         self.errors = VisionErrors("poor" if scenario == "poor" else "good", self.rng)
         self.est = Estimator()
-        self.cfg = Config(forward_degraded=True, degraded_sigma_m=args.sigma, bridge_max_s=args.bridge_max_s)
+        self.cfg = Config(forward_degraded=True, degraded_sigma_m=args.sigma, bridge_max_s=args.bridge_max_s,
+                          reacquire_after_s=args.reacquire_after_s,
+                          reacquire_vel_sigma_mps=args.reacquire_vel_sigma)
         self.cfg.validate()
         self.out = Output(self.cfg)
         self.truth_hist = []                 # (t, lat, lon, alt)
@@ -384,23 +403,21 @@ class Run:
 
     def send(self, link, o, t, truth):
         f = mavlink_out.gps_input_fields(o, self.utc0 + timedelta(seconds=t - o.age_s))
-        if self.a.vision_velocity and o.kind == KIND_ESTIMATED:
-            # EXPERIMENT (not what mavlink_out sends): ArduPilot's MAV GPS keeps the LAST velocity it
-            # received when a message carries none, and EKF3 resets its velocity to it after a
-            # velocity timeout although EK3_SRC1_VELXY = 0 (ResetVelocity). Give it NAVERA's track
-            # velocity instead (zero when unknown) with its accuracy.
-            gv = self.out.ground_velocity(t)
-            ve, vn, sv_ = gv if gv is not None else (0.0, 0.0, 30.0)
-            f.update(vn=float(vn), ve=float(ve), speed_accuracy=float(max(sv_, 0.5)))
-            f["ignore_flags"] &= ~(mavlink_out.IGNORE_VEL_HORIZ | mavlink_out.IGNORE_SPEED_ACCURACY)
         link.mav.mav.gps_input_send(**f)
-        err = None
+        err = verr = None
         if o.kind != KIND_NONE:
             tt = self.truth_at(t - o.age_s)
             n, e = sv.ne_from(tt[0], tt[1], o.lat, o.lon)
             err = math.hypot(n, e)
+            prev = self.truth_at(t - 1.0)
+            if o.has_velocity and prev is not None:
+                tn, te = sv.ne_from(prev[0], prev[1], truth[0], truth[1])     # true velocity over the last 1 s
+                verr = math.hypot(o.vel_n_mps - tn, o.vel_e_mps - te)
+        sig_v = f["speed_accuracy"] if not f["ignore_flags"] & mavlink_out.IGNORE_SPEED_ACCURACY else None
         self.sent.append((round(t, 2), o.kind, round(o.sigma_h_m, 1) if o.kind != KIND_NONE else None,
-                          round(err, 1) if err is not None else None, bool(o.bridged)))
+                          round(err, 1) if err is not None else None, bool(o.bridged),
+                          round(sig_v, 2) if sig_v is not None else None,
+                          round(verr, 2) if verr is not None else None))
 
     def sample(self, link):
         t = link.t
@@ -598,7 +615,8 @@ class Run:
                 "yaw", "Crash", "crash", "AHRS", "DCM")
         notable = [(t, x) for t, x in texts if self.t_loss and t >= self.t_loss - 1 and any(k in x for k in keys)]
         res = dict(vehicle=self.vehicle, scenario=self.scenario, params=self.a.set, sigma=self.a.sigma,
-                   bridge_max_s=self.a.bridge_max_s, vision_velocity=self.a.vision_velocity, all_texts=texts,
+                   bridge_max_s=self.a.bridge_max_s, reacquire=[self.a.reacquire_after_s, self.a.reacquire_vel_sigma],
+                   all_texts=texts,
                    latency=self.a.latency, t_loss=self.t_loss, t_jam=self.t_jam, t_end=self.t_end,
                    modes=self.modes, reached=self.reached, notable_texts=notable,
                    ekf_err_median=_q(ekf_err, 0.5), ekf_err_p90=_q(ekf_err, 0.9), ekf_err_max=_q(ekf_err, 1.0),
@@ -616,6 +634,16 @@ class Run:
         res["sent_sigma_median"] = _q([x[2] for x in sent_est], 0.5)
         res["no_fix_sent"] = sum(1 for x in self.sent if x[1] == KIND_NONE and self.t_jam and x[0] >= self.t_jam)
         res["bridged_sent"] = sum(1 for x in sent_est if x[4])
+        res["held_back"] = self.out.held_back
+        # the velocity given with the vision positions: error vs the truth, and vs its stated accuracy
+        vel = [(x[5], x[6]) for x in sent_est if x[6] is not None]
+        res["vel_sent"] = len(vel)
+        res["vel_unknown_sent"] = sum(1 for x in sent_est if x[6] is None)
+        res["vel_err_median"], res["vel_err_p90"] = _q([v[1] for v in vel], 0.5), _q([v[1] for v in vel], 0.9)
+        res["vel_err_max"] = _q([v[1] for v in vel], 1.0)
+        res["vel_sigma_median"] = _q([v[0] for v in vel], 0.5)
+        # per axis 1-sigma stated: the 2D error is within 2.45 sigma 95 % of the time if honest
+        res["vel_within_2_45_sigma"] = round(sum(1 for s_, e in vel if e <= 2.45 * s_) / len(vel), 3) if vel else None
         res["navera_events"] = self.est.events
         spd = []
         for s0, s1 in zip(denied, denied[5:]):
@@ -670,15 +698,15 @@ def parse_set(s):
 def summarise(out_dir):
     """A markdown table of every <vehicle>_<scenario>*.json result in out_dir."""
     print("| Run | Params | EKF err med / p90 / max (m) | Cross-track med / p90 / max (m) | Leg speed (m/s) | "
-          "WP closest (m) | Mission done | End | Failsafes / EKF messages |")
-    print("|---|---|---|---|---|---|---|---|---|")
+          "WP closest (m) | Mission done | End | Failsafes / EKF messages | Velocity sent: err med / p90 |")
+    print("|---|---|---|---|---|---|---|---|---|---|")
     for name in sorted(os.listdir(out_dir)):
         if not name.endswith(".json"):
             continue
         with open(os.path.join(out_dir, name)) as f:
             r = json.load(f)["result"]
         if "error" in r:
-            print(f"| {name[:-5]} | | ERROR {r['error']} | | | | | | |")
+            print(f"| {name[:-5]} | | ERROR {r['error']} | | | | | | | |")
             continue
         if r["vehicle"] == "copter":
             end = (f"landed {r.get('landing_from_home_m')} m from home in {r.get('touchdown_mode')}"
@@ -697,9 +725,16 @@ def summarise(out_dir):
             setting = f"{setting} bridge {r['bridge_max_s']:g} s"
         if r.get("vision_velocity"):
             setting = f"{setting} + track velocity sent"
+        if r.get("reacquire") and r["reacquire"] != [Config.reacquire_after_s, Config.reacquire_vel_sigma_mps]:
+            setting = f"{setting} reacquire {r['reacquire'][0]:g} s / {r['reacquire'][1]:g} m/s"
+        vel = ""
+        if r.get("vel_sent") is not None:
+            vel = (f"{r['vel_err_median']} / {r['vel_err_p90']} m/s (σ {r['vel_sigma_median']}, "
+                   f"{r['vel_within_2_45_sigma']} within 2.45σ; {r['vel_unknown_sent']} unknown, "
+                   f"{r['held_back']} held back)")
         print(f"| {name[:-5]} | {setting} | {r['ekf_err_median']} / {r['ekf_err_p90']} / {r['ekf_err_max']} | "
               f"{r['xtrack_median']} / {r['xtrack_p90']} / {r['xtrack_max']} | {r.get('leg_speed_median')} | {wp} | "
-              f"{'yes' if r['completed'] else 'no'} | {end} | {'; '.join(msgs) or 'none'}{spoof} |")
+              f"{'yes' if r['completed'] else 'no'} | {end} | {'; '.join(msgs) or 'none'}{spoof} | {vel} |")
 
 
 def main():
@@ -714,8 +749,9 @@ def main():
     ap.add_argument("--latency", type=lambda s: tuple(float(x) for x in s.split(",")), default=(0.3, 1.0))
     ap.add_argument("--frame-period", type=float, default=1.0)
     ap.add_argument("--bridge-max-s", type=float, default=10.0, help="NAVERA_BRIDGE_MAX_S (0 = no bridge)")
-    ap.add_argument("--vision-velocity", action="store_true",
-                    help="experiment: send NAVERA's track velocity with vision fixes (see Run.send)")
+    ap.add_argument("--reacquire-after-s", type=float, default=Config.reacquire_after_s,
+                    help="policy.Config.reacquire_after_s (0 = never hold back after a gap)")
+    ap.add_argument("--reacquire-vel-sigma", type=float, default=Config.reacquire_vel_sigma_mps)
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--instance", type=int, default=5)
     ap.add_argument("--speedup", type=float, default=1.0)

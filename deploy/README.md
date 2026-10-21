@@ -571,6 +571,7 @@ receives "no fix" and its own failsafe acts — unless forwarding is enabled exp
 | `NAVERA_DEGRADED_SIGMA_M` | none | the accuracy (m, 1 σ) the autopilot must assume — **required** with forwarding (the node refuses to start without it, or above 1000 m); when the source states a worse accuracy itself, the worse is sent. Use a value you have measured. **ArduPilot's EKF3 caps a stated accuracy at 100 m** (`AP_NavEKF3`: R = constrain(accuracy, `EK3_POSNE_M_NSE`, 100 m)²): above 100 m the autopilot trusts the position **more** than stated — `check_box.py` WARNs |
 | `NAVERA_NMEA_FORWARD_DEGRADED` | false | NMEA carries no accuracy an autopilot uses (ArduPilot fuses an NMEA GPS with its own ~0.5 m noise): with forwarding, degraded positions go over MAVLink and ROS only and NMEA says "no fix" for them, unless this is `true` (a warning is logged; not recommended) |
 | `NAVERA_MAX_MEASUREMENT_AGE_S` | 5.0 | a position measured longer ago is not sent (also: a position older than 5 s is no longer current) |
+| `NAVERA_BRIDGE_MAX_S` | 10 | a gap in the forwarded vision positions is bridged this long at most (0 = never; 0 recommended on a fixed-wing with an airspeed sensor, docs/ARDUPILOT_INTEGRATION.md §3) |
 
 **Vision positions are carried to the present.** A vision position describes where its
 photo was taken, 1–2.5 s before it reaches the output. The output learns the ground

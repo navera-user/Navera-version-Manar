@@ -51,9 +51,9 @@ overrides below and the vehicle's maximum speed (`NAVERA_MAX_SPEED_KMH`).
 
 | NAVERA state | NMEA | MAVLink GPS_INPUT | ROS `/navera/fix` |
 |---|---|---|---|
-| FIX (GPS; or a source with a stated σ ≤ 25 m) | GGA quality 1, HDOP = σ/2 m, satellites, altitude; RMC status A, mode A, speed and course from the receiver | fix_type 3, horiz/vert accuracy = σ, horizontal velocity from the receiver | status FIX, `service` GPS, covariance from σ |
-| FIX without altitude (vision / celestial) | GGA quality 1, no altitude | fix_type 3 with the altitude flagged ignored (`fix_type_without_alt`), no velocity | status FIX (no vision source reaches FIX today) |
-| DEGRADED (vision, celestial, dead-reckoned; a GPS "in doubt") | **no fix** — even with `forward_degraded`, unless `nmea_forward_degraded`: then quality 6 (estimated), HDOP from the accuracy, RMC mode E | **no fix by default**; with `forward_degraded`: accuracy = the worse of `degraded_sigma_m` and the source's own, plus the lag; 0 satellites | **sent by default** (`ros_forward_degraded`): status FIX, `service` 0, the stated accuracy plus the lag in the covariance — only when an accuracy is stated (else no fix) |
+| FIX (GPS; or a source with a stated σ ≤ 25 m) | GGA quality 1, HDOP = σ/2 m, satellites, altitude; RMC status A, mode A, speed and course from the receiver | fix_type 3, horiz/vert accuracy = σ, horizontal velocity from the receiver with `speed_accuracy` = `gnss_speed_sigma_mps` (none current: stated unknown, below) | status FIX, `service` GPS, covariance from σ |
+| FIX without altitude (vision / celestial) | GGA quality 1, no altitude | fix_type 3 with the altitude flagged ignored (`fix_type_without_alt`), velocity as for DEGRADED | status FIX (no vision source reaches FIX today) |
+| DEGRADED (vision, celestial, dead-reckoned; a GPS "in doubt") | **no fix** — even with `forward_degraded`, unless `nmea_forward_degraded`: then quality 6 (estimated), HDOP from the accuracy, RMC mode E | **no fix by default**; with `forward_degraded`: accuracy = the worse of `degraded_sigma_m` and the source's own, plus the lag; 0 satellites; NAVERA's own velocity with its accuracy, or "unknown" (below); held back after a gap until that velocity is known | **sent by default** (`ros_forward_degraded`): status FIX, `service` 0, the stated accuracy plus the lag in the covariance — only when an accuracy is stated (else no fix) |
 | NO_FIX; arbiter silent > 2 s; no new position for 5 s; measured more than `max_measurement_age_s` ago; coarser than `max_forward_sigma_m` | GGA quality 0 with empty position, RMC status V | fix_type 1, no position | STATUS_NO_FIX, NaN position |
 
 Today **every vision and celestial position is DEGRADED** (the estimator gives FIX only with
@@ -85,6 +85,29 @@ ignored value, 200 m off, ±300 m jumps, a 90 m slow drift — while the horizon
 the vision positions; with `EK3_SRC1_POSZ = 3` the EKF height went to −277 m within 20 s and the
 vehicle climbed to 150 m, then 825 m.* Only a satellite position ever carries an altitude in
 GPS_INPUT: a non-GNSS one is sent with `IGNORE_ALT` even if its producer attached a height.
+
+**A velocity with every position (F28).** ArduPilot's MAVLink GPS driver keeps the last
+velocity and speed accuracy it received when a `GPS_INPUT` flags them ignored, and EKF3 resets
+its velocity to that value when a position comes back after a timeout — also with
+`EK3_SRC1_VELXY = 0`. With vision positions sent without a velocity, a plane's EKF was reset
+to the GPS velocity of 60 s earlier, 180° wrong (SITL 2026-10-21). So every position goes out
+with a horizontal velocity and its `speed_accuracy`: the receiver's for GPS; for vision /
+celestial the velocity of NAVERA's recent fixes when it is trustworthy
+(`TrackVelocity.autopilot_velocity`: ≥ 5 fixes over ≥ 4 s in a 10 s window, none across a 5 s
+gap, on a straight line within their stated accuracy; σ = the fit's slope error + 0.5 m/s² ×
+the fit's lag); otherwise **unknown: 0 m/s with `max_speed_mps` as its accuracy** — never
+flagged ignored. A bridged position carries the velocity sent with the held one, its σ growing
+by 0.5 m/s² × t. Never a vertical velocity (NAVERA measures none; ArduPilot never forgets one
+it was given).
+
+**After a gap, vision waits for its velocity.** When the autopilot was given no position for
+`reacquire_after_s` (5 s: past the bridge, EKF3's position aiding has timed out), the next
+vision positions are held back ("no fix") until the velocity of the new fixes is known to
+`reacquire_vel_sigma_mps` (8 m/s: about 7 good fixes at 1 Hz). EKF3 resets its position AND
+its velocity onto the first fix after a timeout; given "0, unknown", a plane's EKF velocity
+stayed near 0 for 70 s (airspeed fusion needs a predicted airspeed > 1 m/s) and the plane flew
+3.5 km past its waypoint (SITL 2026-10-21). Log line: `output → no fix (reacquiring after a
+gap: …)`. A GPS fix and a bridged position never wait.
 
 **Gaps are bridged, but not for long.** An autopilot lands on a silence (ArduPilot Copter SITL:
 EKF failsafe → LAND about 8 s after the last position, even though the vehicle has hardly moved
@@ -152,7 +175,9 @@ On the box: `/etc/navera/navera.env`, read by `navera-output.service` and
 | `NAVERA_DEGRADED_SIGMA_M` | `degraded_sigma_m` | NaN | accuracy stated for them (m, 1 σ); required with forwarding, at most `max_forward_sigma_m`. When the source states a worse one, the worse is sent |
 | `NAVERA_MAX_MEASUREMENT_AGE_S` | `max_measurement_age_s` | 5.0 | older measurements are not sent; younger vision positions are carried to the present |
 | `NAVERA_MAX_SPEED_KMH` | `max_speed_mps` | 30 m/s | the lag allowance when no ground velocity is known |
-| — | `bridge_max_s` / `bridge_after_s` / `bridge_period_s` | 10 / 2.5 / 1.0 | a gap in the forwarded vision positions is bridged this long at most (0 = never), starting after 2.5 s without one, one position per second (see "Gaps are bridged") |
+| `NAVERA_BRIDGE_MAX_S` (`bridge_max_s` only) | `bridge_max_s` / `bridge_after_s` / `bridge_period_s` | 10 / 2.5 / 1.0 | a gap in the forwarded vision positions is bridged this long at most (0 = never), starting after 2.5 s without one, one position per second (see "Gaps are bridged") |
+| — | `gnss_speed_sigma_mps` | 0.5 | `speed_accuracy` stated for the GPS receiver's velocity (RMC has none; ArduPilot floors it at `EK3_VELNE_M_NSE`) |
+| — | `reacquire_after_s` / `reacquire_vel_sigma_mps` | 5.0 / 8.0 | after no position was sent for this long, vision positions wait until the new fixes' velocity is known to this σ (0 s = never wait; see "After a gap") |
 | — | `bridge_accel_mps2` / `bridge_heading_sigma_deg` | 0.5 / 5 | unseen acceleration and heading error in the accuracy growth of a bridged position |
 | — | `drift_alarm_sigma_m` | 100 | a forwarded position coarser than this logs `DRIFT ALARM: the vehicle is given a position of ±… m` every 5 s (the vehicle may be that far off: dead-reckoned or bridged) |
 | — | `max_forward_sigma_m` | 1000 | a forwarded position coarser than this is withheld (a celestial fix moved a SITL autopilot by 125 km) |
@@ -223,10 +248,12 @@ Parameters: `mavlink_url`, `attitude_hz` (50), `source_system` (1), `source_comp
 See [docs/ARDUPILOT_INTEGRATION.md](../docs/ARDUPILOT_INTEGRATION.md) for wiring, the
 parameter table and what is verified in ArduPilot SITL only. Key points found in SITL:
 
-- `EK3_SRC1_VELXY = 0` and `EK3_SRC1_VELZ = 0`: vision fixes carry no velocity, and
-  ArduPilot kept fusing the *last* GPS velocity it received; after GPS loss that stale
-  velocity caused a glitch and an EKF failsafe (LAND) within 40 s. These settings also stop
-  GPS velocity fusion while GPS is healthy (cost: docs/ARDUPILOT_INTEGRATION.md §3).
+- `EK3_SRC1_VELXY = 0` and `EK3_SRC1_VELZ = 0`: NAVERA's vision velocity is a fit to its own
+  positions (correlated with them, late in a turn) — not to be fused as a measurement; and
+  before F28 the vision fixes carried none, so ArduPilot fused the *last* GPS velocity it
+  received (a glitch and an EKF failsafe, LAND, within 40 s). These settings also stop GPS
+  velocity fusion while GPS is healthy (cost: docs/ARDUPILOT_INTEGRATION.md §3). EKF3 still
+  uses the message velocity to RESET its own after a timeout: hence the velocity NAVERA sends.
 - **The autopilot needs one real GPS fix at power-on**: ArduPilot sets its navigation origin
   only from a GPS that passes its checks (satellites, HDOP); vision fixes report 0
   satellites. Start the vehicle with GPS, or set the origin explicitly (`SET_GPS_GLOBAL_ORIGIN`).

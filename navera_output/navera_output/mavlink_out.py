@@ -1,8 +1,20 @@
 """MAVLink GPS_INPUT (id 232) fields for PX4 / ArduPilot (GPS_TYPE = MAV).
 
 Accuracies are sent as stated (1-sigma, m); anything unknown is marked with the
-corresponding ignore flag instead of a made-up number. Horizontal velocity is
-sent when the position comes with one (GPS); vertical velocity never is.
+corresponding ignore flag instead of a made-up number — except the horizontal velocity.
+
+Horizontal velocity (F28): every non-GNSS position goes out with one and its
+speed_accuracy — NAVERA's own track velocity, or, when NAVERA does not know it,
+"unknown": 0 m/s with the vehicle's top speed as its accuracy; a GPS position with the
+receiver's. A GPS fix without a receiver velocity is the only position sent with the
+flag set (an "unknown" accuracy > 1 m/s would keep ArduPilot from setting its origin),
+and a "no fix" message (fix_type 1, which ArduPilot's EKF never reads). Otherwise the
+flag is never used: ArduPilot's MAVLink GPS (AP_GPS_MAV.cpp) keeps the last velocity
+and the last speed accuracy it received when a message flags them ignored, and EKF3
+resets its velocity to that value (with that accuracy, or 0.3 m/s without one) when a
+position comes back after a timeout (ResetVelocity) — even with EK3_SRC1_VELXY = 0.
+Vertical velocity is never sent: NAVERA measures none (vision has no height, NMEA RMC
+none), and ArduPilot never clears its have_vertical_velocity once one was received.
 
 fix_type without altitude: a vision or celestial position has no altitude
 (IGNORE_ALT is set). A 2D fix is the literal label, but ArduPilot and PX4 only
@@ -76,8 +88,11 @@ def gps_input_fields(out: Output, t_utc: datetime, fix_type_without_alt: int = F
         fix_type = fix_type_without_alt
     if out.has_velocity:
         fields.update(vn=float(out.vel_n_mps), ve=float(out.vel_e_mps))
-    else:
-        ignore |= IGNORE_VEL_HORIZ
+    if math.isfinite(out.vel_sigma_mps):
+        fields["speed_accuracy"] = float(out.vel_sigma_mps)     # unknown: vn = ve = 0 +- this
+        ignore &= ~IGNORE_SPEED_ACCURACY
+    elif not out.has_velocity:
+        ignore |= IGNORE_VEL_HORIZ                              # nothing stated at all
     if math.isfinite(out.sigma_h_m):
         fields["horiz_accuracy"] = float(out.sigma_h_m)
         fields["hdop"] = float(min(out.sigma_h_m / UERE_M, 99.9))

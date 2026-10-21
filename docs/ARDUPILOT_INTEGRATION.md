@@ -84,7 +84,7 @@ Autopilot parameters (names as in ArduPilot 4.5: `GPS_TYPE`, `GPS_TYPE2`, `GPS_D
 | `SERIALn_BAUD` | the NAVERA baud: 921 = 921600, 115 = 115200, 57 = 57600 | | Not verified (SITL used TCP) |
 | `GPS_AUTO_CONFIG` | 0 | no receiver configuration sent to a "GPS" that is NAVERA | SITL |
 | `EK3_SRC1_POSXY` | 3 (GPS, default) | position from NAVERA | SITL (default) |
-| `EK3_SRC1_VELXY` | **0** | vision fixes carry no velocity, and ArduPilot kept fusing the *last* GPS velocity received: after GPS loss that stale velocity caused a glitch and an EKF failsafe (LAND) within 40 s. Cost: see below | SITL |
+| `EK3_SRC1_VELXY` | **0** | NAVERA's vision velocity is a fit to its own positions (correlated with them, late in a turn): not a measurement to fuse. Before F28 vision fixes carried none and ArduPilot fused the *last* GPS velocity received (glitch, EKF failsafe LAND within 40 s). The message velocity is still used by EKF3 to RESET its own after a timeout (below, "Velocity"). Cost: see below | SITL |
 | `EK3_SRC1_VELZ` | **0** | same | SITL |
 | `EK3_SRC1_POSZ` | 1 (barometer, default) — **never 3** | vision fixes carry no altitude (ArduPilot reads it as 0 m) | SITL, EKF height logged (below) |
 | `EK3_OGN_HGT_MASK` | 0 (default) — **never set** | it would correct the EKF origin height from that 0 m | Source |
@@ -113,6 +113,50 @@ position: R = constrain(reported accuracy, `EK3_POSNE_M_NSE`, 100 m)²
 plus its lag) is therefore trusted **as 100 m**, i.e. more than stated. `check_box.py`
 WARNs above 100 m. With forwarding, state at most what you measured, and remember that
 above 100 m the autopilot does not know how bad the position is.
+
+**NAVERA side, by vehicle** (`/etc/navera/navera.env`): Copter keeps `NAVERA_BRIDGE_MAX_S`
+at 10 s (default); a fixed-wing with an airspeed sensor: `NAVERA_BRIDGE_MAX_S = 0` (its EKF
+dead-reckons on airspeed better than NAVERA carries a position: §3 "Velocity with every
+position"). *SITL closed loop only.*
+
+**Velocity in `GPS_INPUT` (F28, SITL 2026-10-21).** What ArduPilot 4.5.7 does with the
+velocity fields (*Source*: `AP_GPS_MAV.cpp`, `AP_NavEKF3_Measurements.cpp`,
+`AP_NavEKF3_PosVelFusion.cpp`, `AP_NavEKF3_Control.cpp`, `AP_NavEKF3_VehicleStatus.cpp`):
+
+| Field / flag | ArduPilot | What NAVERA sends |
+|---|---|---|
+| `IGNORE_VEL_HORIZ` set | the driver **keeps the last velocity it received** (`state.velocity` is only written when the flag is clear) | never set on a position (only on "no fix", fix_type 1, which EKF3 does not read) |
+| `vn`, `ve` | not fused with `EK3_SRC1_VELXY = 0`, but: EKF3 **resets its velocity to them** when a position comes back after its position/velocity timeout (`ResetVelocity`, GPS message < 250 ms old); also used by the DCM fallback, `realignYawGPS`, in-flight detection | GPS: the receiver's; vision: NAVERA's track velocity when trustworthy; else **0** ("unknown") |
+| `speed_accuracy` (`IGNORE_SPEED_ACCURACY` clear) | the variance of that reset (`max(EK3_VELNE_M_NSE, accuracy)`², 5 s peak-hold, capped at 50 m/s); without it **0.3 m/s** — a stale velocity is then trusted. Also sticky in the driver. Above 1.5 m/s EKF3 flags `gps_glitching` (Copter: "GPS Glitch or Compass error", LED, an arming check) | GPS: `gnss_speed_sigma_mps` 0.5; vision: the fit's honest 1σ (incl. its lag and any turn in the window); unknown: `max_speed_mps` (30) |
+| `vd` / `IGNORE_VEL_VERT` | used only with the horizontal velocity; `have_vertical_velocity` is **never cleared** once set | never sent (NAVERA measures no vertical velocity) |
+
+The F28 mechanism, from the dataflash log of Plane outage 60 s (before): during the outage EKF3
+dead-reckoned well on airspeed (error 15 m after 60 s); the first fix after it reset the EKF
+velocity to VN +20.4 m/s with σ 0.5 m/s — the real GPS velocity received 100 s earlier (course
+0°) — while the plane flew south at 23 m/s; the position then diverged by up to 360 m between
+resets, the airspeed sensor was declared failed ("Airspeed sensor 1 failure. Disabling") and
+AHRS fell back to DCM. With the `--vision-velocity` experiment the first fix after the gap had
+no track velocity (fewer than 3 new fixes) and sent 0 ± 30 m/s: the EKF velocity was reset to
+0 and **stayed near 0 for 70 s** (σ 30 m/s): EKF3 fuses airspeed only when its predicted
+airspeed exceeds 1 m/s (`AP_NavEKF3_AirDataFusion.cpp`), and with σ 30 m/s its position
+variance passed `EK3_GLITCH_RAD` within a second, so it reset its position onto every fix,
+which zeroes the position–velocity covariance: the velocity was never learned. The position
+kept up (error ≤ 30 m), but L1 navigates on the velocity: the plane held its heading and flew
+3.5 km past waypoint 4 before the velocity recovered. Wind and the returning fixes' innovation
+gating played no part (simulated wind 0; the fixes were not rejected — they reset the EKF).
+
+So NAVERA (`navera_output/policy.py`, `mavlink_out.py`):
+
+1. sends a horizontal velocity and its `speed_accuracy` with **every** position — the
+   receiver's, its own track velocity (`TrackVelocity.autopilot_velocity`: ≥ 5 fixes over ≥ 4 s
+   in a 10 s window on a straight line within their accuracy, σ = fit error + 0.5 m/s² × lag +
+   any turn seen between the window's halves), or "unknown" (0 ± top speed) — never the ignore
+   flag; never a vertical one;
+2. after **5 s without sending a position** (`reacquire_after_s`: EKF3 times out at 7–10 s),
+   holds the new vision positions back until their own velocity is known to **8 m/s**
+   (`reacquire_vel_sigma_mps`; ~7 good fixes): the first fix the autopilot gets then resets
+   its velocity to a measured one, not to 0 or a stale one;
+3. carries a bridged position along that same velocity (its σ covers a turn).
 
 **GPS 1 or GPS 2.** NAVERA sends `GPS_INPUT` with `gps_id = 0`. In ArduPilot 4.5.7 every GPS
 instance of type 14 receives every `GPS_INPUT`, whatever its `gps_id` (*Source*), so
@@ -230,7 +274,9 @@ bridge`, `mavlink_out`, the `vehicle_output_node` send logic) on the autopilot's
   the GPS is pulled 2 m/s north while still received, jammed 120 s later); *poor*.
 
 Missions: Copter 80 m, 10 m/s, legs 300 / 400 / 400 / 400 m then RTL and land; Plane 100 m,
-~22 m/s, legs of 0.6–1.2 km then RTL (loiter over home). One run per row (seed 1; a second seed
+~22 m/s, legs of 0.6–1.2 km then RTL (loiter over home). The table below is the output
+**before the F28 fix** (73f622f: vision fixes without velocity); the fix and its runs follow
+("Velocity with every position"). One run per row (seed 1; a second seed
 of Copter nominal: EKF error median 12.5 m, landing 21 m from home — read differences of a few
 metres as noise). "EKF error" = the autopilot's position minus the truth after the loss;
 cross-track = the truth's distance to the leg, corners excluded.
@@ -267,7 +313,7 @@ Findings (each from the runs above; SITL, simulated sensors):
    EKF error fell from 13.3 / 80 m (median / max) to 9.6 / 26 m, the copter flew 9.2 instead of
    7.6 m/s. Plane: no resets (airspeed fusion keeps its variance small); 100 brought nothing there
    and was worse after the 60 s outage (EKF error max 405 m, cross-track 1.1 km): keep the default
-   on Plane until that outage case is understood (finding 4). Cost: a real GPS glitch below 100 m
+   on Plane (the outage case itself was F28, fixed below; 100 not re-tested on Plane since). Cost: a real GPS glitch below 100 m
    is no longer reset-to, only gated (`EK3_POS_I_GATE`).
 2. **Copter cannot fly a GPS-denied gap longer than ~25 s.** NAVERA bridges 10 s; 15 s later EKF3
    stops aiding (`tiltDriftTimeMax_ms`, fixed in the code), the EKF failsafe trips (`FS_EKF_THRESH`
@@ -292,7 +338,7 @@ Findings (each from the runs above; SITL, simulated sensors):
    fallback disabled (`AHRS_OPTIONS 1`) and the airspeed never disabled (`ARSPD_OPTIONS 0`) it was
    worse: 5 km off track: **keep both defaults**. `EK3_SRC1_VELXY = 0` does not protect against this
    reset. The same mechanism explains the poor-terrain plane run (fixes 5–27 % of the time).
-   NAVERA-side remedy tested below (*vision-velocity experiment*).
+   **Fixed on NAVERA's side (F28)**: "Velocity with every position" below.
 5. **Slow spoof:** NAVERA refused the drifting GPS after 22–24 s (Copter, 44–47 m offset) and 38 s
    (Plane, 76 m) with its trend test; the autopilot had followed it that far (EKF error max 50–88 m),
    then came back onto vision without any failsafe and completed the mission.
@@ -311,27 +357,85 @@ Findings (each from the runs above; SITL, simulated sensors):
    R (≤ 100 m cap, §3). `EK3_POSNE_M_NSE` only floors R (default 0.5 m): leave it. Do not send a
    smaller accuracy than measured: the burst shows what an over-trusted wrong fix does.
 
-#### Vision-velocity experiment (NOT what NAVERA sends today)
+#### Velocity with every position (F28 fix, SITL 2026-10-21)
 
-`--vision-velocity`: the vision `GPS_INPUT` also carries NAVERA's track velocity
-(`TrackVelocity`, zero when unknown) with its accuracy, so that EKF3's velocity reset (finding 4)
-uses it instead of the stale GPS velocity. Not fused otherwise (`EK3_SRC1_VELXY = 0`).
+What changed (§3, "Velocity in `GPS_INPUT`"): every vision position carries NAVERA's track
+velocity with an honest `speed_accuracy` (or "unknown", 0 ± 30 m/s), never the ignore flag;
+after 5 s without a position sent, vision waits until the new fixes' velocity is known to
+8 m/s; a bridged position is carried along that velocity. Same script, same parameters, same
+seeds; Copter with `EK3_GLITCH_RAD 100`. Before = 73f622f, after = this change. Runs:
+`~/.navera_sim/sitl_vel_2026-10-21/{before,after}` on the Jetson.
 
-| Run | EKF error med / p90 / max (m) | Cross-track med / p90 / max (m) | End |
+| Run | EKF error med / p90 / max (m): before → after | Cross-track med / p90 / max (m): before → after | End: before → after |
 |---|---|---|---|
-| Plane outage 60 s: as sent today → with track velocity | 19 / 144 / 391 → **13 / 89 / 200** | 4 / 39 / 55 → 10 / **3198 / 3526** | RTL 34 m → 27 m |
-| Plane poor terrain | 230 / 761 / 799 → 152 / 294 / 861 | 366 / 679 / 699 → 25 / 173 / 327 | RTL 97 m → 185 m |
-| Copter nominal (glitch 100) | 9.6 / 18.7 / 26 → 9.7 / 19.0 / 26 | 6.0 / 12.4 / 16 → 7.1 / 12.8 / 17 | landed 9 m → 9 m |
-| Copter outage 30 s (glitch 100) | 14 / 60 / 77 → 15 / 60 / 76 | — | LAND either way |
+| **Plane outage 60 s** | 19 / 144 / **391** → **7.2 / 25 / 34** | 4.0 / 39 / 55 → 5.9 / 14 / 35 | RTL 34 → 26 m; DCM fallbacks 7 → 1 (back to EKF3 at once) |
+| Plane outage 60 s, seed 2 | 10.3 / 16 / 90 → 10.6 / 17 / 25 | 6.6 / 14 / 21 → 6.7 / 12 / 23 | RTL 29 → 33 m |
+| **Plane poor terrain** | 230 / 761 / **799** → 80 / 244 / 251 | 366 / 679 / 699 → 15 / 80 / 89 | RTL 97 → 263 m |
+| Plane poor terrain, seed 2 | 119 / 359 / 664 → **62 / 78 / 85** | 589 / 1512 / **1789** → 6.8 / 59 / 60 | RTL 513 → 98 m; "stopped aiding" → none |
+| Plane nominal (seed 1 / seed 2) | 6.6 / 16 / 24 → 6.5 / 17 / 26; 9.6 / 16 / 20 → 9.9 / 16 / 20 | 5.5 / 17 / 24 → 5.6 / 17 / 25; 6.9 / 15 / 19 → 7.0 / 16 / 19 | RTL 27 → 29 m; 29 → 29 m |
+| Plane outage 10 s | 5.9 / 16 / 23 → 7.1 / 17 / 24 | 3.5 / 17 / 23 → 3.6 / 17 / 24 | RTL 27 → 26 m |
+| Plane outage 30 s | 6.1 / 16 / 97 → 7.5 / 21 / 26 | 3.3 / 18 / 26 → 5.4 / 19 / 27 | RTL 26 → 26 m |
+| Plane burst 150 m | 8.3 / 28 / 90 → 8.7 / 27 / 87 | 6.3 / 16 / 19 → 6.8 / 15 / 18 | RTL 28 → 29 m |
+| Plane spoof | 9.1 / 78 / 88 → 9.2 / 79 / 89 | 2.6 / 8.2 / 10 → 3.4 / 8.1 / 9.6 | RTL 28 → 29 m |
+| Plane outage 60 s, wind 6 m/s from NE | 18 / 95 / 247 → 18 / 75 / 114 | 77 / 903 / **1054** → 13 / 84 / 99 | RTL 33 → 14 m; airspeed sensor declared failed → never |
+| Plane poor terrain, wind 6 m/s | 118 / 157 / 329 → 124 / 252 / 280 | 91 / 149 / 157 → 35 / 61 / 81 | RTL 115 → 249 m; airspeed sensor failed → never |
+| Copter nominal (seed 1 / seed 2) | 9.6 / 19 / 26 → 9.3 / 19 / 27; 12.5 / 23 / 58 → 12.5 / 24 / 53 | 6.0 / 12 / 16 → 5.8 / 12 / 15; 6.6 / 11 / 15 → 7.0 / 11 / 14 | landed 9 → 9 m; 21 → 21 m |
+| Copter outage 10 s (seed 1 / seed 2) | 10.2 / 20 / 44 → 10.0 / 20 / 36; 13.0 / 25 / 57 → 12.6 / 24 / 54 | 9.4 / 18 / 44 → 9.0 / 17 / 36; 4.8 / 11 / 14 → 5.6 / 11 / 15 | landed 8 → 9 m; 21 → 21 m |
+| Copter outage 30 s | 14 / 60 / 77 → 17 / 55 / 56 | — | LAND (EKF failsafe) either way, 377 → 393 m from home |
+| Copter outage 60 s | 23 / 65 / 66 (§3) → 25 / 53 / 54 | — | LAND either way, 405 → 393 m |
+| Copter burst 150 m | 11.2 / 27 / 143 → 10.7 / 28 / 139 | 6.1 / 17 / 24 → 4.9 / 15 / 24 | landed 9 → 9 m |
+| Copter spoof | 16.2 / 34 / 50 → 16.8 / 36 / 52 | 16.8 / 18 / 18 → 17.5 / 18 / 18 | landed 8 → 7 m |
+| Copter poor terrain | 31.8 / 70 / 100 → 15.6 / 20 / 21 | — | LAND either way, 344 → 333 m |
 
-It removed the 180° velocity flip and halved the plane's EKF error after the outage, but in the
-same run the plane flew 3.5 km past a waypoint while its EKF followed it (its position kept
-up through resets every ~5 s, 123 resets of median 34 m: the velocity / wind states stayed
-inconsistent with the positions, and L1 navigates on velocity). **Not a fix**: the Plane case of
-a vision gap > 30 s, and of sparse vision, stays open (an ArduPilot-side behaviour — velocity
-reset to a `GPS_INPUT` velocity — that NAVERA can only influence by what it sends). Until it is
-understood, a plane mission should not rely on NAVERA over terrain where vision may be absent for
-more than ~30 s. No change to `mavlink_out` was made.
+(Wind rows: `--set SIM_WIND_SPD=6,SIM_WIND_DIR=45`; every other run has the simulator's
+default, no wind.)
+
+The velocity sent with the vision positions, against the simulator's truth: error median
+3–4 m/s (plane, copter), 7–13 m/s on poor terrain; stated σ median 6–9 m/s; the 2D error was
+within 2.45 σ (95 % if honest) for 93–98 % of the plane's messages (80 % in one poor-terrain run
+without bridge, whose fixes were too sparse for the turn check) and 99–100 % of the copter's.
+Before the turn term (`TrackVelocity.autopilot_velocity`), only 63 % on the plane: in the 90°
+corners and the RTL loiter the line fit lags 20–30 m/s.
+
+Findings:
+
+- **The 180° flip and the 3.5 km overshoot are gone.** In Plane outage 60 s the first fix after
+  the gap were held back (6–15 fixes, 7–16 s after the outage) until the new fixes' velocity was known; EKF3's
+  reset then took that velocity and the plane flew on (EKF error max 391 → 34 m). The poor-terrain
+  plane no longer loses aiding or its airspeed sensor; its remaining error is dead reckoning
+  through refusal runs of up to 2 min (and, with the bridge, positions carried 10 s along a
+  velocity that turned: below).
+- **Wind:** with 6 m/s of wind the fix holds for the 60 s outage (cross-track max 1054 → 99 m,
+  no airspeed-sensor failure). On poor terrain with wind the cross-track and the maximum error
+  improved but the median / p90 EKF error and the RTL end point got worse (p90 157 → 252 m, RTL
+  115 → 249 m): the plane now dead-reckons through the hold-back after every long refusal run
+  instead of being reset onto a single fix with a stale velocity. One run each; holding back
+  less (`reacquire_vel_sigma_mps` 12 instead of 8) changed nothing (poor: 251 → 230 m max;
+  poor with wind: 280 → 294 m). Sparse vision over a plane mission stays a weak case.
+- **Copter: no regression** (every row within run-to-run noise or better; poor terrain EKF
+  error 100 → 21 m max before the same LAND). New: EKF3 raises its `gps_glitching` status as
+  soon as vision takes over (a stated speed accuracy > 1.5 m/s): Copter prints "GPS Glitch or
+  Compass error" once and its LED shows a glitch; Copter's arming check also refuses it. It is
+  a status, not a failsafe (`AP_NavEKF3_VehicleStatus.cpp`, `ArduCopter/events.cpp`), and it is
+  true: the autopilot is on a ±30 m position with a ±6 m/s velocity.
+- **Plane: `NAVERA_BRIDGE_MAX_S = 0` is better** with an airspeed sensor (EKF3 dead-reckons on
+  airspeed and wind better than NAVERA's straight-line carry): poor terrain EKF error max 251 →
+  55 m (seed 1), 85 → 72 m (seed 2), 280 → 228 m (wind); outage 60 s 34 → 18 m, 25 → 27 m
+  (seed 2), 114 → 122 m (wind); nominal, outage 30 s, burst, spoof unchanged; outage 10 s one
+  0.2 s sample at 131 m at the reacquisition reset (otherwise 6 / 14 m). Copter keeps the 10 s
+  bridge (without it EKF3 times out and the copter LANDs ~8 s into a gap, §3 finding 2).
+- **F7 unchanged:** `sitl_f7_height.py` with the new wire, recommended parameters, EKF − baro
+  max over the vision phases: Copter 0.1 m (before 0.0), Plane 0.3–0.4 m (0.5–0.7), Rover 0.4 m
+  (0.3): PASS on all three. The `POSZ = 3` control was no longer sensitive with the stated vision
+  velocity accuracy: EKF3 stops using the GPS height by itself when the speed accuracy exceeds
+  its 1.5 m/s glitch threshold (`gpsAccuracyGoodForAltitude`) — a second line of defence, not
+  one to rely on. The control now sends the pre-F28 velocity flags and is sensitive again
+  (EKF − baro 431–660 m Copter, 289–625 m Plane, 300 m Rover: PASS; one Plane control start
+  timed out waiting for the EKF origin and passed on the rerun).
+
+The superseded `--vision-velocity` experiment (zero ± 30 m/s sent when the track had no velocity,
+no hold-back) is what showed the second mechanism: EKF velocity reset to 0 ± 30 m/s, airspeed not
+fused below a 1 m/s predicted airspeed, the plane 3.5 km past its waypoint (§3, "Velocity").
 
 #### With the real day pipeline in the loop
 
@@ -353,6 +457,8 @@ against, so its accuracy is optimistic; the error-model runs above use measured 
 # measurements (Jetson: ~5-8 min per run, 1x real time)
 nice -n 19 python3 navera_tools/tests/sitl_closed_loop.py --vehicle copter \
     --scenarios nominal,outage10,outage30,outage60,burst,spoof,poor --set EK3_GLITCH_RAD=100 --instance 4
+nice -n 19 python3 navera_tools/tests/sitl_closed_loop.py --vehicle plane --bridge-max-s 0 \
+    --scenarios nominal,outage10,outage30,outage60,burst,spoof,poor --instance 5
 python3 navera_tools/tests/sitl_closed_loop.py --summarise ~/.navera_sim/sitl_closed_loop
 # watch one mission on a desktop (MAVProxy map + console + live error plot)
 bash navera_tools/tests/sitl_pc_setup.sh          # once

@@ -39,7 +39,8 @@ def _env_overrides():
         if env.get(key):
             out[param] = _bool(key, env[key])
     for key, param in (('NAVERA_DEGRADED_SIGMA_M', 'degraded_sigma_m'),
-                       ('NAVERA_MAX_MEASUREMENT_AGE_S', 'max_measurement_age_s')):
+                       ('NAVERA_MAX_MEASUREMENT_AGE_S', 'max_measurement_age_s'),
+                       ('NAVERA_BRIDGE_MAX_S', 'bridge_max_s')):
         if env.get(key):
             out[param] = float(env[key])
     if (env.get('NAVERA_MAVLINK_SYSID') or '').strip().isdigit():
