@@ -174,7 +174,14 @@ class LearnedMatcher(LocalMatcher):
         x = t.from_numpy(cv2.cvtColor(img, cv2.COLOR_BGR2RGB)).permute(2, 0, 1).float().div(255)[None].to(self.dev)
         with self._gpu, t.inference_mode():
             with t.autocast("cuda", dtype=t.float16, enabled=self.half):
-                f = self.disk(x, n, pad_if_not_divisible=True)[0]
+                try:
+                    f = self.disk(x, n, pad_if_not_divisible=True)[0]
+                except IndexError as e:
+                    # kornia's DISK fails (kthvalue of nothing) when no pixel passes its detection
+                    # threshold: a map chunk mostly outside the area's tiles (its edge), a dark frame
+                    if "kthvalue" not in str(e):
+                        raise
+                    return t.zeros((0, 2), device=self.dev), t.zeros((0, 128), device=self.dev)
         return f.keypoints.float(), f.descriptors.float()
 
     def _chunk(self, gx: int, gy: int, level: int = 0):
@@ -246,6 +253,32 @@ class LearnedMatcher(LocalMatcher):
                 self._chunk(gx, gy)
                 n += 1
         return n
+
+    @classmethod
+    def chunks_for_tiles(cls, tiles, level: int = 0) -> list:
+        """Grid chunks (gx, gy) of map level `level` that hold any pixel of these map tiles (x, y):
+        what warm_tiles computes, without a GPU (sizes and times of a mission bundle)."""
+        step, f = cls.CHUNK - cls.OVERLAP, 2 ** int(level)
+        cells = set()
+        for x, y in tiles:
+            # level pixels of the tile: [x*256/f, (x+1)*256/f); a chunk starting at g*step covers CHUNK px
+            lo_x, hi_x = (x * 256) // f, ((x + 1) * 256 - 1) // f
+            lo_y, hi_y = (y * 256) // f, ((y + 1) * 256 - 1) // f
+            for gy in range(max(0, (lo_y - cls.CHUNK) // step + 1), hi_y // step + 1):
+                for gx in range(max(0, (lo_x - cls.CHUNK) // step + 1), hi_x // step + 1):
+                    cells.add((gx, gy))
+        return sorted(cells)
+
+    def warm_tiles(self, tiles, level: int = 0, progress=None) -> int:
+        """Compute (and save next to the tiles) the features of every chunk of map level `level`
+        holding these map tiles (x, y): a mission's corridor, before departure, so no chunk is
+        computed in flight. progress(done, total) is called as it goes. Returns the chunk count."""
+        cells = self.chunks_for_tiles(tiles, level)
+        for i, (gx, gy) in enumerate(cells):
+            self._chunk(gx, gy, int(level))
+            if progress is not None and (i % 25 == 0 or i == len(cells) - 1):
+                progress(i + 1, len(cells))
+        return len(cells)
 
     # ── localisation ─────────────────────────────────────────────────────
     def locate(self, frame, prior: Tuple[float, float], search_m: float, frame_m_per_px: float,

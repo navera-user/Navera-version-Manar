@@ -14,6 +14,7 @@ nodes: run them on a test machine or a bench box, **never on a box installed on 
 | `calibrate_camera.py` | lens calibration (once per camera and resolution; stop the pipeline first) — below |
 | `record_session.sh <dir> [day\|night\|cn]` | record a test session (all sensors, estimates, decision, camera) into a ROS 2 bag, on the data disk |
 | `evaluate_session.py <bag dir> [--csv file]` | measure each source against GPS in a recorded session (median / p90 / within 50-100-300 m) and whether the stated accuracy is honest |
+| `mission_bundle.py plan\|build\|check\|env` | **offline mission bundle**: the route's corridor map, day-vision area and features, IERS table and star catalogue in one directory, with a sha256 manifest; `check` proves it works with the network off — below |
 
 `check_boot.py` (the reboot check with the ROS node of every unit; `--user --prefix
 navera-stage-` for the staged test, `deploy/stage_check.sh`) and `trace_matrix.py` (regenerates
@@ -74,6 +75,86 @@ The same recipe as docs/FIELD_TEST_PROCEDURE.md §7:
    pipeline.
 
 Only numbers produced this way, on representative data, go into docs/VALIDATION_STATUS.md.
+
+## Mission bundle (offline flight)
+
+NAVERA flies with no network. Before departure, the route's **mission bundle** is built
+(internet needed only then) and copied to the vehicle:
+
+    source ~/navera_env.sh
+    # 1. the estimate, nothing downloaded: tiles, MB, minutes, warnings (licence, height)
+    python3 navera_tools/mission_bundle.py plan --start 35.8256,10.6385 --dest 35.6781,10.0963 \
+        --corridor-m 2000 --max-height-m 600 --source onboard esri
+    # 2. build (asks for confirmation, or --yes); GPU steps: DINOv2 cache, learned features
+    python3 navera_tools/mission_bundle.py build /data/bundles/sousse_kairouan <same options>
+    # 3. prove it offline (re-runs itself in a network namespace: `unshare -rn`)
+    python3 navera_tools/mission_bundle.py check /data/bundles/sousse_kairouan [--deep] [--replay REC_DIR]
+    # 4. point NAVERA at it (where the bundle is now)
+    python3 navera_tools/mission_bundle.py env /data/bundles/sousse_kairouan
+
+Inputs: start + destination, `--waypoint` (repeatable) or `--route-file` (GPX, KML, JSON,
+Mission Planner `.waypoints`, QGroundControl `.plan`); `--corridor-m` (full width the vehicle
+may stray in); `--min/max-height-m`, `--hfov`, `--frame-width` (the day camera). The map is
+zoom 17 (what day and night match); the **maximum height** widens the map by the half
+diagonal of the highest frame's footprint (the matcher reads the map under the whole frame)
+and chooses the learned matcher's coarse map levels (`learned_matcher.map_level`: a 1500 m
+frame of the 1200 px / 100 deg camera is matched on level 2, 4x coarser); `plan` warns when
+the height is beyond what zoom 17 serves with that camera.
+
+Tile sources (`--source`, in priority order; each tile is taken from the first that has it):
+`onboard` (the onboard MBTiles, `--mbtiles` / `NAVERA_MBTILES`), `esri` (Esri World Imagery,
+8 tiles/s, polite to HTTP 429 — **offline storage needs an Esri licence: evaluation only**),
+`xyz:URL` (`--licence` required), `mbtiles:PATH`, and `fn:module:function[:source]`: a source
+catalogue function `fetch(bbox=(west, south, east, north), source=name, zooms=[17]) ->
+MBTiles path`, called per 16x16-tile block of the corridor (its MBTiles metadata gives the
+licence, attribution and imagery date). Only corridor tiles enter the bundle.
+
+Layout (relative paths; `manifest.json` is written last and lists every other file's size and
+sha256; a bundle without it is incomplete):
+
+| Path | |
+|---|---|
+| `map/corridor.mbtiles` | corridor tiles, zoom 17; metadata `source`, `licence`, `attribution`, `imagery_date`, `downloaded`, `bounds`, `minzoom/maxzoom`, `navera_corridor` (route, half-width) → `NAVERA_MBTILES` |
+| `day/` | `prepare_area.py` area from that map: `images/`, `dataset.csv`, `area.json` (terrain), `descriptors_cache.npz` (DINOv2) → `DAY_DATASET_DIR` |
+| `day/learned_features/` | DISK features of every corridor chunk at every map level the heights need (none computed in flight) |
+| `celestial/finals2000A.all` | IERS-A table (`fetch_iers.py`; `--fetch-iers` refreshes it) → `NAVERA_IERS_FILE` |
+| `celestial/bsc5_mag4.5.csv` | star catalogue → `NAVERA_STAR_CATALOGUE` (cn_subscriber `allsky_catalogue`) |
+| `models/hub/` | `--include-models`: DINOv2, DISK, LightGlue weights → `TORCH_HOME` (else the manifest records the sha256 of the ones required) |
+| `extra/` | `--extra NAME=PATH` (lens / IMU calibrations) |
+| `bundle.env`, `manifest.json` | environment for where it was built; versions, valid-until (IERS predictions), the estimate, build times |
+
+`check` (exit 0 = PASS): every file against its sha256; every corridor tile in the MBTiles and
+the area; tile metadata (source, licence, date); day matching **from the bundle's images alone**
+(synthetic nadir frames rendered from its tiles along the route, 150 m prior error, 4 headings);
+`--replay REC_DIR` locates recorded camera frames with truth (`screen_flight.py --record`);
+every learned chunk present (`--deep`: the models load offline and the learned matcher
+locates the frames computing no chunk); the IERS table gives UT1-UTC for the mission date
+(`--date`) from the bundle only; the catalogue loads. It runs in its own network namespace
+(`unshare -rn`, no root) when the kernel allows it, and refuses every socket call in-process
+as well: any attempt is reported as a failure.
+
+Measured on this Jetson (Orin Nano, bundles on the ADATA USB disk, 2026-10-21):
+
+| Corridor | Tiles | Download | Bundle | Build | Estimate shown before |
+|---|---|---|---|---|---|
+| Sousse → Kairouan, 51.7 km, ±1 km, max 600 m (map ±1.9 km) | 3701 (2290 onboard + 1411 Esri) | 1411 tiles, 24 MB, 186 s at the 8 tiles/s limit | 454 MB (map 64, images 61, DINOv2 5.5, learned level 0: 871 chunks 320) | map-only 298 s (download included); full build from the downloaded map 264 s | 1411 tiles / 24.4 MB / 2.9 min download; 345 MB |
+| Sousse 22 km, ±1 km, max 1500 m (map ±3.2 km), `--include-models` | 3056 onboard | none | 449 MB (map 40, images 38, DINOv2 4.5, learned levels 0-2: 934 chunks 225, models 138) | 302 s (day area 120 s, learned 156 s) | 419 MB / 358 s |
+
+`check --deep --replay` of the Sousse bundle, in a network namespace (only `lo`, outbound
+connect refused, no socket call attempted): every one of the 4203 files matches its sha256; the
+synthetic frames are located by SIFT and by the learned matcher; **30 recorded frames of the
+real Insta360 (bench screen flight `rec_clear_v20`, 1360-1500 m) are located from the bundle
+alone: 30/30, median 2.2 m, max 5.1 m**; UT1-UTC comes from the bundle's IERS-A table (valid to
+2027-10-04); 518 catalogue stars load. Those frames film a screen showing the same Esri
+imagery as the map: an upper bound, not a field figure. The last 9 km of that corridor are at
+sea (terrain profile): nothing to match there.
+
+Web view: `simulation_web.mission_prep.bundle_command(action, route, out_dir, ...)` builds the
+validated command line (`plan --json`, `build --progress-json`: one `{"stage", "done",
+"total"}` JSON object per line — stages `estimate`, `copy`, `download`, `day_tiles`,
+`day_descriptors`, `learned`, `manifest`, `done` — then a summary line; `check --json`:
+the report, `report["ok"]`); `bundle_plan(route)` returns the estimate. Python API:
+`MissionSpec`, `make_sources`, `plan_bundle`, `build_bundle`, `check_bundle`.
 
 ## Mission simulator
 

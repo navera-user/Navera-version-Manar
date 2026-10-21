@@ -144,3 +144,17 @@ def test_point_along():
     assert p == pytest.approx(TUNISIA) and nxt == len(r) - 1
     p, nxt = point_along(r, 123_456.0)
     assert _haversine_m(PARIS, p) == pytest.approx(123_456.0, rel=1e-4) and 0 < nxt < len(r)
+
+
+def test_prepare_without_descriptors_needs_no_model(tmp_path, mbtiles):
+    """descriptors=False (mission bundle --no-dinov2): tiles, csv and area.json, no DINOv2 cache."""
+    import json
+    import os
+    from day_pkg.prepare_area import prepare
+    path, needed = mbtiles
+    out = tmp_path / "area"
+    info = prepare(path, str(out), ROUTE, 1000.0, 17, descriptors=False)
+    assert info["descriptors"] is False and info["prepared"] == len(needed) - 1
+    assert len(os.listdir(out / "images")) == len(needed) - 1
+    assert not (out / "descriptors_cache.npz").exists()
+    assert json.load(open(out / "area.json"))["missing"] == [list(needed[0])]

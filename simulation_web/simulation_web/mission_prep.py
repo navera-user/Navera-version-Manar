@@ -21,6 +21,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import threading
 import time
 from collections import deque
@@ -399,3 +400,53 @@ class AreaJobs:
                 json.dump(out, f)
             os.replace(tmp, self._missions_file())
         return out
+
+
+# ── offline mission bundle (navera_tools/mission_bundle.py) ─────────────
+# The page calls the bundle tool as a subprocess, like prepare_area.py: `plan` (--json: the
+# estimate, BEFORE any download), `build` (--progress-json: one {"stage", "done", "total"} JSON
+# object per line, then a summary line) and `check` (--json: the offline verdict, report["ok"]).
+BUNDLE_TOOL = os.environ.get("NAVERA_BUNDLE_TOOL") or os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__)))), "navera_tools", "mission_bundle.py")
+BUNDLE_SOURCES = re.compile(r"^(onboard|esri|xyz:https?://\S+|mbtiles:/\S+|fn:[\w.]+:\w+(:[\w.-]+)?)$")
+
+
+def bundle_command(action: str, route=None, out_dir: str = "", corridor_m: float = 2000.0,
+                   max_height_m: float = 600.0, min_height_m: float = 100.0, sources=("onboard",),
+                   python: str = sys.executable) -> List[str]:
+    """The mission_bundle.py command line for plan / build / check (validated: the page's input
+    never reaches a shell, and only known source forms are passed)."""
+    if action not in ("plan", "build", "check"):
+        raise ValueError("action: plan, build or check")
+    cmd = [python, BUNDLE_TOOL, action]
+    if action == "check":
+        if not out_dir:
+            raise ValueError("check: the bundle directory is required")
+        return cmd + [out_dir, "--json"]
+    pts = [[float(a), float(b)] for a, b in (route or [])]
+    if not (1 <= len(pts) <= MAX_ROUTE_POINTS) or not all(_valid(a, b) for a, b in pts):
+        raise ValueError(f"route: 1 to {MAX_ROUTE_POINTS} valid [lat, lon] points expected")
+    for s in sources:
+        if not BUNDLE_SOURCES.match(str(s)):
+            raise ValueError(f"tile source {s!r} not allowed")
+    if action == "build":
+        if not out_dir:
+            raise ValueError("build: the output directory is required")
+        cmd += [out_dir, "--yes", "--progress-json"]
+    else:
+        cmd += ["--json"]
+    cmd += ["--start", f"{pts[0][0]},{pts[0][1]}"]
+    cmd += [x for p in pts[1:-1] for x in ("--waypoint", f"{p[0]},{p[1]}")]
+    if len(pts) > 1:
+        cmd += ["--dest", f"{pts[-1][0]},{pts[-1][1]}"]
+    cmd += ["--corridor-m", _num(50, 50000)(corridor_m), "--min-height-m", _num(5, 10000)(min_height_m),
+            "--max-height-m", _num(5, 10000)(max_height_m), "--source"] + [str(s) for s in sources]
+    return cmd
+
+
+def bundle_plan(route, timeout_s: float = 120.0, **kw) -> dict:
+    """The bundle estimate of a route (tiles, MB, minutes, warnings), nothing downloaded."""
+    r = subprocess.run(bundle_command("plan", route, **kw), capture_output=True, text=True, timeout=timeout_s)
+    if r.returncode != 0:
+        raise RuntimeError((r.stderr or r.stdout).strip()[-300:])
+    return json.loads(r.stdout)
