@@ -1,0 +1,24 @@
+# navera-humble: ROS 2 Humble + NAVERA's Python dependencies (x86_64, CPU torch) to run
+# NAVERA's real nodes (live_camera -> day_subscriber -> navera_estimator) on a PC next to
+# the Isaac Sim flight (navera_tools/isaac/). SIMULATION / development use only.
+#
+#   docker build -t navera-humble -f navera_tools/isaac/Dockerfile.humble navera_tools/isaac
+#
+# The NAVERA source is NOT baked in: run_isaac_flight.sh mounts it and builds it with colcon.
+FROM ros:humble-ros-base
+
+ENV DEBIAN_FRONTEND=noninteractive PIP_NO_CACHE_DIR=1
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        python3-pip python3-colcon-common-extensions python3-opencv python3-yaml \
+        ros-humble-cv-bridge ros-humble-sensor-msgs ros-humble-geometry-msgs \
+        ros-humble-launch-ros ros-humble-rosidl-default-generators \
+        ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+# CUDA torch (PyPI's Linux torch 2.3.1 = CUDA 12.1 build; run with --gpus all): NAVERA's default day matcher ("auto") is DISK + LightGlue on
+# the GPU (kornia), sharing the 8 GB with Isaac Sim; TORCH_INDEX=https://download.pytorch.org/whl/cpu builds a CPU-only image
+# (then only matcher:=local, SIFT, can run)
+ARG TORCH_INDEX=https://pypi.org/simple
+RUN pip3 install --default-timeout=600 --retries 10 --index-url $TORCH_INDEX torch==2.3.1 torchvision==0.18.1 \
+    && pip3 install --default-timeout=600 --retries 10 "numpy<2" pandas scikit-learn scipy pyserial pynmea2 pymavlink pyusb kornia==0.8.2
+ENV TORCH_HOME=/torch_home
+WORKDIR /ws
