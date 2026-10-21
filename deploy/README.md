@@ -105,6 +105,14 @@ position are kept on disk (§9).
 > /home/navera/isaac_ros_common/deploy/check_boot.sh   # every enabled unit active? restarts? pre-flight check
 > sudo pkill -f gps_node; sleep 15; deploy/check_boot.sh   # a killed node comes back
 > ```
+>
+> **Without a box and without root** (any machine with ROS 2 Humble): `deploy/stage_check.sh`
+> stages the install with `deploy/install.sh --root DIR`, checks every unit
+> (`deploy/verify_units.py`: `systemd-analyze verify`, ExecStart, launch files, settings,
+> sudoers), runs the staged units as user units on their own ROS domain, kills nodes and
+> checks they come back (`navera_tools/check_boot.py --user --prefix navera-stage-`). It does
+> not replace the reboot test above. Results and the exact commands for a production unit:
+> [docs/certification/DEPLOYMENT_VALIDATION.md](../docs/certification/DEPLOYMENT_VALIDATION.md).
 
 ## 3. Installation on a new Jetson
 

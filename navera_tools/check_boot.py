@@ -21,6 +21,12 @@ contains "navera" (systemctl list-unit-files). For each unit:
 The 2026-09-28 restart mechanism (Restart=always + on_exit=Shutdown) needs a reboot test:
     sudo reboot   ...then, once logged in:   navera_tools/check_boot.py
 deploy/check_boot.sh is the older unit-only check (+ check_box.py); this one adds the node check.
+
+Staged mode (no root, no deployed box; deploy/stage_check.sh): the same checks on the user units of
+a staged copy of the stack, which carry a prefix and run on their own ROS domain:
+    navera_tools/check_boot.py --user --prefix navera-stage- --env-file <stage>/etc/navera/navera.env
+Only the installed units with that prefix are checked (a unit not staged is not reported); each is
+judged as the product unit of the same name (navera-stage-estimator = navera-estimator).
 """
 import argparse
 import glob
@@ -51,21 +57,35 @@ PROPS = ('LoadState', 'UnitFileState', 'ActiveState', 'SubState', 'Result', 'Typ
          'NRestarts', 'ActiveEnterTimestampMonotonic')
 
 
+SYSTEMCTL = ['systemctl']          # ['systemctl', '--user'] in staged mode (--user)
+PREFIX = 'navera-'                 # unit name prefix; staged mode: e.g. navera-stage-
+
+
+def product_name(unit):
+    """The product unit a (possibly staged) unit stands for: navera-stage-gps.service -> navera-gps.service."""
+    return 'navera-' + unit[len(PREFIX):] if unit.startswith(PREFIX) else unit
+
+
 def units_to_check():
-    """Return the sorted unit names from deploy/systemd and the installed unit files."""
-    names = {os.path.basename(p) for p in glob.glob(os.path.join(REPO, 'deploy', 'systemd', '*.service'))}
-    out = subprocess.run(['systemctl', 'list-unit-files', '--no-legend', '--no-pager'],
+    """Return the sorted unit names from deploy/systemd and the installed unit files
+    (staged mode: only the installed units with the prefix)."""
+    staged = SYSTEMCTL != ['systemctl'] or PREFIX != 'navera-'
+    names = set() if staged else {os.path.basename(p) for p in
+                                  glob.glob(os.path.join(REPO, 'deploy', 'systemd', '*.service'))}
+    out = subprocess.run(SYSTEMCTL + ['list-unit-files', '--no-legend', '--no-pager'],
                          capture_output=True, text=True).stdout
     for line in out.splitlines():
         name = line.split()[0] if line.split() else ''
-        if 'navera' in name.lower() and name.endswith(('.service', '.timer')):
+        if not name.endswith(('.service', '.timer')):
+            continue
+        if (name.startswith(PREFIX) if staged else 'navera' in name.lower()):
             names.add(name)
     return sorted(names)
 
 
 def unit_props(unit):
     """Return the systemd properties of a unit (systemctl show, no root needed)."""
-    out = subprocess.run(['systemctl', 'show', unit, '--no-pager'] + ['-p' + p for p in PROPS],
+    out = subprocess.run(SYSTEMCTL + ['show', unit, '--no-pager'] + ['-p' + p for p in PROPS],
                          capture_output=True, text=True).stdout
     return dict(line.split('=', 1) for line in out.splitlines() if '=' in line)
 
@@ -158,6 +178,7 @@ def check(unit, p0, p1, nodes):
     mono = int(p1.get('ActiveEnterTimestampMonotonic') or 0)
     since = f'active at boot+{mono / 1e6:.0f} s' if mono else ''
     note = ', '.join(x for x in (since, f"{p1.get('NRestarts', '0')} restarts") if x)
+    unit = product_name(unit)
     if unit not in EXPECTED_NODES:
         return 'PASS', state, 'n/a', note + ' (not a ROS unit)'
     if is_idle(p1.get('MainPID', 0)):
@@ -178,7 +199,18 @@ def main(argv=None):
     """Print the PASS/FAIL table; return 0 when every unit expected at boot passes."""
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     ap.add_argument('--wait', type=float, default=5.0, help='seconds to listen to the ROS graph')
+    ap.add_argument('--user', action='store_true',
+                    help='staged mode: check user units (systemctl --user) instead of system units')
+    ap.add_argument('--prefix', default='navera-',
+                    help='unit name prefix (staged mode: e.g. navera-stage-); default navera-')
+    ap.add_argument('--env-file', action='append', default=None,
+                    help='env file the units read, in load order (repeatable); default the box\'s three')
     args = ap.parse_args(argv)
+    global SYSTEMCTL, PREFIX, ENV_FILES
+    SYSTEMCTL = ['systemctl', '--user'] if args.user else ['systemctl']
+    PREFIX = args.prefix
+    if args.env_file:
+        ENV_FILES = tuple(args.env_file)
 
     with open('/proc/uptime') as f:
         uptime0 = float(f.read().split()[0])
@@ -202,7 +234,8 @@ def main(argv=None):
     fails = [r[0] for r in rows if r[1] == 'FAIL']
     counts = {v: sum(r[1] == v for r in rows) for v in ('PASS', 'FAIL', 'SKIP')}
     print(f"\n{counts['PASS']} PASS, {counts['FAIL']} FAIL, {counts['SKIP']} SKIP (not enabled at boot)")
-    print(f"reboot check: {'FAIL — ' + ', '.join(fails) if fails else 'PASS'}")
+    what = 'staged boot check' if (args.user or args.prefix != 'navera-') else 'reboot check'
+    print(f"{what}: {'FAIL — ' + ', '.join(fails) if fails else 'PASS'}")
     return 1 if fails else 0
 
 
