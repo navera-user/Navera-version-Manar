@@ -2,7 +2,7 @@
 """trace_matrix.py — the NAVERA traceability matrix, generated from the repository so it stays current.
 
     python3 navera_tools/trace_matrix.py                 # writes docs/certification/TRACEABILITY.md
-    python3 navera_tools/trace_matrix.py --check         # also exit 1 on a broken link
+    python3 navera_tools/trace_matrix.py --check         # verify only (no write); exit 1 on a broken link
     python3 navera_tools/trace_matrix.py --stdout        # print instead of writing
     python3 navera_tools/trace_matrix.py --json out.json # machine-readable copy
 
@@ -418,7 +418,7 @@ def main(argv=None):
     page = render(cfg, rows, broken, untraced, tests)
     if args.stdout:
         print(page)
-    else:
+    elif not args.check:                      # --check only verifies: it never rewrites the pages
         os.makedirs(os.path.dirname(args.out), exist_ok=True)
         with open(args.out, 'w', encoding='utf-8') as f:
             f.write(page + '\n')
