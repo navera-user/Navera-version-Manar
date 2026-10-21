@@ -660,7 +660,7 @@ class DaySubscriber(Node):
             if mpp is not None:
                 ns = meta.get("image_stamp_ns")
                 t_img = int(ns) / 1e9 if ns else time.time()
-                v = self._velocity_now(meta)
+                v = self.track.velocity(time.time())
                 pred = None
                 if v is not None and self.vo._prev is not None:
                     dt = t_img - self.vo._prev[3]
@@ -1251,21 +1251,6 @@ class DaySubscriber(Node):
             return (before[1] + f * ((after[1] - before[1] + 180.0) % 360.0 - 180.0)) % 360.0
         near = [x for x in (before, after) if x is not None and abs(x[0] - t) <= gap_s]
         return min(near, key=lambda x: abs(x[0] - t))[1] if near else None
-
-    def _velocity_now(self, meta):
-        """The track's velocity (east, north, sigma m/s) turned by the heading change since it was
-        measured (the frame's heading against the heading at its fit time), or None: what the
-        frame-to-frame odometry is predicted by and checked against. Unturned, the odometry of a
-        turning vehicle disagreed with the stale velocity and was thrown away for the whole turn."""
-        v = self.track.velocity(time.time())
-        if v is None:
-            return None
-        h, h_sig = self._carry_heading(meta)
-        hv = self._velocity_heading(h_sig)
-        if h is None or hv is None:
-            return v
-        a = math.radians((h - hv + 180.0) % 360.0 - 180.0)
-        return (v[0] * math.cos(a) + v[1] * math.sin(a), -v[0] * math.sin(a) + v[1] * math.cos(a), v[2])
 
     def _gyro_reset(self, t_fix, result) -> None:
         """A good fix's fitted rotation (the frame top's azimuth, measured by vision) restarts the

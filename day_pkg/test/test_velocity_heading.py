@@ -2,8 +2,7 @@
 
 Real flight (MARS-LVIG AMvalley03, replayed through the node): after the GPS loss the track held GPS
 points and odometry steps only — no vision fix, so no heading for its velocity — and a U-turn was
-carried straight on (100 m off in 20 s); the frame-to-frame odometry, checked against that unturned
-velocity, was thrown away for the whole turn.
+carried straight on (100 m off in 20 s).
 """
 import math
 from collections import deque
@@ -26,7 +25,7 @@ def _node(gps_east_mps=12.0):
     n = SimpleNamespace(track=tr, _carry=None, _track_heading=None, _vel_epoch=None, gyro=None,
                         _frame_headings=deque(maxlen=600))
     for f in ("_heading_for_match", "_carry_heading", "_velocity_heading", "_note_frame_heading",
-              "_velocity_now", "_predicted", "_set_carry", "_keep_carry_velocity"):
+              "_predicted", "_set_carry", "_keep_carry_velocity"):
         setattr(n, f, MethodType(getattr(DaySubscriber, f), n))
     n._frame_time = DaySubscriber._frame_time
     for i in range(10):
@@ -47,8 +46,6 @@ def test_the_velocity_heading_is_the_frames_heading_at_the_fit_time():
 def test_a_turned_vehicle_carries_its_velocity_turned():
     """10 s later the IMU says heading 180 (south): the carried position goes south, not east."""
     n = _node()
-    v = n._velocity_now(_meta(1019.0, 180.0))
-    assert v[0] == pytest.approx(0.0, abs=0.2) and v[1] == pytest.approx(-12.0, abs=0.2)
     lat, lon, _ = n._predicted(_meta(1019.0, 180.0))
     north = (lat - 39.9) / M_LAT
     assert north < -30.0                                    # it turned south along the way
@@ -58,7 +55,8 @@ def test_without_frame_headings_nothing_changes():
     n = _node()
     n._frame_headings.clear()
     assert n._velocity_heading(0.0) is None                 # as before: no heading known
-    assert n._velocity_now(_meta(1019.0, 180.0)) == n.track.velocity(1019.0)
+    lat, lon, _ = n._predicted(_meta(1019.0, 180.0))
+    assert (lat - 39.9) / M_LAT == pytest.approx(0.0, abs=1.0)          # straight on east
 
 
 def test_frame_headings_interpolate_across_north():

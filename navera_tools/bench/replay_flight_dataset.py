@@ -441,7 +441,8 @@ def run(a):
             except ValueError:
                 continue
             rec["status"] = {k: d.get(k) for k in ("source", "reason", "inliers", "position_from", "pose_guard",
-                                                   "map_bias_m", "reacquired") if d.get(k) is not None}
+                                                   "map_bias_m", "reacquired", "latency", "sigma_cal")
+                             if d.get(k) is not None}
         for m in ests:
             if not m.valid:
                 rec.setdefault("no_fix", m.reason[:120])
