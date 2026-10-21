@@ -84,6 +84,11 @@ SCENARIOS = {
         desc="as S8 with a 10 s freeze: the longest gap the bridge covers",
         mission={"forward_degraded": True}, faults=[(60, {"gps": "jammed"}), (85, {"stall_day_s": 10})],
         max_s=190),
+    # --- closed loop with the real day pipeline, same stated accuracy as sitl_closed_loop.py (2026-10-21) ---
+    "S11_gps_cut_forward_sigma30": dict(
+        desc="GPS cut at +60 s, forward_degraded on, declared accuracy 30 m (the 30 m floor, as the error-model "
+             "runs of sitl_closed_loop.py)",
+        mission={"forward_degraded": True, "degraded_sigma_m": 30.0}, faults=[(60, {"gps": "jammed"})]),
 }
 ORDER = list(SCENARIOS)
 
