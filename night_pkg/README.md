@@ -4,8 +4,10 @@
 the STHN homography network (`night_localizer.py`, one-stage weights from HuggingFace
 `xjh19972/STHN`).
 
-> Validated on synthetic data only (8–13 m median, 250–600 m, any heading); **not validated
-> on real thermal imagery** — see [docs/VALIDATION_STATUS.md](../docs/VALIDATION_STATUS.md).
+> Synthetic data: 8–13 m median (250–600 m, any heading). Real aerial thermal imagery
+> (2026-10-21, frames cut from night/day thermography orthomosaics, not a NAVERA flight):
+> night LWIR ~1 frame in 3 gives a position at 700–1000 m, 10–12 m median, 0 wrong accept with
+> a 640 px camera — see [docs/VALIDATION_STATUS.md](../docs/VALIDATION_STATUS.md).
 
 ## How it works
 1. A 1536 px satellite patch (zoom 17, ≈1 m/px) is cut **centred on the prior** (last GPS fix
@@ -86,6 +88,8 @@ The weights must match the network exactly: loading refuses any missing weight.
 | `recheck_offset_m`, `recheck_max_m` | `150.0`, `25.0` | ≤ −1 disables |
 | `heading_retry_deg` | `"-10,10,-20,20"` | `""` = off |
 | `height_retry` | `"0.1,-0.1,0.2"` | `""` = off |
+| `retry_min_conf` | `0.97` | retry gate; ≤ −1 turns it off |
+| `retry_min_ncc`, `retry_ncc_per_try`, `retry_recheck_max_m` | `0.05`, `0.0`, `25.0` | retry gate |
 
 Retry checks: `heading_retry_deg` (default `"-10,10,-20,20"`, `""` turns it
 off: a heading 10–30° off is tried again turned by each offset, only on frames that failed the map
@@ -93,7 +97,21 @@ check; synthetic 30 frames: 10° off 19 → 29/30, 20° off 0 → 29/30, 30° of
 unchanged, no new wrong fix; ~1.7 s per failed frame instead of ~0.5 s) and `height_retry` (default `"0.1,-0.1,0.2"`: then the
 height scaled by each; a footprint too small for the stated height is only tried higher; synthetic:
 height −10 % 13 → 28/30, −20 % 0 → 29/30, field of view −10 % 6 → 30/30, 350 m 5 → 24/30; frames
-with no information still 0/30 but ~2.4 s each). `night_status` also carries the search square
+with no information still 0/30 but ~2.4 s each). Real thermal (2026-10-21): with a 160 × 120
+camera (Hikvision bench unit, Lepton) the retries produced the only accepts > 100 m (2 in 143
+retry accepts); this led to the retry gate below.
+
+Retry gate (2026-10-21): a hypothesis found only after a heading / height retry is the best of
+up to 8 tries, so it must carry more evidence than a first try: STHN quad consistency
+≥ `retry_min_conf` (0.97; a first try needs 0.30), map check ≥ `retry_min_ncc` +
+`retry_ncc_per_try` × hypotheses tried, re-check ≤ `retry_recheck_max_m`. A refused retry does not
+stop the search (the next hypothesis is tried) and is listed in `retries_refused` / the reason.
+Measured on every hypothesis of 1940 frames (real thermal, 4 cameras, night and day, 500–1000 m,
+heading 15° off, black-hot; synthetic conditions incl. heading / height errors;
+`navera_tools/bench/night_retry_gate_eval.py`): the 7 wrong retried accepts (53–176 m) all had
+consistency 0.85–0.97 → 0; right retried accepts 328 → 314 (95.7 %). The 160 × 120 camera no
+longer needs the retries turned off. The remaining wrong accepts (9, 51–92 m) are first tries.
+`night_status` also carries the search square
 (`search_center`, `search_size_m`), the matched footprint (`footprint_quad`) and the query
 geometry.
 

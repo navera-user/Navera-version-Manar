@@ -19,7 +19,7 @@ been measured. Open engineering items are tracked in
 | Day vision — stated sigma on real drone flights (UAV-VisLoc, 8 flights, 2026-10-20) | **Model alone unsafe (65 % within 3σ); self-calibration + 30 m floor safe (99.8 / 99.9 %) only with a pose–attitude guard not yet in the product — as-is 70 of 2600 fixes 100–325 m off, 13 of them beyond the self-calibrated 3σ** | below: "Day: real drone flights" |
 | Day vision — a real flight replayed through the whole chain: IMU straightening, tracking, estimator (MARS-LVIG, 2026-10-21) | **Real drone camera and IMU replayed (not NAVERA's camera, 80–130 m, one valley flight + 55 s of another):** GPS cut after 120 s, 310 s without: fixes 6–7 m median, never over 17 m, 100 % within 3σ, 0 over 50 m in 1 493; 36 % of frames matched at z17 (54 % at z18); dead-reckoning alone 4 / 12 m (median / max) over 70 s after two fixes of this branch | below: "Day: a real flight replayed" |
 | Day vision — DINOv2 tile retrieval (former method, fallback) | **Not accurate enough to replace GPS** | Median 442 m on labelled replay frames |
-| Night vision (STHN homography) | Frames scaled and turned north-up from altitude, camera field of view and heading; motion gate; **simulator only — not validated on real thermal** | 8–13 m median on synthetic frames (250–600 m, any heading); simulated night mission, GPS jammed, vehicle barometer (2026-10-07): 10 m median, 21 m max, stated accuracy (simulator-calibrated) 100 % within 3 sigma; **needs an independent height (barometer) after GPS loss** |
+| Night vision (STHN homography) | Frames scaled and turned north-up from altitude, camera field of view and heading; motion gate; **not flown. Real aerial thermal (2026-10-21, orthomosaic frames, below): night LWIR 28–38 % of frames give a position at 700–1000 m, 10–12 m median, 0 wrong accept with a 640 px camera; a 160 px camera made wrong accepts through the retries** | 8–13 m median on synthetic frames (250–600 m, any heading); simulated night mission, GPS jammed, vehicle barometer (2026-10-07): 10 m median, 21 m max, stated accuracy (simulator-calibrated) 100 % within 3 sigma; **needs an independent height (barometer) after GPS loss** |
 | Celestial 360 all-sky solver (`cn_pkg.allsky`) on **real night skies** (public ESO all-sky cameras, 2026-10-21) | **Real sky, but single up-looking fisheye cameras, not NAVERA's Insta360; mount 'up' known (fixed camera / truth fit)** | 559 real frames: 0 wrong positions accepted (61 wrong identifications all refused); clear moonless nights 100 % solved, 2.9 km median; below: "Celestial 360 on real night skies" |
 | Celestial (astrometry.net) | Run end to end on simulated star fields; **coarse: bounded by the IMU attitude (~111 km per degree); simulator only — not run on a real sky** | 5.5–6.5 km with a perfect attitude; 24–119 km with a BNO085-class IMU; simulated night mission without barometer (2026-10-07): 29 km median, 40 km max, 100 % within its stated sigma |
 | Day vision dead-reckoning along the measured track (no match: sea, uniform ground, frame unusable) | Implemented 2026-10-02; **simulator only** | Land route: no failsafe, error median 10 m, max 33 m; across the bay: carried 90 s over the sea stating ±300 m, true error at most 146 m |
@@ -508,6 +508,163 @@ are online Esri tiles of another date; one complete flight plus 55 s of another;
 camera calibration, and the wrong-fix thresholds (re-check 25 m, map correlation 0.05),
 set on synthetic frames only: a real thermal frame will correlate less with a daylight map.
 STHN's consistency score does not detect a wrong match; the re-check and the motion gate do.
+
+### Night vision on REAL aerial thermal imagery (2026-10-21)
+
+`navera_tools/bench/night_real_thermal.py` (+ `thermal_ortho.py`). **Real thermal radiometry,
+synthetic geometry; still not a NAVERA flight.**
+
+**Data.** STHN's own data (Boson-nighttime / satellite-thermal-dataset v1–v3, Hugging Face
+`xjh19972/boson-nighttime`, 131 GB) is **gated and licensed "non-commercial research only"**;
+the Caltech Aerial RGB-Thermal dataset is CC BY-NC. Neither was downloaded: using them to
+validate a commercial product needs the owners' written permission (IRIS decision). Used
+instead, both under Licence Ouverte (Etalab, commercial reuse with attribution), on the ADATA
+disk under `NAVERA_TESTDATA/thermal/`:
+
+- **Bordeaux Métropole, "Thermographie aérienne hiver 2018"** — aircraft infrared scanner
+  flown at **night** (15–17 Nov 2017, 8–9 and 22–23 Feb 2018), 0.5 m, ~34 × 34 km (540 tiles,
+  1.4 GB). Published as a rainbow palette (169 levels) and turned back into a scalar by hue;
+  ~7 % of the area is clipped at the warm end (mostly the Garonne).
+- **CRAIG, "Thermographie 1 m – Clermont-Ferrand – été 2024"** — FLIR MWIR (3–5 µm),
+  11 Aug 2024 16–18 h (**day**, heat wave), 1 m float temperature, ~10 × 11 km (228 MB); one
+  area the producer masked (airport) excluded.
+- Map: Esri World Imagery z17 (NAVERA's map provider), fetched for the poses (7.1 k tiles).
+  Neither area is in STHN's training data (US flights): every frame is held-out.
+
+**Method.** A nadir camera at a random true position (fully inside the data), random heading,
+is rendered from the orthomosaic (supersampled, 0.5 px optics blur, noise, percentile AGC,
+white-hot) at the sensor's resolution; NightLocalizer.localize is called exactly as
+`night_subscriber` (map check 0.05, re-check 150 m / 25 m, heading retries ±10/±20°, height
+retries +10/−10/+20 %), measured height 3 % 1σ, heading 2° 1σ, prior 100–250 m off in a random
+direction; the same poses for every sensor / height. Limits: orthophoto geometry (no relief,
+building lean or motion blur), nadir only, one frame at a time (no tracker / motion gate),
+the thermal products' own registration against Esri (a few m), the Bordeaux palette
+quantisation. Jetson Orin Nano, STHN fp32 on the GPU (shared machine: GPU held by a lock,
+CPU busy with other jobs).
+
+**Results (after the centring fix below).** Accepted / frames, error of accepted fixes
+(median / p90 / max, m), wrong accepts (> 50 m), median time per frame:
+
+| Data | Camera | 500 m | 700 m | 1000 m |
+|---|---|---|---|---|
+| Bordeaux **night** LWIR | Boson 640, 50° | 16/60, 14/26/29, 0 | 22/60, 11/22/30, 0, 2.1 s | 23/60, 10/20/32, 0 |
+| | Hikvision 160 × 120, 50° | 10/60, 16/21/30, 0 | 17/60, 12/22/36, 0 | 21/60, 12/50/176, **2** |
+| Clermont **day** MWIR | Boson 640, 50° | 35/50, 7/14/21, 0 | 41/50, 7/13/19, 0, 0.53 s | 42/50, 8/14/20, 0 |
+| | Hikvision 160 × 120, 50° | 30/50, 9/23/33, 0 | 43/50, 7/14/31, 0 | 39/50, 8/14/36, 0 |
+
+- **Night: about one frame in three gives a position (28–38 % at 700–1000 m), with no wrong
+  accept for the Boson-class camera.** Refusals: map check failed (23–28 of 60), not confirmed
+  from the second centre (14–18), and at 500 m footprint too small (33–48: a 50° camera covers
+  the 433 m reference only from ~540 m; the +10/+20 % height retry passes some of them).
+  Time: ~0.55 s for an accepted frame (two inferences + map check), ~2.2 s for a refused one
+  (up to 7 retries × 2 inferences). Day MWIR: 70–86 %.
+- **Gates on real thermal (gates off, no retry, Bordeaux, 180 frames, Boson 700/1000 m +
+  Hikvision 700 m): raw STHN is wrong (> 50 m) on 99 of 180 frames** (median 53–56 m), with
+  consistency ~1. The default gates (map NCC ≥ 0.05, re-check ≤ 25 m) keep 57 frames, 55 of them
+  within 25 m, 0 wrong; re-check 35 m: 0 wrong, +2; 50 m: 4 wrong. The thresholds set on
+  synthetic frames hold on real thermal; they are kept.
+- **Stated sigma:** 99.4 % of 477 accepted real-thermal fixes within 3σ (the synthetic fit gave
+  99.4 %). The three outside are 160 px frames accepted after a retry.
+- **Wrong accepts come from retries on 160 px frames.** Over all real-thermal runs (runs
+  before and after the fix counted separately): 640 px cameras, 511 accepts, **0 > 100 m**, 2 at
+  51–58 m (first attempt; one with a forced 15° heading error); 160 px cameras, 384 accepts,
+  **2 > 100 m (171, 176 m) and 3 at 56–91 m** — the two > 100 m and the 91 m one after a heading
+  or +20 % height retry (143 retry accepts), the 56 and 61 m ones first-attempt (241). Heading
+  retries with a nominal (2° 1σ) heading on 160 px frames: 4 accepts, 2 wrong. With retries
+  off, the 160 px camera has 0 accept > 100 m (Bordeaux after the fix: 0/60, 14/60, 12/60 at
+  500/700/1000 m, 0 wrong). With a real 15° heading error (Clermont, 700 m, 50 frames) the
+  retries recover 76–82 % with 1 wrong (58–61 m) per camera.
+- **Polarity:** black-hot Bordeaux (Boson 700 m) 18/60, 9 m median, 0 wrong (white-hot 22/60).
+- **Other cameras (Clermont day, 700 m, 40 frames, before the fix):** InfiRay 640 63° 34/40,
+  8 m; Boson 640 95° 33/40, 9 m; Lepton 160 × 120 57° 28/40, 12 m, **1 wrong (171 m, after
+  a −20° heading retry)**; Boson 640 50° 33/40, 8 m, 1 at 51 m.
+- **Control** (frames rendered from the Esri map itself, same poses, Bordeaux 700 m): Boson
+  57/60, Hikvision 59/60, 7–8 m median: the night failures are the thermal-vs-day-map gap,
+  not the geometry. They are not explained by the map's vegetation share; by eye they are
+  tree-covered suburbs and uniform pine forest/heath (winter night thermal vs summer day
+  map), successes dense urban/industrial blocks and field/wetland edges.
+- **Residual bias.** Exact map crops given to the pipeline (no rendering, 3 maps: Bordeaux,
+  Clermont, Sousse; 330 fixes) come back 2–6 m north and 1–4 m west of the truth at every
+  site: a property of the STHN weights (or their training labels), ~1 STHN pixel. The real-
+  thermal errors add the products' registration to Esri (Bordeaux ~+12 m N, Clermont ~+7 m
+  N in the means). Not corrected: `map_offset_lat/lon_deg` can absorb it once measured on
+  NAVERA's own map and flights.
+
+**Bug fixed (night_pkg).** `normalize_query` turned the frame about (w/2, h/2) on a padded
+canvas then cropped with a floor: the frame's optical centre missed the query centre by up to
+~1 camera pixel — up to 7 m for a 160 × 120 camera at 1000 m, 0.4–2 m for a 640 px one,
+depending on the heading. Now one affine map places it exactly (residual 0.001 m; regression
+test `test_frame_centre_lands_on_the_query_centre`). Effect: Clermont Hikvision 700 / 1000 m
+median 11 → 7 m and 12 → 8 m (36 → 39 accepted at 1000 m), Boson 8 → 7 m; Bordeaux Boson
+700 m p90 26 → 22 m, Hikvision 500 m median 18 → 16 m; Boson: no new wrong accept. Bordeaux
+Hikvision 1000 m changed from 1 wrong (56 m) to 2 (176 m after a −10° heading retry, 91 m
+after a +20 % height retry): both frames were refused before; the retries on 160 px frames
+are the weak point, not the centring (see above). Synthetic A/B, same 72 poses, before /
+after: farmland 60 / 60 accepted, 0 / 0 wrong; olives 55 / 54, 0 / 0; tilt 15° 47 / 48, 0 / 0;
+coast with a flat sea 49 / 46, **1 / 2 wrong** (59 → 60 m on the same frame, and one frame
+refused before by 28 m vs the 25 m re-check now accepted 92 m off). Net over everything
+measured: **2 more wrong accepts (Hikvision 1000 m, flat-sea coast), all on frames that were
+at a gate's edge before**; no systematic change, but not "0 new wrong accepts" — keep or
+revert the fix is a review decision.
+
+**Retry gate (2026-10-21, after the above).** Every hypothesis of every frame was recorded
+(`--probe-jsonl`, `night_retry_probe.py`: all retries run, not only up to the first success) and
+localize's choice replayed with and without a gate (`night_retry_gate_eval.py`). Real code
+path, Bordeaux Hikvision 1000 m: 21/60, 2 wrong (max 176 m) → 17/60, 0 wrong, 11 m median,
+max 50 m — as the replay predicted. 1940 frames: real thermal Bordeaux night (Boson 640 / Hikvision
+160 × 120 at 500/700/1000 m, black-hot, 15° heading error), Clermont day (same, plus InfiRay
+640, Boson 640 95°, Lepton 160 at 700 m), synthetic `night_conditions.py` (the 13 conditions of
+the earlier set incl. `terrain_coast_flat_sea`, the 72-pose A/B set, heading 10/20°, height
+−10/+20 %, field of view −10 %, 350 m) with the product retries on.
+
+- **What separates right from wrong retried fixes:** STHN's own quad consistency. Wrong
+  retried fixes (7 chosen, 53–176 m; 3 more, 55–228 m, behind an earlier right one): 0.85–0.97;
+  first-try right fixes ≥ 0.95 (1st percentile). The map-check NCC (wrong 0.06–0.43), the
+  second-centre distance (wrong 4–24 m: a < 15 m re-check would keep 4 of the 7), the
+  shifted-map control margin (negative for most right real-thermal fixes too: the peak is
+  broad), agreement with the other hypotheses (wrong ones 4–31 m from another answer) and
+  the number of retries did not separate them.
+- **Gate:** a retry is kept only with consistency ≥ 0.97 (`retry_min_conf`; NCC / re-check /
+  per-try penalty available, defaults as a first try: each cost more right fixes for no wrong
+  one removed — re-check 20 m kept 91 %, +0.005 NCC per try 90 %). A refused retry does not
+  stop the search. Margin: the closest wrong retry was 0.9698 (synthetic heading 20° off, 53 m,
+  +10° retry; the +20° retry is then kept, 18 m); 0.96 lets it through, 0.975 keeps 94.5 %.
+
+| Set (frames) | Accepted before → after | Wrong (> 50 m) | Right retried | Wrong retried |
+|---|---|---|---|---|
+| Bordeaux night, 640 px (180) | 61 → 61 | 0 → 0 | 19 → 19 | 0 → 0 |
+| Bordeaux night, 160 px (180) | 48 → 44 | **2 → 0** | 20 → 18 | 2 → 0 |
+| Bordeaux black-hot, Boson 700 / Hik 1000 (120) | 37 → 36 | **1 → 0** (Boson, 170 m) | 6 → 6 | 1 → 0 |
+| Bordeaux heading 15° off, 1000 m (120) | 35 → 33 | 2 → 2 (first try, 60–65 m) | 32 → 30 | 0 → 0 |
+| Clermont day, 640 / 160 px (300) | 230 → 225 | 0 → 0 | 63 → 58 | 0 → 0 |
+| Clermont heading 15° off, 700 m (100) | 79 → 77 | 2 → 2 (first try, 58–61 m) | 56 → 54 | 0 → 0 |
+| Clermont other cameras, 700 m (160) | 126 → 125 | 1 → 1 (first try, 54 m) | 13 → 12 | 0 → 0 |
+| Synthetic 13 conditions (312) | 195 → 194 | **2 → 1** (flat sea 92 m, first try) | 7 → 7 | 1 → 0 |
+| Synthetic A/B 72 poses (288) | 226 → 222 | **4 → 2** (flat sea 92 / 60 m, first try) | 16 → 14 | 2 → 0 |
+| Synthetic heading/height errors (180) | 161 → 160 | **2 → 1** (first try) | 96 → 96 | 1 → 0 |
+| **All (1940)** | 1198 → 1177 | **16 → 9** | 328 → 314 (95.7 %) | **7 → 0** |
+
+  Wrong retried accepts: 7 → 0 everywhere. The 9 left are all first tries, 51–92 m: the
+  flat-sea coast (92 m; it was a first try too in the 2026-10-21 runs, not a retry), and a 15°
+  heading error accepted at the given heading. They are outside a retry gate. The Lepton 171 m
+  retry accept seen before the centring fix did not recur. One frame at a time; the tracker
+  (`night_track.py`) only sees fewer retried fixes and was not re-run.
+
+**Camera verdict (what resolution / field of view is needed).**
+- **Resolution:** STHN works at ~1.7 m/px internally, so the Boson 640 (0.7–1.5 m/px at
+  500–1000 m) and the 160 × 120 Hikvision (3–6 m/px) reach similar availability by day and at
+  night; but the 160 px camera is less accurate at night (p90 22–50 m vs 20–26 m) and produced
+  the only wrong accepts > 100 m. **640 × 512 is the requirement for flight**; a 160 × 120
+  camera (Hikvision bench unit, Lepton) is usable on the bench; since the retry gate its retries
+  made no wrong accept (they did before: turn them off, `heading_retry_deg:=""`,
+  `height_retry:=""`, if the gate is disabled).
+- **Field of view / height:** with 50° the footprint covers the 433 m reference from ~540 m;
+  at 500 m most frames are refused (or pass only through the +10/+20 % height retry). Fly
+  ≥ 600–700 m with a 50° lens, or use a wider lens (62.9° InfiRay / 95° Boson worked at 700 m
+  by day: 34/40, 33/40, 0 wrong).
+- **Night availability, not accuracy, is the limit:** ~1 frame in 3 over a European city
+  at night against a summer day map (no wrong accept with the 640 px camera). A real night
+  flight with the product camera remains the blocker for any accuracy claim.
 
 ### Celestial (`cn_pkg`)
 

@@ -54,7 +54,7 @@ from cv_bridge import CvBridge
 # Import the existing STHN wrapper (UNMODIFIED user code).
 # NightLocalizer.localize(query_bgr, prior_lat, prior_lon) -> dict
 from night_pkg.nodes.night_localizer import (MIN_MATCH_NCC, RECHECK_MAX_M, RECHECK_OFFSET_M,
-                                             NightLocalizer)
+                                             RETRY_GATE_DEFAULTS, NightLocalizer)
 from night_pkg.nodes.night_tracker import NightTracker
 from navera_msgs.msg import NavStatus, PositionEstimate
 
@@ -71,6 +71,14 @@ _NIGHT_MODEL_BY_SRC = {
     "night_sthn":  "sthn_one_stage",
     "dead_reckon": "dead_reckon_v1",
 }
+
+
+def _retry_gate_from(min_conf, min_ncc, ncc_per_try, recheck_max_m):
+    """The NightLocalizer retry_gate from the node parameters ({} = off when min_conf <= -1)."""
+    if _gate(min_conf) is None:
+        return {}
+    return dict(RETRY_GATE_DEFAULTS, min_conf=float(min_conf), min_ncc=float(min_ncc),
+                ncc_per_try=float(ncc_per_try), recheck_max_m=_gate(recheck_max_m))
 
 
 def _gate(value):
@@ -187,6 +195,15 @@ class NightSubscriber(Node):
         # view off by 10-20 %). Simulated, 30 frames: height -10 % 13 -> 28/30, -20 % 0 -> 29/30,
         # +20 % 16 -> 25/30, field of view -10 % 6 -> 30/30, 350 m 5 -> 24/30; no-information frames
         # (noise, uniform, sea, full cloud) still 0/30 but ~2.4 s instead of ~0.5 s. "" turns it off.
+        # a retried hypothesis is kept only with stronger evidence than a first try: STHN quad
+        # consistency >= retry_min_conf (real thermal + synthetic, 2026-10-21: every wrong retried
+        # fix was < 0.97, 95.7 % of the right ones >= 0.97; README "Retry gate"), map check
+        # >= retry_min_ncc + retry_ncc_per_try x hypotheses tried, re-check <= retry_recheck_max_m.
+        # retry_min_conf <= -1 turns the whole retry gate off (retries as first tries).
+        declare_float(self, "retry_min_conf", RETRY_GATE_DEFAULTS["min_conf"])
+        declare_float(self, "retry_min_ncc", RETRY_GATE_DEFAULTS["min_ncc"])
+        declare_float(self, "retry_ncc_per_try", RETRY_GATE_DEFAULTS["ncc_per_try"])
+        declare_float(self, "retry_recheck_max_m", RETRY_GATE_DEFAULTS["recheck_max_m"])
         self.declare_parameter("height_retry", "0.1,-0.1,0.2")
         self.height_retry = tuple(
             float(x) for x in str(self.get_parameter("height_retry").value).split(",") if x.strip())
@@ -259,6 +276,7 @@ class NightSubscriber(Node):
                 min_match_ncc=_gate(self.get_parameter("min_match_ncc").value),
                 recheck_offset_m=_gate(self.get_parameter("recheck_offset_m").value),
                 recheck_max_m=_gate(self.get_parameter("recheck_max_m").value),
+                retry_gate=self._retry_gate(),
                 mixed_precision=self.mixed_precision,
                 sthn_backend=str(self.get_parameter("sthn_backend").value),
                 map_offset_deg=(float(self.get_parameter("map_offset_lat_deg").value),
@@ -420,6 +438,10 @@ class NightSubscriber(Node):
         )
         with self._busy_lock:
             self._process_frame(seq_id, img, meta)
+
+    def _retry_gate(self):
+        return _retry_gate_from(*(self.get_parameter(n).value for n in (
+            "retry_min_conf", "retry_min_ncc", "retry_ncc_per_try", "retry_recheck_max_m")))
 
     def _hfov(self, meta):
         """The live camera states the field of view of its undistorted frames; else the

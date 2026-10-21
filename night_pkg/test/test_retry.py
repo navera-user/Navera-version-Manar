@@ -3,7 +3,7 @@ footprint too small for the stated height is only retried higher.
 """
 import types
 
-from night_pkg.nodes.night_localizer import NightLocalizer
+from night_pkg.nodes.night_localizer import NightLocalizer, RETRY_GATE_DEFAULTS, retry_evidence_ok
 
 
 def _stub(good_heading=None, good_alt=None, small_below=None):
@@ -15,7 +15,10 @@ def _stub(good_heading=None, good_alt=None, small_below=None):
             return {"success": False, "reason": "camera footprint too small for night matching", "dt_ms": 1.0}
         ok = (good_heading is None or heading == good_heading) and (good_alt is None or abs(alt - good_alt) < 1e-6)
         return {"success": ok, "map_check_failed": not ok, "reason": "" if ok else "map check failed", "dt_ms": 1.0}
-    return types.SimpleNamespace(_localize_once=types.MethodType(once, object()), recheck_offset_m=0), calls
+    ns = types.SimpleNamespace(_localize_once=types.MethodType(once, object()), recheck_offset_m=0,
+                               retry_gate=None)
+    ns._attempt = types.MethodType(NightLocalizer._attempt, ns)
+    return ns, calls
 
 
 def _run(stub, **kw):
@@ -39,3 +42,62 @@ def test_no_retry_lists_no_retry():
     s, calls = _stub(good_alt=600.0)
     r = _run(s)
     assert not r["success"] and len(calls) == 1
+
+
+def _scripted(results, gate):
+    """A localizer whose hypotheses return `results` in order (dicts merged into a success)."""
+    calls = []
+
+    def attempt(self, img, lat, lon, alt, hfov, heading, require_scale):
+        x = dict(results[len(calls)])
+        calls.append((heading, round(alt, 1)))
+        ok = x.pop("ok", True)
+        base = {"success": ok, "lat": 1.0, "lon": 2.0, "dt_ms": 1.0, "conf": 0.999,
+                "verify": {"ncc": 0.2}, "recheck_m": 5.0}
+        if not ok:
+            base.update(map_check_failed=True, reason="map check failed")
+        base.update(x)
+        return base
+    ns = types.SimpleNamespace(retry_gate=gate)
+    ns._attempt = types.MethodType(attempt, ns)
+    return ns, calls
+
+
+def test_a_retry_needs_more_evidence_than_a_first_try():
+    gate = dict(RETRY_GATE_DEFAULTS)
+    # first try: a weak-looking quad is still accepted (the retry gate is for retries only)
+    s, _ = _scripted([dict(conf=0.90)], gate)
+    assert _run(s, heading_retry_deg=(-10, 10))["success"]
+    # retried: the weak hypothesis is refused, the next, stronger one kept
+    s, calls = _scripted([dict(ok=False), dict(conf=0.90, lat=9.0), dict(conf=0.999, lat=3.0)], gate)
+    r = _run(s, heading_retry_deg=(-10, 10))
+    assert r["success"] and r["lat"] == 3.0 and r["heading_correction_deg"] == 10
+    assert len(calls) == 3 and "heading -10 deg refused" in r["retries_refused"][0]
+    # none strong enough: no position, and the reason says why
+    s, _ = _scripted([dict(ok=False), dict(conf=0.90), dict(conf=0.91)], gate)
+    r = _run(s, heading_retry_deg=(-10, 10))
+    assert not r["success"] and "weaker evidence than a retry needs" in r["reason"]
+    # gate off: the first verified retry is kept, as before
+    s, _ = _scripted([dict(ok=False), dict(conf=0.90, lat=9.0), dict(conf=0.999, lat=3.0)], None)
+    assert _run(s, heading_retry_deg=(-10, 10))["lat"] == 9.0
+
+
+def test_retry_evidence_rules():
+    ok = {"conf": 0.99, "verify": {"ncc": 0.08}, "recheck_m": 12.0, "recheck": {"verify": {"ncc": 0.04}}}
+    assert retry_evidence_ok(ok, 1, min_ncc=0.05, recheck_max_m=25.0, min_conf=0.96)
+    assert not retry_evidence_ok(ok, 1, min_ncc=0.05, min_conf=0.995)
+    assert not retry_evidence_ok(ok, 1, min_ncc=0.05, recheck_max_m=10.0)
+    assert not retry_evidence_ok(ok, 1, min_ncc=0.05, both_centres=True)       # second centre 0.04
+    # the more hypotheses tried, the higher the map correlation asked (ncc_per_try)
+    assert retry_evidence_ok(ok, 2, min_ncc=0.05, ncc_per_try=0.01)
+    assert not retry_evidence_ok(ok, 4, min_ncc=0.05, ncc_per_try=0.01)
+    assert not retry_evidence_ok({"conf": 0.99, "verify": {}, "recheck_m": 1.0}, 1)
+
+
+def test_node_parameters_build_the_retry_gate():
+    from night_pkg.nodes.night_subscriber import _retry_gate_from
+    g = _retry_gate_from(0.97, 0.05, 0.0, 25.0)
+    assert g["min_conf"] == 0.97 and g["recheck_max_m"] == 25.0
+    assert _retry_gate_from(-1.0, 0.05, 0.0, 25.0) == {}
+    assert _retry_gate_from(0.97, 0.05, 0.0, -1.0)["recheck_max_m"] is None
+    assert RETRY_GATE_DEFAULTS["min_conf"] == 0.97
