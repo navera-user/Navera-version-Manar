@@ -6,11 +6,13 @@ Usage:
     result = localizer.localize(query_img_bgr, gps_prior_lat, gps_prior_lon)
 """
 
+import os
 import sys
 import math
 import sqlite3
 import logging
 import time
+from collections import OrderedDict
 from pathlib import Path
 
 import numpy as np
@@ -42,6 +44,15 @@ MIN_QUERY_COVERAGE = 0.85
 # straightened (tilted) frame are removed; the wedges are filled with the mean, which
 # STHN tolerated down to ~0.6 on synthetic frames (tilt 20 deg at 400 m: 0.57-0.71).
 MIN_GROUND_COVERAGE = 0.55
+# STHN forward backend defaults (NightLocalizer sthn_backend="auto"; NAVERA_TRT=0/1 overrides the
+# TensorRT one). Set from the accuracy gate on the night bench (navera_tools/bench/perf_profile.py
+# night, perf_gate.py; 78 conditions x 8 frames, 2026-10-21) against STHN's own forward:
+#   graph      434/434 same acceptance, positions within 0.003 m        forward 570 -> 445 ms/frame
+#   TRT fp32   434/434 same acceptance, median 0.011 m (max 0.11 m)     forward 570 -> 246 ms/frame
+#   TRT fp16   4 acceptance flips, 1 new wrong fix: NOT used             forward 223 ms/frame
+STHN_GRAPH_DEFAULT = True
+STHN_TRT_DEFAULT = True
+STHN_TRT_FP16 = False
 
 
 def ground_resolution_m(lat, zoom):
@@ -283,7 +294,52 @@ def verify_match(query_bgr, query_mask, sat_bgr, corners_rw, resize_width=256):
 
 # ─── Tile utilities (MBTiles → numpy) ────────────────────────────────────────
 
+# Decoded map tiles kept for the next patches: a frame's retries and second-centre re-check, and
+# the next frames of a flight, cut their patch from mostly the same tiles (a 1536 px patch is 49
+# tiles, ~170 ms of reading and JPEG decoding on the Jetson). They live in ONE preallocated array
+# (TILE_CACHE_MAX x 256 x 256 x 3, ~50 MB): one small array per tile, interleaved with the frames'
+# large short-lived arrays, fragmented the heap (measured: +1.4 GB RSS over 234 bench frames).
+# A returned tile is a view of its slot, valid until TILE_CACHE_MAX other tiles have been read.
+TILE_CACHE_MAX = 256
+_tile_cache: "OrderedDict" = OrderedDict()       # key -> slot index (None: tile absent)
+_tile_buf = None
+
+
 def _read_tile(conn, z, x, y):
+    """Read a tile from MBTiles (TMS y-flip required), as 256 x 256; decoded tiles are kept."""
+    global _tile_buf
+    key = (conn, z, x, y)
+    if key in _tile_cache:
+        _tile_cache.move_to_end(key)
+        slot = _tile_cache[key]
+        return None if slot is None else _tile_buf[slot]
+    img = _read_tile_uncached(conn, z, x, y)
+    if TILE_CACHE_MAX <= 0:
+        return img
+    if img is not None and img.shape != (256, 256, 3):
+        img = cv2.resize(img if img.ndim == 3 else cv2.cvtColor(img, cv2.COLOR_GRAY2BGR), (256, 256))
+    if _tile_buf is None or len(_tile_buf) != TILE_CACHE_MAX:
+        _tile_buf = np.empty((TILE_CACHE_MAX, 256, 256, 3), np.uint8)
+        _tile_cache.clear()
+    slot = None
+    if img is not None:
+        used = {v for v in _tile_cache.values() if v is not None}
+        if len(used) < TILE_CACHE_MAX:
+            slot = min(set(range(TILE_CACHE_MAX)) - used)
+        else:                                        # the least recently used tile with a slot
+            for k, v in _tile_cache.items():
+                if v is not None:
+                    slot = v
+                    del _tile_cache[k]
+                    break
+        _tile_buf[slot] = img
+    _tile_cache[key] = slot
+    while len(_tile_cache) > 4 * TILE_CACHE_MAX:     # absent tiles: keys only, bounded too
+        _tile_cache.popitem(last=False)
+    return None if slot is None else _tile_buf[slot]
+
+
+def _read_tile_uncached(conn, z, x, y):
     """Read a tile from MBTiles (TMS y-flip required)."""
     tms_y = (2 ** z - 1) - y
     row = conn.execute(
@@ -420,6 +476,7 @@ class NightLocalizer:
         map_offset_deg: tuple = (0.0, 0.0),
         contrast_stretch: bool = True,
         mask_featureless: bool = False,
+        sthn_backend: str = "auto",
     ):
         self.zoom = zoom
         # leave cloud / calm water out of the query (featureless_mask). Off: night sim 2026-10-20,
@@ -448,10 +505,11 @@ class NightLocalizer:
 
         # Load model
         self._model = self._load_model(weights)
+        self.sthn_backend = self._pick_backend(sthn_backend)
 
         # Open MBTiles
         self._conn = sqlite3.connect(mbtiles, check_same_thread=False)
-        logger.info(f"NightLocalizer ready | device={self.device} zoom={zoom}")
+        logger.info(f"NightLocalizer ready | device={self.device} zoom={zoom} sthn={self.sthn_backend}")
 
     # ── Model loading ─────────────────────────────────────────────────────────
 
@@ -641,6 +699,55 @@ class NightLocalizer:
         logger.info("GPU warmup skipped — STHN initialises on first real frame")
 
         return model
+
+    # ── Network backend ───────────────────────────────────────────────────────
+
+    def _pick_backend(self, requested: str) -> str:
+        """STHN forward: "torch" (STHN's own IHN.forward), "graph" (sthn_fast.STHNCore: the same
+        network, homographies in closed form on the GPU, no CPU solves) or "trt" (that graph as a
+        TensorRT engine, navera_tools/trt/build_engines.py). "auto": the engine when NAVERA_TRT
+        allows it (STHN_TRT_DEFAULT) and one is built, else the graph on CUDA, else torch.
+        """
+        requested = (requested or "auto").strip().lower()
+        if requested not in ("auto", "torch", "graph", "trt"):
+            raise ValueError(f"sthn_backend {requested!r}: auto | torch | graph | trt")
+        if self.device != "cuda" or requested == "torch":
+            return "torch"
+        from night_pkg.sthn_fast import STHNCore
+        from navera_common import trt_engine
+        self._core = STHNCore(self._model.netG, iters=6, corr_level=STHN_CORR_LEVEL).to(self.device).eval()
+        if requested in ("trt", "auto") and (requested == "trt" or trt_engine.trt_enabled(STHN_TRT_DEFAULT)):
+            prec = os.environ.get("NAVERA_STHN_TRT_PRECISION", "fp16" if STHN_TRT_FP16 else "fp32")
+            path = trt_engine.find_engine("sthn", fp16=prec.strip().lower() == "fp16")
+            if path is not None:
+                try:
+                    self._trt = trt_engine.TrtEngine(path)
+                    logger.info(f"STHN forward: TensorRT engine {path}")
+                    return "trt"
+                except Exception as e:                       # noqa: BLE001 — torch graph instead
+                    logger.warning(f"STHN TensorRT engine unusable ({e}): torch graph instead")
+            elif requested == "trt":
+                logger.warning("STHN TensorRT engine not built (navera_tools/trt/build_engines.py): "
+                               "torch graph instead")
+        if requested == "auto" and not STHN_GRAPH_DEFAULT:
+            return "torch"
+        logger.info("STHN forward: torch graph (closed-form homographies, no CPU solves)")
+        return "graph"
+
+    def _run_network(self, sat_t: torch.Tensor, thr_t: torch.Tensor) -> torch.Tensor:
+        """STHN four_pred (1, 2, 2, 2) for satellite (1536) and thermal (256) tensors in [0, 1]."""
+        if self.sthn_backend == "torch":
+            self._model.set_input(sat_t, thr_t, flow_gt=torch.zeros(1, 2, 2, 2, device=self.device))
+            with torch.no_grad():
+                self._model.forward(for_training=False)
+            return self._model.four_pred
+        with torch.inference_mode():
+            sat = torch.nn.functional.interpolate(sat_t.to(self.device), size=STHN_RESIZE_WIDTH, mode="bilinear",
+                                                  align_corners=True, antialias=True)
+            thr = thr_t.to(self.device)
+            if self.sthn_backend == "trt":
+                return self._trt(image1=sat, image2=thr)["four_pred"].float()
+            return self._core(sat, thr)
 
     # ── Preprocessing ─────────────────────────────────────────────────────────
 
@@ -865,10 +972,7 @@ class NightLocalizer:
 
         # 3. Forward pass. STHN's contract is set_input(A=satellite, B=thermal).
         try:
-            self._model.set_input(sat_t, thr_t, flow_gt=torch.zeros(1, 2, 2, 2, device=self.device))
-            with torch.no_grad():
-                self._model.forward(for_training=False)
-            pred = self._model.four_pred
+            pred = self._run_network(sat_t, thr_t)
         except Exception as e:
             logger.error(f"STHN forward failed: {e}")
             return _FAIL

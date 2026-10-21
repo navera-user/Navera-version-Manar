@@ -29,6 +29,30 @@ from day_pkg.local_matcher import (LocalMatcher, fix_sigma_m, inlier_spread, map
                                    tile_px_to_latlon, tile_xy)
 
 
+# DISK's U-Net as a TensorRT engine (navera_tools/trt/build_engines.py; NAVERA_TRT=0/1 overrides this
+# default). Set from the accuracy gate on the real-camera screen recordings (perf_profile.py day,
+# perf_gate.py): same acceptance, positions within 1 m median, no new wrong fix.
+DISK_TRT_DEFAULT = False
+DISK_TRT_MAX_SIDE = 1024               # the engine's largest input (its optimisation profile)
+
+
+def load_disk_engine(default: bool = DISK_TRT_DEFAULT):
+    """The DISK U-Net TensorRT engine when enabled and built, else None (the torch network is used)."""
+    try:
+        from navera_common import trt_engine
+    except ImportError:
+        return None
+    if not trt_engine.trt_enabled(default):
+        return None
+    path = trt_engine.find_engine("disk", fp16=True)
+    if path is None:
+        return None
+    try:
+        return trt_engine.TrtEngine(path)
+    except Exception:                                    # noqa: BLE001 — another TensorRT / GPU: torch
+        return None
+
+
 def map_level(frame_scale: float, max_level: int = 3) -> int:
     """Map level (the map shrunk 2**level times) to match a frame whose pixels are frame_scale map
     pixels: 0 up to 1.3 (the frame is enlarged a little), else the level nearest its scale."""
@@ -67,6 +91,10 @@ class LearnedMatcher(LocalMatcher):
     MAX_CHUNKS = 500
     MAX_LEVEL = 3                     # map levels: up to 8x coarser than the zoom (high frames)
     MAX_MAP_KEYPOINTS = 24000
+    # LightGlue pairs (frame x map keypoints) matched at once: ~21 bytes each on the GPU (measured
+    # 2026-10-21: 1.6 GB at 3072 x 24000); a wider window is matched in blocks (_match)
+    MATCH_PAIRS_MAX = 50_000_000
+    MATCH_BLOCKS = True               # over the budget: blocks (True) or the map keypoints thinned (False)
     SIFT_FALLBACK_MAX_M = 300.0
     HEADING_MEMORY_S = 10.0           # a measured rotation stands in for the heading this long
     RESCALE_MIN_INLIERS = 60          # a match rejected for its scale is retried at that scale from this many
@@ -87,10 +115,14 @@ class LearnedMatcher(LocalMatcher):
         self._t, self._KF = torch, KF
         self.dev = torch.device("cuda")
         self.disk = KF.DISK.from_pretrained("depth").to(self.dev).eval()
+        from kornia.feature.disk.detector import heatmap_to_keypoints
+        self._heatmap_to_keypoints = heatmap_to_keypoints
         # half: DISK and LightGlue in fp16 on the GPU's tensor cores (LightGlue's own
         # mixed precision, "mp"); per_chunk: map keypoints per 640 px chunk
         self.half, self.PER_CHUNK = bool(half), int(per_chunk)
         self.lg = KF.LightGlueMatcher("disk", params={"mp": self.half}).to(self.dev).eval()
+        # DISK's U-Net as a TensorRT engine when built and enabled (its features are cached apart: "t")
+        self.disk_trt = load_disk_engine() if self.half else None
         self.keypoints = int(keypoints)
         self.cache_dir = cache_dir or os.path.join(os.path.dirname(os.path.abspath(images_dir)), "learned_features")
         from collections import OrderedDict
@@ -99,6 +131,7 @@ class LearnedMatcher(LocalMatcher):
         self._tiles = {}
         self._heading = None          # (rotation deg, time) of the last learned match
         self._no_fallback = False     # inside locate_any_height: no SIFT per height tried
+        self._last_blocks = 1         # blocks the last match was split into (_match)
         # the day node asks the SIFT tiles to prefetch around where the vehicle goes: the
         # learned map chunks are computed there too, in the background
         self._want, self._wake = None, threading.Event()
@@ -172,16 +205,26 @@ class LearnedMatcher(LocalMatcher):
     def _features(self, img: np.ndarray, n: int):
         t = self._t
         x = t.from_numpy(cv2.cvtColor(img, cv2.COLOR_BGR2RGB)).permute(2, 0, 1).float().div(255)[None].to(self.dev)
+        h, w = img.shape[:2]
         with self._gpu, t.inference_mode():
-            with t.autocast("cuda", dtype=t.float16, enabled=self.half):
-                try:
-                    f = self.disk(x, n, pad_if_not_divisible=True)[0]
-                except IndexError as e:
-                    # kornia's DISK fails (kthvalue of nothing) when no pixel passes its detection
-                    # threshold: a map chunk mostly outside the area's tiles (its edge), a dark frame
-                    if "kthvalue" not in str(e):
-                        raise
-                    return t.zeros((0, 2), device=self.dev), t.zeros((0, 128), device=self.dev)
+            try:
+                if self.disk_trt is not None and max(h, w) <= DISK_TRT_MAX_SIDE:
+                    # the same steps as kornia's DISK.forward (pad to 16, U-Net, NMS + top n, descriptors
+                    # sampled and normalised), the U-Net in TensorRT; fp16 as the autocast path
+                    x = t.nn.functional.pad(x, (0, (-w) % 16, 0, (-h) % 16))
+                    out = self.disk_trt(image=x)["out"][..., :h, :w].half()
+                    kp = self._heatmap_to_keypoints(out[:, self.disk.desc_dim:], n=n, window_size=5,
+                                                    score_threshold=0.0)[0]
+                    f = kp.merge_with_descriptors(out[0, :self.disk.desc_dim])
+                else:
+                    with t.autocast("cuda", dtype=t.float16, enabled=self.half):
+                        f = self.disk(x, n, pad_if_not_divisible=True)[0]
+            except IndexError as e:
+                # kornia's DISK fails (kthvalue of nothing) when no pixel passes its detection
+                # threshold: a map chunk mostly outside the area's tiles (its edge), a dark frame
+                if "kthvalue" not in str(e):
+                    raise
+                return t.zeros((0, 2), device=self.dev), t.zeros((0, 128), device=self.dev)
         return f.keypoints.float(), f.descriptors.float()
 
     def _chunk(self, gx: int, gy: int, level: int = 0):
@@ -192,7 +235,8 @@ class LearnedMatcher(LocalMatcher):
             self._grid.move_to_end(key)
             return self._grid[key]
         lv = f"_L{level}" if level else ""
-        path = os.path.join(self.cache_dir, f"{self.z}_{gx}_{gy}{lv}_k{self.PER_CHUNK}{'h' if self.half else ''}.npz")
+        tag = ("h" if self.half else "") + ("t" if self.disk_trt is not None else "")
+        path = os.path.join(self.cache_dir, f"{self.z}_{gx}_{gy}{lv}_k{self.PER_CHUNK}{tag}.npz")
         out = None
         try:
             with np.load(path) as d:
@@ -241,6 +285,63 @@ class LearnedMatcher(LocalMatcher):
             k, d = k[keep], d[keep]
         k = k.to(self.dev) - t.tensor([x0, y0], device=self.dev, dtype=k.dtype)
         return k, d.to(self.dev)
+
+    def _lightglue(self, k0, d0, k1, d1, hw0, hw1):
+        """LightGlue matches (K, 2) [frame index, map index] of two keypoint sets, on the GPU."""
+        t = self._t
+        with self._gpu, t.inference_mode():
+            ones0 = t.ones(1, len(k0), 1, 1, device=self.dev)
+            ones1 = t.ones(1, len(k1), 1, 1, device=self.dev)
+            _, idx = self.lg(d0, d1, self._KF.laf_from_center_scale_ori(k0[None], ones0),
+                             self._KF.laf_from_center_scale_ori(k1[None], ones1),
+                             hw1=t.tensor(tuple(hw0), device=self.dev), hw2=t.tensor(tuple(hw1), device=self.dev))
+        return idx
+
+    def _match(self, k0, d0, k1, d1, hw0, side: int) -> np.ndarray:
+        """Matches (K, 2) of the frame's keypoints against the map window's (side x side level px).
+
+        LightGlue's memory grows with frame x map keypoints (~21 bytes a pair on the Jetson: 3072 x
+        24000 = 1.6 GB, campaign 3 and the 600 m OOM). Up to MATCH_PAIRS_MAX pairs the window is
+        matched at once (unchanged); above, in square blocks overlapping by the frame's diagonal, so
+        that the frame's true place lies whole inside one block, each within the budget, matches
+        pooled for the geometry (RANSAC drops the other blocks' strays)."""
+        t = self._t
+        m, n = len(k0), len(k1)
+        self._last_blocks = 1
+        if m * n <= self.MATCH_PAIRS_MAX:
+            return self._lightglue(k0, d0, k1, d1, hw0, (side, side)).cpu().numpy()
+        if not self.MATCH_BLOCKS:                            # thinned evenly to the budget instead
+            keep = t.linspace(0, n - 1, self.MATCH_PAIRS_MAX // m, device=k1.device).long()
+            idx = self._lightglue(k0, d0, k1[keep], d1[keep], hw0, (side, side))
+            return t.stack([idx[:, 0], keep[idx[:, 1]]], dim=1).cpu().numpy()
+        o = float(math.hypot(*hw0))                          # block overlap: the frame's diagonal
+        g = 2
+        while True:
+            b = (side + (g - 1) * o) / g
+            if m * n * (b / side) ** 2 <= self.MATCH_PAIRS_MAX or b <= 1.2 * o:
+                break
+            g += 1
+        step = (side - b) / (g - 1)
+        out = []
+        for gy in range(g):
+            for gx in range(g):
+                x0, y0 = gx * step, gy * step
+                sel = (k1[:, 0] >= x0) & (k1[:, 0] < x0 + b) & (k1[:, 1] >= y0) & (k1[:, 1] < y0 + b)
+                ids = t.nonzero(sel).flatten()
+                if len(ids) < 10:
+                    continue
+                if m * len(ids) > self.MATCH_PAIRS_MAX:          # a dense block: evenly thinned
+                    ids = ids[t.linspace(0, len(ids) - 1, self.MATCH_PAIRS_MAX // m, device=ids.device).long()]
+                kb = k1[ids] - t.tensor([x0, y0], device=self.dev, dtype=k1.dtype)
+                idx = self._lightglue(k0, d0, kb, d1[ids], hw0, (int(math.ceil(b)),) * 2)
+                if len(idx):
+                    out.append(t.stack([idx[:, 0], ids[idx[:, 1]]], dim=1))
+                del kb, idx
+                t.cuda.empty_cache()     # blocks differ in size: their cached memory piles up otherwise
+        self._last_blocks = g * g
+        if not out:
+            return np.zeros((0, 2), np.int64)
+        return t.unique(t.cat(out), dim=0).cpu().numpy()
 
     def warm(self, lat: float, lon: float, radius_m: float) -> int:
         """Compute (and save) the map features within radius_m of (lat, lon): before a flight."""
@@ -428,7 +529,6 @@ class LearnedMatcher(LocalMatcher):
         fx, fy = tile_xy(prior[0], prior[1], self.z)
         r = (search_m + margin_m) / (mpp_map * f)                 # in level pixels
         x0, y0 = int(fx * 256 / f - r), int(fy * 256 / f - r)
-        t = self._t
         # the frame first: a uniform frame (sea, blur, darkness) is rejected before the map
         # window is gathered, which at 600 m cost 5-7 s per failed frame (campaign 7, coast)
         k0, d0 = self._frame_features(q)
@@ -441,13 +541,8 @@ class LearnedMatcher(LocalMatcher):
         if len(k1) < 10:
             res.update(spatial_empty=True, reason="no map tiles (or no texture) in the search circle")
             return res
-        with self._gpu, t.inference_mode():
-            ones0 = t.ones(1, len(k0), 1, 1, device=self.dev)
-            ones1 = t.ones(1, len(k1), 1, 1, device=self.dev)
-            _, idx = self.lg(d0, d1, self._KF.laf_from_center_scale_ori(k0[None], ones0),
-                             self._KF.laf_from_center_scale_ori(k1[None], ones1),
-                             hw1=t.tensor(q.shape[:2], device=self.dev), hw2=t.tensor((int(2 * r),) * 2, device=self.dev))
-        idx = idx.cpu().numpy()
+        idx = self._match(k0, d0, k1, d1, q.shape[:2], int(2 * r))
+        res["match_blocks"] = self._last_blocks
         good = len(idx)
         need = max(self.min_inliers, self.MIN_INLIERS)
         if good < need:

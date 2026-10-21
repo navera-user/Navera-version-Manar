@@ -73,7 +73,8 @@ The weights must match the network exactly: loading refuses any missing weight.
 | `gps_prior_timeout_s` | `2.0` | |
 | `shadow_mode` | `false` | test flights: run beside a valid GPS (launch: `$NAVERA_SHADOW_MODE`) |
 | `max_dead_reckon_s` | `30.0` | |
-| `mixed_precision` | `"false"` | string |
+| `mixed_precision` | `"false"` | string (torch backend only) |
+| `sthn_backend` | `"auto"` | `auto`: TensorRT fp32 engine when built (`navera_tools/trt/build_engines.py`) and `NAVERA_TRT` is not `0`, else the GPU graph (closed-form homographies, no CPU solves); `torch` = STHN's own forward; `graph`; `trt` |
 | **`camera_hfov_deg`** | `nan` | **required** (launch: `$NAVERA_THERMAL_HFOV_DEG`); NaN = no night position |
 | `max_altitude_rel_sigma` | `0.15` | |
 | `imu_heading_timeout_s` | `1.0` | |

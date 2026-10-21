@@ -286,6 +286,24 @@ sudo -u navera -H bash -c 'set -a; . /etc/navera/navera.env; set +a; \
   python3 -c "import torch; torch.hub.load(\"facebookresearch/dinov2\", \"dinov2_vits14\")"'
 ```
 
+### 3.8b TensorRT engines (night STHN; optional day DISK)
+
+Engines are specific to the Jetson, its TensorRT and the precision: they are built ON the box, once
+after installation (and after a JetPack upgrade), never committed. Without them NAVERA runs its
+PyTorch paths (night: the GPU graph, see `night_pkg` `sthn_backend`).
+
+```bash
+sudo apt install python3-libnvinfer libnvinfer-bin          # TensorRT Python bindings + trtexec (JetPack repo)
+sudo -u navera -H pip3 install --user onnx==1.16.2 "protobuf>=4.25,<5"   # export only
+sudo -u navera -H bash -c 'set -a; . /etc/navera/navera.env; set +a; cd /home/navera/isaac_ros_common; \
+  python3 navera_tools/trt/build_engines.py --only sthn --precision fp32'      # ~5 min
+# optional, off by default (NAVERA_TRT=1 to use it): python3 navera_tools/trt/build_engines.py --only disk --precision fp16  (~10 min)
+```
+
+Engines go to `NAVERA_TRT_DIR` (default `~/.navera_sim/trt/`). `NAVERA_TRT=0` in `navera.env`
+turns every engine off, `NAVERA_TRT=1` turns on also those not on by default. Measured gains and
+accuracy gates: `docs/test_reports/perf_2026-10-21.md`.
+
 ### 3.9 Enable the services
 
 Pick from the table in §1. A typical box with its own sensors, feeding an autopilot over MAVLink:
