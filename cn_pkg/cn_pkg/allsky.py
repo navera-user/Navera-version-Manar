@@ -176,12 +176,12 @@ def detect_spots(gray: np.ndarray, lens: Lens, k_sigma: Optional[float] = None, 
     # centroid and flux over the blob's own pixels in a 7x7 box (blurred streaks keep their middle)
     padl = np.pad(lab, 3, constant_values=-1)
     out = []
+    gy, gx = np.mgrid[-3:4, -3:4]
     for x, y, L in zip(xx, yy, lb):
         win = pad[y:y + 7, x:x + 7].clip(0) * (padl[y:y + 7, x:x + 7] == L)
         s = float(win.sum())
         if s <= 0:
             continue
-        gy, gx = np.mgrid[-3:4, -3:4]
         out.append((float(x + x0 + (win * gx).sum() / s), float(y + y0 + (win * gy).sum() / s), s))
     out.sort(key=lambda t: -t[2])
     return out[:max_spots]
@@ -400,12 +400,18 @@ def locate(frame: np.ndarray, up_imu: np.ndarray, utc: str, cat: Catalogue,
         return out
     flux_all = np.array([s[2] for _, s in spots])
     lens_of = np.array([lenses.index(lens) for lens, _ in spots])
+    spot_x = np.array([s[0] for _, s in spots])
+    spot_y = np.array([s[1] for _, s in spots])
 
     dk1 = [0.0]                                               # radial-term correction found by the stars (below)
 
     def rays_for(fs, sel=None):
         """Refraction-corrected rays of the spots above min_alt, brightest first, and their spot indices."""
-        rays = np.array([unproject(lens, x, y, lens.f * fs, lens.k1 + dk1[0]) for lens, (x, y, _) in spots])
+        rays = np.empty((len(spots), 3))
+        for li, lens in enumerate(lenses):                    # one vectorised call per lens (was one per spot)
+            m = lens_of == li
+            if m.any():
+                rays[m] = unproject(lens, spot_x[m], spot_y[m], lens.f * fs, lens.k1 + dk1[0])
         alt = np.degrees(np.arcsin(np.clip(rays @ up, -1, 1)))
         if sel is None:
             sel = np.nonzero(alt > min_alt)[0]
