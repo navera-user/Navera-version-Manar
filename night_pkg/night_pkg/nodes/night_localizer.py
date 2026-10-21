@@ -12,6 +12,7 @@ import math
 import sqlite3
 import logging
 import time
+from collections import OrderedDict
 from pathlib import Path
 
 import numpy as np
@@ -290,7 +291,27 @@ def verify_match(query_bgr, query_mask, sat_bgr, corners_rw, resize_width=256):
 
 # ─── Tile utilities (MBTiles → numpy) ────────────────────────────────────────
 
+# Decoded map tiles kept for the next patches: a frame's retries and second-centre re-check, and
+# the next frames of a flight, cut their patch from mostly the same tiles (a 1536 px patch is 49
+# tiles, ~170 ms of reading and JPEG decoding on the Jetson). ~0.2 MB per tile.
+TILE_CACHE_MAX = 256
+_tile_cache: "OrderedDict" = OrderedDict()
+
+
 def _read_tile(conn, z, x, y):
+    """Read a tile from MBTiles (TMS y-flip required); decoded tiles are kept (TILE_CACHE_MAX)."""
+    key = (conn, z, x, y)
+    if key in _tile_cache:
+        _tile_cache.move_to_end(key)
+        return _tile_cache[key]
+    img = _read_tile_uncached(conn, z, x, y)
+    _tile_cache[key] = img
+    while len(_tile_cache) > TILE_CACHE_MAX:
+        _tile_cache.popitem(last=False)
+    return img
+
+
+def _read_tile_uncached(conn, z, x, y):
     """Read a tile from MBTiles (TMS y-flip required)."""
     tms_y = (2 ** z - 1) - y
     row = conn.execute(

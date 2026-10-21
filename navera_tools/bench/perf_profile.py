@@ -298,8 +298,7 @@ def cmd_night(a):
     loc = nl.NightLocalizer(sthn, weights, mbtiles, sthn_backend=a.backend)
     print(f"STHN backend: {loc.sthn_backend}", flush=True)
     model_rss = rss_mb()
-    forward = loc._model.forward
-    loc._model.forward = st.wrap("sthn_forward", forward)
+    loc._run_network = st.wrap("sthn_forward", loc._run_network)
     loc._localize_once = st.wrap("localize_once", loc._localize_once)
     torch.cuda.reset_peak_memory_stats()
     summaries, rows = [], []
