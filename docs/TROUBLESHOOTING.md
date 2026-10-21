@@ -198,6 +198,8 @@ enabled. Fix (only with a measured accuracy): `NAVERA_FORWARD_DEGRADED=true` and
 | `MAVLink output goes to navera-vehicle-link's relay, but no vehicle link is connected to an autopilot: the autopilot receives NOTHING from NAVERA …` (every 30 s) | `NAVERA_MAVLINK_URL=udpout:127.0.0.1:…` and `navera-vehicle-link` not enabled, idle, or not connected: see "Vehicle link" below |
 | `position too coarse for the autopilot (±55.0 km > 1.0 km)` | celestial fix: never forwarded |
 | `no new position for 2.6 s: bridging along the last one (at most 10 s)` | the vision positions stopped; the last one is carried along its velocity and re-sent about once a second, its accuracy growing (`bridge_max_s`) |
+| `output → no fix (reacquiring after a gap: waiting for a velocity of the new fixes …)` | after 5 s without a position sent, vision positions wait until their own velocity is known (±8 m/s, ~7 good fixes): the autopilot resets its velocity onto the first one (`reacquire_after_s`, F28). Normal for 5–20 s after a gap |
+| Copter: "GPS Glitch or Compass error" when vision takes over | EKF3's `gps_glitching` status: NAVERA states its vision velocity accuracy (> 1.5 m/s). A status, not a failsafe (docs/ARDUPILOT_INTEGRATION.md §3) |
 | `bridge ended: gap of 11 s longer than the bridge (10 s)` / `bridged position too coarse (…)` | the gap outlasted the bridge: "no fix" from here, the autopilot's own failsafe acts (Copter SITL: LAND ~8 s after the last position). Find why vision stopped: the day log (`day: invalid (… velocity unknown …` / `dead-reckoning uncertainty 5xx m > 500 m`) |
 | `arbiter silent` | `navera-estimator` not running or not visible (domain) |
 | `output failed: … — exiting so the service restarts` | serial port unplugged / network error |
