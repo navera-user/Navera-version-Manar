@@ -68,12 +68,51 @@ class TrackVelocity:
         sig_v = max(self.speed_floor, sig_pos / math.sqrt(sum((ti - tm) ** 2 for ti in ts)))
         return v[0], v[1], sig_v
 
-    def _fit_points(self):
+    def autopilot_velocity(self, t_now: float, window_s: float = 10.0, min_points: int = 5,
+                           max_chi2: float = 4.0) -> Optional[Tuple[float, float, float]]:
+        """(east m/s, north m/s, 1-sigma m/s per axis) to GIVE the autopilot as the vehicle's velocity
+        now, or None when it is not trustworthy.
+
+        Trustworthy: at least min_points fixes in the last window_s before the latest one (none
+        across a gap of more than 5 s), spanning min_span_s, and lying on a straight line within
+        their stated accuracy (reduced chi-square <= max_chi2: a turn, or fixes worse than they
+        state, fail it). The sigma is the weighted line fit's own slope error (scaled up by the
+        chi-square when it exceeds 1, floored at the speed floor) plus the unseen acceleration
+        times the time from the fit's instant (its weighted mean time) to t_now: the fit describes
+        the velocity THEN, not now. A shorter window than velocity()'s: less lag in a turn.
+        """
+        pts = self._fit_points(window_s)
+        if pts is None or len(pts) < min_points:
+            return None
+        lat0, lon0 = pts[-1][1], pts[-1][2]
+        k = math.cos(math.radians(lat0))
+        xs = [(math.radians(p[2] - lon0) * EARTH_R * k, math.radians(p[1] - lat0) * EARTH_R) for p in pts]
+        ts = [p[0] for p in pts]
+        w = [1.0 / p[3] ** 2 for p in pts]
+        sw = sum(w)
+        tm = sum(wi * ti for wi, ti in zip(w, ts)) / sw
+        stt = sum(wi * (ti - tm) ** 2 for wi, ti in zip(w, ts))
+        if stt <= 0:
+            return None
+        v, chi2 = [], 0.0
+        for axis in (0, 1):
+            xm = sum(wi * x[axis] for wi, x in zip(w, xs)) / sw
+            slope = sum(wi * (ti - tm) * (x[axis] - xm) for wi, ti, x in zip(w, ts, xs)) / stt
+            chi2 += sum(wi * (x[axis] - xm - slope * (ti - tm)) ** 2 for wi, ti, x in zip(w, ts, xs))
+            v.append(slope)
+        chi2_dof = chi2 / max(1, 2 * (len(pts) - 2))
+        if chi2_dof > max_chi2:
+            return None
+        sig = max(self.speed_floor, math.sqrt(max(1.0, chi2_dof) / stt))
+        return v[0], v[1], sig + self.accel * max(0.0, t_now - tm)
+
+    def _fit_points(self, window_s: Optional[float] = None):
         """The fixes the velocity is fitted on, or None when they are too few or too close in time."""
         if not self._pts:
             return None
         t_end = self._pts[-1][0]
-        pts = [p for p in self._pts if t_end - p[0] <= self.window_s]
+        window = self.window_s if window_s is None else window_s
+        pts = [p for p in self._pts if t_end - p[0] <= window]
         # never across a gap of more than 5 s between fixes: a line through the fixes on
         # both sides of a gap with a turn in it is a chord, not the velocity (2026-10-07)
         for i in range(len(pts) - 1, 0, -1):
