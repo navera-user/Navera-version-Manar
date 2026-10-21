@@ -384,6 +384,15 @@ class Run:
 
     def send(self, link, o, t, truth):
         f = mavlink_out.gps_input_fields(o, self.utc0 + timedelta(seconds=t - o.age_s))
+        if self.a.vision_velocity and o.kind == KIND_ESTIMATED:
+            # EXPERIMENT (not what mavlink_out sends): ArduPilot's MAV GPS keeps the LAST velocity it
+            # received when a message carries none, and EKF3 resets its velocity to it after a
+            # velocity timeout although EK3_SRC1_VELXY = 0 (ResetVelocity). Give it NAVERA's track
+            # velocity instead (zero when unknown) with its accuracy.
+            gv = self.out.ground_velocity(t)
+            ve, vn, sv_ = gv if gv is not None else (0.0, 0.0, 30.0)
+            f.update(vn=float(vn), ve=float(ve), speed_accuracy=float(max(sv_, 0.5)))
+            f["ignore_flags"] &= ~(mavlink_out.IGNORE_VEL_HORIZ | mavlink_out.IGNORE_SPEED_ACCURACY)
         link.mav.mav.gps_input_send(**f)
         err = None
         if o.kind != KIND_NONE:
@@ -589,7 +598,7 @@ class Run:
                 "yaw", "Crash", "crash", "AHRS", "DCM")
         notable = [(t, x) for t, x in texts if self.t_loss and t >= self.t_loss - 1 and any(k in x for k in keys)]
         res = dict(vehicle=self.vehicle, scenario=self.scenario, params=self.a.set, sigma=self.a.sigma,
-                   bridge_max_s=self.a.bridge_max_s, all_texts=texts,
+                   bridge_max_s=self.a.bridge_max_s, vision_velocity=self.a.vision_velocity, all_texts=texts,
                    latency=self.a.latency, t_loss=self.t_loss, t_jam=self.t_jam, t_end=self.t_end,
                    modes=self.modes, reached=self.reached, notable_texts=notable,
                    ekf_err_median=_q(ekf_err, 0.5), ekf_err_p90=_q(ekf_err, 0.9), ekf_err_max=_q(ekf_err, 1.0),
@@ -686,6 +695,8 @@ def summarise(out_dir):
         setting = r["params"] or ""
         if r.get("bridge_max_s", 10.0) != 10.0:
             setting = f"{setting} bridge {r['bridge_max_s']:g} s"
+        if r.get("vision_velocity"):
+            setting = f"{setting} + track velocity sent"
         print(f"| {name[:-5]} | {setting} | {r['ekf_err_median']} / {r['ekf_err_p90']} / {r['ekf_err_max']} | "
               f"{r['xtrack_median']} / {r['xtrack_p90']} / {r['xtrack_max']} | {r.get('leg_speed_median')} | {wp} | "
               f"{'yes' if r['completed'] else 'no'} | {end} | {'; '.join(msgs) or 'none'}{spoof} |")
@@ -703,6 +714,8 @@ def main():
     ap.add_argument("--latency", type=lambda s: tuple(float(x) for x in s.split(",")), default=(0.3, 1.0))
     ap.add_argument("--frame-period", type=float, default=1.0)
     ap.add_argument("--bridge-max-s", type=float, default=10.0, help="NAVERA_BRIDGE_MAX_S (0 = no bridge)")
+    ap.add_argument("--vision-velocity", action="store_true",
+                    help="experiment: send NAVERA's track velocity with vision fixes (see Run.send)")
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--instance", type=int, default=5)
     ap.add_argument("--speedup", type=float, default=1.0)
