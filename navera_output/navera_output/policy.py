@@ -18,7 +18,7 @@ The vehicle's autopilot treats whatever NAVERA sends as a GPS. The rules:
   current is 45 m wrong at 15 m/s, and the autopilot cannot know it.
 * Every position goes out WITH a velocity and its stated accuracy (F28): a GPS
   position with the receiver's own velocity (RMC, while current; stated
-  gnss_speed_sigma_mps), a vision / celestial one with the velocity of NAVERA's
+  gnss_speed_sigma_mps; without one, none — see decide()), a vision / celestial one with the velocity of NAVERA's
   own recent fixes when it is trustworthy (TrackVelocity.autopilot_velocity: enough
   fixes on a straight line within their accuracy; its sigma includes the fit's lag).
   Without one the velocity is stated UNKNOWN: zero, with the vehicle's top speed
@@ -211,12 +211,16 @@ def decide(cfg: Config, state: Optional[int], status_age_s: Optional[float],
     common = dict(lat=lat, lon=lon, alt_ellipsoid_m=alt, age_s=age, gnss=pos.source == SOURCE_GPS,
                   geoid_sep_m=float(sep) if isinstance(sep, (int, float)) else math.nan)
 
-    common.update(vel_sigma_mps=cfg.max_speed_mps)                    # unknown, unless measured:
     if pos.source == SOURCE_GPS:
+        # a GPS fix without a current receiver velocity states none (flags ignored): stating it
+        # unknown (> 1 m/s) would keep ArduPilot from setting its origin ("GPS speed error",
+        # SITL 2026-10-21), and GPS fixes at 5 Hz never let EKF3 time out and reset to it
         if gps_vel_ne is not None and all(math.isfinite(v) for v in gps_vel_ne):
             common.update(vel_n_mps=float(gps_vel_ne[0]), vel_e_mps=float(gps_vel_ne[1]),
                           vel_sigma_mps=cfg.gnss_speed_sigma_mps)
-    elif autopilot_vel is not None and all(math.isfinite(v) for v in autopilot_vel):
+    elif autopilot_vel is None or not all(math.isfinite(v) for v in autopilot_vel):
+        common.update(vel_sigma_mps=cfg.max_speed_mps)                # unknown: 0 +- top speed
+    else:
         common.update(vel_n_mps=float(autopilot_vel[1]), vel_e_mps=float(autopilot_vel[0]),
                       vel_sigma_mps=max(float(autopilot_vel[2]), 0.0))
 

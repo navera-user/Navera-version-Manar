@@ -108,9 +108,9 @@ def test_gps_input_fix_roundtrip():
     assert m.lat == 358288000 and m.lon == 106360000 and m.alt == pytest.approx(10.0)
     assert m.horiz_accuracy == pytest.approx(2.0) and m.satellites_visible == 9
     assert not m.ignore_flags & mavlink_out.IGNORE_ALT
-    # no receiver velocity: stated unknown (0 +- top speed), never left to the autopilot's last one
-    assert not m.ignore_flags & mavlink_out.IGNORE_VEL_HORIZ and (m.vn, m.ve) == (0.0, 0.0)
-    assert m.speed_accuracy == pytest.approx(30.0)
+    # a GPS fix without a receiver velocity states none: an "unknown" 30 m/s accuracy would keep
+    # ArduPilot from setting its origin (EKF3 "GPS speed error", SITL)
+    assert m.ignore_flags & mavlink_out.IGNORE_VEL_HORIZ and m.ignore_flags & mavlink_out.IGNORE_SPEED_ACCURACY
 
 
 def test_gps_input_no_fix_and_unknown_altitude():
@@ -162,21 +162,20 @@ def test_an_unknown_velocity_is_stated_unknown_never_left_out():
     """F28: ArduPilot keeps the last velocity it got when a GPS_INPUT flags it ignored, and EKF3
     resets its velocity to it after a timeout. An unknown velocity goes out as 0 +- top speed.
     """
-    o = decide(Config(), STATE_FIX, 0.1, pos(), 0.1, GPS, None)
-    assert not o.has_velocity and o.vel_sigma_mps == 30.0
     day = pos(source=2)
     o2 = decide(Config(), STATE_FIX, 0.1, day, 0.1, 2, (3.0, -4.0))   # a GPS velocity is not a vision one
     assert o2.kind == KIND_FIX and not o2.has_velocity
-    o3 = decide(Config(), STATE_FIX, 0.1, pos(), 0.1, GPS, (math.nan, 1.0))
-    assert not o3.has_velocity
     est = decide(Config(forward_degraded=True, degraded_sigma_m=30.0, max_speed_mps=45.0),
                  STATE_DEGRADED, 0.1, day, 0.1, 2)
-    for out in (o, o2, o3, est):
+    for out in (o2, est):
         m = _roundtrip(mavlink_out.gps_input_fields(out, T))
         assert m.fix_type == mavlink_out.FIX_3D and (m.vn, m.ve, m.vd) == (0.0, 0.0, 0.0)
         assert not m.ignore_flags & (mavlink_out.IGNORE_VEL_HORIZ | mavlink_out.IGNORE_SPEED_ACCURACY)
         assert m.ignore_flags & mavlink_out.IGNORE_VEL_VERT
         assert m.speed_accuracy == pytest.approx(45.0 if out is est else 30.0)
+    for vel in (None, (math.nan, 1.0)):                                 # GPS: stated none
+        o = decide(Config(), STATE_FIX, 0.1, pos(), 0.1, GPS, vel)
+        assert not o.has_velocity and math.isnan(o.vel_sigma_mps)
     # nothing stated at all (an Output built by hand): flagged ignored, as before
     m = _roundtrip(mavlink_out.gps_input_fields(Output(KIND_ESTIMATED, lat=35.8, lon=10.6, sigma_h_m=30.0), T))
     assert m.ignore_flags & mavlink_out.IGNORE_VEL_HORIZ and m.ignore_flags & mavlink_out.IGNORE_SPEED_ACCURACY

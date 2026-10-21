@@ -3,14 +3,16 @@
 Accuracies are sent as stated (1-sigma, m); anything unknown is marked with the
 corresponding ignore flag instead of a made-up number — except the horizontal velocity.
 
-Horizontal velocity (F28): every position goes out with one and its speed_accuracy —
-the GPS receiver's, NAVERA's own track velocity, or, when NAVERA does not know it,
-"unknown": 0 m/s with the vehicle's top speed as its accuracy. The ignore flag is NOT
-used for it: ArduPilot's MAVLink GPS (AP_GPS_MAV.cpp) keeps the last velocity and the
-last speed accuracy it received when a message flags them ignored, and EKF3 resets its
-velocity to that value (with that accuracy, or 0.3 m/s without one) when a position
-comes back after a timeout (ResetVelocity) — even with EK3_SRC1_VELXY = 0. The ignore
-flag is only set on a "no fix" message (fix_type 1, which ArduPilot's EKF never reads).
+Horizontal velocity (F28): every non-GNSS position goes out with one and its
+speed_accuracy — NAVERA's own track velocity, or, when NAVERA does not know it,
+"unknown": 0 m/s with the vehicle's top speed as its accuracy; a GPS position with the
+receiver's. A GPS fix without a receiver velocity is the only position sent with the
+flag set (an "unknown" accuracy > 1 m/s would keep ArduPilot from setting its origin),
+and a "no fix" message (fix_type 1, which ArduPilot's EKF never reads). Otherwise the
+flag is never used: ArduPilot's MAVLink GPS (AP_GPS_MAV.cpp) keeps the last velocity
+and the last speed accuracy it received when a message flags them ignored, and EKF3
+resets its velocity to that value (with that accuracy, or 0.3 m/s without one) when a
+position comes back after a timeout (ResetVelocity) — even with EK3_SRC1_VELXY = 0.
 Vertical velocity is never sent: NAVERA measures none (vision has no height, NMEA RMC
 none), and ArduPilot never clears its have_vertical_velocity once one was received.
 
