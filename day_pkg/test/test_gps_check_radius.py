@@ -12,7 +12,8 @@ def _node(accept_up_to_m, near=150.0, wide=600.0):
         return {"accepted": r <= accept_up_to_m}
     n = SimpleNamespace(local=SimpleNamespace(locate=locate), calib_radius_m=wide, calib_near_radius_m=near,
                         local_heading_tol_deg=20.0, _scale_tol=lambda m: 0.15, _heading_for_match=lambda m: None,
-                        _hfov=lambda m: 77.0, _expected_tilt=lambda m: 0.0)
+                        _hfov=lambda m: 77.0, _expected_tilt=lambda m: 0.0,
+                        _match_heading_kw=lambda m: {})
     n._gps_check_locate = MethodType(DaySubscriber._gps_check_locate, n)
     return n, radii
 
