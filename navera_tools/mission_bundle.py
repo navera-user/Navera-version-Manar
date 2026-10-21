@@ -94,7 +94,7 @@ EQUATOR_M = 40075016.7
 # estimates (measured on this Jetson, see navera_tools/README.md "Mission bundle")
 TILE_KB_DEFAULT = 20.0          # a zoom-17 JPEG tile when no tile of the corridor is at hand
 DESC_KB, DESC_TILES_S = 3.0, 45.0
-CHUNK_KB = 245.0                # a learned-feature chunk (k768, fp16 DISK): 224.8 MB / 934 chunks, Sousse 22 km
+CHUNK_KB = 370.0                # a learned-feature chunk (k768, fp16 DISK) over land: 320 MB / 871 (Sousse-Kairouan)
 CHUNK_S = 0.17                  # GPU seconds per learned chunk (DISK at 640 px, Orin Nano): 155.9 s / 934
 COPY_TILES_S = 130.0            # local tiles copied per second (MBTiles, then area images; USB disk)
 DOWNLOAD_LIMIT_MB = 10240.0
@@ -855,6 +855,9 @@ def build_bundle(spec: MissionSpec, sources: Sequence[TileSource], out_dir: str,
             elif os.path.exists(src):
                 os.makedirs(os.path.dirname(dst), exist_ok=True)
                 shutil.copy2(src, dst)
+        trusted = os.path.join(_models_dir(), "trusted_list")      # torch.hub writes it on load otherwise
+        if os.path.exists(trusted):
+            shutil.copy2(trusted, os.path.join(tmp, "models", "hub", "trusted_list"))
     extras = {}
     for name, path in spec.extras.items():
         dst = os.path.join(tmp, "extra", os.path.basename(name))
@@ -1050,9 +1053,12 @@ def day_selftest(bundle: str, manifest: dict, matcher=None, points: int = 6) -> 
     rng = np.random.default_rng(3)
     rows = []
     stretches = (manifest["day"].get("terrain") or {}).get("stretches") or []
+    levels = m.get("learned_levels") or [0, 1]
     for k, d in enumerate(_textured_distances(total, stretches, points)):
         p, _ = point_along(legs, d)
-        f_mpp = 2.0 * map_mpp(p[0], m["zoom"])
+        # the frame's scale cycles through the bundle's map levels (a level it does not carry would
+        # make the learned matcher compute chunks: not what flies)
+        f_mpp = map_mpp(p[0], m["zoom"]) * 2 ** levels[k % len(levels)]
         hdg = float(k * 97 % 360)
         img = _render_frame(images, p[0], p[1], m["zoom"], (640, 480), f_mpp, hdg)
         if img.std() < 12:                                  # sea / uniform ground: nothing to match
@@ -1135,11 +1141,14 @@ def _learned_check(bundle: str, manifest: dict, deep: bool) -> dict:
     out = dict(ok=not missing, present=True, levels=lf["levels"], chunks=lf["chunks"], missing=missing[:20],
                n_missing=len(missing))
     if deep:
-        before = len(os.listdir(d))
+        before = set(os.listdir(d))
         m = LearnedMatcher(os.path.join(bundle, DAY_DIR, "images"), zoom=z)
         st = day_selftest(bundle, manifest, matcher=m)
         st.pop("rows", None)
-        out.update(selftest=st, computed_in_check=len(os.listdir(d)) - before)
+        new = set(os.listdir(d)) - before
+        for f in new:                          # the check leaves the bundle as it found it
+            os.remove(os.path.join(d, f))
+        out.update(selftest=st, computed_in_check=len(new))
         out["ok"] = out["ok"] and st["ok"] and out["computed_in_check"] == 0
     return out
 
@@ -1161,6 +1170,7 @@ def _models_check(bundle: str, manifest: dict, deep: bool) -> dict:
         import torch
         import kornia.feature as KF
         torch.hub.set_dir(hub)
+        sys.dont_write_bytecode = True         # no __pycache__ written into the bundle's model code
         loaded = []
         if manifest["day"].get("dinov2_descriptors"):
             from day_pkg.nodes.day_localizer import DINOV2_HUB_REPO
@@ -1200,6 +1210,7 @@ def check_bundle(bundle: str, replay: Optional[str] = None, deep: bool = False, 
                 bad.append(rel)
         listed = set(manifest["files"]) | {"manifest.json"}
         extra = sorted(os.path.relpath(os.path.join(d, f), bundle) for d, _, fs in os.walk(bundle) for f in fs
+                       if "__pycache__" not in d.split(os.sep)
                        if os.path.relpath(os.path.join(d, f), bundle) not in listed)
         C["files"] = dict(ok=not bad and not missing_f, listed=len(manifest["files"]), missing=missing_f[:20],
                           sha256_mismatch=bad[:20], unlisted=extra[:20], n_unlisted=len(extra))
