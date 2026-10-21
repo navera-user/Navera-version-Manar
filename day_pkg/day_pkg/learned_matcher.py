@@ -29,6 +29,30 @@ from day_pkg.local_matcher import (LocalMatcher, fix_sigma_m, inlier_spread, map
                                    tile_px_to_latlon, tile_xy)
 
 
+# DISK's U-Net as a TensorRT engine (navera_tools/trt/build_engines.py; NAVERA_TRT=0/1 overrides this
+# default). Set from the accuracy gate on the real-camera screen recordings (perf_profile.py day,
+# perf_gate.py): same acceptance, positions within 1 m median, no new wrong fix.
+DISK_TRT_DEFAULT = False
+DISK_TRT_MAX_SIDE = 1024               # the engine's largest input (its optimisation profile)
+
+
+def load_disk_engine(default: bool = DISK_TRT_DEFAULT):
+    """The DISK U-Net TensorRT engine when enabled and built, else None (the torch network is used)."""
+    try:
+        from navera_common import trt_engine
+    except ImportError:
+        return None
+    if not trt_engine.trt_enabled(default):
+        return None
+    path = trt_engine.find_engine("disk", fp16=True)
+    if path is None:
+        return None
+    try:
+        return trt_engine.TrtEngine(path)
+    except Exception:                                    # noqa: BLE001 — another TensorRT / GPU: torch
+        return None
+
+
 def map_level(frame_scale: float, max_level: int = 3) -> int:
     """Map level (the map shrunk 2**level times) to match a frame whose pixels are frame_scale map
     pixels: 0 up to 1.3 (the frame is enlarged a little), else the level nearest its scale."""
@@ -87,10 +111,14 @@ class LearnedMatcher(LocalMatcher):
         self._t, self._KF = torch, KF
         self.dev = torch.device("cuda")
         self.disk = KF.DISK.from_pretrained("depth").to(self.dev).eval()
+        from kornia.feature.disk.detector import heatmap_to_keypoints
+        self._heatmap_to_keypoints = heatmap_to_keypoints
         # half: DISK and LightGlue in fp16 on the GPU's tensor cores (LightGlue's own
         # mixed precision, "mp"); per_chunk: map keypoints per 640 px chunk
         self.half, self.PER_CHUNK = bool(half), int(per_chunk)
         self.lg = KF.LightGlueMatcher("disk", params={"mp": self.half}).to(self.dev).eval()
+        # DISK's U-Net as a TensorRT engine when built and enabled (its features are cached apart: "t")
+        self.disk_trt = load_disk_engine() if self.half else None
         self.keypoints = int(keypoints)
         self.cache_dir = cache_dir or os.path.join(os.path.dirname(os.path.abspath(images_dir)), "learned_features")
         from collections import OrderedDict
@@ -172,9 +200,19 @@ class LearnedMatcher(LocalMatcher):
     def _features(self, img: np.ndarray, n: int):
         t = self._t
         x = t.from_numpy(cv2.cvtColor(img, cv2.COLOR_BGR2RGB)).permute(2, 0, 1).float().div(255)[None].to(self.dev)
+        h, w = img.shape[:2]
         with self._gpu, t.inference_mode():
-            with t.autocast("cuda", dtype=t.float16, enabled=self.half):
-                f = self.disk(x, n, pad_if_not_divisible=True)[0]
+            if self.disk_trt is not None and max(h, w) <= DISK_TRT_MAX_SIDE:
+                # the same steps as kornia's DISK.forward (pad to 16, U-Net, NMS + top n, descriptors
+                # sampled and normalised), the U-Net in TensorRT; fp16 as the autocast path
+                x = t.nn.functional.pad(x, (0, (-w) % 16, 0, (-h) % 16))
+                out = self.disk_trt(image=x)["out"][..., :h, :w].half()
+                kp = self._heatmap_to_keypoints(out[:, self.disk.desc_dim:], n=n, window_size=5,
+                                                score_threshold=0.0)[0]
+                f = kp.merge_with_descriptors(out[0, :self.disk.desc_dim])
+            else:
+                with t.autocast("cuda", dtype=t.float16, enabled=self.half):
+                    f = self.disk(x, n, pad_if_not_divisible=True)[0]
         return f.keypoints.float(), f.descriptors.float()
 
     def _chunk(self, gx: int, gy: int, level: int = 0):
@@ -185,7 +223,8 @@ class LearnedMatcher(LocalMatcher):
             self._grid.move_to_end(key)
             return self._grid[key]
         lv = f"_L{level}" if level else ""
-        path = os.path.join(self.cache_dir, f"{self.z}_{gx}_{gy}{lv}_k{self.PER_CHUNK}{'h' if self.half else ''}.npz")
+        tag = ("h" if self.half else "") + ("t" if self.disk_trt is not None else "")
+        path = os.path.join(self.cache_dir, f"{self.z}_{gx}_{gy}{lv}_k{self.PER_CHUNK}{tag}.npz")
         out = None
         try:
             with np.load(path) as d:
