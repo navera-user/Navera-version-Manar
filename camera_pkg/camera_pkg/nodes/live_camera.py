@@ -22,6 +22,13 @@ an ideal lens of `camera_hfov_deg`) and straightened to a level straight-down vi
 with the same start gate (<ns>/start), localizer handshake (`ready_topic`) and
 back-pressure (`ack_topic`): the NEWEST frame is sent when the localizer is free,
 never a queue of old ones.
+
+Frozen pictures (D24 / H-01b): a frame whose time does not advance, whose picture is
+identical to the previous one, or nearly identical while the IMU / GPS say the vehicle
+moved (navera_common.health.FrozenFrameDetector) is published marked unusable ("camera
+image frozen: ..."), so no localizer turns it into a position; <ns>/camera_health (JSON)
+reports it, and a camera input frozen longer than `frozen_restart_s` exits so the service
+restarts and reopens the device. The first new picture ends the freeze.
 """
 import json
 import math
@@ -35,6 +42,8 @@ from navera_common.qos import SENSOR_QOS
 from navera_common.altitude import AltitudeEstimator
 from navera_common.camera_model import CameraModel, parse_crop
 from navera_common.frame_builder import FrameBuilder
+from navera_common.geo import haversine_m
+from navera_common.health import FrozenFrameDetector
 from navera_common.lifecycle import die_with_parent
 from navera_common.params import declare_float
 from navera_common.sensor_history import History, slerp
@@ -94,6 +103,13 @@ class LiveCamera(Node):
         self.declare_parameter("ready_topic", "/day/localizer_ready")
         self.declare_parameter("ack_topic", "frame_done")
         declare_float(self, "ack_timeout_s", 10.0)
+        # frozen pictures: below this mean grey difference a picture counts as unchanged when the
+        # vehicle moved (rotation > frozen_motion_deg or travel > frozen_motion_m since the last frame)
+        declare_float(self, "frozen_still_diff", 0.5)
+        declare_float(self, "frozen_motion_deg", 0.5)
+        declare_float(self, "frozen_motion_m", 5.0)
+        # a camera input (not a ROS topic) frozen this long exits: systemd restarts and reopens it
+        declare_float(self, "frozen_restart_s", 20.0)
         self.declare_parameter("frame_id", "camera_link")
         p = lambda n: self.get_parameter(n).value               # noqa: E731
 
@@ -124,6 +140,11 @@ class LiveCamera(Node):
         self.pub_img = self.create_publisher(Image, "image_raw", qos_img)
         self.pub_meta = self.create_publisher(String, "frame_meta", 10)
         self.pub_info = self.create_publisher(CameraInfo, "camera_info", qos_img)
+        self.pub_health = self.create_publisher(String, "camera_health", LATCHED)
+        self.freeze = FrozenFrameDetector(float(p("frozen_still_diff")))
+        self.frozen_motion_deg, self.frozen_motion_m = float(p("frozen_motion_deg")), float(p("frozen_motion_m"))
+        self.frozen_restart_s = float(p("frozen_restart_s"))
+        self._prev_t = None                                     # exposure of the previous frame sent
         # sensors in their own callback group: converting images never delays them
         sensors = MutuallyExclusiveCallbackGroup()
         # the vehicle's sensors may publish BEST_EFFORT (navera_common.qos)
@@ -327,6 +348,9 @@ class LiveCamera(Node):
                 continue
             requested = False
             raw, t = item
+            frozen = self._check_frozen(raw, t)
+            if self._stop.is_set():
+                break
             out, meta = self.builder.build(raw, self.count, int(t * 1e9), self.att.at(t), self.attitude_source,
                                            self.alt.estimate(t), self.gps.at(t),
                                            time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(t)),
@@ -334,6 +358,9 @@ class LiveCamera(Node):
             msg = bridge.cv2_to_imgmsg(np.ascontiguousarray(out), "bgr8")
             msg.header.stamp.sec, msg.header.stamp.nanosec = int(t), int((t % 1) * 1e9)
             meta["image_stamp_ns"] = msg.header.stamp.sec * 1_000_000_000 + msg.header.stamp.nanosec
+            if frozen:
+                # never a position from a stale picture: the localizers publish "no fix" with this reason
+                meta.update(usable=False, reason=f"camera image frozen: {frozen}")
             msg.header.frame_id = self.frame_id
             self._awaiting = self.count
             self._acked.clear()
@@ -348,6 +375,46 @@ class LiveCamera(Node):
                     + ("" if meta["usable"] else f" — {meta['reason']}"))
             self.count += 1
             time.sleep(max(0.0, self.period - (time.monotonic() - t0)))
+
+    def _moved(self, t0, t1):
+        """True when the IMU or the GPS says the vehicle moved between two exposures, False when
+        both say it did not, None when neither knows.
+        """
+        if t0 is None:
+            return None
+        verdicts = []
+        a, b = self.att.at(t0), self.att.at(t1)
+        if a is not None and b is not None:
+            dot = min(1.0, abs(sum(x * y for x, y in zip(a, b))))
+            verdicts.append(math.degrees(2.0 * math.acos(dot)) > self.frozen_motion_deg)
+        g0, g1 = self.gps.at(t0), self.gps.at(t1)
+        if g0 is not None and g1 is not None:
+            verdicts.append(haversine_m(g0[0], g0[1], g1[0], g1[1]) > self.frozen_motion_m)
+        return any(verdicts) if verdicts else None
+
+    def _check_frozen(self, raw, t):
+        """Why the picture is frozen (None: fresh); reports it on camera_health and exits a camera
+        input frozen longer than frozen_restart_s so systemd reopens the device.
+        """
+        was = self.freeze.frozen
+        why = self.freeze.update(raw, t, self._moved(self._prev_t, t))
+        self._prev_t = t
+        since = (t - self.freeze.frozen_since) if why else 0.0
+        if why:
+            self.get_logger().error(f"camera image frozen ({self.freeze.repeats} frame(s), {since:.0f} s): {why} "
+                                    "— frames not used for positions", throttle_duration_sec=5.0)
+        elif was:
+            self.get_logger().warn("camera image changes again: frames used again")
+        if why or was or self.count == 0:
+            self.pub_health.publish(String(data=json.dumps({
+                "frozen": bool(why), "reason": why or "", "frozen_frames": self.freeze.repeats,
+                "frozen_s": round(since, 1), "input": self.input})))
+        if why and self.input != "ros" and since > self.frozen_restart_s:
+            self.get_logger().fatal(f"camera image frozen for {since:.0f} s — exiting so the service restarts "
+                                    "and reopens the camera")
+            self._stop.set()
+            self.context.try_shutdown()
+        return why
 
     def _rate_dps(self, t):
         """The vehicle's rotation rate around the exposure (deg/s, from the attitude 0.2 s

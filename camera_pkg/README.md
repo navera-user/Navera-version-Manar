@@ -26,6 +26,13 @@ and `celestial` namespaces (launch files `day.launch.py`, `thermal.launch.py`,
 - Unknown motion is never invented: a CSV row without speed/heading/altitude produces null.
 - Live mode never claims GPS (the GPS is a separate node).
 - A `camera_info` publisher is created but not yet populated (no calibration published).
+- `live_camera` (the live source) refuses frozen pictures (D24): a frame whose time does not
+  advance, whose picture is identical to the previous one, or nearly identical while the IMU / GPS
+  say the vehicle moved is published with `usable: false`, reason `camera image frozen: …` (no
+  localizer makes a position from it), reported on the latched `camera_health` topic (JSON:
+  `frozen`, `reason`, `frozen_frames`, `frozen_s`); a camera device frozen longer than
+  `frozen_restart_s` (20 s) exits so systemd reopens it. Parameters `frozen_still_diff`,
+  `frozen_motion_deg`, `frozen_motion_m`, `frozen_restart_s`.
 
 ## `insta360_imu` — the Insta360 One R's own IMU as `sensor_msgs/Imu`
 

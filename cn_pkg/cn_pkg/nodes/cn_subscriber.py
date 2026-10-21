@@ -447,6 +447,12 @@ class CNSubscriber(Node):
 
     def _process_frame(self, seq_id, img, meta):
         try:
+            if meta.get("usable") is False:
+                # the camera refused the frame (a frozen picture, D24): a stale sky with a new time
+                # is a position in the wrong place — declared, never solved
+                self._publish_result(seq_id, meta, {
+                    "success": False, "error": f"frame not solved: {meta.get('reason') or 'frame marked unusable'}"})
+                return
             if self.allsky is not None:
                 self.get_logger().info(f"[cn] 🛰  solving frame={seq_id} (mode=allsky360)…")
                 self._publish_result(seq_id, meta, self._solve_allsky(img, meta))

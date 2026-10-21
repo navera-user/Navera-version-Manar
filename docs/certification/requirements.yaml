@@ -631,7 +631,7 @@ requirements:
   evidence:
     - {level: UT, value: 'IMU-1 / IMU-2 fixed (8050227)'}
   status: verified-UT
-  note: 'no detector for frozen camera IMAGES (same frame content repeated) — hazard H-01'
+  note: 'frozen camera IMAGES: NAV-SAF-19'
 
 - id: NAV-SAF-14
   category: SAF
@@ -701,6 +701,25 @@ requirements:
   evidence:
     - {level: UT, value: 'R-1: one NAVERA_MAX_SPEED_KMH feeds estimator and both vision gates'}
   status: verified-UT
+
+- id: NAV-SAF-19
+  category: SAF
+  title: 'A frozen camera picture never produces a position'
+  text: 'The live camera shall mark a frame unusable ("camera image frozen") when its time does not advance, its picture is identical to the previous one, or nearly identical while the IMU / GPS say the vehicle moved; day, night and celestial shall publish no position for it; the freeze shall be reported on <ns>/camera_health, a camera device frozen longer than frozen_restart_s (20 s) shall exit for a restart, and the first new picture shall end the freeze.'
+  code:
+    - navera_common/navera_common/health.py::FrozenFrameDetector
+    - camera_pkg/camera_pkg/nodes/live_camera.py::LiveCamera._check_frozen
+    - camera_pkg/camera_pkg/nodes/live_camera.py::LiveCamera._moved
+    - cn_pkg/cn_pkg/nodes/cn_subscriber.py::CNSubscriber._process_frame
+  tests:
+    - navera_tools/tests/test_live_camera_frozen.py
+  match:
+    - 'test_health\.py::test_(a_camera_delivering|an_identical_picture|a_frame_whose_time|a_nearly_identical)'
+    - 'test_cn_gates\.py::test_a_frozen_star_picture'
+  evidence:
+    - {level: UT, value: 'live_camera on a ROS camera: frozen pictures and an old-stamp frame published unusable with the reason, camera_health frozen, recovery on the first new picture (problems log D24, hazard H-01b)'}
+  status: verified-UT
+  note: 'not yet seen on a real stuck driver / RTSP stall; the localizers rely on the frame_meta usable flag (day and night already honour it)'
 
 # ───────────────────────────── Offline ─────────────────────────────
 - id: NAV-OFF-01

@@ -35,7 +35,7 @@ public-data evidence, not a field rate.
 |---|---|---|---|---|
 | H-07 | Slow GPS spoof where vision cannot match (sea, desert, night without thermal) | Haz: vehicle dragged 60–390 m+ while NAVERA states FIX | **High** | every spoof check needs an independent source with a stated sigma (D1); no inertial navigation (FEAT-2) |
 | H-13 | Autopilot misconfigured (`EK3_SRC1_POSZ = 3`, velocity sources, `GPS_AUTO_SWITCH`) | Cat: EKF height −277 m in 20 s, vehicle climbs to 825 m (SITL) | **High** | NAVERA cannot read or enforce autopilot parameters; documentation only |
-| H-01b | Camera image frozen (same picture delivered again) | Haz: a static vision fix repeated as fresh; with GPS trusted, the growth test may refuse the GOOD GPS | **High** | no frame-content freeze detector found in the code (only attitude/IMU freeze) — analysis, not tested |
+| H-01b | Camera image frozen (same picture delivered again) | Haz: a static vision fix repeated as fresh; with GPS trusted, the growth test may refuse the GOOD GPS | **Medium** | frame-content freeze detector + UT (NAV-SAF-19); not yet seen on a real stuck driver |
 | H-03 | Wrong night (thermal) fix accepted | Haz if forwarded | **High** (unvalidated) | 0 wrong accepts is on synthetic grey renders only; real LWIR never run (B4/B14, D22, F24) |
 | H-11 | Compute overload / out of memory / thermal throttling | Maj: OOM kill ends navigation (F5); stale fixes | **Medium** | no swap installed, no OOM protection, no thermal monitoring; integrity kept by freshness windows |
 | H-02 | Wrong day-vision fix accepted | Haz if forwarded: 100–650 m jumps (F16 tilted camera, F20 shake) | **Medium** | 1 / 2599 > 100 m on real drone data (PUB) but 2–7 wrong fixes per run under shake on the bench; F16/F20 open |
@@ -56,11 +56,11 @@ H-14 storage full (Low–Medium), H-15 integrator settings (Medium), H-16 simula
 |---|---|
 | Failure modes | (a) device lost / USB reset / no frames; (b) frames frozen: driver or stream returns the same image while the vehicle moves (Insta360 IMU feed stopped after 50 samples while video went on, F14) |
 | Effect | (a) day/night vision stops → NAVERA falls back or NO_FIX → autopilot failsafe (Maj). (b) a stale picture is matched as a fresh frame; repeated agreeing fixes can re-acquire a wrong track (`vision_nav`: two agreeing fixes re-acquire); while GPS is trusted the vision–GPS offset grows with the vehicle's motion and the growth test can **refuse a good GPS** (Haz) |
-| Detection | (a) `camera_pkg/camera_pkg/nodes/live_camera.py::LiveCamera._grab_loop`: open failure or > 50 failed grabs → node exits → launch exits → `Restart=always`; estimator freshness `day_timeout_s` 3 s (`EstimatorNode._eval_source`). (b) attitude freeze only: `LiveCamera._on_imu` (identical samples 1 s → frames not used), `navera_common/health.py::FrozenSampleDetector` (IMU) |
-| Mitigation | (a) restart + fallback chain (`EstimatorNode._select`), output "no fix" / bounded bridge 10 s (`navera_output/policy.py::bridge`). (b) none specific; `LensMask` (`day_pkg/image_quality.py`) masks fixed image regions but does not detect a whole frozen frame |
-| Evidence | (a) SIM: "GPS jammed + camera failed → NO FIX → autopilot failsafe"; UT `camera_pkg/test/test_gst_capture.py::test_a_bad_pipeline_is_not_opened`, `navera_tools/tests/test_live_camera.py`. (b) A only |
-| Residual | (a) **Medium** (availability; integrity protected). (b) **High** until a freeze detector exists |
-| Open items | O-1 (problems log D24): frame-content freeze detector in `live_camera` (frame difference or hash vs. IMU / GPS motion) with a test; O-2: re-check of F14 (IMU feed dead while video runs) on the product driver |
+| Detection | (a) `camera_pkg/camera_pkg/nodes/live_camera.py::LiveCamera._grab_loop`: open failure or > 50 failed grabs → node exits → launch exits → `Restart=always`; estimator freshness `day_timeout_s` 3 s (`EstimatorNode._eval_source`). (b) frame content: `navera_common/health.py::FrozenFrameDetector` in `LiveCamera._check_frozen` — time not advancing, picture bit-identical, or nearly identical while IMU / GPS say the vehicle moved (`LiveCamera._moved`); attitude freeze: `LiveCamera._on_imu`, `FrozenSampleDetector` (IMU) |
+| Mitigation | (a) restart + fallback chain (`EstimatorNode._select`), output "no fix" / bounded bridge 10 s (`navera_output/policy.py::bridge`). (b) the frame is published unusable ("camera image frozen: …"): day / night / celestial publish no position for it (`cn_subscriber.py::CNSubscriber._process_frame`); `<ns>/camera_health` reports it; a camera device frozen > 20 s exits for a restart; the first new picture ends it (NAV-SAF-19) |
+| Evidence | (a) SIM: "GPS jammed + camera failed → NO FIX → autopilot failsafe"; UT `camera_pkg/test/test_gst_capture.py::test_a_bad_pipeline_is_not_opened`, `navera_tools/tests/test_live_camera.py`. (b) UT `navera_tools/tests/test_live_camera_frozen.py`, `test_health.py`, `cn_pkg/test/test_cn_gates.py` — not yet on a real stuck driver |
+| Residual | (a) **Medium** (availability; integrity protected). (b) **Medium** (detector tested in UT; not yet seen on a real stuck driver / RTSP stall) |
+| Open items | O-1 (problems log D24): done in code + UT (NAV-SAF-19) — reproduce a real stall (unplug / RTSP pause) on the box; O-2: re-check of F14 (IMU feed dead while video runs) on the product driver |
 
 ### H-02 Wrong day-vision fix accepted
 
@@ -219,7 +219,7 @@ simulated data. Residual **Low**.
 
 | # | Item | Hazard | Kind |
 |---|---|---|---|
-| O-1 | frame-content freeze detector + test | H-01 | code |
+| O-1 | frame-content freeze detector + test — done (UT); real stall on the box to reproduce | H-01 | code / test |
 | O-25 | read and check the autopilot's EK3 / GPS parameters | H-13 | code |
 | O-13 | inertial dead-reckoning as an independent source (FEAT-2) | H-07 | code |
 | O-7, O-8 | real LWIR data; re-fit night thresholds | H-03 | data |
