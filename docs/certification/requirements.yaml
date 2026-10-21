@@ -977,10 +977,13 @@ requirements:
   text: 'A vision pipeline shall not start while its map / weights are missing (data disk not mounted): the wrapper exits and systemd retries every 10 s; the box still boots (nofail).'
   code:
     - deploy/systemd/navera_boot_lib.sh::navera_require
+  match:
+    - 'test_boot_require\.py::'
   evidence:
     - {level: A, value: 'navera_require checks each path; deploy/README.md §3.10'}
+    - {level: UT, value: 'map on an unmounted path or unset → exit 1 before the launch, with the reason; day / night wrappers require their map / weights before exec, units Restart=always RestartSec=10'}
   status: partial
-  note: 'no automated test with the disk absent'
+  note: 'nofail (the box still boots without the disk) is an fstab line in deploy/README.md: not tested on a box with the disk unplugged'
 
 - id: NAV-DEP-03
   category: DEP
