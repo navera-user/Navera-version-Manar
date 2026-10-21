@@ -118,6 +118,8 @@ def main():
     ap.add_argument("--source", default="thermal",
                     help="thermal (the orthomosaic) | map (grey render of the satellite map itself: control)")
     ap.add_argument("--polarity", type=int, default=1, help="1 white-hot, -1 black-hot")
+    ap.add_argument("--heading-err", type=float, default=None,
+                    help="measured heading off by this many degrees (random sign) instead of N(0, 2)")
     ap.add_argument("--no-retry", action="store_true", help="no heading / height retries")
     ap.add_argument("--map", default="", help="MBTiles to use / fill (default: <thermal dir>/<site>_esri_z17.mbtiles)")
     ap.add_argument("--fetch-only", action="store_true", help="fetch the map tiles for the poses, then stop")
@@ -171,6 +173,11 @@ def main():
     if save:
         save.mkdir(parents=True, exist_ok=True)
     import cv2
+
+    def head_err(p):
+        if a.heading_err is None:
+            return p["head_err"]
+        return a.heading_err * (1.0 if p["seed"] % 2 else -1.0)
     rows, table = [], []
     try:
         for s_key, s in zip(a.sensors.split(","), sensors):
@@ -188,7 +195,7 @@ def main():
                     t1 = time.perf_counter()
                     r = loc.localize(img, p["prior"][0], p["prior"][1],
                                      altitude_m=agl * (1 + p["alt_rel_err"]), hfov_deg=s.hfov_deg,
-                                     heading_deg=(p["heading"] + p["head_err"]) % 360.0,
+                                     heading_deg=(p["heading"] + head_err(p)) % 360.0,
                                      heading_retry_deg=() if a.no_retry else HEADING_RETRY,
                                      height_retry=() if a.no_retry else HEIGHT_RETRY)
                     dt = (time.perf_counter() - t1) * 1000
