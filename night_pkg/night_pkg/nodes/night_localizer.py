@@ -46,9 +46,12 @@ MIN_QUERY_COVERAGE = 0.85
 MIN_GROUND_COVERAGE = 0.55
 # STHN forward backend defaults (NightLocalizer sthn_backend="auto"; NAVERA_TRT=0/1 overrides the
 # TensorRT one). Set from the accuracy gate on the night bench (navera_tools/bench/perf_profile.py
-# night, perf_gate.py): same acceptance, positions within 1 m median, no new wrong fix.
-STHN_GRAPH_DEFAULT = False
-STHN_TRT_DEFAULT = False
+# night, perf_gate.py; 78 conditions x 8 frames, 2026-10-21) against STHN's own forward:
+#   graph      434/434 same acceptance, positions within 0.003 m        forward 570 -> 445 ms/frame
+#   TRT fp32   434/434 same acceptance, median 0.011 m (max 0.11 m)     forward 570 -> 246 ms/frame
+#   TRT fp16   4 acceptance flips, 1 new wrong fix: NOT used             forward 223 ms/frame
+STHN_GRAPH_DEFAULT = True
+STHN_TRT_DEFAULT = True
 STHN_TRT_FP16 = False
 
 
@@ -293,22 +296,47 @@ def verify_match(query_bgr, query_mask, sat_bgr, corners_rw, resize_width=256):
 
 # Decoded map tiles kept for the next patches: a frame's retries and second-centre re-check, and
 # the next frames of a flight, cut their patch from mostly the same tiles (a 1536 px patch is 49
-# tiles, ~170 ms of reading and JPEG decoding on the Jetson). ~0.2 MB per tile.
+# tiles, ~170 ms of reading and JPEG decoding on the Jetson). They live in ONE preallocated array
+# (TILE_CACHE_MAX x 256 x 256 x 3, ~50 MB): one small array per tile, interleaved with the frames'
+# large short-lived arrays, fragmented the heap (measured: +1.4 GB RSS over 234 bench frames).
+# A returned tile is a view of its slot, valid until TILE_CACHE_MAX other tiles have been read.
 TILE_CACHE_MAX = 256
-_tile_cache: "OrderedDict" = OrderedDict()
+_tile_cache: "OrderedDict" = OrderedDict()       # key -> slot index (None: tile absent)
+_tile_buf = None
 
 
 def _read_tile(conn, z, x, y):
-    """Read a tile from MBTiles (TMS y-flip required); decoded tiles are kept (TILE_CACHE_MAX)."""
+    """Read a tile from MBTiles (TMS y-flip required), as 256 x 256; decoded tiles are kept."""
+    global _tile_buf
     key = (conn, z, x, y)
     if key in _tile_cache:
         _tile_cache.move_to_end(key)
-        return _tile_cache[key]
+        slot = _tile_cache[key]
+        return None if slot is None else _tile_buf[slot]
     img = _read_tile_uncached(conn, z, x, y)
-    _tile_cache[key] = img
-    while len(_tile_cache) > TILE_CACHE_MAX:
+    if TILE_CACHE_MAX <= 0:
+        return img
+    if img is not None and img.shape != (256, 256, 3):
+        img = cv2.resize(img if img.ndim == 3 else cv2.cvtColor(img, cv2.COLOR_GRAY2BGR), (256, 256))
+    if _tile_buf is None or len(_tile_buf) != TILE_CACHE_MAX:
+        _tile_buf = np.empty((TILE_CACHE_MAX, 256, 256, 3), np.uint8)
+        _tile_cache.clear()
+    slot = None
+    if img is not None:
+        used = {v for v in _tile_cache.values() if v is not None}
+        if len(used) < TILE_CACHE_MAX:
+            slot = min(set(range(TILE_CACHE_MAX)) - used)
+        else:                                        # the least recently used tile with a slot
+            for k, v in _tile_cache.items():
+                if v is not None:
+                    slot = v
+                    del _tile_cache[k]
+                    break
+        _tile_buf[slot] = img
+    _tile_cache[key] = slot
+    while len(_tile_cache) > 4 * TILE_CACHE_MAX:     # absent tiles: keys only, bounded too
         _tile_cache.popitem(last=False)
-    return img
+    return None if slot is None else _tile_buf[slot]
 
 
 def _read_tile_uncached(conn, z, x, y):
@@ -481,7 +509,7 @@ class NightLocalizer:
 
         # Open MBTiles
         self._conn = sqlite3.connect(mbtiles, check_same_thread=False)
-        logger.info(f"NightLocalizer ready | device={self.device} zoom={zoom}")
+        logger.info(f"NightLocalizer ready | device={self.device} zoom={zoom} sthn={self.sthn_backend}")
 
     # ── Model loading ─────────────────────────────────────────────────────────
 

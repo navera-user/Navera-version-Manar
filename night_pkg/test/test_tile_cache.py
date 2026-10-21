@@ -32,19 +32,25 @@ class _Counting:
 
 def test_tile_read_once(monkeypatch):
     monkeypatch.setattr(nl, "_tile_cache", nl.OrderedDict())
+    monkeypatch.setattr(nl, "_tile_buf", None)
     c = _Counting(_mbtiles())
-    a = nl._read_tile(c, 17, 101, 201)
+    a = nl._read_tile(c, 17, 101, 201).copy()
     b = nl._read_tile(c, 17, 101, 201)
-    assert c.n == 1 and a is b and a.shape == (256, 256, 3)
+    assert c.n == 1 and np.array_equal(a, b) and b.shape == (256, 256, 3)
+    assert np.array_equal(b, nl._read_tile_uncached(c.conn, 17, 101, 201))
 
 
 def test_cache_is_bounded(monkeypatch):
     monkeypatch.setattr(nl, "_tile_cache", nl.OrderedDict())
+    monkeypatch.setattr(nl, "_tile_buf", None)
     monkeypatch.setattr(nl, "TILE_CACHE_MAX", 5)
     c = _Counting(_mbtiles())
     for x in range(100, 108):
-        nl._read_tile(c, 17, x, 200)
-    assert len(nl._tile_cache) == 5
+        t = nl._read_tile(c, 17, x, 200)
+        assert np.array_equal(t, nl._read_tile_uncached(c.conn, 17, x, 200))
+    assert len(nl._tile_cache) == 5 and nl._tile_buf.shape[0] == 5
+    assert nl._read_tile(c, 17, 999, 999) is None                  # absent tile
+    assert nl._read_tile(c, 17, 107, 200) is not None and c.n == 9
 
 
 def test_patch_identical_with_cache(monkeypatch):
@@ -54,6 +60,7 @@ def test_patch_identical_with_cache(monkeypatch):
     ref = nl._stitch_satellite_patch(conn, lat, lon, 17, 512)
     monkeypatch.undo()
     monkeypatch.setattr(nl, "_tile_cache", nl.OrderedDict())
+    monkeypatch.setattr(nl, "_tile_buf", None)
     first = nl._stitch_satellite_patch(conn, lat, lon, 17, 512)
     again = nl._stitch_satellite_patch(conn, lat, lon, 17, 512)
     for p in (first, again):

@@ -136,6 +136,9 @@ class NightSubscriber(Node):
         declare_float(self, "max_dead_reckon_s", 30.0)
         # fp16 au forward STHN (string pour un toggle 'false' fiable) — défaut activé.
         self.declare_parameter("mixed_precision", "false")
+        # STHN forward: auto (TensorRT engine when built and NAVERA_TRT allows, else the GPU graph),
+        # torch (STHN's own forward), graph, trt — see night_localizer.STHN_*_DEFAULT
+        self.declare_parameter("sthn_backend", "auto")
         # Camera geometry (LOC-16): each thermal frame is resampled to the scale
         # STHN was trained on from the altitude (frame_meta "altitude_m") and
         # this horizontal field of view, and turned north-up with the heading
@@ -255,6 +258,7 @@ class NightSubscriber(Node):
                 recheck_offset_m=_gate(self.get_parameter("recheck_offset_m").value),
                 recheck_max_m=_gate(self.get_parameter("recheck_max_m").value),
                 mixed_precision=self.mixed_precision,
+                sthn_backend=str(self.get_parameter("sthn_backend").value),
                 map_offset_deg=(float(self.get_parameter("map_offset_lat_deg").value),
                                 float(self.get_parameter("map_offset_lon_deg").value)),
             )
