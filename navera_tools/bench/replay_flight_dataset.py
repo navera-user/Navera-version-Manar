@@ -203,6 +203,17 @@ def build_world(a):
         def predict(self, *x, **k): return {"accepted": False, "error": "retrieval disabled in replay"}
     ds.DayLocalizer = NoRetrieval
     ds.IMAGES_DIR = a.area
+    if a.map_zoom != 17:                   # experiment: a map of another zoom (the node builds z17 matchers)
+        orig_learned, orig_local = lm.LearnedMatcher, ds.LocalMatcher
+
+        class LearnedZ(orig_learned):
+            def __init__(self, d, **kw):
+                super().__init__(d, zoom=a.map_zoom, **kw)
+
+        class LocalZ(orig_local):
+            def __init__(self, d, **kw):
+                super().__init__(d, zoom=a.map_zoom, **kw)
+        lm.LearnedMatcher, ds.LocalMatcher = LearnedZ, LocalZ
     args = ["--ros-args", "--log-level", a.log_level, "-p", "gyro_imu_topic:=/replay/imu"]
     for kv in a.param:
         args += ["-p", kv]
@@ -275,6 +286,18 @@ def run(a):
     alt = AltitudeEstimator()
     gps_hist = History(maxlen=600, max_gap_s=1.5)
 
+    rangefinder = None
+    if a.rangefinder:
+        # a downward rangefinder / laser altimeter (live_camera altitude_topic, "measured"): here the
+        # true height above ground, RTK altitude minus the DEM (--dem), at 10 Hz
+        g0 = dem_height(a.dem, float(r[0, 1]), float(r[0, 2]))
+        datum = float(r[0, 3]) - g0 - a.takeoff_agl_m
+
+        def rangefinder(t):
+            p = rtk.at(t)
+            g = dem_height(a.dem, float(p[0]), float(p[1])) if p is not None else None
+            return None if g is None else float(p[2]) - datum - g
+
     VClock.base = t_first - 5.0
     day, est, sinks = build_world(a)
 
@@ -332,6 +355,10 @@ def run(a):
                 ia += 1
             elif kind == "rel":
                 alt.add_relative(t, float(rel[ir, 1]))
+                if rangefinder is not None:
+                    rf = rangefinder(t)
+                    if rf is not None:
+                        alt.add_measured(t, rf, 1.0)
                 ir += 1
             elif kind == "imu":
                 if t - last_imu >= imu_period - 1e-6:
@@ -400,7 +427,8 @@ def run(a):
         el = VClock.stop_running()
         truth = rtk.at(t_exp)
         ests = [m for _, m in sinks["day_est"][k_est:]]
-        rec = dict(n=n, t=round(t_exp - t_first, 2), t_abs=t_exp, ms=round(el * 1000, 1), denied=t_exp >= t_deny,
+        rec = dict(n=n, t=round(float(t_exp - t_first), 2), t_abs=float(t_exp), ms=round(el * 1000, 1),
+                   denied=bool(t_exp >= t_deny),
                    usable=meta.get("usable"), tilt=meta.get("tilt_deg"), alt_used=meta.get("altitude_m"),
                    alt_sigma=meta.get("altitude_sigma_m"), alt_src=meta.get("altitude_source"),
                    truth=None if truth is None else [float(truth[0]), float(truth[1]), float(truth[2])],
@@ -475,12 +503,16 @@ def summarise(log, sinks, ctx, a):
         pos.append(dict(t=tv, src=m.source, mode=m.mode, err=metres((m.latitude, m.longitude), tr_meas),
                         err_now=metres((m.latitude, m.longitude), tr_now), sigma=sig))
     states = [(tv, m.state) for tv, m in sinks["status"] if tv >= t_deny]
+    # while GPS was good: did the cross-check ever refuse it or put it in doubt (a false alarm)?
+    before = [m for tv, m in sinks["status"] if ctx["t_first"] <= tv < t_deny]
+    gps_refused = sum(1 for m in before if m.active_source != NavStatus.SOURCE_GPS)
+    gps_doubt = sum(1 for m in before if "IN DOUBT" in m.reason)
     ok_states = (NavStatus.STATE_FIX, NavStatus.STATE_DEGRADED)
     avail = sum(s in ok_states for _, s in states) / len(states) if states else None
     gps_after = sum(1 for p in pos if p["src"] == PositionEstimate.SOURCE_GPS)
     # dead-reckoning error vs time since the last fix
     dr_age = {}
-    last_fix_t = None
+    last_fix_t = t_deny - ctx["t_first"]           # the last GPS fix, until vision gives one
     for r in den:
         for o in r.get("out", []):
             if o["mode"] == "fix":
@@ -516,7 +548,8 @@ def summarise(log, sinks, ctx, a):
                           for k, v in sorted(dr_age.items())},
         "gps_checks": stats(checks),
         "estimator": {"available": None if avail is None else round(avail, 3), "published": len(pos),
-                      "gps_after_loss": gps_after,
+                      "gps_after_loss": gps_after, "ticks_before_loss": len(before),
+                      "gps_not_used_before_loss": gps_refused, "gps_in_doubt_before_loss": gps_doubt,
                       "err": stats([dict(err=p["err"], sigma=p["sigma"]) for p in pos]),
                       "err_vs_now": stats([dict(err=p["err_now"], sigma=p["sigma"]) for p in pos])},
         "height": None if not hts else {"n": len(hts), "err_median": q([e for e, _, _ in hts], 0.5),
@@ -552,6 +585,9 @@ def main():
     ap.add_argument("--yaw-error-deg", type=float, default=0.0, help="error added to the IMU heading")
     ap.add_argument("--baro-drift-mps", type=float, default=0.0, help="drift of the simulated barometer, m/s")
     ap.add_argument("--dem", default="", help="dir for AWS terrarium z14 DEM tiles (height truth)")
+    ap.add_argument("--map-zoom", type=int, default=17, help="zoom of the map tiles in --area (the node's is 17)")
+    ap.add_argument("--rangefinder", action="store_true",
+                    help="feed the true height above ground (RTK - DEM) as a measured altitude (needs --dem)")
     ap.add_argument("--takeoff-agl-m", type=float, default=0.3, help="RTK antenna above the ground at the first sample")
     ap.add_argument("--param", action="append", default=[], help="extra day/estimator ROS parameter name:=value")
     ap.add_argument("--log-level", default="fatal")
