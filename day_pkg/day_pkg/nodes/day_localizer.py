@@ -81,10 +81,16 @@ class GeM(nn.Module):
     def forward(self, x):
         return (x.clamp(min=self.eps).pow(self.p).mean(dim=(-2,-1)).pow(1.0/self.p))
 
+DINOV2_HUB_REPO = "facebookresearch/dinov2:main"     # cached as <hub>/facebookresearch_dinov2_main
+
+
 class DINOv2GeM(nn.Module):
     def __init__(self):
         super().__init__()
-        self.backbone  = torch.hub.load("facebookresearch/dinov2", "dinov2_vits14", pretrained=True)
+        # ":main" names the branch: without it torch.hub asks github.com which branch is the default
+        # (an HTTP request with no timeout) on every start, even with the model cached — offline it is
+        # refused (mission bundle check) or, behind a network that drops packets, it hangs the start
+        self.backbone  = torch.hub.load(DINOV2_HUB_REPO, "dinov2_vits14", pretrained=True)
         self.gem       = GeM()
         self.embed_dim = self.backbone.embed_dim
     def forward(self, x):
