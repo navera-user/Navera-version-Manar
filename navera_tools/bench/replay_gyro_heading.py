@@ -125,6 +125,10 @@ def make_node(matcher, gyro: bool, est_sink):
     n._gps_was_trusted, n.calib_period_s, n.calib_radius_m, n._last_calib = False, 2.0, 600.0, 0.0
     n.local, n.shadow_mode = matcher, False
     n._gps_prior = Prior()
+    # the camera-delay estimation is not what this replay measures: inert, nothing applied
+    n.latency_cal = SimpleNamespace(add_gps=lambda *a: None, add_fix=lambda *a: None, freeze=lambda *a: None,
+                                    correction=lambda: 0.0, nominal=0.0, state=lambda: {"applied_s": None})
+    n.auto_latency, n._latency_applied, n.latency_rollback_s = False, None, 0.0
     n._dr_why = ""
     return n
 
