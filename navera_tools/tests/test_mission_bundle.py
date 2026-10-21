@@ -338,3 +338,10 @@ def test_cli_plan_json(world):
     assert r.returncode == 0, r.stderr
     p = json.loads(r.stdout)
     assert p["tiles"] > 10 and p["tiles_missing"] == 0 and p["learned_levels"] == [0]
+
+
+def test_selftest_points_avoid_featureless_stretches():
+    d = mb._textured_distances(22180.0, [[13.01, 22.18]], 6)          # Sousse corridor: sea after 13 km
+    assert len(d) == 6 and max(d) < 13010.0 and d == sorted(d)
+    assert mb._textured_distances(1000.0, [[0.0, 1.0]], 6) == []
+    assert len(mb._textured_distances(1000.0, [], 4)) == 4

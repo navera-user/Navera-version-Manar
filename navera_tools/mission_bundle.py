@@ -94,8 +94,8 @@ EQUATOR_M = 40075016.7
 # estimates (measured on this Jetson, see navera_tools/README.md "Mission bundle")
 TILE_KB_DEFAULT = 20.0          # a zoom-17 JPEG tile when no tile of the corridor is at hand
 DESC_KB, DESC_TILES_S = 3.0, 45.0
-CHUNK_KB = 215.0                # a learned-feature chunk (k768, fp16 DISK), mean of 394 bench chunks
-CHUNK_S = 0.25                  # GPU seconds per learned chunk (DISK at 640 px, Orin Nano)
+CHUNK_KB = 245.0                # a learned-feature chunk (k768, fp16 DISK): 224.8 MB / 934 chunks, Sousse 22 km
+CHUNK_S = 0.17                  # GPU seconds per learned chunk (DISK at 640 px, Orin Nano): 155.9 s / 934
 COPY_TILES_S = 130.0            # local tiles copied per second (MBTiles, then area images; USB disk)
 DOWNLOAD_LIMIT_MB = 10240.0
 ESRI_URL = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
@@ -1011,9 +1011,35 @@ def _summary(rows) -> dict:
                 ms_per_frame=round(float(np.mean([r["ms"] for r in rows])), 0) if rows else None)
 
 
+def _textured_distances(total_m: float, stretches, points: int) -> List[float]:
+    """points distances along the route spread evenly over its textured parts (the area's terrain
+    profile lists the featureless stretches, sea or uniform sand, in km: nothing to match there)."""
+    cuts = sorted((max(0.0, a * 1000.0), min(total_m, b * 1000.0)) for a, b in stretches)
+    parts, x = [], 0.0
+    for a, b in cuts:
+        if a > x:
+            parts.append((x, a))
+        x = max(x, b)
+    if x < total_m:
+        parts.append((x, total_m))
+    length = sum(b - a for a, b in parts)
+    if length <= 0:
+        return []
+    out = []
+    for k in range(points):
+        t = length * (k + 0.5) / points
+        for a, b in parts:
+            if t <= b - a:
+                out.append(a + t)
+                break
+            t -= b - a
+    return out
+
+
 def day_selftest(bundle: str, manifest: dict, matcher=None, points: int = 6) -> dict:
-    """Synthetic nadir frames rendered from the bundle's tiles along the route (4 headings, a 150 m
-    prior error), located with the day matcher reading ONLY the bundle's day/images."""
+    """Synthetic nadir frames rendered from the bundle's tiles along the textured parts of the route
+    (various headings, a 150 m prior error), located with the day matcher reading ONLY the bundle's
+    day/images."""
     import numpy as np
     from day_pkg.local_matcher import LocalMatcher
     from day_pkg.prepare_area import point_along
@@ -1023,8 +1049,9 @@ def day_selftest(bundle: str, manifest: dict, matcher=None, points: int = 6) -> 
     legs, total = m["legs"], route_length_m(m["legs"])
     rng = np.random.default_rng(3)
     rows = []
-    for k in range(points):
-        p, _ = point_along(legs, total * (k + 0.5) / points)
+    stretches = (manifest["day"].get("terrain") or {}).get("stretches") or []
+    for k, d in enumerate(_textured_distances(total, stretches, points)):
+        p, _ = point_along(legs, d)
         f_mpp = 2.0 * map_mpp(p[0], m["zoom"])
         hdg = float(k * 97 % 360)
         img = _render_frame(images, p[0], p[1], m["zoom"], (640, 480), f_mpp, hdg)
@@ -1136,7 +1163,8 @@ def _models_check(bundle: str, manifest: dict, deep: bool) -> dict:
         torch.hub.set_dir(hub)
         loaded = []
         if manifest["day"].get("dinov2_descriptors"):
-            torch.hub.load("facebookresearch/dinov2", "dinov2_vits14", pretrained=True)
+            from day_pkg.nodes.day_localizer import DINOV2_HUB_REPO
+            torch.hub.load(DINOV2_HUB_REPO, "dinov2_vits14", pretrained=True)      # as day_localizer does
             loaded.append("dinov2_vits14")
         if manifest["day"].get("learned_features"):
             KF.DISK.from_pretrained("depth")
@@ -1346,7 +1374,8 @@ def main(argv=None) -> int:
             env = dict(os.environ, NAVERA_BUNDLE_NETNS="1")
             cmd = ["unshare", "-rn", sys.executable, os.path.abspath(__file__)] + list(argv or sys.argv[1:])
             return subprocess.run(cmd, env=env).returncode
-        r = check_bundle(a.bundle, a.replay, a.deep, a.allow_missing, a.date, a.replay_max, a.gpu)
+        with contextlib.redirect_stdout(sys.stderr):         # libraries' prints must not break --json
+            r = check_bundle(a.bundle, a.replay, a.deep, a.allow_missing, a.date, a.replay_max, a.gpu)
         print(json.dumps(r, indent=1, default=str) if a.json else format_report(r))
         return 0 if r.get("ok") else 1
 
