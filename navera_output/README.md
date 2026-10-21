@@ -175,7 +175,7 @@ On the box: `/etc/navera/navera.env`, read by `navera-output.service` and
 | `NAVERA_DEGRADED_SIGMA_M` | `degraded_sigma_m` | NaN | accuracy stated for them (m, 1 σ); required with forwarding, at most `max_forward_sigma_m`. When the source states a worse one, the worse is sent |
 | `NAVERA_MAX_MEASUREMENT_AGE_S` | `max_measurement_age_s` | 5.0 | older measurements are not sent; younger vision positions are carried to the present |
 | `NAVERA_MAX_SPEED_KMH` | `max_speed_mps` | 30 m/s | the lag allowance when no ground velocity is known |
-| — | `bridge_max_s` / `bridge_after_s` / `bridge_period_s` | 10 / 2.5 / 1.0 | a gap in the forwarded vision positions is bridged this long at most (0 = never), starting after 2.5 s without one, one position per second (see "Gaps are bridged") |
+| `NAVERA_BRIDGE_MAX_S` (`bridge_max_s` only) | `bridge_max_s` / `bridge_after_s` / `bridge_period_s` | 10 / 2.5 / 1.0 | a gap in the forwarded vision positions is bridged this long at most (0 = never), starting after 2.5 s without one, one position per second (see "Gaps are bridged") |
 | — | `gnss_speed_sigma_mps` | 0.5 | `speed_accuracy` stated for the GPS receiver's velocity (RMC has none; ArduPilot floors it at `EK3_VELNE_M_NSE`) |
 | — | `reacquire_after_s` / `reacquire_vel_sigma_mps` | 5.0 / 8.0 | after no position was sent for this long, vision positions wait until the new fixes' velocity is known to this σ (0 s = never wait; see "After a gap") |
 | — | `bridge_accel_mps2` / `bridge_heading_sigma_deg` | 0.5 / 5 | unseen acceleration and heading error in the accuracy growth of a bridged position |
