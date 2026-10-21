@@ -24,6 +24,16 @@ import subprocess
 import sys
 import threading
 import time
+
+
+def _named_sources():
+    """Names of day_pkg.tile_sources' licence-labelled sources (empty when day_pkg is not installed):
+    NAVERA_TILE_URL may name one (e.g. sentinel2_l2a) instead of giving a tile URL."""
+    try:
+        from day_pkg import tile_sources
+        return set(tile_sources.SOURCES)
+    except ImportError:
+        return set()
 from collections import deque
 from typing import Callable, Dict, List, Optional
 
@@ -305,7 +315,9 @@ class AreaJobs:
                                  "vision will have no tiles there")
             cmd = self.prepare_cmd + ["--mbtiles", self.mbtiles, "--out", self.path(aid),
                                       "--buffer-m", str(BUFFER_M)]
-            if self.tile_url:
+            if self.tile_url in _named_sources():             # a licence-labelled source (day_pkg.tile_sources)
+                cmd += ["--source", self.tile_url] + (["--cache", self.cache] if self.cache else [])
+            elif self.tile_url:
                 cmd += ["--fetch-url", self.tile_url] + (["--cache", self.cache] if self.cache else [])
             cmd += ["--route"] + [f"{a},{b}" for a, b in plan["route"]]
             self.job = dict(id=aid, status="running", stage="starting", done=0, total=plan["tiles"],
