@@ -212,7 +212,7 @@ forwarding (`check_box.py::config_findings`), drift alarm in the log above 100 m
 ### H-16 Simulation or a second arbiter on a live box
 
 Fakes refuse without `NAVERA_ALLOW_SIM=1`; DDS localhost-only on an isolated domain; a second
-arbiter is reported (`EstimatorNode._check_single_arbiter`, no test); the operator view marks
+arbiter is reported (`EstimatorNode._check_single_arbiter`, UT `test_estimator_rules.py`); the operator view marks
 simulated data. Residual **Low**.
 
 ## 4. Open items (summary)

@@ -656,10 +656,13 @@ requirements:
   text: 'A second arbiter on the same ROS network shall be detected and reported.'
   code:
     - navera_estimator/navera_estimator/nodes/estimator_node.py::EstimatorNode._check_single_arbiter
+  match:
+    - 'test_estimator_rules\.py::test_a_second_arbiter'
   evidence:
     - {level: SIM, value: 'EST-10 (555b851); R-12 orphan estimator in the simulator', ref: 'ENGINEERING_BACKLOG.md'}
-  status: partial
-  note: 'no automated test'
+    - {level: UT, value: 'a second publisher on /navera/position: one error naming it, not repeated; its end reported'}
+  status: verified-UT
+  note: 'reported in the log only (every 5 s check), not on nav_status / the operator view'
 
 - id: NAV-SAF-16
   category: SAF

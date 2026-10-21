@@ -175,3 +175,44 @@ def test_a_day_fix_stays_usable_5_s_then_goes_stale(node):
         m = _msg(node, PositionEstimate.SOURCE_DAY_VISION, dt_s=-age, sigma=30.0)
         node._on_day(m)
         assert node._eval_source(node.get_clock().now(), m, node._day_timeout)[1] is expected, age
+
+
+def test_a_second_arbiter_on_the_network_is_reported_and_its_end_too(node):
+    """NAV-SAF-15 (EST-10): another publisher on /navera/position (a second arbiter, an orphan
+    simulator) is reported as an error; when it goes, the "only one arbiter again" is reported.
+    """
+    import time
+    from rclpy.node import Node
+
+    lines = []
+
+    class _Log:
+        def error(self, m, **_):
+            lines.append(("error", m))
+
+        def warn(self, m, **_):
+            lines.append(("warn", m))
+
+    real = node.get_logger
+    node.get_logger = lambda: _Log()
+    rival = Node("rival_arbiter")
+    try:
+        node._rival_reported = False
+        pub = rival.create_publisher(PositionEstimate, "/navera/position", 10)
+        end = time.time() + 10.0
+        while not node._rival_reported and time.time() < end:
+            node._check_single_arbiter()
+            time.sleep(0.1)
+        assert node._rival_reported
+        assert lines and lines[0][0] == "error" and "another arbiter" in lines[0][1]
+        node._check_single_arbiter()
+        assert len(lines) == 1                            # reported once, not every 5 s
+        rival.destroy_publisher(pub)
+        end = time.time() + 10.0
+        while node._rival_reported and time.time() < end:
+            node._check_single_arbiter()
+            time.sleep(0.1)
+        assert not node._rival_reported and lines[-1] == ("warn", "only one arbiter on /navera/position again")
+    finally:
+        node.get_logger = real
+        rival.destroy_node()
