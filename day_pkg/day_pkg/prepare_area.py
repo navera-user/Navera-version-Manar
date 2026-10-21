@@ -456,14 +456,8 @@ def _build_dem(kind, legs, buffer_m, out_dir, opener=None):
         return {"error": f"DEM not obtained: {e}"}
 
 
-def prepare(mbtiles, out_dir, route, buffer_m, zoom=17, fetch_url=None, cache=None, descriptors=True,
-            dem=None, dem_opener=None):
-    """Build the dataset in <out_dir>.partial, then move it to out_dir. descriptors=False: no DINOv2
-    descriptor cache (no torch needed; day_subscriber then builds it at start-up from the tiles).
-    dem="copernicus": also store the corridor's terrain (day_pkg.dem_sources; needs the network,
-    dem_opener for tests); a DEM that cannot be obtained is reported in area.json "dem", not fatal
-    (the height above ground then falls back to the barometer and the image)."""
-    t0 = time.time()
+def _sourced_plan(mbtiles, route, buffer_m, zoom, fetch_url, cache):
+    """(plan, MBTiles to read) for one zoom, downloading what the map lacks when a source is given."""
     plan = plan_tiles(mbtiles, route, buffer_m, zoom, cache)
     source = mbtiles
     if fetch_url and cache and (plan["missing"] or plan["in_cache"]):
@@ -472,9 +466,11 @@ def prepare(mbtiles, out_dir, route, buffer_m, zoom=17, fetch_url=None, cache=No
         source = cache                         # complete for the corridor
     elif plan["in_cache"]:
         source = cache
-    tmp = out_dir.rstrip("/") + ".partial"
-    shutil.rmtree(tmp, ignore_errors=True)
-    os.makedirs(os.path.join(tmp, "images"))
+    return plan, source
+
+
+def _write_tiles(source, plan, zoom, images_dir, stage="tiles"):
+    """Copy the plan's present tiles out of the MBTiles; [(name, lat, lon)] of their NW corners."""
     con = sqlite3.connect(f"file:{source}?mode=ro", uri=True)
     rows = []
     n = 2 ** zoom
@@ -484,14 +480,38 @@ def prepare(mbtiles, out_dir, route, buffer_m, zoom=17, fetch_url=None, cache=No
             r = con.execute("SELECT tile_data FROM tiles WHERE zoom_level=? AND tile_column=? "
                             "AND tile_row=?", (zoom, x, n - 1 - y)).fetchone()
             name = f"tile_{zoom}_{x}_{y}.jpg"
-            with open(os.path.join(tmp, "images", name), "wb") as f:
+            with open(os.path.join(images_dir, name), "wb") as f:
                 f.write(r[0])
             lat, lon = tile_nw(x, y, zoom)
             rows.append((name, lat, lon))
             if i % 50 == 0 or i == total - 1:
-                _progress("tiles", i + 1, total)
+                _progress(stage, i + 1, total)
     finally:
         con.close()
+    return rows
+
+
+def prepare(mbtiles, out_dir, route, buffer_m, zoom=17, fetch_url=None, cache=None, descriptors=True,
+            dem=None, dem_opener=None, extra_zooms=()):
+    """Build the dataset in <out_dir>.partial, then move it to out_dir. descriptors=False: no DINOv2
+    descriptor cache (no torch needed; day_subscriber then builds it at start-up from the tiles).
+    dem="copernicus": also store the corridor's terrain (day_pkg.dem_sources; needs the network,
+    dem_opener for tests); a DEM that cannot be obtained is reported in area.json "dem", not fatal
+    (the height above ground then falls back to the barometer and the image).
+    extra_zooms: finer map zooms stored beside `zoom` (same corridor) for low flights; the day node
+    matches each frame against the zoom its height needs (day_pkg.map_levels). The DINOv2 dataset
+    and the texture profile stay at `zoom`."""
+    t0 = time.time()
+    plan, source = _sourced_plan(mbtiles, route, buffer_m, zoom, fetch_url, cache)
+    tmp = out_dir.rstrip("/") + ".partial"
+    shutil.rmtree(tmp, ignore_errors=True)
+    os.makedirs(os.path.join(tmp, "images"))
+    rows = _write_tiles(source, plan, zoom, os.path.join(tmp, "images"))
+    extra = {}
+    for z in sorted({int(z) for z in extra_zooms} - {int(zoom)}):
+        p_z, src_z = _sourced_plan(mbtiles, route, buffer_m, z, fetch_url, cache)
+        n_z = len(_write_tiles(src_z, p_z, z, os.path.join(tmp, "images"), stage=f"tiles_z{z}"))
+        extra[z] = dict(tiles=len(p_z["needed"]), prepared=n_z, missing=p_z["missing"])
     with open(os.path.join(tmp, "dataset.csv"), "w") as f:
         f.write("filename,lat,lon\n")
         for name, lat, lon in rows:
@@ -512,6 +532,9 @@ def prepare(mbtiles, out_dir, route, buffer_m, zoom=17, fetch_url=None, cache=No
             "build_s": round(time.time() - t0, 1), "device": device}
     if dem_info is not None:
         info["dem"] = dem_info
+    if extra:
+        info["zooms"] = [zoom] + sorted(extra)
+        info["extra_zooms"] = {str(z): v for z, v in extra.items()}
     info["map_source"] = tile_sources.read_map_info(source)
     info["licence_warnings"] = tile_sources.licence_warnings(info["map_source"])
     with open(os.path.join(tmp, "area.json"), "w") as f:
@@ -535,6 +558,9 @@ def main():
     ap.add_argument("--cache", help="MBTiles file receiving downloaded tiles")
     ap.add_argument("--no-descriptors", action="store_true",
                     help="no DINOv2 descriptor cache (day_subscriber builds it at start-up)")
+    ap.add_argument("--extra-zoom", type=int, nargs="*", default=[],
+                    help="finer zooms stored too (e.g. 18 for flights below ~170 m with an 80 deg lens): the day "
+                         "node matches each frame against the zoom its height needs")
     ap.add_argument("--dem", choices=["copernicus", "none"], default="none",
                     help="also store the corridor's terrain (Copernicus DEM GLO-30 / GLO-90, free licence): "
                          "the height above ground over relief")
@@ -558,7 +584,7 @@ def main():
     if not a.out:
         ap.error("--out is required unless --check")
     prepare(a.mbtiles, a.out, route, a.buffer_m, a.zoom, a.fetch_url, a.cache, descriptors=not a.no_descriptors,
-            dem=None if a.dem == "none" else a.dem)
+            dem=None if a.dem == "none" else a.dem, extra_zooms=a.extra_zoom)
     return 0
 
 

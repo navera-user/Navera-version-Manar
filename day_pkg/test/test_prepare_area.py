@@ -207,3 +207,26 @@ def test_prepare_stores_the_corridor_dem(tmp_path, mbtiles):
                    dem_opener=offline)
     assert "network unreachable" in info["dem"]["error"]
     assert Terrain.load(str(tmp_path / "area2")) is None and (tmp_path / "area2" / "images").is_dir()
+
+
+def test_prepare_stores_extra_zooms_the_node_reads(tmp_path, mbtiles):
+    """--extra-zoom 18: the corridor's z18 tiles beside the z17 ones; area.json says both zooms."""
+    import json
+    import os
+    from day_pkg.map_levels import area_zooms
+    from day_pkg.prepare_area import prepare
+    path, needed17 = mbtiles
+    needed18 = plan_tiles(path, ROUTE, 1000.0, 18)["needed"]
+    con = sqlite3.connect(path)
+    for x, y in needed18:
+        con.execute("INSERT INTO tiles VALUES (18, ?, ?, ?)", (x, 2 ** 18 - 1 - y, _jpeg()))
+    con.commit()
+    con.close()
+    info = prepare(path, str(tmp_path / "area"), ROUTE, 1000.0, 17, descriptors=False, extra_zooms=[18])
+    names = os.listdir(tmp_path / "area" / "images")
+    assert sum(n.startswith("tile_18_") for n in names) == len(needed18) > 3 * len(needed17)
+    assert info["zooms"] == [17, 18] and info["extra_zooms"]["18"]["missing"] == []
+    assert json.load(open(tmp_path / "area" / "area.json"))["zooms"] == [17, 18]
+    assert area_zooms(str(tmp_path / "area" / "images")) == [17, 18]
+    rows = open(tmp_path / "area" / "dataset.csv").read().splitlines()[1:]
+    assert all(r.startswith("tile_17_") for r in rows)           # the DINOv2 dataset stays at z17
