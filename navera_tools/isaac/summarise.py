@@ -71,14 +71,18 @@ def summarise(results: str, gps_cut_s: float = 60.0) -> dict:
         flown = json.load(open(fl))
         ss = json.load(open(os.path.join(results, "sitl_session.json")))
         ek = rd("ekf.csv")
-        end_m = None
+        end_m = home_m = None
+        dist = lambda r: round(math.hypot((f(r, "truth_lat") - ss["lat0"]) * 111320.0,   # noqa: E731
+                                          (f(r, "truth_lon") - ss["lon0"]) * 111320.0
+                                          * math.cos(math.radians(ss["lat0"]))), 1)
         if ek:
-            la, lo = f(ek[-1], "truth_lat"), f(ek[-1], "truth_lon")
-            end_m = round(math.hypot((la - ss["lat0"]) * 111320.0,
-                                     (lo - ss["lon0"]) * 111320.0 * math.cos(math.radians(ss["lat0"]))), 1)
+            end_m = dist(ek[-1])
+            if flown.get("home_at") is not None:   # where it really was when it believed itself home
+                home_m = dist(min(ek, key=lambda r: abs(f(r, "t") - flown["home_at"])))
         texts = [json.loads(line).get("text", "") for line in open(os.path.join(results, "sitl_events.jsonl"))
                  if '"text"' in line]
         mission = dict(completed=flown.get("home_at") is not None, final_dist_from_home_m=end_m,
+                       dist_from_home_at_rtl_arrival_m=home_m,
                        failsafe=[x for x in texts if "ailsafe" in x][:3], cut_at=flown.get("cut_at"),
                        home_at=flown.get("home_at"))
     return dict(

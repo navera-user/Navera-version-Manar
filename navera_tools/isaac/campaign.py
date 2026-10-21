@@ -21,7 +21,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 from summarise import summarise  # noqa: E402
 
-SHORT = "--legs 4 --radius 400 --speed 10 --cut-after 75 --sigma 15"
+SHORT = "--legs 3 --radius 400 --speed 10 --cut-after 75 --sigma 15"
 FULL = "--legs 4 --radius 500 --speed 8 --cut-after 75 --sigma 15"
 PLANE = "--vehicle plane --gimbal false --legs 4 --radius 1300 --cut-after 75 --sigma 15 --alt 400"
 
@@ -50,6 +50,8 @@ CONDITIONS = {
     "obst_birds_air": ("bird flocks + another aircraft below", SHORT + " --isaac-args '--obstacles birds,aircraft'"),
     "obst_ground": ("power lines + moving cars/trucks", SHORT + " --isaac-args '--obstacles powerlines,cars'"),
     "obst_smoke": ("smoke plume", SHORT + " --isaac-args '--obstacles smoke'"),
+    "obst_all": ("birds + aircraft below + power lines + cars/trucks + smoke",
+                 SHORT + " --isaac-args '--obstacles birds,aircraft,powerlines,cars,smoke'"),
     "terrain_coast": ("coast with sea (Sousse)", SHORT + " --scene coast"),
     "terrain_hills": ("hills / relief", SHORT + " --scene hills"),
     "terrain_farms": ("farmland", SHORT + " --scene farms"),
@@ -107,7 +109,7 @@ def main():
                         f"'NAVERA - live error' and ~1.5 min later 'NAVERA - Isaac Sim flight' open, ~9 min.\n")
         t0 = time.time()
         cmd = (f"rm -rf ~/navera_results/{run}; bash ~/Navera/navera_tools/isaac/run_closed_loop.sh --name {run} "
-               f"--hold 15 {args} > ~/navera_{run}.out 2>&1")
+               f"--hold 5 {args} > ~/navera_{run}.out 2>&1")
         r = sh(cmd, a.ssh)
         rec = dict(run=run, condition=n, what=what, args=args, minutes=round((time.time() - t0) / 60, 1), rc=r.returncode)
         dst = os.path.join(a.copy_to or a.out, run)
@@ -133,7 +135,7 @@ def table(out):
         r = json.loads(line)
         recs[r["run"]] = r
     rows = ["| run | condition | matched % | NAVERA fix err (stated time) med/p90/max | at exposure med/p90/max | "
-            "output err med/p90/max | > 3 sigma | wrong | autopilot EKF med/p90/max | mission | end from home | "
+            "output err med/p90/max | > 3 sigma | wrong | autopilot EKF med/p90/max | mission | truth from home at RTL arrival | "
             "delay est. |", "|" + "---|" * 12]
     f3 = lambda d: "/".join("-" if d.get(k) is None else f"{d[k]:.0f}" for k in ("median", "p90", "max")) if d else "-"  # noqa: E731
     for r in recs.values():
@@ -148,7 +150,7 @@ def table(out):
                     f"{f3(s.get('autopilot_ekf_err_after_cut_m'))} | "
                     f"{'completed' if m.get('completed') else 'NOT completed'}"
                     f"{' (' + ', '.join(m.get('failsafe') or []) + ')' if m.get('failsafe') else ''} | "
-                    f"{m.get('final_dist_from_home_m')} m | {lat.get('applied_s') or lat.get('estimate_s') or '-'} |")
+                    f"{m.get('dist_from_home_at_rtl_arrival_m')} m | {lat.get('applied_s') or lat.get('estimate_s') or '-'} |")
     open(os.path.join(out, "campaign.md"), "w").write("\n".join(rows) + "\n")
 
 

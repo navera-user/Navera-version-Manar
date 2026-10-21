@@ -104,14 +104,13 @@ RTL_ALT_FINAL $((alt * 100))
 PARM
 else cat <<PARM
 AIRSPEED_CRUISE $speed
-TRIM_ARSPD_CM $((speed * 100))
 AIRSPEED_MIN $((speed > 20 ? speed - 8 : 12))
 AIRSPEED_MAX $((speed + 15))
 TKOFF_ALT 60
 RTL_RADIUS 350
 WP_LOITER_RAD 350
 WP_RADIUS 120
-ALT_HOLD_RTL $((alt * 100))
+RTL_ALTITUDE $alt
 RTL_AUTOLAND 0
 ROLL_LIMIT_DEG 40
 PARM
@@ -168,11 +167,11 @@ log "Isaac Sim closed: $(cat "$D/runs/$name/done.json" 2>/dev/null | tr -d '\n '
 cp "$D/runs/$name/session.json" "$D/runs/$name/frames.jsonl" "$res/" 2>/dev/null
 
 ff="ffmpeg -loglevel error -y"
-$ff -framerate 10 -i "$D/runs/$name/video/v_%06d.jpg" -c:v libx264 -pix_fmt yuv420p -crf 23 "$res/chase.mp4"
 $ff -framerate 10 -i "$D/runs/$name/video/v_%06d.jpg" -framerate 1 -i "$res/navera_view/n_%05d.jpg" \
   -framerate 0.5 -i "$res/plot/p_%05d.png" -filter_complex \
   "[0]scale=960:540,fps=10[a];[1]scale=960:540,fps=10[b];[a][b]hstack[t];[2]scale=1920:-2,fps=10[c];[t][c]vstack,format=yuv420p" \
-  -shortest -c:v libx264 -crf 24 "$res/flight.mp4"
-log "videos: $res/{flight,chase}.mp4"
+  -shortest -c:v libx264 -preset ultrafast -crf 26 "$res/flight.mp4"
+log "videos: $res/flight.mp4"
+[ -s "$res/flight.mp4" ] && rm -rf "$D/runs/$name/frames" "$D/runs/$name/video"   # ~2 GB of JPEG per run
 cut=$(cat "$res/gps_cut" 2>/dev/null || echo 99999)
 python3 "$here/summarise.py" "$res" --gps-cut "$cut" | tee -a "$res/run.log"
