@@ -537,6 +537,11 @@ class DaySubscriber(Node):
             cov = list(msg.position_covariance)
             self._anchor_sigma = math.sqrt(max(cov[0], cov[4])) if cov[0] > 0 else 5.0
             self.track.add(self._anchor_time, msg.latitude, msg.longitude, self._anchor_sigma)
+            # the GPS now measures the track: a carried velocity from an earlier dead-reckoning
+            # (e.g. at power-on, standing still) must not outlive it. It did: after the GPS loss
+            # the carry went on with that velocity — 0 m/s for a copter at 8 m/s, 97 m off in 10 s
+            # with a stated +-28 m (Isaac Sim closed loop 2026-10-21, low clouds at the GPS loss)
+            self._carry, self._vel_epoch = None, None
 
     def on_operator_position(self, msg: PositionEstimate):
         """The operator's start position: the search centre while no GPS is trusted, the
