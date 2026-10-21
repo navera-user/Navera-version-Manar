@@ -345,10 +345,13 @@ def worker():
         vis_err = metres(vis, truth)[0] if vis else None
         # the estimator: GPS while it agrees with vision, else vision, else carried
         if gps is not None and vis is not None and axis is not None and height is not None:
-            gap = metres(gps, vis)[0]
+            gap, gde, gdn = metres(gps, vis)
             sig_v = max(float(r.get("sigma_m") or 0.0), 30.0)
+            # the GPS-minus-vision offset feeds the growth test too (a slow spoof grows it steadily;
+            # the camera-axis offset is constant and cancels): gps_crosscheck.GpsDriftTrend
+            sample = (t, gde, gdn, math.hypot(sig_v, 5.0))
             if len(cal_off) >= 5 and not gps_refused and \
-                    xcheck.update(t, gap, 5.0 * sig_v + 50.0, 3.0 * sig_v, t) is not None:  # axis measured
+                    xcheck.update(t, gap, 5.0 * sig_v + 50.0, 3.0 * sig_v, t, sample=sample) is not None:
                 gps_refused, refused_at = True, (t, drift)
                 if nav is not None:                            # hand over from vision, not the drifted GPS
                     nav.gps(t, *vis, sigma_m=10.0, heading_deg=imu_heading(t))
