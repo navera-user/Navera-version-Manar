@@ -233,6 +233,9 @@ class DaySubscriber(Node):
         declare_float(self, "local_sigma_m", 30.0)
         declare_float(self, "local_sigma_floor_m", 5.0)
         declare_float(self, "frame_time_sigma_s", 0.05)
+        # the camera delay's 1-sigma while it is unknown (camera_latency_s 0 and no auto_latency
+        # estimate applied): added, times the ground speed, to every stated fix accuracy
+        declare_float(self, "unknown_delay_sigma_s", 1.0)
         declare_float(self, "attitude_sigma_deg", 0.5)
         # In-flight check of that sigma against the trusted GPS (fix_sigma.SigmaCalibration): the GPS check
         # frames measure this flight's real vision error; after min_samples the stated sigma is scaled to it.
@@ -348,6 +351,7 @@ class DaySubscriber(Node):
         self.local_sigma_m = float(self.get_parameter("local_sigma_m").value)
         self.local_sigma_floor_m = float(self.get_parameter("local_sigma_floor_m").value)
         self.frame_time_sigma_s = float(self.get_parameter("frame_time_sigma_s").value)
+        self.unknown_delay_sigma_s = float(self.get_parameter("unknown_delay_sigma_s").value)
         self.attitude_sigma_deg = float(self.get_parameter("attitude_sigma_deg").value)
         self.sigma_cal = SigmaCalibration(float(self.get_parameter("sigma_floor_no_cal_m").value),
                                           int(self.get_parameter("sigma_cal_min_samples").value))
@@ -1372,7 +1376,24 @@ class DaySubscriber(Node):
         calibration against GPS (or at least the no-calibration floor), local_sigma_m without one."""
         if not result.get("sigma_m"):
             return self.local_sigma_m
-        return self.sigma_cal.apply(self._model_sigma(result, meta))
+        s = self.sigma_cal.apply(self._model_sigma(result, meta))
+        sd = self._unknown_delay_sigma_s()
+        if sd > 0.0:
+            v = self.track.velocity(time.time())
+            if v is not None:
+                s = math.hypot(s, sd * math.hypot(v[0], v[1]))
+        return s
+
+    def _unknown_delay_sigma_s(self) -> float:
+        """The camera delay's uncertainty while it is neither set (camera_latency_s) nor estimated
+        (auto_latency): the frame time can be off by that much, the fix by speed x that along the
+        track — a bias that turns with the track, which the in-flight calibration (map bias
+        removed) cannot see. Isaac Sim closed loop 2026-10-21: 1.3 s unknown delay at 10 m/s,
+        fixes stated +-7.8 m after the calibration, 24-40 m off after a turn (34 beyond 3 sigma)."""
+        lc = getattr(self, "latency_cal", None)
+        if lc is None or lc.applied is not None or lc.nominal != 0.0:
+            return 0.0
+        return float(getattr(self, "unknown_delay_sigma_s", 0.0))
 
     def _model_sigma(self, result, meta) -> float:
         """The model sigma of a local match, before the in-flight calibration."""
