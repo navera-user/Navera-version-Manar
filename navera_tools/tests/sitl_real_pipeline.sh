@@ -19,7 +19,7 @@ out="${2:-$HOME/.navera_sim/real_pipeline_$(date +%F)}"
 lock="${NAVERA_GPU_LOCK:-/tmp/claude-1000/navera_gpu.lock}"
 mkdir -p "$out" "$(dirname "$lock")"
 echo "simulator from $wt (waiting for the GPU lock $lock)"
-export NAVERA_SIM_TLS_PORT="${NAVERA_SIM_TLS_PORT:-8444}"   # 8443 is often taken (tailscale serve)
+export NAVERA_SIM_TLS_PORT="${NAVERA_SIM_TLS_PORT:-8453}"   # 8443-8445 are taken on the Jetson (tailscale serve, a field tool)
 setsid flock "$lock" nice -n 19 "$wt/navera_tools/tests/sitl_fault_start_sim.sh" >"$out/sim_stdout.log" 2>&1 &
 sim=$!
 echo "$sim" >"$out/sim.pid"
