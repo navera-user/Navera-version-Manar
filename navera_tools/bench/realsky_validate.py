@@ -69,7 +69,11 @@ def read_fits(path: str) -> Tuple[np.ndarray, str, float]:
         raw = subprocess.run(["gzip", "-dc", path], capture_output=True, check=True).stdout
     with fits.open(io.BytesIO(raw)) as h:
         hd = h[0] if h[0].data is not None else h[1]
-        return hd.data.astype(np.float32), str(hd.header["DATE-OBS"]), float(hd.header.get("EXPTIME", hd.header.get("EXPOSURE", 0.0)))
+        utc = str(hd.header["DATE-OBS"])
+        m = re.match(r"(.*T\d\d:\d\d:)60(\.\d+)?$", utc)
+        if m:                                              # a few MASCOT headers say second 60
+            utc = str(np.datetime64(m.group(1) + "59" + (m.group(2) or "")) + np.timedelta64(1, "s"))
+        return hd.data.astype(np.float32), utc, float(hd.header.get("EXPTIME", hd.header.get("EXPOSURE", 0.0)))
 
 
 def to_8bit(d: np.ndarray, gamma: float = 2.2) -> np.ndarray:
@@ -361,8 +365,11 @@ def solve_both(img, up, utc, cat, lens):
     return r, u, dt
 
 
-def run(frames: List[str], cam: dict, cal: dict, out: str, catalogue_mag: float = 4.0, degrade: Optional[dict] = None,
+def run(frames: List[str], cam: dict, cals: List[dict], out: str, catalogue_mag: float = 4.0, degrade: Optional[dict] = None,
         up_per_frame: bool = False):
+    """cals: one calibration, or (up_per_frame) several lens epochs of a camera whose lens was changed: each frame
+    uses the one whose model fits the most catalogue stars at their true places (truth side, not the solver)."""
+    cal = cals[0]
     cat = allsky.Catalogue(limit_mag=catalogue_mag, path=allsky.BUNDLED_CATALOGUE)
     full = allsky.Catalogue(limit_mag=4.5, max_sep_deg=1.0, path=allsky.BUNDLED_CATALOGUE)
     R_cam_enu = np.array(cal["R_cam_enu"])
@@ -386,7 +393,11 @@ def run(frames: List[str], cam: dict, cal: dict, out: str, catalogue_mag: float 
             alt, az = star_altaz(full.vec, utc, cam)
             n_mount = None
             if up_per_frame:                       # tracking mount: 'up' of this frame from the truth (see per_frame_mount)
-                R_cam_enu, n_mount = per_frame_mount(img, lens, np.array(cal["R_cam_enu"]), alt, az)
+                fits = []
+                for c in cals:
+                    ln = lens_from(c, img.shape)
+                    fits.append(per_frame_mount(img, ln, np.array(c["R_cam_enu"]), alt, az) + (ln, c))
+                R_cam_enu, n_mount, lens, used = max(fits, key=lambda t: t[1])
                 up = R_cam_enu @ np.array([0.0, 0.0, 1.0])
             tr, n_exp = transparency(img, lens, up, R_cam_enu, alt, az, full.mag)
             r, u, dt = solve_both(img, up, utc, cat, lens)
@@ -397,7 +408,8 @@ def run(frames: List[str], cam: dict, cal: dict, out: str, catalogue_mag: float 
                        solve_s=round(dt, 3), solved=bool(r.get("solved")), why=r.get("why"),
                        spots=r.get("spots"), rejected_spots=r.get("rejected_spots"), matched=r.get("matched"),
                        rms_deg=r.get("rms_deg"), p_chance=r.get("p_chance"), f_scale=r.get("f_scale"),
-                       retried=r.get("retried_with"), mount_fit_stars=n_mount)
+                       retried=r.get("retried_with"), mount_fit_stars=n_mount,
+                       lens_epoch=used.get("calibration_frames", ["?"])[0][:17] if up_per_frame else None)
             if r.get("solved"):
                 rec.update(lat=r["lat"], lon=r["lon"], err_km=round(great_circle_km(r["lat"], r["lon"], cam["lat"], cam["lon"]), 2),
                            err_n_km=round((r["lat"] - cam["lat"]) * KM_PER_DEG, 2),
@@ -526,7 +538,7 @@ def main():
     c.add_argument("--per-frame", action="store_true", help="tracking mount: one rotation per frame")
     r = sub.add_parser("run")
     r.add_argument("--camera", required=True, choices=sorted(CAMERAS))
-    r.add_argument("--lens", required=True)
+    r.add_argument("--lens", required=True, nargs="+")
     r.add_argument("--frames", nargs="+", required=True)
     r.add_argument("--out", required=True)
     r.add_argument("--degrade", default=None, help="gain,read_noise,jpeg_q: a shallower, noisier, compressed copy")
@@ -548,7 +560,7 @@ def main():
         if a.degrade:
             g, n, q = a.degrade.split(",")
             deg = dict(gain=float(g), read_noise=float(n), jpeg_q=int(q))
-        run(frames, CAMERAS[a.camera], json.load(open(a.lens)), a.out, degrade=deg, up_per_frame=a.up_per_frame)
+        run(frames, CAMERAS[a.camera], [json.load(open(p)) for p in a.lens], a.out, degrade=deg, up_per_frame=a.up_per_frame)
     else:
         print(summary(a.results))
 
