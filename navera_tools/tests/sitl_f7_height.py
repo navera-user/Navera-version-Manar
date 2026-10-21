@@ -1,19 +1,20 @@
 #!/usr/bin/env python3
-"""F7 in ArduCopter SITL: can NAVERA's vision position ever corrupt the vehicle's height?
+"""F7 in ArduPilot SITL: can NAVERA's vision position ever corrupt the vehicle's height?
 
 Not part of run_tests.sh (needs an ArduPilot build, about 4 min per run). Usage, from the
 workspace root:
 
-    nice -n 19 python3 navera_tools/tests/sitl_f7_height.py [--ardupilot ~/ardupilot]
-                       [--runs recommended,posz_gps] [--keep]
+    nice -n 19 python3 navera_tools/tests/sitl_f7_height.py [--vehicle copter|plane|rover]
+                       [--ardupilot ~/ardupilot] [--runs recommended,posz_gps] [--keep] [--instance N]
 
-ArduCopter SITL runs with no simulated GPS (SIM_GPS_DISABLE 1) and NAVERA's recommended
-parameters (docs/ARDUPILOT_INTEGRATION.md §3: GPS_TYPE 14, EK3_SRC1_VELXY 0, EK3_SRC1_VELZ 0,
+ArduCopter (or ArduPlane / Rover, --vehicle) SITL runs with no simulated GPS (SIM_GPS_DISABLE 1)
+and NAVERA's recommended parameters (docs/ARDUPILOT_INTEGRATION.md §3: GPS_TYPE 14, EK3_SRC1_VELXY 0, EK3_SRC1_VELZ 0,
 EK3_SRC1_POSZ 1 = barometer). This script plays NAVERA: it builds every GPS_INPUT with
 navera_output.mavlink_out.gps_input_fields(), exactly as vehicle_output_node sends it, from the
 simulator's true position (SIM_STATE) plus noise:
 
-    gps        KIND_FIX, true altitude: origin, arming, take-off to 40 m, hover
+    gps        KIND_FIX, true altitude: origin, arming, take-off and hover (Copter: 40 m, GUIDED;
+               Plane: AUTO take-off then loiter at 60 m; Rover: armed, standing in HOLD)
     vision     KIND_ESTIMATED (GPS off, 0 satellites, ±15 m), exactly as sent: no altitude,
                IGNORE_ALT set
     garbage_z  as vision, but the (ignored) alt field on the wire = truth + 5000 m
@@ -38,8 +39,6 @@ import math
 import os
 import random
 import shutil
-import signal
-import subprocess
 import sys
 import tempfile
 import time
@@ -48,27 +47,26 @@ from datetime import datetime, timezone
 from pymavlink import mavutil
 from pymavlink.DFReader import DFReader_binary
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import sitl_vehicles as sv                                                # noqa: E402
+
 WS = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 for _pkg in ("navera_output", "navera_common"):
     sys.path.insert(0, os.path.join(WS, _pkg))
 from navera_output import mavlink_out                                    # noqa: E402
 from navera_output.policy import KIND_ESTIMATED, KIND_FIX, Output        # noqa: E402
 
-HOME = (35.8288, 10.6360, 300.0)             # lat, lon, ground altitude AMSL (m)
-TAKEOFF_M = 40.0
+HOME = sv.HOME                               # lat, lon, ground altitude AMSL (m)
+TAKEOFF_M = {"copter": 40.0, "plane": 60.0, "rover": 0.0}
 RATE_HZ = 5.0
 VISION_SIGMA_M = 15.0                        # stated accuracy (NAVERA target)
 VISION_NOISE_M = 3.0                         # actual noise added to the truth
 
-NAVERA_PARAMS = {                            # docs/ARDUPILOT_INTEGRATION.md §3
-    "GPS_TYPE": 14, "GPS_AUTO_CONFIG": 0, "SERIAL1_PROTOCOL": 2,
-    "EK3_SRC1_POSXY": 3, "EK3_SRC1_VELXY": 0, "EK3_SRC1_VELZ": 0, "EK3_SRC1_POSZ": 1,
-    "EK3_OGN_HGT_MASK": 0,
-    "SIM_GPS_DISABLE": 1,                    # the only GPS is NAVERA's GPS_INPUT
-    "FS_EKF_ACTION": 0,                      # observe the estimate, do not land on it
-    # every arming check except "logging": on a loaded Jetson at nice 19 the SITL log thread
-    # misses its 5 s heartbeat ("AP_Logger: stuck thread") though the log is written
-    "ARMING_CHECK": ((1 << 21) - 2) & ~(1 << 10),
+NAVERA_PARAMS = sv.NAVERA_PARAMS             # docs/ARDUPILOT_INTEGRATION.md §3
+VEHICLE_PARAMS = {
+    "copter": {"FS_EKF_ACTION": 0},          # observe the estimate, do not land on it
+    "plane": {"TKOFF_ALT": 50},
+    "rover": {},
 }
 RUNS = {"recommended": {}, "posz_gps": {"EK3_SRC1_POSZ": 3}}
 
@@ -78,50 +76,17 @@ DRIFT_MPS = 1.0
 DRIFT_MAX_M = 90.0
 
 
-def start(cmd, cwd, log):
-    return subprocess.Popen(["nice", "-n", "19"] + cmd, cwd=cwd, stdout=log, stderr=subprocess.STDOUT,
-                            start_new_session=True)
-
-
-def stop(p):
-    if p is None or p.poll() is not None:
-        return
-    try:
-        os.killpg(p.pid, signal.SIGTERM)
-        p.wait(timeout=10)
-    except Exception:
-        os.killpg(p.pid, signal.SIGKILL)
-
-
 def offset_ll(lat, lon, dn, de):
     return lat + dn / 111319.5, lon + de / (111319.5 * math.cos(math.radians(lat)))
 
 
-class Navera:
+class Navera(sv.Link):
     """The GPS_INPUT stream, built with navera_output.mavlink_out from the simulator's truth."""
 
-    def __init__(self, mav, seed=7):
-        self.mav, self.rng = mav, random.Random(seed)
-        self.truth = None                    # (lat, lon, alt AMSL)
-        self.boot_ms = 0
+    def __init__(self, port, seed=7):
+        super().__init__(port)
+        self.rng = random.Random(seed)
         self.last_send = 0.0
-        self.texts = []
-
-    def pump(self, timeout=0.05):
-        end = time.time() + timeout
-        while True:
-            m = self.mav.recv_match(blocking=True, timeout=max(0.0, end - time.time()))
-            if m is None:
-                return
-            t = m.get_type()
-            if t == "SIM_STATE":
-                self.truth = (m.lat_int / 1e7, m.lon_int / 1e7, m.alt) if getattr(m, "lat_int", 0) \
-                    else (m.lat, m.lon, m.alt)
-            elif t == "STATUSTEXT":
-                self.texts.append(m.text)
-                print("    ap:", m.text)
-            if hasattr(m, "time_boot_ms"):
-                self.boot_ms = max(self.boot_ms, m.time_boot_ms)
 
     def tick(self, make):
         """Pump messages; send the GPS_INPUT fields make(*truth) at RATE_HZ."""
@@ -165,29 +130,48 @@ def vision_output(rng, phase, t, lat, lon, alt):
     return f
 
 
-def fly(name, extra, ardupilot, work):
+def get_moving(vehicle, nav, mav, gps, run_until, name):
+    """Arm on the passed-through GPS and reach the hover / loiter height (Rover: stand still)."""
+    if vehicle == "plane":
+        lat, lon = offset_ll(HOME[0], HOME[1], 400.0, 0.0)
+        items = [sv.mission_item(0, mavutil.mavlink.MAV_CMD_NAV_WAYPOINT, HOME[0], HOME[1], 0),
+                 sv.mission_item(1, mavutil.mavlink.MAV_CMD_NAV_TAKEOFF, HOME[0], HOME[1], 50.0, p1=15.0),
+                 sv.mission_item(2, mavutil.mavlink.MAV_CMD_NAV_LOITER_UNLIM, lat, lon, TAKEOFF_M["plane"])]
+        sv.upload_mission(nav, items, lambda: nav.tick(gps))
+    mode = {"copter": "GUIDED", "plane": "AUTO", "rover": "HOLD"}[vehicle]
+    nav.set_mode(vehicle, mode)
+    end = time.time() + 90
+    while not nav.armed():                     # pre-arm checks pass a few s after the origin
+        if time.time() > end:
+            raise RuntimeError(f"{name}: could not arm")
+        nav.set_mode(vehicle, mode)
+        nav.arm()
+        t_try = time.time() + 3
+        while time.time() < t_try:
+            nav.tick(gps)
+    if vehicle == "copter":
+        nav.command(mavutil.mavlink.MAV_CMD_NAV_TAKEOFF, 0, 0, 0, 0, 0, 0, TAKEOFF_M["copter"])
+    if vehicle != "rover":
+        margin = 2.0 if vehicle == "copter" else 10.0      # Plane: take-off ends at 50 m, then climbs
+        run_until(gps, lambda: nav.truth and nav.truth[2] - HOME[2] > TAKEOFF_M[vehicle] - margin,
+                  120, "take-off")
+    end = time.time() + (25 if vehicle == "plane" else 8)
+    while time.time() < end:
+        nav.tick(gps)
+
+
+def fly(vehicle, name, extra, ardupilot, work, instance=0):
     """One SITL run. Returns (dataflash log path, {phase: (start_ms, end_ms)})."""
-    os.makedirs(work, exist_ok=True)
-    params = dict(NAVERA_PARAMS, **extra)
-    parm = os.path.join(work, "navera.parm")
-    with open(parm, "w") as f:
-        f.writelines(f"{k} {v}\n" for k, v in params.items())
-    defaults = os.path.join(ardupilot, "Tools/autotest/default_params/copter.parm")
-    cmd = [os.path.join(ardupilot, "build/sitl/bin/arducopter"), "--model", "quad",
-           "--home", f"{HOME[0]},{HOME[1]},{HOME[2]},0", "--defaults", f"{defaults},{parm}", "-I0"]
-    sitl = start(cmd, work, open(os.path.join(work, "sitl.log"), "w"))
+    params = dict(NAVERA_PARAMS, **VEHICLE_PARAMS[vehicle], **extra)
+    sitl, port = sv.start_sitl(vehicle, ardupilot, work, params, instance=instance)
     phases = {}
     try:
         time.sleep(4)
-        mav = mavutil.mavlink_connection("tcp:127.0.0.1:5760", source_system=250)
-        mav.wait_heartbeat(timeout=60)
-        for msg_id, hz in ((mavutil.mavlink.MAVLINK_MSG_ID_SIM_STATE, 10),
-                           (mavutil.mavlink.MAVLINK_MSG_ID_GLOBAL_POSITION_INT, 5),
-                           (mavutil.mavlink.MAVLINK_MSG_ID_ATTITUDE, 10)):
-            mav.mav.command_long_send(mav.target_system, mav.target_component,
-                                      mavutil.mavlink.MAV_CMD_SET_MESSAGE_INTERVAL, 0,
-                                      msg_id, 1e6 / hz, 0, 0, 0, 0, 0)
-        nav = Navera(mav)
+        nav = Navera(port)
+        mav = nav.mav
+        nav.request({mavutil.mavlink.MAVLINK_MSG_ID_SIM_STATE: 10,
+                     mavutil.mavlink.MAVLINK_MSG_ID_GLOBAL_POSITION_INT: 5,
+                     mavutil.mavlink.MAVLINK_MSG_ID_ATTITUDE: 10})
         gps = gps_output
 
         def run_until(make, cond, timeout, what):
@@ -199,26 +183,12 @@ def fly(name, extra, ardupilot, work):
             raise RuntimeError(f"{name}: timed out waiting for {what}")
 
         t0 = nav.boot_ms
-        run_until(gps, lambda: any("origin set" in t for t in nav.texts), 90, "EKF origin from GPS")
-        mav.set_mode("GUIDED")
-        end = time.time() + 90
-        while not mav.motors_armed():              # pre-arm checks pass a few s after the origin
-            if time.time() > end:
-                raise RuntimeError(f"{name}: could not arm")
-            mav.arducopter_arm()
-            t_try = time.time() + 3
-            while time.time() < t_try:
-                nav.tick(gps)
-        mav.mav.command_long_send(mav.target_system, mav.target_component,
-                                  mavutil.mavlink.MAV_CMD_NAV_TAKEOFF, 0, 0, 0, 0, 0, 0, 0, TAKEOFF_M)
+        run_until(gps, lambda: any("origin set" in t for _, t in nav.texts), 90, "EKF origin from GPS")
         phases["gps"] = [t0 or nav.boot_ms, None]
-        run_until(gps, lambda: nav.truth and nav.truth[2] - HOME[2] > TAKEOFF_M - 2, 60, "take-off")
-        end = time.time() + 8
-        while time.time() < end:
-            nav.tick(gps)
+        get_moving(vehicle, nav, mav, gps, run_until, name)
         phases["gps"][1] = nav.boot_ms
         for ph, dur in PHASES:
-            print(f"  [{name}] phase {ph} ({dur} s)")
+            print(f"  [{vehicle} {name}] phase {ph} ({dur} s)")
             phases[ph] = [nav.boot_ms, None]
             p0 = time.time()
             end = p0 + dur
@@ -227,7 +197,7 @@ def fly(name, extra, ardupilot, work):
             phases[ph][1] = nav.boot_ms
         mav.close()
     finally:
-        stop(sitl)
+        sv.stop(sitl)
     logs = sorted(glob.glob(os.path.join(work, "logs", "*.BIN")), key=os.path.getmtime)
     if not logs:
         raise RuntimeError(f"{name}: no dataflash log in {work}/logs")
@@ -342,6 +312,8 @@ def verdict(results):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--vehicle", choices=sorted(sv.VEHICLES), default="copter")
+    ap.add_argument("--instance", type=int, default=0, help="SITL instance (TCP port 5760 + 10 N)")
     ap.add_argument("--ardupilot", default="~/ardupilot")
     ap.add_argument("--runs", default="recommended,posz_gps")
     ap.add_argument("--keep", action="store_true", help="keep the logs even on PASS")
@@ -356,11 +328,11 @@ def main():
         report(name, results[name])
         return 0
     ardupilot = os.path.expanduser(a.ardupilot)
-    out = tempfile.mkdtemp(prefix="navera_f7_")
+    out = tempfile.mkdtemp(prefix=f"navera_f7_{a.vehicle}_")
     for name in a.runs.split(","):
         work = os.path.join(out, name)
         print(f"[{name}] SITL in {work}")
-        log, phases = fly(name, RUNS[name], ardupilot, work)
+        log, phases = fly(a.vehicle, name, RUNS[name], ardupilot, work, a.instance)
         with open(os.path.join(work, "phases.json"), "w") as f:
             json.dump(phases, f)
         results[name] = analyse(log, phases)
@@ -370,7 +342,7 @@ def main():
     fails = verdict(results)
     for f in fails:
         print("FAIL", f)
-    print("sitl_f7_height:", "PASS" if not fails else f"{len(fails)} failure(s)", f"(logs: {out})")
+    print(f"sitl_f7_height ({a.vehicle}):", "PASS" if not fails else f"{len(fails)} failure(s)", f"(logs: {out})")
     if not fails and not a.keep:
         shutil.rmtree(out, ignore_errors=True)
     return 1 if fails else 0
