@@ -160,3 +160,20 @@ def test_the_autopilot_velocity_accuracy_is_honest_for_30_m_fixes():
             continue
         inside += math.hypot(v[0] + 20.0, v[1] - 5.0) <= 2.45 * v[2]
     assert inside / n >= 0.95
+
+
+def test_a_turn_the_chi_square_lets_through_widens_the_autopilot_velocity_sigma():
+    """A plane at 22 m/s on a 300 m circle with +-30 m fixes: the line fit still passes, but the
+    velocity now is far from the window's chord — the stated sigma must cover it."""
+    def track(radius):
+        tr = TrackVelocity()
+        for i in range(10):
+            a = 22.0 * i / radius if radius else 0.0
+            n, e = (radius * math.sin(a), radius * (1 - math.cos(a))) if radius else (22.0 * i, 0.0)
+            tr.add(float(i), 35.8 + n * M_LAT, 10.6 + e * M_LAT / math.cos(math.radians(35.8)), 30.0)
+        return tr
+    straight = track(0.0).autopilot_velocity(9.6)
+    ve, vn, sig = track(300.0).autopilot_velocity(9.6)
+    a = 22.0 * 9.6 / 300.0                                           # true heading now
+    err = math.hypot(ve - 22.0 * math.sin(a), vn - 22.0 * math.cos(a))
+    assert err > 5.0 and err <= 2.45 * sig and sig > straight[2] + 3.0

@@ -104,7 +104,37 @@ class TrackVelocity:
         if chi2_dof > max_chi2:
             return None
         sig = max(self.speed_floor, math.sqrt(max(1.0, chi2_dof) / stt))
-        return v[0], v[1], sig + self.accel * max(0.0, t_now - tm)
+        lag = max(0.0, t_now - tm)
+        # a turn or a speed change inside the window: the velocities of its two halves differ.
+        # The change per second x the lag is how far the velocity now can be from the fit
+        # (a plane in a 90 deg turn: 20-30 m/s off with a chi-square that still passes).
+        half = (ts[0] + ts[-1]) / 2.0
+        early = self._line([q for q in zip(ts, xs, w) if q[0] <= half])
+        late = self._line([q for q in zip(ts, xs, w) if q[0] > half])
+        turn = 0.0
+        if early is not None and late is not None and late[2] > early[2]:
+            # beyond what the halves' own scatter explains (1 sigma of their difference)
+            noise = math.sqrt(chi2_dof * (1.0 / early[3] + 1.0 / late[3]))
+            dv = max(0.0, math.hypot(late[0] - early[0], late[1] - early[1]) - noise)
+            turn = dv * lag / (late[2] - early[2])
+        return v[0], v[1], sig + max(self.accel * lag, turn)
+
+    @staticmethod
+    def _line(q):
+        """(east slope, north slope, weighted mean time, sum w (t - tm)^2) of [(t, (x, y), w)],
+        or None (< 3 points)."""
+        if len(q) < 3:
+            return None
+        sw = sum(c[2] for c in q)
+        tm = sum(c[2] * c[0] for c in q) / sw
+        stt = sum(c[2] * (c[0] - tm) ** 2 for c in q)
+        if stt <= 0:
+            return None
+        out = []
+        for axis in (0, 1):
+            xm = sum(c[2] * c[1][axis] for c in q) / sw
+            out.append(sum(c[2] * (c[0] - tm) * (c[1][axis] - xm) for c in q) / stt)
+        return out[0], out[1], tm, stt
 
     def _fit_points(self, window_s: Optional[float] = None):
         """The fixes the velocity is fitted on, or None when they are too few or too close in time."""
