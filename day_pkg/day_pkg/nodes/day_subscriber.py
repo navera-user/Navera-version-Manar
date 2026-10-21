@@ -333,13 +333,6 @@ class DaySubscriber(Node):
         self.get_logger().info("  policy          : strictly-serial, back-pressure (acks frame_done)")
         self.get_logger().info("=" * 60)
 
-        # ── Load DayLocalizer model + descriptor cache (blocking) ─
-        self.get_logger().info("⏳ Loading DayLocalizer (DINOv2)…")
-        self.localizer = DayLocalizer()
-        self.localizer.load_models()
-        self.localizer.load_or_build_cache()
-        self.localizer.warm_up()
-        self.get_logger().info("✅ DayLocalizer ready, awaiting frames…")
         self.matcher_mode = str(self.get_parameter("matcher").value)
         self.camera_hfov_deg = float(self.get_parameter("camera_hfov_deg").value)
         self.local_sigma_m = float(self.get_parameter("local_sigma_m").value)
@@ -388,7 +381,18 @@ class DaySubscriber(Node):
                 f"matcher: local features vs the map ({'GPU' if self.local.torch else 'CPU'} matching), "
                 f"camera_hfov_deg={self.camera_hfov_deg}"
                 + ("" if math.isfinite(self.camera_hfov_deg) else
-                   " — UNKNOWN: the frame scale cannot be computed, retrieval is used instead"))
+                   " — UNKNOWN: the frame scale cannot be computed, no position until it is set"))
+        # ── DINOv2 retrieval (blocking): only for the "retrieval" matcher. Beside a local matcher it
+        # never runs (a frame without a match publishes no fix), so it is not loaded: one heavy
+        # model on the GPU at a time (perf 2026-10-21: DINOv2 + its cache cost the process memory)
+        self.localizer = None
+        if self.local is None:
+            self.get_logger().info("⏳ Loading DayLocalizer (DINOv2)…")
+            self.localizer = DayLocalizer()
+            self.localizer.load_models()
+            self.localizer.load_or_build_cache()
+            self.localizer.warm_up()
+            self.get_logger().info("✅ DayLocalizer ready, awaiting frames…")
 
         # A signal (SIGINT/SIGTERM) during the multi-second DINOv2 load makes rclpy
         # close the context; the create_publisher/create_subscription calls below
