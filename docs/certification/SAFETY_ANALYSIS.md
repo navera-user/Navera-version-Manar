@@ -60,7 +60,7 @@ H-14 storage full (Low–Medium), H-15 integrator settings (Medium), H-16 simula
 | Mitigation | (a) restart + fallback chain (`EstimatorNode._select`), output "no fix" / bounded bridge 10 s (`navera_output/policy.py::bridge`). (b) none specific; `LensMask` (`day_pkg/image_quality.py`) masks fixed image regions but does not detect a whole frozen frame |
 | Evidence | (a) SIM: "GPS jammed + camera failed → NO FIX → autopilot failsafe"; UT `camera_pkg/test/test_gst_capture.py::test_a_bad_pipeline_is_not_opened`, `navera_tools/tests/test_live_camera.py`. (b) A only |
 | Residual | (a) **Medium** (availability; integrity protected). (b) **High** until a freeze detector exists |
-| Open items | O-1: frame-content freeze detector in `live_camera` (frame difference or hash vs. IMU / GPS motion) with a test; O-2: re-check of F14 (IMU feed dead while video runs) on the product driver |
+| Open items | O-1 (problems log D24): frame-content freeze detector in `live_camera` (frame difference or hash vs. IMU / GPS motion) with a test; O-2: re-check of F14 (IMU feed dead while video runs) on the product driver |
 
 ### H-02 Wrong day-vision fix accepted
 
@@ -226,6 +226,7 @@ simulated data. Residual **Low**.
 | O-15–O-17 | trusted-time gate in product celestial; RTC mandatory | H-08 | code / install |
 | O-20, O-21 | swap + OOM / memory limits; thermal monitoring | H-11 | deploy |
 | O-23 | reboot validation on a deployed box (commands in DEPLOYMENT_VALIDATION.md) | H-12 | test |
+| O-27 | install from a clean release clone; install.sh copies .git and .claude/worktrees (B18) | H-12, deployment | deploy |
 | O-3, O-4 | shake / tilt gates (F20, F16) on a real vehicle | H-02 | code / test |
 | O-19 | full-chain latency on the box | H-10 | measurement |
 | O-26 | storage checks | H-14 | deploy |

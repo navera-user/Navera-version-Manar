@@ -51,8 +51,10 @@ On the production Jetson, as the administrator, from a checkout of the release t
 Never with the mission simulator, run_demo.sh or the fakes running on that box.
 
 ```bash
-cd ~/Navera                                    # the release checkout (not a worktree)
-git status --short                             # clean
+# a CLEAN clone of the release: install.sh copies the whole source tree except build/,
+# install/, log/ — from a working repository it would also ship .git and .claude/worktrees (B18)
+git clone --branch <release> <repo-url> ~/navera-release && cd ~/navera-release
+git status --short                             # clean; ls -a shows no .claude/
 deploy/install.sh --dry-run                    # review what will be done
 python3 deploy/verify_units.py                 # units vs this checkout: must end "unit check: PASS"
 
