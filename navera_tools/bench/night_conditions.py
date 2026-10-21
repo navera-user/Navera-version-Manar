@@ -29,6 +29,7 @@ One STHN model is loaded; GPU memory is released at the end.
 """
 import argparse
 import csv
+import json
 import math
 import os
 import sqlite3
@@ -58,6 +59,7 @@ SIZE = (640, 512)
 TAU_S = 0.012           # microbolometer thermal time constant (smear along the track)
 HEADING_RETRY: tuple = ()   # --heading-retry: offsets tried when the map check fails
 HEIGHT_RETRY: tuple = ()    # --height-retry: relative height changes tried after them
+PROBE = None                # --probe-jsonl: (night_retry_probe module, output file)
 
 # Sites inside the Sousse map (ESRI imagery, z13-z19): centre lat, lon, radius (m)
 SITES = {
@@ -667,10 +669,26 @@ def run_condition(cond: Condition, loc, cam: _GeomCamera, fb: FrameBuilder, n: i
         if save_dir is not None and i < 3:
             cv2.imwrite(str(save_dir / f"{cond.name}_{i}.jpg"), img)
         t0 = time.perf_counter()
-        r = loc.localize(img, pose.prior[0], pose.prior[1], altitude_m=meta["altitude_m"],
-                         hfov_deg=meta["camera_hfov_deg"] * pose.hfov_factor, heading_deg=meta["heading_deg"],
-                         **({"heading_retry_deg": HEADING_RETRY} if HEADING_RETRY else {}),
-                         **({"height_retry": HEIGHT_RETRY} if HEIGHT_RETRY else {}))
+        kw = dict(altitude_m=meta["altitude_m"], hfov_deg=meta["camera_hfov_deg"] * pose.hfov_factor,
+                  heading_deg=meta["heading_deg"],
+                  **({"heading_retry_deg": HEADING_RETRY} if HEADING_RETRY else {}),
+                  **({"height_retry": HEIGHT_RETRY} if HEIGHT_RETRY else {}))
+        if PROBE is None:
+            r = loc.localize(img, pose.prior[0], pose.prior[1], **kw)
+        else:
+            nrp, f = PROBE
+            kw.setdefault("heading_retry_deg", ())
+            kw.setdefault("height_retry", ())
+            att = nrp.probe(loc, img, pose.prior[0], pose.prior[1], **kw)
+            f.write(json.dumps(dict(site=pose.site, cond=cond.name, no_info=cond.no_info, sensor="sim640",
+                                    px=SIZE[0], agl=pose.agl, i=i, lat=pose.lat, lon=pose.lon,
+                                    prior=list(pose.prior), attempts=att)) + "\n")
+            f.flush()
+            k = nrp.decide(att)
+            c = att[k if k is not None else 0]
+            r = dict(success=k is not None, lat=c["lat"], lon=c["lon"], sigma_m=c["sigma_m"], conf=c["conf"],
+                     reason="" if k is not None else c["reason"], recheck_m=c["recheck_m"],
+                     verify=dict(ncc=c["ncc"]), heading_correction_deg=c["d"] or None)
         dt = (time.perf_counter() - t0) * 1000
         acc = bool(r.get("success"))
         err = dist_m((r["lat"], r["lon"]), (pose.lat, pose.lon)) if acc else None
@@ -744,6 +762,9 @@ def main():
                     help="leave cloud / calm water out of the query (NightLocalizer mask_featureless, off by default)")
     ap.add_argument("--height-retry", default="",
                     help="relative height changes (e.g. 0.1,-0.1) retried after the heading offsets")
+    ap.add_argument("--probe-jsonl", default="",
+                    help="run every retry of each frame and write its evidence here (night_retry_probe); "
+                         "the table is then localize's choice without a retry gate")
     a = ap.parse_args()
     global HEADING_RETRY, HEIGHT_RETRY
     HEADING_RETRY = tuple(float(x) for x in a.heading_retry.split(",") if x.strip())
@@ -770,6 +791,11 @@ def main():
                                                    ("recheck_max_m", a.recheck_max))
              if v is not None}
     loc = NightLocalizer(sthn, weights, mbtiles, device=a.device, mask_featureless=a.featureless_mask, **gates)
+    global PROBE
+    if a.probe_jsonl:
+        import night_retry_probe
+        PROBE = (night_retry_probe, open(a.probe_jsonl, "a"))
+        loc.map_check_shifts_px = night_retry_probe.PROBE_SHIFTS_PX
     save = Path(a.save_frames) if a.save_frames else None
     if save:
         save.mkdir(parents=True, exist_ok=True)

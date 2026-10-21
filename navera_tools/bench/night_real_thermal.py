@@ -131,6 +131,9 @@ def main():
     ap.add_argument("--min-ncc", type=float, default=None, help="map-check gate override (<= -1: off)")
     ap.add_argument("--recheck-max", type=float, default=None, help="re-check gate override, m (<= -1: off)")
     ap.add_argument("--save-frames", default="", help="save the first frames of each run here")
+    ap.add_argument("--probe-jsonl", default="",
+                    help="run every retry of each frame and write its evidence here (night_retry_probe); "
+                         "the table is then localize's choice without a retry gate")
     a = ap.parse_args()
 
     root = os.environ.get("NAVERA_THERMAL_DIR", "/media/shadow-team/ADATA SD620/NAVERA_TESTDATA/thermal")
@@ -178,6 +181,11 @@ def main():
         if a.heading_err is None:
             return p["head_err"]
         return a.heading_err * (1.0 if p["seed"] % 2 else -1.0)
+    probe_f = None
+    if a.probe_jsonl:
+        import night_retry_probe as nrp
+        loc.map_check_shifts_px = nrp.PROBE_SHIFTS_PX
+        probe_f = open(a.probe_jsonl, "a")
     rows, table = [], []
     try:
         for s_key, s in zip(a.sensors.split(","), sensors):
@@ -193,11 +201,25 @@ def main():
                     if save is not None and p["i"] < 4:
                         cv2.imwrite(str(save / f"{a.site}_{a.source}_{s_key}_{agl:.0f}_{p['i']}.png"), img)
                     t1 = time.perf_counter()
-                    r = loc.localize(img, p["prior"][0], p["prior"][1],
-                                     altitude_m=agl * (1 + p["alt_rel_err"]), hfov_deg=s.hfov_deg,
-                                     heading_deg=(p["heading"] + head_err(p)) % 360.0,
-                                     heading_retry_deg=() if a.no_retry else HEADING_RETRY,
-                                     height_retry=() if a.no_retry else HEIGHT_RETRY)
+                    kw = dict(altitude_m=agl * (1 + p["alt_rel_err"]), hfov_deg=s.hfov_deg,
+                              heading_deg=(p["heading"] + head_err(p)) % 360.0,
+                              heading_retry_deg=() if a.no_retry else HEADING_RETRY,
+                              height_retry=() if a.no_retry else HEIGHT_RETRY)
+                    if probe_f is None:
+                        r = loc.localize(img, p["prior"][0], p["prior"][1], **kw)
+                    else:
+                        att = nrp.probe(loc, img, p["prior"][0], p["prior"][1], **kw)
+                        probe_f.write(json.dumps(dict(
+                            site=a.site, source=a.source, polarity=a.polarity, heading_err=a.heading_err,
+                            sensor=s_key, px=s.width, agl=agl, i=p["i"], lat=p["lat"], lon=p["lon"],
+                            prior=p["prior"], attempts=att)) + "\n")
+                        probe_f.flush()
+                        k = nrp.decide(att)
+                        c = att[k if k is not None else 0]
+                        r = dict(success=k is not None, lat=c["lat"], lon=c["lon"], sigma_m=c["sigma_m"],
+                                 reason="" if k is not None else c["reason"], recheck_m=c["recheck_m"],
+                                 verify=dict(ncc=c["ncc"]), heading_correction_deg=c["d"] or None,
+                                 height_correction=c["f"] or None)
                     dt = (time.perf_counter() - t1) * 1000
                     acc = bool(r.get("success"))
                     err = to.dist_m((p["lat"], p["lon"]), (r["lat"], r["lon"])) if acc else None
