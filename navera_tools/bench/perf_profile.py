@@ -144,6 +144,10 @@ def make_day_matcher(a):
     if a.cache_dir:
         kw["cache_dir"] = a.cache_dir
     M = lm.LearnedMatcher(a.area, zoom=17, **kw)
+    for kv in a.set:                                 # matcher attributes under test, e.g. MATCH_BLOCKS=0
+        k, _, v = kv.partition("=")
+        setattr(M, k, type(getattr(M, k))(float(v)) if not isinstance(getattr(M, k), bool) else v in ("1", "True"))
+        print(f"set {k} = {getattr(M, k)}", flush=True)
     M._frame_features = st.wrap("frame_feat", M._frame_features)
     M.map_features = st.wrap("map_gather", M.map_features)
     M._features = st.wrap("disk", M._features)
@@ -313,7 +317,7 @@ def cmd_night(a):
         r = orig_loc(*k, **kw)
         stage_rows.append(dict(st.take(), total=round((time.perf_counter() - t0) * 1000.0, 1),
                                lat=r.get("lat") if r.get("success") else None,
-                               lon=r.get("lon") if r.get("success") else None))
+                               lon=r.get("lon") if r.get("success") else None, rss_mb=round(rss_mb())))
         return r
     loc.localize = localize
     try:
@@ -327,7 +331,7 @@ def cmd_night(a):
         if mon:
             mon.stop()
     for r, sr in zip(rows, stage_rows):
-        r["lat"], r["lon"] = sr.pop("lat"), sr.pop("lon")
+        r["lat"], r["lon"], r["rss_mb"] = sr.pop("lat"), sr.pop("lon"), sr.pop("rss_mb")
     stage_mean = {k: round(statistics.mean(r.get(k, 0.0) for r in stage_rows), 1)
                   for k in sorted({k for r in stage_rows for k in r})}
     out = {"mode": "night", "backend": loc.sthn_backend, "frames": len(stage_rows),
@@ -399,6 +403,7 @@ def main():
         p.add_argument("--search-m", type=float, default=400.0)
         p.add_argument("--json", default="")
         p.add_argument("--tegra", default="")
+        p.add_argument("--set", action="append", default=[], help="LearnedMatcher attribute=value under test")
         if name == "day":
             p.add_argument("--stride", type=int, default=1)
             p.add_argument("--limit", type=int, default=0, help="frames per recording (0: all)")
