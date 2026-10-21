@@ -221,6 +221,9 @@ class DaySubscriber(Node):
         # GPS away from it), and the height above ground known when GPS is lost. 0 = off.
         declare_float(self, "gps_check_period_s", 2.0)
         declare_float(self, "gps_check_radius_m", 600.0)   # covers a GPS drifted this far
+        # tried first: a trusted GPS is metres off, and a small search window keeps a low (small)
+        # frame matchable; the wide radius only when this fails (0 = wide only)
+        declare_float(self, "gps_check_near_radius_m", 150.0)
         # Stated accuracy (1 sigma, m) of a local match: day_pkg.fix_sigma.day_fix_sigma_m (the
         # matcher's inlier-class sigma, a floor, the frame-time and attitude terms): 99.2 % within
         # 3 sigma on NAVERA's camera on the screen bench (2026-10-19, median 10.6 m) but only 48 % on
@@ -360,6 +363,7 @@ class DaySubscriber(Node):
         self._gps_was_trusted = False
         self.calib_period_s = float(self.get_parameter("gps_check_period_s").value)
         self.calib_radius_m = float(self.get_parameter("gps_check_radius_m").value)
+        self.calib_near_radius_m = float(self.get_parameter("gps_check_near_radius_m").value)
         # ── camera delay (exposure -> arrival), estimated online against the trusted GPS ──
         # navera_common.latency_cal: GPS-check matches vs the GPS track; applied (auto_latency)
         # only when stable and significantly different from camera_latency_s
@@ -822,10 +826,7 @@ class DaySubscriber(Node):
         if prior is None or mpp is None:
             return
         self._last_calib = time.time()
-        res = self.local.locate(img, prior, self.calib_radius_m, mpp, scale_tol=self._scale_tol(meta),
-                                heading_deg=self._heading_for_match(meta),
-                                heading_tol_deg=self.local_heading_tol_deg, hfov_deg=self._hfov(meta),
-                                expected_tilt_deg=self._expected_tilt(meta))
+        res = self._gps_check_locate(img, prior, mpp, meta)
         self.get_logger().info(
             f"[day] GPS check frame={seq_id}: " + (f"vision {haversine_m(prior[0], prior[1], res['predicted_lat'], res['predicted_lon']):.0f} m from GPS "
                                                   f"({res.get('inliers')} inliers)" if res.get("accepted") else f"no match ({res.get('reason')})"))
@@ -852,6 +853,26 @@ class DaySubscriber(Node):
             self.get_logger().info(f"[day] height above ground calibrated while GPS is good: "
                                    f"{st.get('altitude_measured_m')} m (frame said {meta.get('altitude_m')} m, "
                                    f"{res.get('inliers')} inliers)", throttle_duration_sec=30.0)
+
+    def _gps_check_locate(self, img, prior, mpp, meta) -> dict:
+        """The GPS-check match: first within gps_check_near_radius_m of the GPS (a trusted GPS is
+        metres off), then, if that fails, within gps_check_radius_m (a GPS drifted that far).
+        A small frame against a 600 m window gave the learned matcher too few matches: Isaac Sim
+        closed loop 2026-10-21, copter at 250 m, 2 of 30 checks accepted while the same frames
+        matched 96 % around the carried position after the GPS loss — no delay, sigma or
+        spoof-check samples."""
+        radii = [self.calib_radius_m]
+        if 0.0 < self.calib_near_radius_m < self.calib_radius_m:
+            radii.insert(0, self.calib_near_radius_m)
+        res = {}
+        for r in radii:
+            res = self.local.locate(img, prior, r, mpp, scale_tol=self._scale_tol(meta),
+                                    heading_deg=self._heading_for_match(meta),
+                                    heading_tol_deg=self.local_heading_tol_deg, hfov_deg=self._hfov(meta),
+                                    expected_tilt_deg=self._expected_tilt(meta))
+            if res.get("accepted"):
+                break
+        return res
 
     def _latency_sample(self, meta):
         """A GPS-check match is a camera-delay sample (its arrival = raw stamp + the camera's delay)."""
