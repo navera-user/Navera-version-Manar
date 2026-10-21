@@ -296,6 +296,35 @@ def verify_match(query_bgr, query_mask, sat_bgr, corners_rw, resize_width=256, s
     return out
 
 
+# Retry gate: a hypothesis found only after a heading / height retry must carry more evidence
+# than a first try (it is the best of up to 8 tries). Measured 2026-10-21 (every hypothesis of
+# 1940 frames: real thermal Bordeaux night / Clermont day, 4 cameras, 500-1000 m, heading 15 deg
+# off, black-hot; synthetic night_conditions incl. heading / height errors; navera_tools/bench/
+# night_retry_gate_eval.py): every wrong retried fix (91-228 m) had an STHN quad consistency
+# < 0.97 (0.85-0.97), while first-try right fixes are >= 0.95 at the 1st percentile; requiring
+# >= 0.97 removed all 7 wrong retried accepts and kept 314 of 328 right ones (95.7 %). A higher
+# map correlation, a tighter re-check (20 m: 91 %) or a per-try increase cost more right fixes
+# for no extra wrong one removed: they stay available (0 = as a first try).
+RETRY_GATE_DEFAULTS = dict(min_ncc=0.05, ncc_per_try=0.0, recheck_max_m=25.0, min_conf=0.97, both_centres=False)
+
+
+def retry_evidence_ok(a, k, min_ncc=0.05, ncc_per_try=0.0, recheck_max_m=25.0, min_conf=None,
+                      both_centres=False):
+    """Does the k-th retried hypothesis (k >= 1; k + 1 hypotheses tried) carry enough evidence?"""
+    v = a.get("verify") or {}
+    ncc, rc = v.get("ncc"), a.get("recheck_m")
+    if both_centres:
+        n2 = ((a.get("recheck") or {}).get("verify") or {}).get("ncc")
+        ncc = None if ncc is None or n2 is None else min(ncc, n2)
+    if ncc is None or ncc < min_ncc + ncc_per_try * k:
+        return False
+    if recheck_max_m is not None and (rc is None or rc > recheck_max_m):
+        return False
+    if min_conf is not None and float(a.get("conf") or 0.0) < min_conf:
+        return False
+    return True
+
+
 def retry_plan(first, heading_deg, altitude_m, heading_retry_deg, height_retry):
     """The (heading offset deg, relative height change) hypotheses NightLocalizer.localize
     tries after the first attempt `first`: none if it succeeded or failed for another reason
@@ -445,6 +474,7 @@ class NightLocalizer:
         min_match_ncc: float = MIN_MATCH_NCC,
         recheck_offset_m: float = RECHECK_OFFSET_M,
         recheck_max_m: float = RECHECK_MAX_M,
+        retry_gate: dict = None,
         mixed_precision: bool = False,
         map_offset_deg: tuple = (0.0, 0.0),
         contrast_stretch: bool = True,
@@ -463,6 +493,8 @@ class NightLocalizer:
         # largest disagreement accepted (None = measured, not enforced)
         self.recheck_offset_m = recheck_offset_m
         self.recheck_max_m = recheck_max_m
+        # stronger evidence asked of a retried hypothesis (retry_evidence_ok); None = off
+        self.retry_gate = dict(RETRY_GATE_DEFAULTS) if retry_gate is None else retry_gate or None
         # shifted-map control distances (satellite px) of the map check (verify_match)
         self.map_check_shifts_px = ()
         self.map_offset_deg = (float(map_offset_deg[0]), float(map_offset_deg[1]))
@@ -761,10 +793,21 @@ class NightLocalizer:
         if not tries:
             return r
         total = r["dt_ms"]
-        for d, f in tries:
+        refused = []
+        for k, (d, f) in enumerate(tries, start=1):
             t = attempt(None if heading_deg is None else (heading_deg + d) % 360.0, altitude_m * (1.0 + f))
             total += t["dt_ms"]
+            if t.get("success") and self.retry_gate is not None and not retry_evidence_ok(t, k, **self.retry_gate):
+                weak = (f"retry {'heading %+g deg' % d if d else 'height %+.0f %%' % (100 * f)} refused: "
+                        f"weaker evidence than a retry needs (consistency {float(t.get('conf') or 0):.3f}, "
+                        f"map check {float((t.get('verify') or {}).get('ncc') or 0):.2f}, "
+                        f"re-check {float(t.get('recheck_m') or 0):.0f} m)")
+                logger.warning(f"STHN prediction rejected: {weak}")
+                refused.append(weak)
+                continue
             if t.get("success"):
+                if refused:
+                    t["retries_refused"] = refused
                 if d:
                     t["heading_correction_deg"] = d
                 if f:
@@ -774,6 +817,9 @@ class NightLocalizer:
         r["dt_ms"] = total
         r["reason"] += " (also tried: " + ", ".join(
             f"heading {d:+g} deg" if d else f"height {f:+.0%}" for d, f in tries) + ")"
+        if refused:
+            r["retries_refused"] = refused
+            r["reason"] += "; " + "; ".join(refused)
         return r
 
     def _attempt(self, query_bgr, prior_lat, prior_lon, alt, hfov_deg, heading, require_scale):
