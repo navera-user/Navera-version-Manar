@@ -17,6 +17,7 @@ been measured. Open engineering items are tracked in
 | Day vision — local feature matching (default since 2026-10-01) | **Accurate on aerial test frames; measured with NAVERA's camera on a screen bench only (not flown)** | 32/33 frames within 9 m (median 4 m), no wrong position accepted, 0.16 s/frame |
 | Day vision — DISK + LightGlue matcher, navigation between matches (2026-10-06/07) | **Screen bench with the Insta360 (other-date imagery) and simulator; not flown** | below: "Day vision with NAVERA's camera — screen bench" |
 | Day vision — stated sigma on real drone flights (UAV-VisLoc, 8 flights, 2026-10-20) | **Model alone unsafe (65 % within 3σ); self-calibration + 30 m floor safe (99.8 / 99.9 %) only with a pose–attitude guard not yet in the product — as-is 70 of 2600 fixes 100–325 m off, 13 of them beyond the self-calibrated 3σ** | below: "Day: real drone flights" |
+| Day vision — a real flight replayed through the whole chain: IMU straightening, tracking, estimator (MARS-LVIG, 2026-10-21) | **Real drone camera and IMU replayed (not NAVERA's camera, 80–130 m, one valley flight + 55 s of another):** GPS cut after 120 s, 310 s without: fixes 6–7 m median, never over 17 m, 100 % within 3σ, 0 over 50 m in 1 493; 36 % of frames matched at z17 (54 % at z18); dead-reckoning alone 4 / 12 m (median / max) over 70 s after two fixes of this branch | below: "Day: a real flight replayed" |
 | Day vision — DINOv2 tile retrieval (former method, fallback) | **Not accurate enough to replace GPS** | Median 442 m on labelled replay frames |
 | Night vision (STHN homography) | Frames scaled and turned north-up from altitude, camera field of view and heading; motion gate; **simulator only — not validated on real thermal** | 8–13 m median on synthetic frames (250–600 m, any heading); simulated night mission, GPS jammed, vehicle barometer (2026-10-07): 10 m median, 21 m max, stated accuracy (simulator-calibrated) 100 % within 3 sigma; **needs an independent height (barometer) after GPS loss** |
 | Celestial 360 all-sky solver (`cn_pkg.allsky`) on **real night skies** (public ESO all-sky cameras, 2026-10-21) | **Real sky, but single up-looking fisheye cameras, not NAVERA's Insta360; mount 'up' known (fixed camera / truth fit)** | 559 real frames: 0 wrong positions accepted (61 wrong identifications all refused); clear moonless nights 100 % solved, 2.9 km median; below: "Celestial 360 on real night skies" |
@@ -296,6 +297,134 @@ For reference, the frame centre (the first flight-03 run, before `--position`): 
 - Limits: a 250 m-off prior per photo, no tracking, no IMU straightening (the dataset's
   attitude is used only to score the guard), one camera type, maps newer than the photos by
   up to 7 years, and the dataset's own GPS errors (flight 06). Still **not a NAVERA flight**.
+
+### Day: a real flight replayed through the whole chain — IMU, tracking, estimator (MARS-LVIG, 2026-10-21)
+
+NAVERA has not flown. The UAV-VisLoc result above is single photos located one by one from a
+perturbed prior: no IMU straightening, no tracking, no estimator. This one replays **real recorded
+flights with their real IMU** through the product code, as a flight would run it.
+
+**Data.** MARS-LVIG (HKU MaRS lab, mars.hku.hk/dataset.html). **Licence CC BY-NC-SA 4.0, academic
+use only — commercial use needs the authors' permission: this is internal evaluation, nothing is
+redistributed; ask HKU before quoting it as product evidence.** A DJI M300 RTK with a downward
+global-shutter camera (Hikvision CA-050, 2448×2048, 10 Hz, 80° lens, calibrated; replayed at half
+resolution, 1224×1024), the drone's IMU/attitude, GNSS and height (DJI OSDK), and its RTK (cm-level,
+the truth). Sequences: **AMvalley03** (Armenia, a valley: 545 s, lawnmower at 12 m/s, 130 m above
+take-off — the ground under the drone rises and falls by ~100 m, 27–146 m above ground, median
+104 m) — complete; **AMtown02** (Armenian village, flat, 80 m, 8 m/s) — **its first 176 s only**:
+Google Drive's download quota blocked the rest of it and all of HKisland03 (Hong Kong) for the
+whole afternoon. Maps: Esri World Imagery z17 (and z18 for one run), prepared with
+`prepare_area.py --fetch-url` as for a mission — evaluation only, its licence does not allow
+storing it in a product. Also considered: VPAIR (access on request, no IMU), AerialVL (CC BY 4.0
+but 56 GB of zipped frames, GNSS only, no IMU), UAV-VisLoc (above; photos, not a sequence),
+Mid-Air (synthetic), EuRoC (indoor).
+
+**What runs** (`navera_tools/bench/replay_flight_dataset.py`; frames from `mars_lvig_extract.py`;
+mount from `flight_mount_cal.py`): the camera side as `live_camera` does it (`FrameBuilder`:
+undistortion, straightening with the attitude at the exposure, tilt and rotation-rate gates,
+heading; `AltitudeEstimator`: height above take-off — the vehicle barometer — GPS altitude while GPS
+lasts, and the heights the day node publishes back), frames offered at 1 Hz (`fps` default) and
+only after the previous frame's ack; `DaySubscriber` and `EstimatorNode` built by their own
+`__init__` (every shipped default; matcher `auto` = DISK + LightGlue on the GPU, SIFT fallback),
+wired in-process as the ROS graph wires them (day estimate → estimator → `/navera/position` and
+NavStatus → day node), on a virtual clock that advances with the **real processing time on this
+Jetson** (a slow frame costs what it costs in flight; GPU shared with other jobs). The drone's GNSS
+(5 Hz) is NAVERA's GPS for the first 120 s of the replay, then stops (jamming: no messages, no GPS
+altitude). Before the loss the node runs its GPS-check frames (sigma calibration, map bias,
+camera-delay samples, vision height, GPS cross-check). The camera mount (yaw −92°, roll/pitch
+residual < 2°) was measured once against the RTK on AMvalley03's climb (`flight_mount_cal.py`, an
+installer's boresight) and reused for AMtown02 (same rig). The DJI height-above-take-off topic reads
+0 in these bags: the barometer is the RTK altitude minus its take-off value. Height truth: RTK
+minus a 30 m DEM (AWS Terrain Tiles). Arms: **imu** — frames straightened with the drone's
+attitude, heading from it (an IMU with a trusted heading: the product's normal case); **dr** — the
+same with no map matching after the loss (NAVERA's dead-reckoning alone: track velocity turned by
+the IMU heading + frame-to-frame odometry); **gyro** — no attitude in the frames (not straightened,
+no heading), the gyro rate feeding the day node's gyro heading carry.
+
+AMvalley03, replay 40–470 s: GPS for 120 s (climb, hover with a 245° yaw turn, first leg), then
+310 s without (7 legs and 6 U-turns). Error of every position published after the loss (day
+estimate; the estimator republishes the winner, its error is the same); share within 3 stated σ;
+"available" = estimator ticks with a position (FIX or DEGRADED):
+
+| Run | Code | Fixes after loss | Fix error median / p90 / max | Output error median / p90 / max | > 100 m | In 3σ | Available |
+|---|---|---|---|---|---|---|---|
+| imu | as found | 110 / 310 (36 %) | 6.6 / 9.0 / 13.3 m | 8.3 / 13.0 / 24.0 m | 0 | 100 % | 84 % |
+| imu | fixed | 110 / 309 (36 %) | 6.8 / 8.6 / 11.7 m | 8.5 / 18.3 / 28.2 m | 0 | 100 % | 82 % |
+| imu | fixed, repeat | 112 / 310 (36 %) | 6.7 / 9.3 / 12.8 m | 8.3 / 16.9 / 36.2 m | 0 | 100 % | 85 % |
+| dr (no map matching) | as found | — | — | 98 / 299 / 358 m (71 s) | 35 | 100 % | 24 % |
+| dr (no map matching) | fixed | — | — | **4.0 / 9.6 / 12.1 m** (70 s) | 0 | 100 % | 23 % |
+| gyro (no attitude) | before the DR fixes | 0 / 310 | — | 124 / 602 / 720 m | 29 | 100 % | 19 % |
+| gyro + `local_heading_search` | before the DR fixes | 0 / 51 (6.8 s/frame) | — | — | — | — | 3 % |
+
+Variants of the imu arm (one run each, on intermediate code: the altitude fix only for the first
+two, also 16b5f50 alone for the 10° and 0.15 s rows — whose 200 m output maxima are that commit's
+post-turn excursion, see below; the GPU matcher is not bit-reproducible, acceptance moves by ±3
+points between identical runs):
+
+| Variant | Fixes after loss | Fix error median / p90 / max | Output max | Note |
+|---|---|---|---|---|
+| true height above ground fed as a rangefinder | 103 / 310 (33 %) | 6.5 / 8.5 / 11.5 m | 246 m (in 3σ) | the height is **not** what limits matching here |
+| heights retried 0.8 / 1.25 / 0.64 / 0.5 × | 113 / 287 (39 %) | 6.6 / 9.2 / 11.5 m | 22 m | p90 1.26 s/frame; not kept (no real gain) |
+| **z18 map** (instead of z17) | **125 / 232 (54 %)** | 5.2 / 8.6 / 16.8 m | 40 m | p90 2.2 s/frame; the product is fixed at z17 |
+| IMU heading 10° wrong | 115 / 308 (37 %) | 6.2 / 8.5 / 11.9 m | 226 m (in 3σ) | within `local_heading_tol_deg` 20° |
+| frames stamped 0.15 s late | 114 / 303 (38 %) | 6.7 / 9.3 / 11.5 m | 203 m (in 3σ) | auto latency: 5 of 20 samples, not applied |
+| same, GPS for 260 s (170 s denied) | 89 / 170 (52 %) | 6.7 / 9.0 / 9.9 m | 49 m | latency 12 of 20 samples, not applied; available 100 % |
+
+AMtown02, first 176 s only (flat village, 80 m, 8 m/s): GPS 75 s, then **55 s** without (one
+leg, 10 s after a 65° turn), fixed code: imu arm 33 / 56 frames matched (59 %), fixes 4.5 / 6.6 /
+8.5 m, output 4.5 / 7.9 / 11.2 m, available 100 %, height 2 m off (median, flat ground);
+dead-reckoning alone 50 / 93 m (median / max, in 3σ) — the GPS was lost 10 s after a turn, so the
+20 s velocity fit is a chord of it (the remaining dead-reckoning weakness). Too short to say more.
+
+Findings (all on real imagery and a real IMU, through the product code):
+- **IMU straightening is what makes it work.** After the loss the camera was tilted 12° from vertical
+  (median; p90 17°, max 26°): straightened with the attitude at the exposure, the fixes were 6–7 m
+  (median) and never above 17 m in any run; 100 % of fixes and of published positions within their
+  stated 3σ in every run (self-calibrated σ, median 14 m; 30 m before calibration). No accepted fix
+  over 50 m in 1 493 accepted after the loss across 15 runs (mostly the same flight replayed: not
+  independent). The pose–tilt guard kept the frame centre on 103 of 112 fixes: on a slope the pose's
+  tilt is the ground's, not the camera's.
+- **Matching depends on the height above ground at z17.** Accepted share by true height: < 60 m 0 %,
+  60–80 m ~10 %, 80–100 m ~20 %, 100–120 m ~40 %, 120–140 m ~73 % (z17 = 0.92 m/px: a 60 m-high
+  frame covers ~100 map pixels). A z18 map raised the share from ~36 % to 54 %. NAVERA's design
+  heights (300–600 m) are above this regime: this flight is a hard case, not a typical one.
+- **The height over relief.** The barometer keeps the height above take-off; the ground under the
+  drone moved by up to 100 m: the height used was 28–31 m off (median), 97 m (p90). The heights the
+  matches measured were right (median −0.8 to +1.3 m, p90 16–19 m) but only hold where they were
+  measured. Fixed (19e1185): the carried image height's stated σ was ~4 m whatever the time since
+  the image — 28 % within 2σ; now 57 %. Feeding the true height did not raise acceptance (above),
+  so the relief costs honesty more than fixes here; a DEM in the map package (height = barometer
+  altitude + take-off ground − DEM under the position) is the real answer (not done).
+- **Dead-reckoning through turns — fixed (16b5f50, 482ed90).** The carry turns the track velocity by
+  the IMU heading change since it was measured, but that heading came only from a vision fix: right
+  after a GPS loss, or on a track of odometry steps, the velocity went straight on — a U-turn 20 s
+  after the loss put it 100–360 m off. Now the frames' attitude headings date the velocity; the
+  frame-to-frame odometry is still checked against the measured (unturned) velocity — letting it
+  through the turn (16b5f50 alone) made the 20 s velocity fit a chord of the U-turn and the carry
+  after it ran 4.5 m/s slow (3/3 runs, 200 m excursions, in 3σ). NAVERA's dead-reckoning alone over
+  70 s and a U-turn: 98 / 358 m → 4 / 12 m (median / max). Its stated σ is far more cautious
+  (≈ 500 m after 70 s, then no output): the 0.25 m/s² unseen-acceleration term dominates — not
+  changed.
+- **Without a trusted IMU heading, nothing.** The gyro arm got 0 GPS-check matches and 0 fixes: the
+  learned matcher needs a heading to turn the frame north-up, the SIFT fallback found nothing on this
+  imagery, so the gyro heading (reset only by a vision fix) never started; `local_heading_search`
+  (12 headings) took 6.8 s per frame and still found nothing. Use the vehicle's / a magnetometer
+  heading; a reset of the gyro heading from the GPS course while GPS is trusted would help (not done).
+- **Auto camera delay** needs 20 GPS-check samples above 5 m/s and out of turns: 5 in 120 s and 12
+  in 260 s of GPS here — never applied (safe: a 0.15 s stamp error costs 1.8 m at 12 m/s here).
+- **GPS cross-check:** the real GPS was never refused or put in doubt during the GPS phases (~1 200
+  arbiter ticks per valley run, 730 on the town).
+- **Time on the Jetson** (GPU shared with other agents' jobs, frames 1224×1024): median 630–680 ms
+  per frame after the loss, p90 ~0.9 s; GPS-check frames ~0.4 s, idle GPS frames ~70 ms; frames
+  offered ≈ 1 per second. The estimator's output lags the vehicle by that processing time:
+  error at the publication instant median 10.9 m vs 8.5 m at the exposure.
+
+**Still not a NAVERA flight:** machine-vision camera (global shutter, calibrated, sharp) instead of
+NAVERA's; 80–130 m above take-off instead of 300–600 m; a multirotor at 8–12 m/s; the IMU is the
+M300 flight controller's attitude (better than a BNO085); the mount was calibrated against RTK; maps
+are online Esri tiles of another date; one complete flight plus 55 s of another; in-process replay
+(no DDS, no camera driver or USB delay). Data: `NAVERA_TESTDATA/mars_lvig/` on the ADATA disk
+(bags, `ext/`, `maps/`, `runs/*.json` with every frame).
 
 ### Night vision (`night_pkg`, STHN one-stage)
 

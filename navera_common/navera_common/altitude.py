@@ -31,6 +31,7 @@ class AltitudeEstimator:
                  terrain_sigma_m: float = 30.0,
                  measured_timeout_s: float = 1.0, vision_hold_s: float = 120.0,
                  vision_drift_mps: float = 0.5, ref_hold_s: float = 300.0,
+                 terrain_rate_mps: float = 1.0,
                  saved_ground: Optional[dict] = None, on_ground: Optional[Callable[[dict], None]] = None):
         """saved_ground: {altitude_m, lat, lon} written by a previous run (on_ground is
         called with that dict whenever the ground altitude is (re)determined): reused after
@@ -49,6 +50,13 @@ class AltitudeEstimator:
         self.sigma = {"gps": gps_sigma_m, "vehicle": relative_sigma_m}
         self.terrain_fraction, self.terrain_sigma_m = terrain_fraction, terrain_sigma_m
         self.vision_hold_s, self.vision_drift_mps = vision_hold_s, vision_drift_mps
+        # an image height carried by the reference's change follows the vehicle, not the ground
+        # under it: the ground there may have risen or fallen since the image measured it. That
+        # part of its uncertainty grows at terrain_rate_mps (about slope x ground speed: 10 % at
+        # 10 m/s) up to the terrain relief a reference assumes. Real flight over a valley
+        # (MARS-LVIG AMvalley03, 2026-10-21): carried with its image sigma only (~4 m), the
+        # height was 30 m off at the median, 126 m at most, 28 % within 2 sigma.
+        self.terrain_rate_mps = terrain_rate_mps
         # a reference that stops (GPS jammed, box without barometer) is held: vehicles
         # mostly keep their altitude; the uncertainty grows like an image height held
         self.ref_hold_s = ref_hold_s
@@ -117,7 +125,10 @@ class AltitudeEstimator:
             tv, agl, sig, refs_v = self._vision
             for kind in ("vehicle", "gps"):             # carried by the same reference's change
                 if kind in refs and kind in refs_v:
-                    return agl + (refs[kind] - refs_v[kind]), math.hypot(sig, 2.0), CARRY_LABEL[kind]
+                    now = agl + (refs[kind] - refs_v[kind])
+                    terrain = min(self.terrain_rate_mps * abs(t - tv),
+                                  math.hypot(self.terrain_sigma_m, self.terrain_fraction * now))
+                    return now, math.sqrt(sig * sig + 4.0 + terrain * terrain), CARRY_LABEL[kind]
             return agl, sig + self.vision_drift_mps * abs(t - tv), "image (held)"
         for kind in ("vehicle", "gps"):
             if kind in refs:

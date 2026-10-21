@@ -27,7 +27,8 @@ def test_image_correction_is_carried_by_the_gps():
     a.add_vision(10.0, 135.0, 3.0)                  # ...the image measures 135 m (higher ground)
     a.add_gps(20.0, 210.0)                          # climbs 10 m
     agl, sigma, src = a.estimate(20.0)
-    assert agl == pytest.approx(145.0) and src == "image + GPS" and sigma < 4.0
+    assert agl == pytest.approx(145.0) and src == "image + GPS"
+    assert sigma == pytest.approx((3.0 ** 2 + 2.0 ** 2 + (1.0 * 10.0) ** 2) ** 0.5)   # the ground may differ
 
 
 def test_after_gps_loss_the_image_height_is_held_with_growing_uncertainty():
@@ -63,7 +64,9 @@ def test_vehicle_barometer_keeps_the_height_after_gps_loss():
     a.add_vision(10.0, 135.0, 3.0)                  # the image: higher ground than home
     a.add_relative(30.0, 160.0)                     # GPS lost since t=0, the barometer goes on
     agl, sigma, src = a.estimate(30.0)
-    assert agl == pytest.approx(145.0) and src == "image + vehicle altitude" and sigma < 4.0
+    assert agl == pytest.approx(145.0) and src == "image + vehicle altitude"
+    assert sigma == pytest.approx((3.0 ** 2 + 2.0 ** 2 + 20.0 ** 2) ** 0.5)
+    assert a.estimate(10.0)[1] == pytest.approx((3.0 ** 2 + 2.0 ** 2) ** 0.5)   # at the image: its own
 
 
 def test_vehicle_altitude_above_home_without_image():
@@ -121,3 +124,20 @@ def test_a_barometer_height_at_400_m_passes_the_night_gate():
     a.add_relative(0.0, 400.0)
     agl, sigma, _ = a.estimate(0.0)
     assert sigma / agl < 0.15
+
+
+def test_a_carried_image_height_grows_uncertain_up_to_the_terrain_relief():
+    """The barometer carries the vehicle's height, not the ground's: over a valley the ground under
+    the vehicle moved 100 m in 20 s of flight (MARS-LVIG AMvalley03) while the carried image height
+    said +-4 m. Its sigma grows with the time since the image (terrain_rate_mps), never past the
+    relief a reference height assumes.
+    """
+    a = AltitudeEstimator(terrain_rate_mps=1.0)
+    a.add_relative(0.0, 130.0)
+    a.add_vision(0.0, 130.0, 3.0)
+    for t in (10.0, 20.0, 60.0, 110.0):
+        a.add_relative(t, 130.0)
+    s10, s20, s60, s110 = (a.estimate(t)[1] for t in (10.0, 20.0, 60.0, 110.0))
+    assert s10 < s20 < s60
+    cap = (30.0 ** 2 + (0.02 * 130.0) ** 2) ** 0.5
+    assert s60 == pytest.approx(s110) == pytest.approx((3.0 ** 2 + 2.0 ** 2 + cap ** 2) ** 0.5)
