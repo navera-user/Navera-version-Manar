@@ -42,7 +42,8 @@ def row(label, flight, frames, hfov):
     gsd = 1.0 if label in ("g1", "native") else 10.0 if label == "s2" else float(label[1:])
     return dict(map=label, flight=flight, height_m=round(h), images=len(frames), accepted=len(acc),
                 accepted_pct=round(100 * len(acc) / len(frames), 1) if frames else 0.0,
-                median=round(st.median(e), 1) if e else None, p90=round(e[max(0, math.ceil(0.9 * len(e)) - 1)], 1) if e else None,
+                median=round(st.median(e), 1) if e else None,
+                p90=round(e[max(0, math.ceil(0.9 * len(e)) - 1)], 1) if e else None,
                 max=round(e[-1], 1) if e else None, wrong=sum(x > a.wrong_m for x in e),
                 footprint_px=round(2 * h * math.tan(math.radians(hfov) / 2) / gsd))
 
