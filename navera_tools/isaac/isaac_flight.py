@@ -65,6 +65,12 @@ ap.add_argument("--wind", default="", help="speed@dir_from_deg for the clouds (d
 ap.add_argument("--linger", type=float, default=30.0, help="s the window stays after the flight")
 ap.add_argument("--stop-file", default="", help="ends the linger early when this file exists")
 ap.add_argument("--gimbal", action="store_true", help="camera on a 2-axis stabiliser (level, heading follows)")
+ap.add_argument("--low-clouds", type=float, default=0.0, help="cover 0-1 of an opaque cloud layer BELOW the vehicle")
+ap.add_argument("--low-cloud-agl", type=float, default=150.0, help="m above the origin's ground")
+ap.add_argument("--obstacles", default="", help="comma list: birds,aircraft,powerlines,cars,smoke")
+ap.add_argument("--extra-buildings", type=int, default=0, help="new buildings that are not in the map")
+ap.add_argument("--shake", type=float, default=0.0, help="camera vibration, deg (high-frequency jitter)")
+ap.add_argument("--seed", type=int, default=7)
 ap.add_argument("--vehicle-scale", type=float, default=2.5, help="visual size only")
 args, _ = ap.parse_known_args()
 
@@ -305,6 +311,79 @@ def main():
                  b["wall_quads"].ravel())
     bind(walls.GetPrim(), preview_material(stage, "/World/Looks/wall", color=(0.78, 0.74, 0.66), rough=0.95))
 
+    def ground_z(e, n):
+        k = hgt.shape[0] - 1
+        fx = min(max((e - xw) / (xe - xw) * k, 0), k - 1e-6)
+        fy = min(max((n - ys) / (yn - ys) * k, 0), k - 1e-6)
+        return float(hgt[int(fy), int(fx)])
+
+    rnd = np.random.default_rng(args.seed)
+    if args.extra_buildings:                # built after the map was made: not in NAVERA's map
+        new_mat = preview_material(stage, "/World/Looks/newroof", color=(0.85, 0.83, 0.8), rough=0.8)
+        for i in range(args.extra_buildings):
+            a, d = rnd.uniform(0, 2 * math.pi), rnd.uniform(100, 1300)
+            ce, cn = d * math.cos(a), d * math.sin(a)
+            w_, l_, h_ = rnd.uniform(15, 50), rnd.uniform(15, 70), rnd.uniform(6, 25)
+            box(stage, f"/World/new_buildings/b{i:03d}", (ce, cn, ground_z(ce, cn) + h_ / 2), (w_, l_, h_),
+                new_mat, float(rnd.uniform(0, 90)))
+    movers = []                             # (op, function t -> position)
+    for ob in [o for o in args.obstacles.split(",") if o]:
+        if ob == "birds":                   # flocks circling 60-120 m above the ground
+            dark = preview_material(stage, "/World/Looks/bird", color=(0.1, 0.1, 0.1))
+            for f in range(4):
+                c0 = rnd.uniform(-600, 600, 2)
+                for b in range(25):
+                    x = UsdGeom.Xformable(box(stage, f"/World/birds/f{f}_{b}", (0, 0, 0), (0.9, 0.9, 0.15), dark))
+                    op = x.GetOrderedXformOps()[0]
+                    off, ph, r_, z_ = rnd.uniform(-25, 25, 2), rnd.uniform(0, 6.28), rnd.uniform(80, 200), rnd.uniform(60, 120)
+                    movers.append((op, lambda t, c0=c0, off=off, ph=ph, r_=r_, z_=z_: (
+                        c0[0] + r_ * math.cos(ph + 0.08 * t) + off[0], c0[1] + r_ * math.sin(ph + 0.08 * t) + off[1],
+                        ground_z(c0[0], c0[1]) + z_)))
+        elif ob == "aircraft":              # another aircraft crossing ~70 m below, back and forth
+            wm = preview_material(stage, "/World/Looks/other", color=(0.9, 0.2, 0.2), rough=0.4)
+            x = UsdGeom.Xformable(box(stage, "/World/other_aircraft/body", (0, 0, 0), (12, 14, 2.5), wm))
+            op = x.GetOrderedXformOps()[0]
+            movers.append(("rel", op, lambda t, s_: (s_.e + 400 * math.sin(0.05 * t), s_.n + 60 * math.cos(0.11 * t),
+                                                     s_.u - 70)))
+        elif ob == "powerlines":            # a 3 km line of pylons + 3 cables across the circuit
+            steel = preview_material(stage, "/World/Looks/steel", color=(0.55, 0.57, 0.6), rough=0.5)
+            az = rnd.uniform(0, math.pi)
+            for k in range(-8, 9):
+                pe, pn = k * 200 * math.cos(az), k * 200 * math.sin(az)
+                gz = ground_z(pe, pn)
+                box(stage, f"/World/power/pylon{k + 8}", (pe, pn, gz + 17), (2.5, 2.5, 34), steel)
+                box(stage, f"/World/power/arm{k + 8}", (pe, pn, gz + 32), (1, 14, 1), steel,
+                    math.degrees(az))
+                if k < 8:
+                    qe, qn = (k + 1) * 200 * math.cos(az), (k + 1) * 200 * math.sin(az)
+                    for c in (-6, 0, 6):
+                        oe, on = -c * math.sin(az), c * math.cos(az)
+                        box(stage, f"/World/power/cable{k + 8}_{c + 6}", ((pe + qe) / 2 + oe, (pn + qn) / 2 + on,
+                            (gz + ground_z(qe, qn)) / 2 + 31), (200, 0.4, 0.4), steel, math.degrees(az))
+        elif ob == "cars":                  # 80 vehicles driving straight lines at 10-25 m/s
+            for c in range(80):
+                col = preview_material(stage, f"/World/Looks/car{c % 6}", color=[(0.9, 0.9, 0.9), (0.1, 0.1, 0.1),
+                                       (0.7, 0.1, 0.1), (0.2, 0.3, 0.7), (0.6, 0.6, 0.6), (0.9, 0.8, 0.2)][c % 6])
+                big = c % 7 == 0
+                x = UsdGeom.Xformable(box(stage, f"/World/cars/c{c}", (0, 0, 0),
+                                          (12, 2.5, 3.5) if big else (4.5, 1.8, 1.5), col))
+                op = x.GetOrderedXformOps()[0]
+                p0, hd, sp = rnd.uniform(-1500, 1500, 2), rnd.uniform(0, 2 * math.pi), rnd.uniform(10, 25)
+                movers.append((op, lambda t, p0=p0, hd=hd, sp=sp: (
+                    p0[0] + ((sp * t) % 3000 - 1500) * math.cos(hd), p0[1] + ((sp * t) % 3000 - 1500) * math.sin(hd),
+                    ground_z(p0[0] + ((sp * t) % 3000 - 1500) * math.cos(hd),
+                             p0[1] + ((sp * t) % 3000 - 1500) * math.sin(hd)) + 1.0)))
+        elif ob == "smoke":                 # a plume: grey blobs rising and drifting downwind
+            sm = preview_material(stage, "/World/Looks/smoke", color=(0.45, 0.45, 0.47), rough=1.0)
+            src = rnd.uniform(-400, 400, 2)
+            for k in range(30):
+                sz = 15 + 4 * k
+                x = UsdGeom.Xformable(box(stage, f"/World/smoke/p{k}", (0, 0, 0), (sz, sz, sz * 0.6), sm,
+                                          float(rnd.uniform(0, 90))))
+                op = x.GetOrderedXformOps()[0]
+                movers.append((op, lambda t, k=k, src=src: (src[0] + 6.0 * k + 3 * math.sin(0.3 * t + k),
+                                                            src[1] + 4.0 * k, ground_z(src[0], src[1]) + 10 + 7.0 * k)))
+
     # ── sun at its true position, sky ──
     hh, mm = (int(v) for v in args.time.split(":"))
     when = dt.datetime.fromisoformat(args.date).replace(hour=hh, minute=mm) - dt.timedelta(hours=args.utc_offset)
@@ -336,6 +415,18 @@ def main():
         bind(cl.GetPrim(), preview_material(stage, "/World/Looks/cloud", color=(1, 1, 1), opacity_tex=tex))
         op_cloud = UsdGeom.Xformable(cl).AddTranslateOp(UsdGeom.XformOp.PrecisionDouble)
         op_cloud.Set(Gf.Vec3d(0, 0, cz))
+    op_low = None
+    if args.low_clouds > 0:                 # low cloud below the vehicle: hides the ground
+        tex2 = os.path.join(args.out, "low_clouds.png")
+        cloud_texture(tex2, args.low_clouds, seed=args.seed + 11)
+        size = 12000.0
+        lc = mesh(stage, "/World/low_clouds", [(-size / 2, -size / 2, 0), (size / 2, -size / 2, 0),
+                                               (size / 2, size / 2, 0), (-size / 2, size / 2, 0)],
+                  [4], [0, 1, 2, 3], [(0, 0), (5, 0), (5, 5), (0, 5)])
+        bind(lc.GetPrim(), preview_material(stage, "/World/Looks/low_cloud", color=(0.93, 0.94, 0.96),
+                                            opacity_tex=tex2, rough=1.0))
+        op_low = UsdGeom.Xformable(lc).AddTranslateOp(UsdGeom.XformOp.PrecisionDouble)
+        op_low.Set(Gf.Vec3d(0, 0, args.low_cloud_agl))
     wd = math.radians(wind_dir + 180.0)                         # the clouds move downwind
     cloud_v = (wind_spd * 1.5 * math.sin(wd), wind_spd * 1.5 * math.cos(wd))   # wind aloft ~1.5x
 
@@ -360,6 +451,9 @@ def main():
         op_gt = UsdGeom.Xformable(gim).AddTranslateOp(UsdGeom.XformOp.PrecisionDouble)
         op_gq = UsdGeom.Xformable(gim).AddOrientOp(UsdGeom.XformOp.PrecisionDouble)
         cam_parent = "/World/gimbal"
+    shk = UsdGeom.Xform.Define(stage, cam_parent + "/shake")
+    op_shake = UsdGeom.Xformable(shk).AddOrientOp(UsdGeom.XformOp.PrecisionDouble)
+    cam_parent += "/shake"
     cam = RtxCamera(cam_parent + "/navera_cam", translations=np.array([0.0, 0.0, -0.3]),
                     orientations=np.array([q.GetReal(), *q.GetImaginary()]))
     ucam = UsdGeom.Camera(cam.prims[0])
@@ -398,6 +492,16 @@ def main():
             op_gq.Set(quat_wxyz(rpy_to_quat(0.0, 0.0, s_.yaw)))
         if op_cloud is not None:
             op_cloud.Set(Gf.Vec3d(cloud_v[0] * t, cloud_v[1] * t, op_cloud.Get()[2]))
+        if op_low is not None:
+            op_low.Set(Gf.Vec3d(cloud_v[0] * t / 1.5, cloud_v[1] * t / 1.5, args.low_cloud_agl))
+        if args.shake > 0:                  # engine / airframe vibration: random jitter of the camera
+            j = rnd.normal(0.0, args.shake, 3)
+            op_shake.Set(quat_wxyz(rpy_to_quat(j[0], j[1], j[2])))
+        for m_ in movers:
+            if m_[0] == "rel":
+                m_[1].Set(Gf.Vec3d(*m_[2](t, s_)))
+            else:
+                m_[0].Set(Gf.Vec3d(*m_[1](t)))
         # chase: 38 m behind along the track, 11 m above, smoothed, looking at the vehicle
         v = math.hypot(s_.ve, s_.vn) or 1.0
         want = Gf.Vec3d(s_.e - 38 * s_.ve / v, s_.n - 38 * s_.vn / v, s_.u + 11)
@@ -427,7 +531,10 @@ def main():
                                gimbal=bool(args.gimbal), mount_err_rpy_deg=[mr, mp, my]),
                    sun=dict(date=args.date, local_time=args.time, utc_offset_h=args.utc_offset,
                             elev_deg=round(sun_el, 2), az_deg=round(sun_az, 2)),
-                   clouds=dict(cover=args.clouds, height_m=args.cloud_height, drift_mps=list(cloud_v)),
+                   clouds=dict(cover=args.clouds, height_m=args.cloud_height, drift_mps=list(cloud_v),
+                               low_cover=args.low_clouds, low_agl_m=args.low_cloud_agl),
+                   obstacles=args.obstacles, extra_buildings=args.extra_buildings, shake_deg=args.shake,
+                   sun_intensity=args.sun, sky_intensity=args.sky,
                    wind=dict(speed_mps=wind_spd, from_deg=wind_dir), scene=scene,
                    renderer="Isaac Sim 6.0 RTX (real-time)", frame_lag_updates=1)
     json.dump(session, open(os.path.join(args.out, "session.json"), "w"), indent=1)

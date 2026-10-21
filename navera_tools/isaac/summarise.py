@@ -64,8 +64,27 @@ def summarise(results: str, gps_cut_s: float = 60.0) -> dict:
     for s in st_after:
         sources[s.get("source", "?")] = sources.get(s.get("source", "?"), 0) + 1
     lat = [e["day_status"]["latency"] for e in ev if isinstance(e.get("day_status", {}).get("latency"), dict)]
+    beyond = [r for r in out_after if f(r, "sigma_m") > 0 and f(r, "err_m") > 3.0 * f(r, "sigma_m")]
+    mission = None
+    fl = os.path.join(results, "sitl_flown.json")
+    if os.path.exists(fl):
+        flown = json.load(open(fl))
+        ss = json.load(open(os.path.join(results, "sitl_session.json")))
+        ek = rd("ekf.csv")
+        end_m = None
+        if ek:
+            la, lo = f(ek[-1], "truth_lat"), f(ek[-1], "truth_lon")
+            end_m = round(math.hypot((la - ss["lat0"]) * 111320.0,
+                                     (lo - ss["lon0"]) * 111320.0 * math.cos(math.radians(ss["lat0"]))), 1)
+        texts = [json.loads(line).get("text", "") for line in open(os.path.join(results, "sitl_events.jsonl"))
+                 if '"text"' in line]
+        mission = dict(completed=flown.get("home_at") is not None, final_dist_from_home_m=end_m,
+                       failsafe=[x for x in texts if "ailsafe" in x][:3], cut_at=flown.get("cut_at"),
+                       home_at=flown.get("home_at"))
     return dict(
         flight_end_s=round(t_end, 1),
+        mission=mission,
+        output_beyond_3sigma=dict(n=len(beyond), of=len(out_after)),
         after_cut=dict(frames=len(st_after), accepted=len(acc),
                        accepted_pct=round(100.0 * len(acc) / len(st_after), 1) if st_after else None,
                        frame_sources=sources,

@@ -9,7 +9,7 @@
 #   isaac_link     the vehicle's sensors + camera from Isaac Sim, and the record
 #   vehicle_output (VEHICLE_OUT set: closed loop) NAVERA's position -> the autopilot as GPS_INPUT
 #
-# Environment: RUN (run name), GIMBAL (true: stabilised camera), VEHICLE_OUT (pymavlink URL of the autopilot), DEGRADED_SIGMA, MAX_SPEED (m/s), GROUND_ALT (site elevation m), LINK_ARGS
+# Environment: RUN (run name), DAY_ARGS (extra day_subscriber -p ...), GIMBAL (true: stabilised camera), VEHICLE_OUT (pymavlink URL of the autopilot), DEGRADED_SIGMA, MAX_SPEED (m/s), GROUND_ALT (site elevation m), LINK_ARGS
 # (extra "-p name:=value" for isaac_link), MATCHER (auto = DISK+LightGlue on the GPU | local = SIFT).
 export ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-77} ROS_LOCALHOST_ONLY=1
 source /opt/ros/humble/setup.bash             # (not under set -u: ROS setup reads unset variables)
@@ -29,7 +29,7 @@ pids=()
 ros2 run navera_estimator estimator_node.py --ros-args --params-file "$share" \
   -p max_speed_mps:=${MAX_SPEED:-45.0} > $L/estimator.log 2>&1 & pids+=($!)
 ros2 run day_pkg day_subscriber.py --ros-args -p matcher:=${MATCHER:-auto} \
-  -p max_speed_mps:=${MAX_SPEED:-45.0} > $L/day.log 2>&1 & pids+=($!)
+  -p max_speed_mps:=${MAX_SPEED:-45.0} ${DAY_ARGS:-} > $L/day.log 2>&1 & pids+=($!)
 if [ -n "${VEHICLE_OUT:-}" ]; then        # closed loop: NAVERA's position to the autopilot (GPS_INPUT)
   ( until ros2 run navera_output vehicle_output_node.py --ros-args -p mavlink_url:=$VEHICLE_OUT \
       -p forward_degraded:=true -p degraded_sigma_m:=${DEGRADED_SIGMA:-30.0} \

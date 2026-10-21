@@ -34,6 +34,7 @@ sys.path.insert(0, HERE)
 from flight_profile import GeoRef  # noqa: E402
 
 COPTER_MODES = {0: "STABILIZE", 3: "AUTO", 4: "GUIDED", 5: "LOITER", 6: "RTL", 9: "LAND", 2: "ALT_HOLD"}
+PLANE_MODES = {0: "MANUAL", 1: "CIRCLE", 5: "FBWA", 10: "AUTO", 11: "RTL", 12: "LOITER", 13: "TAKEOFF", 15: "GUIDED"}
 
 
 def main():
@@ -50,6 +51,7 @@ def main():
     ap.add_argument("--isaac-port", type=int, default=15500)
     ap.add_argument("--link-port", type=int, default=15501)
     ap.add_argument("--timeout", type=float, default=1200.0)
+    ap.add_argument("--legs", type=int, default=4, help="diamond legs (4 = the full diamond)")
     ap.add_argument("--hold-home", type=float, default=45.0, help="s over home (RTL) before the demo ends")
     ap.add_argument("--arm-after-file", default="", help="arm only once this file exists (Isaac Sim rendering)")
     a = ap.parse_args()
@@ -89,8 +91,11 @@ def main():
         rel = mavutil.mavlink.MAV_FRAME_GLOBAL_RELATIVE_ALT_INT
         home = state["home"]
         items = [(mavutil.mavlink.MAV_CMD_NAV_WAYPOINT, home[0], home[1], 0.0)]
-        items.append((mavutil.mavlink.MAV_CMD_NAV_TAKEOFF, home[0], home[1], a.alt))
-        for k in range(5):                                  # a diamond, back to its first corner
+        if a.vehicle == "plane":                            # climbs out on the runway heading
+            items.append((mavutil.mavlink.MAV_CMD_NAV_TAKEOFF, home[0], home[1], 60.0))
+        else:
+            items.append((mavutil.mavlink.MAV_CMD_NAV_TAKEOFF, home[0], home[1], a.alt))
+        for k in range(a.legs + 1):                         # a diamond, back to its first corner
             th = math.radians(90 * k)
             wps.append(geo.to_latlon(a.radius * math.cos(th), a.radius * math.sin(th)))
             items.append((mavutil.mavlink.MAV_CMD_NAV_WAYPOINT, wps[-1][0], wps[-1][1], a.alt))
@@ -127,6 +132,8 @@ def main():
                           roll=math.degrees(msg.roll), pitch=math.degrees(msg.pitch),
                           hdg=math.degrees(msg.yaw) % 360.0, p=msg.xgyro, q=-msg.ygyro, r=-msg.zgyro,
                           ekf=state["ekf"], gps=state["gps"], done=state["done"], phase=state["phase"],
+                          cut_eta=(round(flown["at_alt"] + a.cut_after - t, 2)
+                                   if flown["at_alt"] is not None and state["gps"] else None),
                           mode=state["mode"], armed=state["armed"], home=state["home"]))
             elif typ == "GLOBAL_POSITION_INT":
                 if msg.lat:
@@ -136,15 +143,15 @@ def main():
                 state["home"] = [msg.latitude / 1e7, msg.longitude / 1e7, msg.altitude / 1000.0]
                 log("home", home=state["home"])
             elif typ == "HEARTBEAT" and msg.get_srcSystem() == ts and msg.type != mavutil.mavlink.MAV_TYPE_GCS:
-                mode = COPTER_MODES.get(msg.custom_mode, str(msg.custom_mode)) if a.vehicle == "copter" \
-                    else str(msg.custom_mode)
+                mode = (COPTER_MODES if a.vehicle == "copter" else PLANE_MODES).get(msg.custom_mode,
+                                                                                    str(msg.custom_mode))
                 armed = bool(msg.base_mode & mavutil.mavlink.MAV_MODE_FLAG_SAFETY_ARMED)
                 if mode != state["mode"] or armed != state["armed"]:
                     log("mode", mode=mode, armed=armed)
                 state["mode"], state["armed"] = mode, armed
             elif typ == "STATUSTEXT":
                 log("text", text=msg.text)
-                if "RTL" in msg.text and flown["rtl_at"] is None and flown["cut_at"] is not None:
+                if msg.text.startswith("Mission:") and "RTL" in msg.text and flown["rtl_at"] is None:
                     flown["rtl_at"] = time.time() - t0
                     state["phase"] = "RTL on NAVERA vision"
             elif typ == "EKF_STATUS_REPORT":
@@ -176,7 +183,7 @@ def main():
         if flown["rtl_at"] is not None and flown["home_at"] is None and state["ekf"] and state["home"]:
             d = math.hypot((state["ekf"][0] - state["home"][0]) * 111320.0,
                            (state["ekf"][1] - state["home"][1]) * 111320.0 * math.cos(math.radians(state["home"][0])))
-            if d < 30.0:
+            if d < (30.0 if a.vehicle == "copter" else 450.0):   # a plane loiters around home
                 flown["home_at"] = t
                 state["phase"] = "over home (RTL, holding at altitude)"
                 log("home_reached", ekf_dist_m=round(d, 1))

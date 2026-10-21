@@ -149,6 +149,53 @@ class RealCamera:
             tag = self.pending.get()
             self.out_q.put((tag, np.frombuffer(buf, np.uint8).reshape(self.h, self.w, 3)))
 
+    # weather / lens conditions (campaign), set by IsaacLink from its parameters
+    cond = {}
+
+    def _conditions(self, lens, t):
+        """Effects Isaac's renderer does not give, applied in linear light before exposure."""
+        c, h, w = self.cond, self.h, self.w
+        if c.get("season", 0) > 0:          # greener vegetation / fields than in the map's season
+            k = c["season"]
+            g = lens[..., 1]
+            veg = np.clip((g - np.maximum(lens[..., 0], lens[..., 2]) * 0.92) * 20.0 + 0.3, 0, 1)[..., None]
+            tint = lens * np.array([0.75, 1.3, 0.8], np.float32)
+            lens = lens * (1 - k * veg) + tint * (k * veg) * 0.9 + lens * (k * (1 - veg)) * 0.0
+        if c.get("fog", 0) > 0:             # fog patches drifting through the view
+            if not hasattr(self, "_fog"):
+                n = self.rng.random((24, 40)).astype(np.float32)
+                self._fog = cv2.resize(np.tile(n, (2, 2)), (2 * w, 2 * h), interpolation=cv2.INTER_CUBIC)
+            ox, oy = int(t * 6) % w, int(t * 3) % h
+            f = self._fog[oy:oy + h, ox:ox + w]
+            f = np.clip((f - (1 - c["fog"])) / 0.25, 0, 1)[..., None]
+            lens = lens * (1 - 0.9 * f) + np.float32(0.7) * 0.9 * f
+        if c.get("glare", 0) > 0:           # the sun in the lens: veiling glare + a flare
+            if not hasattr(self, "_glare"):
+                yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
+                cx, cy = w * 0.82, h * 0.15
+                r = np.hypot(xx - cx, yy - cy) / w
+                streak = np.exp(-np.abs(yy - cy - 0.3 * (xx - cx)) / 6.0) * np.exp(-r * 2.0)
+                self._glare = (np.exp(-r * 6.0) * 1.5 + 0.25 * np.exp(-r * 1.5) + 0.6 * streak)[..., None]
+            lens = lens + c["glare"] * self._glare * np.array([1.0, 0.95, 0.85], np.float32)
+        if c.get("rain", 0) > 0:            # raindrops on the window (blurred spots) + streaks
+            k = c["rain"]
+            if not hasattr(self, "_drops") or self.rng.random() < 0.1:
+                m = np.zeros((h, w), np.float32)
+                for _ in range(int(60 * k)):
+                    cv2.circle(m, (int(self.rng.integers(0, w)), int(self.rng.integers(0, h))),
+                               int(self.rng.integers(6, 30)), 1.0, -1)
+                self._drops = cv2.GaussianBlur(m, (0, 0), 3)[..., None]
+            blur = cv2.GaussianBlur(lens, (0, 0), 9)
+            lens = lens * (1 - self._drops) + blur * self._drops * 1.1
+            st = np.zeros((h, w), np.float32)
+            for _ in range(int(400 * k)):
+                x0, y0 = int(self.rng.integers(0, w)), int(self.rng.integers(0, h))
+                cv2.line(st, (x0, y0), (x0 + 6, y0 + 40), 0.35, 1)
+            lens = lens + st[..., None] * 0.6 + np.float32(0.04 * k)
+        if c.get("outage"):                 # a cloud bank: nothing but grey
+            lens = np.full_like(lens, 0.55) + self.rng.normal(0, 0.01, lens.shape).astype(np.float32)
+        return lens
+
     def process(self, img, blur_px, agl_m, tag):
         """Render -> lens -> exposure -> blur -> haze -> noise -> H.264 (async: out_q)."""
         lens = cv2.remap(img, self.map_x, self.map_y, cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT)
@@ -158,7 +205,8 @@ class RealCamera:
         # haze: airlight over the slant range (AGL / cos theta)
         if self.haze_vis_m > 0:
             t = np.exp(-3.0 * (agl_m / self.cos_t) / self.haze_vis_m)[..., None]
-            lens = lens * t + np.array([0.55, 0.57, 0.6], np.float32) * (1 - t) * 0.35
+            lens = lens * t + np.array(self.cond.get("haze_rgb", (0.55, 0.57, 0.6)), np.float32) * (1 - t) * 0.35
+        lens = self._conditions(lens, tag[0])
         # auto-exposure: the mean of the centre towards 18 % grey, adapting over ~1 s
         c = float(lens[self.h // 4:3 * self.h // 4:2, self.w // 4:3 * self.w // 4:2].mean())
         want = 0.18 / max(c, 1e-4)
@@ -200,12 +248,23 @@ class IsaacLink(Node):
         self.spoof_mps = float(p("spoof_mps", 0.0))
         self.spoof_start_s = float(p("spoof_start_s", 30.0))
         self.spoof_bearing = float(p("spoof_bearing_deg", 45.0))
+        self.spoof_lead_s = float(p("spoof_lead_s", 30.0))       # live: seconds of spoof before the cut
+        self._spoof_t0 = None
         self.haze_vis_m = float(p("haze_visibility_m", 12000.0))
         self.bitrate = str(p("bitrate", "1M"))
         self.camera_fps = float(p("camera_fps", 5.0))
         # live: the vehicle is flown NOW by ArduPilot SITL (sitl_demo.py streams its truth here);
         # the GPS is cut when sitl_demo says so
         self.truth_port = int(p("truth_udp_port", 0))
+        # campaign conditions (camera post-effects, sensors)
+        self.cond = dict(season=float(p("season", 0.0)), fog=float(p("fog", 0.0)), glare=float(p("glare", 0.0)),
+                         rain=float(p("rain", 0.0)))
+        hz = str(p("haze_rgb", ""))
+        if hz:
+            self.cond["haze_rgb"] = tuple(float(v) for v in hz.split("/"))
+        self.outages = [tuple(float(v) for v in o.split("/")) for o in str(p("outages", "")).split(",") if o]
+        self.gyro_bias_fixed = str(p("gyro_bias_dps", ""))
+        self.imu_vib = float(p("imu_vibration_g", 0.0))
         seed = int(p("seed", 3))
         self.rng = np.random.default_rng(seed)
         os.makedirs(os.path.join(self.results, "navera_view"), exist_ok=True)
@@ -252,6 +311,8 @@ class IsaacLink(Node):
                 self.home_alt = z_ref
         # sensor errors drawn once per flight
         self.gyro_bias = self.rng.uniform(-0.27, 0.27, 3)                       # deg/s
+        if self.gyro_bias_fixed:
+            self.gyro_bias = np.array([float(v) for v in self.gyro_bias_fixed.split("/")])
         self.att_bias = np.array([self.rng.normal(0, 0.3), self.rng.normal(0, 0.3), self.rng.normal(0, 1.5)])
         self.att_walk = np.zeros(3)
         self.baro_bias, self.baro_walk = self.rng.normal(0, 1.5), 0.0
@@ -307,6 +368,7 @@ class IsaacLink(Node):
         time.sleep(0.5)
         self.s = json.load(open(sess))
         self.cam = RealCamera(self.lens, self.s["render"], self.camera_fps, self.bitrate, self.haze_vis_m, self.seed)
+        self.cam.cond = dict(self.cond)
         threading.Thread(target=self._camera_out, daemon=True).start()
 
     def _live_tick(self):
@@ -379,7 +441,7 @@ class IsaacLink(Node):
         rates = np.array([st.p, st.q, st.r]) + np.radians(self.gyro_bias + self.rng.normal(0, 0.077, 3))
         m.angular_velocity.x, m.angular_velocity.y, m.angular_velocity.z = (float(v) for v in rates)
         R = quat_to_matrix(q_true)
-        f_body = R.T @ np.array([st.ae, st.an, st.au + G]) + self.rng.normal(0, 0.0015 * G, 3)
+        f_body = R.T @ np.array([st.ae, st.an, st.au + G]) + self.rng.normal(0, (0.0015 + self.imu_vib) * G, 3)
         m.linear_acceleration.x, m.linear_acceleration.y, m.linear_acceleration.z = (float(v) for v in f_body)
         m.orientation_covariance[0] = m.orientation_covariance[4] = math.radians(0.5) ** 2
         m.orientation_covariance[8] = math.radians(2.0) ** 2
@@ -408,8 +470,14 @@ class IsaacLink(Node):
             self.live["gps"] = "cut (jammed)"
         else:
             de = dn = 0.0
-            if self.spoof_mps > 0 and t > self.spoof_start_s:
-                d = self.spoof_mps * (t - self.spoof_start_s)
+            if self.truth_port and self.spoof_mps > 0 and self._spoof_t0 is None:
+                eta = (self.prof.last or {}).get("cut_eta")      # live: the spoof starts before the cut
+                if eta is not None and eta <= self.spoof_lead_s:
+                    self._spoof_t0 = t
+                    self.get_logger().warn(f"GPS SPOOF starts: {self.spoof_mps} m/s, {eta:.0f} s before the cut")
+            t_sp = self._spoof_t0 if self.truth_port else self.spoof_start_s
+            if self.spoof_mps > 0 and t_sp is not None and t > t_sp:
+                d = self.spoof_mps * (t - t_sp)
                 de, dn = d * math.sin(math.radians(self.spoof_bearing)), d * math.cos(math.radians(self.spoof_bearing))
                 self.live["gps"] = f"SPOOFED +{d:.0f} m"
             else:
@@ -468,6 +536,8 @@ class IsaacLink(Node):
                 t = float(rec["t"])
                 st = self.prof.state(t)
                 agl = st.u - self.terrain.z(st.e, st.n)
+                self.cam.cond["outage"] = any(math.isfinite(self.gps_cut_s) and
+                                              self.gps_cut_s + a <= t < self.gps_cut_s + a + d for a, d in self.outages)
                 self.cam.process(img, self._blur(t, self.cam.exposure_s()), agl, (t, rec["i"]))
                 last_t, n = t, n + 1
                 busy.append(time.time() - t0)

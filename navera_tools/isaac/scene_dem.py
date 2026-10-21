@@ -20,8 +20,12 @@ class Dem:
             self.z = z
         if not self.tiles:
             raise FileNotFoundError(f"no terrarium tiles in {dem_dir}")
+        xs, ys = [k[0] for k in self.tiles], [k[1] for k in self.tiles]
+        self.px_box = (min(xs) * 256, (max(xs) + 1) * 256 - 1, min(ys) * 256, (max(ys) + 1) * 256 - 1)
 
     def _px(self, px: int, py: int) -> float:
+        px = min(max(px, self.px_box[0]), self.px_box[1])              # the edge pixel past the last tile
+        py = min(max(py, self.px_box[2]), self.px_box[3])
         t = self.tiles.get((px // 256, py // 256))
         if t is None:
             raise ValueError("outside the DEM tiles")
