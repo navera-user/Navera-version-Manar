@@ -3,6 +3,7 @@ import io
 import math
 import sqlite3
 
+import numpy as np
 import pytest
 from PIL import Image
 
@@ -176,3 +177,33 @@ def test_downloaded_cache_is_licence_labelled(tmp_path, mbtiles):
         download_missing(plan, "sentinel2_l2a", cache, path)
     with pytest.raises(ValueError):                 # or another XYZ service
         download_missing(plan, "http://127.0.0.1:9/{z}/{x}/{y}", cache, path)
+
+
+def test_prepare_stores_the_corridor_dem(tmp_path, mbtiles):
+    """--dem copernicus: <area>/terrain answers heights along the route; a DEM that cannot be
+    obtained (network) is reported in area.json, the area is still built."""
+    import json
+    from navera_common.terrain import Terrain
+    from day_pkg.prepare_area import prepare
+    from test_dem_sources import _float_tiff
+    path, _ = mbtiles
+    step = 1 / 3600.0
+    r, c = np.mgrid[0:3600, 0:3600]
+    grid = (100.0 + r * 0.01 + c * 0.02).astype(np.float32)
+    tif = _float_tiff(str(tmp_path / "glo30.tif"), grid, 36.0, 10.0, step)
+    info = prepare(path, str(tmp_path / "area"), ROUTE, 1000.0, 17, descriptors=False, dem="copernicus",
+                   dem_opener=lambda url: open(tif, "rb") if "dem-30m" in url and "N35_00_E010_00" in url else None)
+    assert info["dem"]["source"] == "Copernicus DEM GLO-30" and info["dem"]["missing_share"] == 0.0
+    assert json.load(open(tmp_path / "area" / "area.json"))["dem"]["pieces"] == 1
+    T = Terrain.load(str(tmp_path / "area"))
+    for lat, lon in ROUTE:
+        h, sigma, _ = T.height(lat, lon)
+        row, col = (36.0 - lat) / step, (lon - 10.0) / step
+        assert abs(h - (100.0 + row * 0.01 + col * 0.02)) < 0.01 and sigma == 4.0
+
+    def offline(url):
+        raise OSError("network unreachable")
+    info = prepare(path, str(tmp_path / "area2"), ROUTE, 1000.0, 17, descriptors=False, dem="copernicus",
+                   dem_opener=offline)
+    assert "network unreachable" in info["dem"]["error"]
+    assert Terrain.load(str(tmp_path / "area2")) is None and (tmp_path / "area2" / "images").is_dir()

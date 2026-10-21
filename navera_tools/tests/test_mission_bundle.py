@@ -83,7 +83,7 @@ def _write_map(path, skip=(), meta=None):
 
 def _spec(**kw):
     d = dict(route=ROUTE, corridor_width_m=800.0, min_height_m=50.0, max_height_m=200.0, hfov_deg=60.0,
-             frame_width_px=640, learned=False, dinov2=False)
+             frame_width_px=640, learned=False, dinov2=False, dem=False)
     d.update(kw)
     return mb.MissionSpec(**d)
 
@@ -94,11 +94,26 @@ def world(tmp_path_factory):
     return _write_map(str(d / "onboard.mbtiles"))
 
 
+def _dem_opener(tmp_dir):
+    """A local Copernicus GLO-30 cell (N35 E010, heights 100 m + 1 cm per row + 2 cm per column)
+    standing for the AWS one: no network."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "dem_test_helpers", os.path.join(os.path.dirname(TOOLS), "day_pkg", "test", "test_dem_sources.py"))
+    h = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(h)
+    r, c = np.mgrid[0:3600, 0:3600]
+    tif = h._float_tiff(os.path.join(tmp_dir, "glo30.tif"), (100.0 + r * 0.01 + c * 0.02).astype(np.float32),
+                        36.0, 10.0, 1 / 3600.0)
+    return lambda url: open(tif, "rb") if "dem-30m" in url and "N35_00_E010_00" in url else None
+
+
 @pytest.fixture(scope="module")
 def bundle(world, tmp_path_factory):
     out = str(tmp_path_factory.mktemp("b") / "bundle")
-    spec = _spec(extras={"lens.yaml": __file__})
-    mb.build_bundle(spec, [mb.MBTilesSource(world)], out, mb.Progress(), iers_file=_iers_a_file())
+    spec = _spec(extras={"lens.yaml": __file__}, dem=True)
+    mb.build_bundle(spec, [mb.MBTilesSource(world)], out, mb.Progress(), iers_file=_iers_a_file(),
+                    dem_opener=_dem_opener(str(tmp_path_factory.mktemp("dem"))))
     return out
 
 
@@ -181,6 +196,7 @@ def test_bundle_layout_and_manifest(bundle):
     assert m["day"]["images"] == m["map"]["tiles"]
     assert m["valid_until"]["overall"] == mb.iers_coverage(_iers_a_file())["predicted_until"]
     assert m["celestial"]["catalogue"]["stars"] > 800
+    assert m["day"]["dem"]["pieces"] == 1 and "attribution" in m["day"]["dem"] and "day/terrain/dem.json" in m["files"]
     assert {x["name"] for x in m["models"]} >= set(mb.MODEL_FILES)
     meta = mb._mbtiles_meta(os.path.join(bundle, mb.MAP_FILE))
     assert meta["minzoom"] == meta["maxzoom"] == "17" and meta["licence"] == "test licence"
@@ -284,6 +300,8 @@ def test_check_passes_with_every_socket_refused(bundle, monkeypatch):
     assert c["catalogue"]["stars_mag4"] > 400
     assert c["offline"]["attempts"] == []
     assert r["network"]["offline"]
+    assert c["terrain"]["ok"] and c["terrain"]["source"] == "Copernicus DEM GLO-30"
+    assert c["terrain"]["route_points"] == "2/2"
 
 
 def test_guard_refuses_and_records_network_use():

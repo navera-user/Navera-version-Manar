@@ -11,6 +11,8 @@ with DAY_DATASET_DIR:
     <out>/dataset.csv              filename, lat, lon (tile north-west corner)
     <out>/descriptors_cache.npz    dinov2_descriptors, coords (centres), valid_indices
     <out>/area.json                route, buffer, zoom, map, tile counts, missing tiles
+    <out>/terrain/                 the corridor's DEM (--dem copernicus; navera_common.terrain):
+                                   the height above ground under the vehicle over relief
 
     prepare_area.py --mbtiles map.mbtiles --out /data/areas/mission1 \\
         --route 35.8256,10.6385 35.8560,10.6010 [--buffer-m 1000] [--zoom 17]
@@ -442,9 +444,25 @@ def _descriptors(tmp, rows):
     return valid, device
 
 
-def prepare(mbtiles, out_dir, route, buffer_m, zoom=17, fetch_url=None, cache=None, descriptors=True):
+def _build_dem(kind, legs, buffer_m, out_dir, opener=None):
+    """The corridor's DEM (area.json "dem"); {"error": ...} when it cannot be obtained."""
+    if kind != "copernicus":
+        return {"error": f"unknown DEM source {kind!r} (copernicus)"}
+    from day_pkg import dem_sources
+    try:
+        return dem_sources.build_dem(legs, buffer_m, out_dir, opener=opener,
+                                     progress=lambda s, d, t: _progress(s, d, t))
+    except Exception as e:                       # noqa: BLE001 — network / source: no DEM, reported
+        return {"error": f"DEM not obtained: {e}"}
+
+
+def prepare(mbtiles, out_dir, route, buffer_m, zoom=17, fetch_url=None, cache=None, descriptors=True,
+            dem=None, dem_opener=None):
     """Build the dataset in <out_dir>.partial, then move it to out_dir. descriptors=False: no DINOv2
-    descriptor cache (no torch needed; day_subscriber then builds it at start-up from the tiles)."""
+    descriptor cache (no torch needed; day_subscriber then builds it at start-up from the tiles).
+    dem="copernicus": also store the corridor's terrain (day_pkg.dem_sources; needs the network,
+    dem_opener for tests); a DEM that cannot be obtained is reported in area.json "dem", not fatal
+    (the height above ground then falls back to the barometer and the image)."""
     t0 = time.time()
     plan = plan_tiles(mbtiles, route, buffer_m, zoom, cache)
     source = mbtiles
@@ -480,6 +498,10 @@ def prepare(mbtiles, out_dir, route, buffer_m, zoom=17, fetch_url=None, cache=No
             f.write(f"{name},{lat},{lon}\n")
 
     valid, device = (_descriptors(tmp, rows) if descriptors else ([], None))
+    dem_info = None
+    if dem:
+        _progress("dem", 0, 1)
+        dem_info = _build_dem(dem, densify_route(route), buffer_m, os.path.join(tmp, "terrain"), dem_opener)
     _progress("terrain", 0, 1)
     terrain = texture_profile(os.path.join(tmp, "images"), densify_route(route), zoom)
     info = {"route": route, "buffer_m": buffer_m, "zoom": zoom, "mbtiles": os.path.abspath(source),
@@ -488,6 +510,8 @@ def prepare(mbtiles, out_dir, route, buffer_m, zoom=17, fetch_url=None, cache=No
             "descriptors": bool(descriptors),
             "missing": plan["missing"], "created": time.strftime("%Y-%m-%dT%H:%M:%S"),
             "build_s": round(time.time() - t0, 1), "device": device}
+    if dem_info is not None:
+        info["dem"] = dem_info
     info["map_source"] = tile_sources.read_map_info(source)
     info["licence_warnings"] = tile_sources.licence_warnings(info["map_source"])
     with open(os.path.join(tmp, "area.json"), "w") as f:
@@ -511,6 +535,9 @@ def main():
     ap.add_argument("--cache", help="MBTiles file receiving downloaded tiles")
     ap.add_argument("--no-descriptors", action="store_true",
                     help="no DINOv2 descriptor cache (day_subscriber builds it at start-up)")
+    ap.add_argument("--dem", choices=["copernicus", "none"], default="none",
+                    help="also store the corridor's terrain (Copernicus DEM GLO-30 / GLO-90, free licence): "
+                         "the height above ground over relief")
     ap.add_argument("--source", choices=sorted(n for n, s in tile_sources.SOURCES.items() if s.kind != "geotiff"),
                     help="licence-labelled source for missing tiles (instead of --fetch-url)")
     a = ap.parse_args()
@@ -530,7 +557,8 @@ def main():
         return 0
     if not a.out:
         ap.error("--out is required unless --check")
-    prepare(a.mbtiles, a.out, route, a.buffer_m, a.zoom, a.fetch_url, a.cache, descriptors=not a.no_descriptors)
+    prepare(a.mbtiles, a.out, route, a.buffer_m, a.zoom, a.fetch_url, a.cache, descriptors=not a.no_descriptors,
+            dem=None if a.dem == "none" else a.dem)
     return 0
 
 

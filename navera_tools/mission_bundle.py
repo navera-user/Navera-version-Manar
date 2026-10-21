@@ -12,7 +12,7 @@ manifest (sha256 and size of every file, versions, valid-until dates).
         [--route-file r.gpx|r.kml|r.waypoints|r.plan|r.json] [--waypoint lat,lon ...] \\
         [--corridor-m 2000] [--min-height-m 100] [--max-height-m 600] [--hfov 100] \\
         [--frame-width 1200] [--source onboard [esri | xyz:URL | fn:module:function ...]] [--json]
-    mission_bundle.py build OUT_DIR <same options> [--yes] [--no-learned] [--no-dinov2]
+    mission_bundle.py build OUT_DIR <same options> [--yes] [--no-learned] [--no-dinov2] [--no-dem]
         [--include-models] [--fetch-iers] [--extra NAME=PATH ...] [--allow-missing] [--max-mb 10240]
         [--progress-json]
     mission_bundle.py check BUNDLE_DIR [--replay REC_DIR] [--deep] [--date YYYY-MM-DD] [--json]
@@ -35,6 +35,8 @@ Layout of a bundle (all paths relative; the directory can be copied to the vehic
     day/images/tile_17_x_y.jpg       the day-vision area (prepare_area.py layout, DAY_DATASET_DIR=day)
     day/dataset.csv, day/area.json, day/descriptors_cache.npz (DINOv2, unless --no-dinov2)
     day/learned_features/*.npz       DISK features of the corridor per map level (unless --no-learned)
+    day/terrain/dem.json, dem_*.npy  the corridor's terrain, Copernicus DEM GLO-30 / GLO-90 (unless --no-dem):
+                                     the height above ground over relief (navera_common.terrain)
     celestial/finals2000A.all        IERS-A table (NAVERA_IERS_FILE)
     celestial/bsc5_mag4.5.csv        star catalogue (cn_subscriber allsky_catalogue)
     models/hub/...                   torch hub weights (--include-models; TORCH_HOME=models)
@@ -228,6 +230,7 @@ class MissionSpec:
     zoom: int = ZOOM
     learned: bool = True                   # precompute DISK features (GPU)
     dinov2: bool = True                    # precompute DINOv2 descriptors (GPU or CPU)
+    dem: bool = True                       # store the corridor's terrain (Copernicus DEM, free licence)
     include_models: bool = False
     extras: Dict[str, str] = field(default_factory=dict)
 
@@ -784,8 +787,9 @@ def env_lines(bundle_dir: str, manifest: dict) -> List[str]:
 def build_bundle(spec: MissionSpec, sources: Sequence[TileSource], out_dir: str,
                  progress: Optional[Progress] = None, allow_missing: bool = False, iers_file: Optional[str] = None,
                  fetch_iers: bool = False, catalogue: Optional[str] = None, force: bool = False,
-                 plan: Optional[dict] = None) -> dict:
-    """Build the bundle in <out_dir>.partial, then move it to out_dir (never half-built)."""
+                 plan: Optional[dict] = None, dem_opener: Optional[Callable] = None) -> dict:
+    """Build the bundle in <out_dir>.partial, then move it to out_dir (never half-built).
+    dem_opener: how the DEM cells are opened (tests; default HTTP)."""
     progress = progress or Progress()
     t_start = time.time()
     plan = plan or plan_bundle(spec, sources, out_dir)
@@ -812,7 +816,8 @@ def build_bundle(spec: MissionSpec, sources: Sequence[TileSource], out_dir: str,
     from day_pkg import prepare_area
     with contextlib.redirect_stdout(_ProgressRelay(progress)):
         area = prepare_area.prepare(os.path.join(tmp, MAP_FILE), os.path.join(tmp, DAY_DIR), spec.legs,
-                                    spec.buffer_m, spec.zoom, descriptors=spec.dinov2)
+                                    spec.buffer_m, spec.zoom, descriptors=spec.dinov2,
+                                    dem="copernicus" if spec.dem else None, dem_opener=dem_opener)
     area["mbtiles"] = "../" + MAP_FILE                     # relocatable
     with open(os.path.join(tmp, DAY_DIR, "area.json"), "w") as f:
         json.dump(area, f)
@@ -887,7 +892,8 @@ def build_bundle(spec: MissionSpec, sources: Sequence[TileSource], out_dir: str,
                      max_supported_height_m=plan["max_supported_height_m"]),
         map=map_info,
         day=dict(dataset_dir=DAY_DIR, images=len(os.listdir(os.path.join(tmp, DAY_DIR, "images"))),
-                 dinov2_descriptors=spec.dinov2, terrain=area.get("terrain"), learned_features=learned),
+                 dinov2_descriptors=spec.dinov2, terrain=area.get("terrain"), learned_features=learned,
+                 dem=area.get("dem")),
         celestial=dict(iers=dict(file=IERS_NAME, source=iers_src, **cov),
                        catalogue=dict(file=CATALOGUE_NAME, stars=int(len(mags)), limit_mag=float(max(mags)),
                                       epoch="J2000 (ICRS), proper motion not applied", expires=None)),
@@ -1037,6 +1043,21 @@ def _textured_distances(total_m: float, stretches, points: int) -> List[float]:
                 break
             t -= b - a
     return out
+
+
+def _terrain_check(bundle: str, manifest: dict) -> dict:
+    """The stored DEM loads and answers along the route (offline)."""
+    from navera_common.terrain import Terrain
+    info = manifest["day"].get("dem") or {}
+    T = Terrain.load(os.path.join(bundle, DAY_DIR))
+    if T is None:
+        return dict(ok=False, error=info.get("error") or "no DEM in day/terrain")
+    legs = manifest["mission"]["legs"]
+    got = [T.height(lat, lon) for lat, lon in legs]
+    answered = sum(g is not None for g in got)
+    return dict(ok=answered == len(legs), source=T.info.get("source"), sigma_m=T.info.get("sigma_m"),
+                route_points=f"{answered}/{len(legs)}", pieces=len(T.pieces),
+                heights_m=[round(g[0], 1) for g in got if g is not None][:6])
 
 
 def day_selftest(bundle: str, manifest: dict, matcher=None, points: int = 6) -> dict:
@@ -1248,6 +1269,8 @@ def check_bundle(bundle: str, replay: Optional[str] = None, deep: bool = False, 
                                          and len(a["valid_indices"]) == n_rows,
                                          descriptors=list(a["dinov2_descriptors"].shape), tiles=n_rows)
         C["day_match"] = day_selftest(bundle, manifest)
+        if manifest["mission"].get("dem", False):
+            C["terrain"] = _terrain_check(bundle, manifest)
         C["learned_features"] = _learned_check(bundle, manifest, deep)
         C["models"] = _models_check(bundle, manifest, deep)
         if replay:
@@ -1331,6 +1354,7 @@ def _spec_args(ap):
     ap.add_argument("--rate", type=float, default=8.0, help="download rate limit, tiles/s")
     ap.add_argument("--no-learned", action="store_true", help="no learned (DISK) features")
     ap.add_argument("--no-dinov2", action="store_true", help="no DINOv2 descriptor cache")
+    ap.add_argument("--no-dem", action="store_true", help="no terrain (DEM) of the corridor")
     ap.add_argument("--include-models", action="store_true", help="copy the model weights into the bundle")
     ap.add_argument("--extra", action="append", default=[], help="NAME=PATH file to carry (calibrations)")
     ap.add_argument("--json", action="store_true")
@@ -1341,7 +1365,8 @@ def _spec(a) -> MissionSpec:
     return MissionSpec(route=route_from_args(a.start, a.dest, a.waypoint, a.route_file),
                        corridor_width_m=a.corridor_m, min_height_m=a.min_height_m, max_height_m=a.max_height_m,
                        hfov_deg=a.hfov, frame_width_px=a.frame_width, learned=not a.no_learned,
-                       dinov2=not a.no_dinov2, include_models=a.include_models, extras=extras)
+                       dinov2=not a.no_dinov2, dem=not getattr(a, "no_dem", False),
+                       include_models=a.include_models, extras=extras)
 
 
 def main(argv=None) -> int:
