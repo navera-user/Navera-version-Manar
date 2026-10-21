@@ -87,6 +87,7 @@ LAND_SPEED_HIGH 300
 ANGLE_MAX 3500
 AUTO_OPTIONS 3
 RTL_ALT $((alt * 100))
+RTL_ALT_FINAL $((alt * 100))
 EOF
 (cd "$res/sitl" && exec "$AP/build/sitl/bin/arducopter" --model quad --home "$lat0,$lon0,$zref,0" \
    --defaults "$AP/Tools/autotest/default_params/copter.parm,$res/sitl/navera.parm" -I0 > sitl.log 2>&1) &
@@ -131,7 +132,7 @@ for i in $(seq 1 "$hold"); do [ -f "$res/stop_windows" ] && break; sleep 1; done
 touch "$D/runs/stop_$name"
 wait $isaac 2>/dev/null
 log "Isaac Sim closed: $(cat "$D/runs/$name/done.json" 2>/dev/null | tr -d '\n ')"
-cp "$D/runs/$name/session.json" "$res/" 2>/dev/null
+cp "$D/runs/$name/session.json" "$D/runs/$name/frames.jsonl" "$res/" 2>/dev/null
 
 ff="ffmpeg -loglevel error -y"
 $ff -framerate 10 -i "$D/runs/$name/video/v_%06d.jpg" -c:v libx264 -pix_fmt yuv420p -crf 23 "$res/chase.mp4"

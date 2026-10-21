@@ -14,8 +14,10 @@ NAVERA's GPS_INPUT) and MAVProxy (map + console). This script:
     centre at --speed, back to the first corner, RTL), AUTO, arm;
   * cuts the GPS --cut-after s after the vehicle reaches its altitude: the "gps" flag in the
     packets turns false and the link stops the receiver; NAVERA's output is then vision only;
-  * records the autopilot's texts and modes (sitl_events.jsonl) and ends when the vehicle has
-    landed and disarmed (or --timeout).
+  * records the autopilot's texts and modes (sitl_events.jsonl) and ends --hold-home s after the
+    vehicle is back over home in RTL (RTL_ALT_FINAL keeps it at altitude: day vision needs
+    height — closed-loop test 2 lost its fixes below ~150 m during the landing and drifted
+    ~500 m), or when it has landed and disarmed, or at --timeout.
 """
 import argparse
 import json
@@ -48,6 +50,7 @@ def main():
     ap.add_argument("--isaac-port", type=int, default=15500)
     ap.add_argument("--link-port", type=int, default=15501)
     ap.add_argument("--timeout", type=float, default=1200.0)
+    ap.add_argument("--hold-home", type=float, default=45.0, help="s over home (RTL) before the demo ends")
     ap.add_argument("--arm-after-file", default="", help="arm only once this file exists (Isaac Sim rendering)")
     a = ap.parse_args()
     os.makedirs(a.results, exist_ok=True)
@@ -73,7 +76,8 @@ def main():
                                 0, 0, 0, 0, 0)
 
     state = dict(gps=True, done=False, phase="boot", mode="?", armed=False, ekf=None, home=None, rel=0.0)
-    flown = dict(mission_sent=False, armed_at=None, at_alt=None, cut_at=None, landed_at=None, was_armed=False)
+    flown = dict(mission_sent=False, armed_at=None, at_alt=None, cut_at=None, landed_at=None, was_armed=False,
+                 rtl_at=None, home_at=None)
     wps = []
 
     def send(d):
@@ -140,6 +144,9 @@ def main():
                 state["mode"], state["armed"] = mode, armed
             elif typ == "STATUSTEXT":
                 log("text", text=msg.text)
+                if "RTL" in msg.text and flown["rtl_at"] is None and flown["cut_at"] is not None:
+                    flown["rtl_at"] = time.time() - t0
+                    state["phase"] = "RTL on NAVERA vision"
             elif typ == "EKF_STATUS_REPORT":
                 state["ekf_flags"] = msg.flags
         # ── the flight sequence ──
@@ -166,6 +173,15 @@ def main():
             state["gps"], flown["cut_at"] = False, t
             state["phase"] = "mission (GPS CUT: NAVERA vision only)"
             log("gps_cut", t_cut=t)
+        if flown["rtl_at"] is not None and flown["home_at"] is None and state["ekf"] and state["home"]:
+            d = math.hypot((state["ekf"][0] - state["home"][0]) * 111320.0,
+                           (state["ekf"][1] - state["home"][1]) * 111320.0 * math.cos(math.radians(state["home"][0])))
+            if d < 30.0:
+                flown["home_at"] = t
+                state["phase"] = "over home (RTL, holding at altitude)"
+                log("home_reached", ekf_dist_m=round(d, 1))
+        if flown["home_at"] is not None and t > flown["home_at"] + a.hold_home and not state["done"]:
+            flown["landed_at"] = flown["landed_at"] or t
         if flown["was_armed"] and not state["armed"] and flown["landed_at"] is None:
             flown["landed_at"] = t
             state["phase"] = "landed"
