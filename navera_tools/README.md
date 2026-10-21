@@ -15,6 +15,11 @@ nodes: run them on a test machine or a bench box, **never on a box installed on 
 | `record_session.sh <dir> [day\|night\|cn]` | record a test session (all sensors, estimates, decision, camera) into a ROS 2 bag, on the data disk |
 | `evaluate_session.py <bag dir> [--csv file]` | measure each source against GPS in a recorded session (median / p90 / within 50-100-300 m) and whether the stated accuracy is honest |
 
+`check_boot.py` (the reboot check with the ROS node of every unit; `--user --prefix
+navera-stage-` for the staged test, `deploy/stage_check.sh`) and `trace_matrix.py` (regenerates
+docs/certification/REQUIREMENTS.md and TRACEABILITY.md from `requirements.yaml` and the tests;
+`--check` fails on a broken link) are read-only too.
+
 `deploy/check_boot.sh` (the reboot test) and `deploy/install.sh` are the box's other
 tools; both have `--help`.
 
