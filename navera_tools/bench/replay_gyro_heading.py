@@ -41,7 +41,7 @@ from navera_msgs.msg import PositionEstimate  # noqa: E402
 import day_pkg.nodes.day_subscriber as ds  # noqa: E402
 from day_pkg.fix_sigma import SigmaCalibration  # noqa: E402
 from day_pkg.frame_odometry import FrameOdometry  # noqa: E402
-from day_pkg.gyro_heading import GyroHeading  # noqa: E402
+from day_pkg.gyro_heading import CourseReset, GyroHeading  # noqa: E402
 from day_pkg.local_matcher import LocalMatcher  # noqa: E402
 from day_pkg.vision_nav import VisionNavigator  # noqa: E402
 from navera_common.sensor_history import History  # noqa: E402
@@ -104,6 +104,8 @@ def make_node(matcher, gyro: bool, est_sink):
     n.track = TrackVelocity(accel_mps2=0.25)
     n._track_heading = n._dr_sigma = n._anchor_sigma = None
     n.gyro = GyroHeading(0.1, 0.02, 2.0, 10.0) if gyro else None
+    # the GPS course reset as shipped; no mount yaw in the bench's meta: the offset is learned from vision
+    n.course, n._mount_yaw = (CourseReset() if gyro else None), None
     n.gyro_min_inliers = 20
     n.local_min_radius_m, n.search_k, n.gate_k, n.strong_inliers = 80.0, 3.0, 3.0, 100
     n.strong_gate_k, n.min_spread, n.height_retry_after = 6.0, 0.25, 3
@@ -145,6 +147,8 @@ def run(rec, matcher, gyro, a, seed=11):
     real_locate = matcher.locate
 
     def locate(img, *args, **kw):
+        if kw.get("heading_deg") is not None:       # a heading in the route's frame -> the bench frame's
+            kw = dict(kw, heading_deg=(kw["heading_deg"] - hdg(cur["t"]) + cur["rot"]) % 360.0)
         r = real_locate(img, *args, **kw)
         if r.get("rotation_deg") is not None:       # the vision heading: the route's + the real rotation error
             r = dict(r, rotation_deg=round((hdg(cur["t"]) + r["rotation_deg"] - cur["rot"]) % 360.0, 1))
