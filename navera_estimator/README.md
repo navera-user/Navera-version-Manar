@@ -25,8 +25,13 @@ health, reason). Rules: [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md) §3.
 | `gps_trend_min_jitter_m` | 3 | floor of the measured jitter |
 | `gps_trend_min_fixes`, `gps_trend_confirm_n` | 6, 3 | fixes in a window (each quarter >= 3), and windows passing at this many fixes in a row before refusing |
 | `gps_trend_windows_s` | 8 … 128 | window lengths tested at every fix (first quarter / middle half / last quarter must grow in order: a run of wrong fixes is a step, not a growth) |
+| `gps_motion_enabled` | true | relative-motion test (slow spoofing, `navera_common.gps_motion_check.GpsMotionCheck`): the GPS displacement against the day node's visual-odometry displacement over the same instants (`gps_motion_topic`, default `/navera/vision/odometry`, published while GPS is trusted) |
+| `gps_motion_h`, `gps_motion_k` | 12, 0.25 | directional CUSUM (8 directions) on the residual in its own measured noise: refused at `h`, `k` subtracted per step |
+| `gps_motion_min_growth_m` | 12 | drift accumulated since the CUSUM left 0 needed to refuse |
+| `gps_motion_bias_mps` | 0.5 | GPS / odometry drift always allowed |
+| `gps_motion_eps_floor` | 0.03 | odometry scale / heading error always allowed (× the step length); the gain itself is learned from the day map fixes only, never from GPS |
 
-A growth refusal is lifted only once the offset is back nearer its value before the growth (it
+A growth or motion refusal is lifted only once the offset is back nearer its value before the growth (it
 refuses inside 3 sigma, so "agrees within 3 sigma" alone would let the spoofed GPS straight back).
 Measured (`navera_tools/bench/replay_spoof_trend.py`, real screen-bench campaigns, one vision fix
 per 2 s as the day node's GPS checks): no false refusal; a 3 m/s drift refused at ~70 m instead of

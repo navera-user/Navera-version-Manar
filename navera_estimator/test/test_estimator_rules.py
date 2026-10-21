@@ -92,11 +92,15 @@ class _FakeClock:
         return Time(nanoseconds=self.ns, clock_type=self.clock_type)
 
 
-def _fly(drift_mps, dur_s=150.0, seed=3, vision_sigma=10.0, spoof_end_s=None, until_end=False):
-    """A vehicle at 20 m/s north; GPS at 1 Hz (truth + drift east from t=40 s), day vision every 2 s
-    0.5 s late (truth + bias + jitter, 2 % wrong fixes 100-300 m) stating vision_sigma. Returns
+def _fly(drift_mps, dur_s=150.0, seed=3, vision_sigma=10.0, spoof_end_s=None, until_end=False, odometry=False,
+         drift_at_s=40.0):
+    """A vehicle at 20 m/s north; GPS at 1 Hz (truth + drift east from drift_at_s), day vision every 2 s
+    0.5 s late (truth + bias + jitter, 2 % wrong fixes 100-300 m) stating vision_sigma; with odometry, the
+    day node's visual odometry too (1 s steps between frame instants, 4 % short, 0.7 m noise). Returns
     (drift m at refusal or None, reason, doubt seen)."""
+    import json
     import random
+    from std_msgs.msg import String
     from rclpy.time import Time
     rnd = random.Random(seed)
     n = EstimatorNode()
@@ -112,8 +116,12 @@ def _fly(drift_mps, dur_s=150.0, seed=3, vision_sigma=10.0, spoof_end_s=None, un
             if k % 2 == 0:
                 g = _msg(n, PositionEstimate.SOURCE_GPS, north_m=20.0 * t, sigma=2.0)
                 if spoof_end_s is None or t < spoof_end_s:
-                    g.longitude += drift_mps * max(0.0, t - 40.0) * M / math.cos(math.radians(LAT))
+                    g.longitude += drift_mps * max(0.0, t - drift_at_s) * M / math.cos(math.radians(LAT))
                 n._on_gps(g)
+                if odometry and t >= 1.5:
+                    n._on_odometry(String(data=json.dumps({
+                        "t0": (t0 + (t - 1.5) * 1e9) / 1e9, "t1": (t0 + (t - 0.5) * 1e9) / 1e9,
+                        "east_m": rnd.gauss(0, 0.7), "north_m": 0.96 * 20.0 + rnd.gauss(0, 0.7)})))
             tp = t - 0.5
             if tp > 0 and k % 4 == 1:                  # the day node's GPS check: one fix per 2 s
                 v = _msg(n, PositionEstimate.SOURCE_DAY_VISION, north_m=20.0 * tp + 6.0 + rnd.gauss(0, 4.0),
@@ -126,7 +134,7 @@ def _fly(drift_mps, dur_s=150.0, seed=3, vision_sigma=10.0, spoof_end_s=None, un
                 n._on_day(v)
             doubt = doubt or n._gps_doubt is not None
             if n._gps_suspect and not until_end:
-                return drift_mps * max(0.0, t - 40.0), n._gps_suspect, doubt
+                return drift_mps * max(0.0, t - drift_at_s), n._gps_suspect, doubt
             if until_end:
                 doubt = doubt if isinstance(doubt, list) else []
                 doubt.append((t, n._gps_suspect))
@@ -154,3 +162,24 @@ def test_a_growth_refusal_holds_while_the_spoof_lasts_and_lifts_when_it_ends(nod
     assert first < 70.0
     assert all(why for t, why in log if first <= t < 100.0)         # the drift goes on: refused
     assert not log[-1][1]                                           # true GPS back after the spoof
+
+
+def test_a_slow_gps_spoof_is_refused_on_the_motion_by_the_visual_odometry(node):
+    """3 m/s: the growth test needs ~60-85 m with a 30 m vision sigma; the GPS displacement against the
+    odometry's (its 4 % scale error learned from the map fixes, not from GPS) sees it in metres."""
+    drift, why, doubt = _fly(3.0, dur_s=300.0, vision_sigma=30.0, odometry=True, drift_at_s=150.0)
+    assert drift is not None and 0.0 < drift < 35.0, (drift, why)
+    assert "visual odometry" in why and "slow spoofing" in why
+
+
+def test_a_good_gps_is_not_refused_by_the_odometry_test(node):
+    drift, why, _ = _fly(0.0, dur_s=600.0, vision_sigma=15.0, odometry=True)
+    assert why is None, why
+
+
+def test_a_motion_refusal_holds_while_the_spoof_lasts(node):
+    _, _, log = _fly(3.0, dur_s=300.0, vision_sigma=30.0, odometry=True, drift_at_s=150.0, spoof_end_s=260.0,
+                     until_end=True)
+    first = next(t for t, why in log if why)
+    assert 150.0 < first < 165.0
+    assert all(why for t, why in log if first <= t < 260.0)
