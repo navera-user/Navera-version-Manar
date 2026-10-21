@@ -28,9 +28,10 @@ stop_sim() {
   kill -KILL -- "-$sim" 2>/dev/null; true
 }
 trap stop_sim EXIT
-for _ in $(seq 600); do
-  curl -sf http://127.0.0.1:8190/api/state >/dev/null && break
+# waits as long as the GPU lock is held by others (other GPU jobs queue on the same lock)
+until curl -sf http://127.0.0.1:8190/api/state >/dev/null; do
   kill -0 "$sim" 2>/dev/null || { echo "simulator exited: see $out/sim_stdout.log" >&2; exit 1; }
-  sleep 1
+  sleep 2
 done
+echo "simulator up at $(date +%T)"
 nice -n 19 python3 "$wt/navera_tools/tests/sitl_fault_campaign.py" --out "$out" "$sc"
