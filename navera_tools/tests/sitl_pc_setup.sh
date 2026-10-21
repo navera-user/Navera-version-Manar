@@ -17,7 +17,7 @@ fi
 # system wxPython / OpenCV / matplotlib (MAVProxy map) visible inside the venv
 [ -x "$VENV/bin/python" ] || python3 -m venv --system-site-packages "$VENV"
 "$VENV/bin/pip" install --quiet --upgrade pip
-"$VENV/bin/pip" install --quiet "pymavlink>=2.4.41" MAVProxy empy==3.3.4 future
+"$VENV/bin/pip" install --quiet "pymavlink>=2.4.41" MAVProxy empy==3.3.4 future pexpect
 cd "$AP"
 PATH="$VENV/bin:$PATH" ./waf configure --board sitl
 PATH="$VENV/bin:$PATH" ./waf copter plane

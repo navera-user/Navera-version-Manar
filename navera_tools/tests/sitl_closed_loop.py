@@ -421,6 +421,7 @@ class Run:
         procs = []
         mavproxy = [sys.executable, "-m", "MAVProxy.mavproxy"] if self.a.mavproxy == "module" else [self.a.mavproxy]
         for name, cmd in (("mavproxy", mavproxy + ["--master", f"tcp:127.0.0.1:{port + 2}", "--map", "--console",
+                                                   "--non-interactive",              # no stdin in the background
                                                    f"--state-basedir={self.work}"]),
                           ("plot", [sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                                                  "sitl_live_plot.py"), self.live.name])):
