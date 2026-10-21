@@ -102,30 +102,30 @@ def normalize_query(img_bgr, lat, zoom, altitude_m, hfov_deg, heading_deg=None, 
     info["empty_share"] = empty
     # channel 0: the frame's footprint; channel 1: its pixels that show ground
     mask = np.dstack([np.full_like(valid, 255), valid])
-    if heading_deg is not None and math.isfinite(heading_deg) and abs(heading_deg) > 0.01:
-        # The image top points along the heading, i.e. the camera image is the
-        # north-up view turned counter-clockwise by the heading (OpenCV: positive
-        # angle = counter-clockwise on screen). Turning it back clockwise by the
-        # heading (negative angle) brings north to the top.
-        diag = int(math.ceil(math.hypot(w, h)))
-        M = cv2.getRotationMatrix2D((w / 2.0, h / 2.0), -float(heading_deg), 1.0)
-        M[0, 2] += (diag - w) / 2.0
-        M[1, 2] += (diag - h) / 2.0
-        img_bgr = cv2.warpAffine(img_bgr, M, (diag, diag), flags=cv2.INTER_LINEAR)
-        mask = cv2.warpAffine(mask, M, (diag, diag), flags=cv2.INTER_NEAREST)
-        h, w = diag, diag
+    # Resample to the map resolution first (area filter when shrinking), then turn and
+    # place the frame with ONE affine map whose centre is exact: the frame's optical
+    # centre (pixel-centre coordinates ((w-1)/2, (h-1)/2), which cv2.resize keeps at
+    # ((nw-1)/2, (nh-1)/2)) lands on the query's centre ((q-1)/2). Turning about (w/2, h/2)
+    # on a padded canvas and cropping with a floor (before 2026-10-21) moved the frame by
+    # up to ~1 camera pixel: up to 7 m for a 160 x 120 camera at 1000 m (real-thermal bench).
     nw, nh = max(1, int(round(w * scale))), max(1, int(round(h * scale)))
     interp = cv2.INTER_AREA if scale < 1.0 else cv2.INTER_LINEAR
     img = cv2.resize(img_bgr, (nw, nh), interpolation=interp)
     mask = cv2.resize(mask, (nw, nh), interpolation=cv2.INTER_NEAREST)
     q = STHN_QUERY_PX
-    out = np.zeros((q, q, 3), np.uint8)
-    out_mask = np.zeros((q, q, 2), np.uint8)
-    sx, sy = (nw - q) // 2, (nh - q) // 2          # source crop origin (may be < 0)
-    x0, y0 = max(0, -sx), max(0, -sy)
-    x1, y1 = min(q, nw - sx), min(q, nh - sy)
-    out[y0:y1, x0:x1] = img[y0 + sy:y1 + sy, x0 + sx:x1 + sx]
-    out_mask[y0:y1, x0:x1] = mask[y0 + sy:y1 + sy, x0 + sx:x1 + sx]
+    # The image top points along the heading, i.e. the camera image is the north-up
+    # view turned counter-clockwise by the heading (OpenCV: positive angle = counter-
+    # clockwise on screen). Turning it back clockwise by the heading (negative angle)
+    # brings north to the top.
+    turn = (-float(heading_deg) if heading_deg is not None and math.isfinite(heading_deg)
+            and abs(heading_deg) > 0.01 else 0.0)
+    M = cv2.getRotationMatrix2D(((nw - 1) / 2.0, (nh - 1) / 2.0), turn, 1.0)
+    M[0, 2] += (q - 1) / 2.0 - (nw - 1) / 2.0
+    M[1, 2] += (q - 1) / 2.0 - (nh - 1) / 2.0
+    out = cv2.warpAffine(img, M, (q, q), flags=cv2.INTER_LINEAR,
+                         borderMode=cv2.BORDER_CONSTANT, borderValue=(0, 0, 0))
+    out_mask = cv2.warpAffine(mask, M, (q, q), flags=cv2.INTER_NEAREST,
+                              borderMode=cv2.BORDER_CONSTANT, borderValue=(0, 0, 0))
     coverage = float(np.count_nonzero(out_mask[..., 0])) / (q * q)
     ground = float(np.count_nonzero(out_mask[..., 1])) / (q * q)
     out_mask = out_mask[..., 1].copy()
