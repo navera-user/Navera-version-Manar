@@ -988,13 +988,16 @@ requirements:
 - id: NAV-DEP-03
   category: DEP
   title: 'Bounded disk use'
-  text: 'ROS log folders older than 7 days shall be pruned at every unit start; recordings go to the data disk.'
+  text: 'At every unit start, ROS log folders older than 7 days shall be pruned, then the oldest until the log folder is under NAVERA_LOG_MAX_MB (1024 MB), and a free space below NAVERA_MIN_FREE_MB (2048 MB) on its disk shall be warned without stopping the unit; recordings go to the data disk.'
   code:
     - deploy/systemd/navera_boot_lib.sh::navera_prune_logs
+  match:
+    - 'test_boot_logs\.py::'
   evidence:
     - {level: A, value: 'DEP-13 (252fa15)'}
-  status: open
-  note: 'no free-space check or alarm; journald size not configured; no test'
+    - {level: UT, value: '9-day-old folder pruned, 1-day-old kept; 10 restarts × 0.4 MB with a 2 MB cap → the newest 5 kept; low free space warned, exit 0'}
+  status: verified-UT
+  note: 'journald size (SystemMaxUse) not configured; free space not shown on the operator view / check_box'
 
 - id: NAV-DEP-04
   category: DEP

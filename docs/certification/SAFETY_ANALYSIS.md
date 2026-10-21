@@ -46,7 +46,7 @@ public-data evidence, not a field rate.
 
 Below them: H-01a camera loss (Medium → Low for integrity), H-04 wrong celestial fix (Low:
 never forwarded), H-05 outdated map (Medium availability, Low integrity), H-06 fast spoof (Low),
-H-14 storage full (Low–Medium), H-15 integrator settings (Medium), H-16 simulation on a live box (Low).
+H-14 storage full (Low), H-15 integrator settings (Medium), H-16 simulation on a live box (Low).
 
 ## 3. FMEA / hazard log
 
@@ -196,10 +196,10 @@ H-14 storage full (Low–Medium), H-15 integrator settings (Medium), H-16 simula
 | | |
 |---|---|
 | Effect | ROS logs / recordings fill the disk: nodes cannot write logs or state; settings write fails |
-| Mitigation | ROS log folders > 7 days pruned at each unit start (`navera_boot_lib.sh::navera_prune_logs`); `state_store` never raises on an unwritable directory; recordings on the data disk; tile download checks free space (simulator) |
-| Evidence | A; UT `navera_common/test/test_state_store.py::test_an_unwritable_directory_does_not_raise` |
-| Residual | **Low–Medium** (a restart loop creates one log folder per 10 s, pruned only after 7 days) |
-| Open items | O-26 free-space check in check_box and at unit start; journald `SystemMaxUse`; prune by size |
+| Mitigation | ROS log folders > 7 days pruned at each unit start, then the oldest above 1 GB, and a warning below 2 GB free (`navera_boot_lib.sh::navera_prune_logs`); `state_store` never raises on an unwritable directory; recordings on the data disk; tile download checks free space (simulator) |
+| Evidence | A; UT `navera_common/test/test_state_store.py::test_an_unwritable_directory_does_not_raise`, `deploy/test/test_boot_logs.py` |
+| Residual | **Low** (a restart loop's log folders are capped at 1 GB) |
+| Open items | O-26 done at unit start (size cap, free-space warning; UT); still: free space in check_box, journald `SystemMaxUse` |
 
 ### H-15 Integrator settings (forwarding)
 
@@ -229,6 +229,6 @@ simulated data. Residual **Low**.
 | O-27 | install from a clean release clone; install.sh no longer copies .git, .claude/worktrees, caches or recordings (B18 fixed, UT) | H-12, deployment | deploy |
 | O-3, O-4 | shake / tilt gates (F20, F16) on a real vehicle | H-02 | code / test |
 | O-19 | full-chain latency on the box | H-10 | measurement |
-| O-26 | storage checks | H-14 | deploy |
+| O-26 | storage checks (log cap + free-space warning at unit start done, UT; check_box, journald open) | H-14 | deploy |
 | O-11, O-12 | imagery date, imagery licence | H-05 | data / legal |
 | — | first recorded flight with camera + GPS + IMU (every accuracy claim) | all | test |

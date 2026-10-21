@@ -30,11 +30,27 @@ navera_cuda() {
     export LD_LIBRARY_PATH=/usr/local/cuda/lib64${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
 }
 
-# Every ros2 launch creates a log folder; a restart loop would fill the disk.
-# Keep the last 7 days.
+# Every ros2 launch creates a log folder; a restart loop (one start per 10 s) would fill
+# the disk. Keep the last 7 days, then at most NAVERA_LOG_MAX_MB (default 1024): the oldest
+# entries go first. Warn when the log disk has less than NAVERA_MIN_FREE_MB (default 2048)
+# free. Never fails: logs must not stop navigation.
 navera_prune_logs() {
-    local d="${ROS_LOG_DIR:-$HOME/.ros/log}"
-    [ -d "$d" ] && find "$d" -mindepth 1 -maxdepth 1 -mtime +7 -exec rm -rf {} + 2>/dev/null
+    local d="${ROS_LOG_DIR:-$HOME/.ros/log}" max_kb used oldest prev="" free_kb
+    [ -d "$d" ] || return 0
+    find "$d" -mindepth 1 -maxdepth 1 -mtime +7 -exec rm -rf {} + 2>/dev/null
+    max_kb=$(( ${NAVERA_LOG_MAX_MB:-1024} * 1024 ))
+    used=$(du -sk "$d" 2>/dev/null | cut -f1)
+    while [ "${used:-0}" -gt "$max_kb" ]; do
+        oldest=$(find "$d" -mindepth 1 -maxdepth 1 -printf '%T@ %p\n' 2>/dev/null | sort -n | head -1 | cut -d' ' -f2-)
+        [ -n "$oldest" ] && [ "$oldest" != "$prev" ] || break      # nothing left, or not removable
+        prev=$oldest
+        rm -rf -- "$oldest" 2>/dev/null
+        used=$(du -sk "$d" 2>/dev/null | cut -f1)
+    done
+    free_kb=$(df -Pk "$d" 2>/dev/null | awk 'NR==2 {print $4}')
+    if [ -n "$free_kb" ] && [ "$free_kb" -lt $(( ${NAVERA_MIN_FREE_MB:-2048} * 1024 )) ]; then
+        navera_log "WARNING: only $(( free_kb / 1024 )) MB free on the disk of $d (NAVERA_MIN_FREE_MB=${NAVERA_MIN_FREE_MB:-2048})"
+    fi
     return 0
 }
 
