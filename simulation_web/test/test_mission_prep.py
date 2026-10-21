@@ -199,3 +199,20 @@ def test_wrong_codes_lock_the_address_for_a_while():
 def test_generate_refusal_says_why():
     assert "processor" in mp.in_flight_refusal(None, mp.STATE_DEGRADED, action="generate")
     assert "restart" in mp.in_flight_refusal(None, mp.STATE_DEGRADED, action="apply")
+
+
+# ── offline mission bundle command (navera_tools/mission_bundle.py) ─────
+def test_bundle_command_is_validated():
+    route = [[35.82, 10.596], [35.83, 10.60], [35.8215, 10.606]]
+    cmd = mp.bundle_command("build", route, "/data/bundles/m1", corridor_m=1500, max_height_m=900,
+                            sources=["onboard", "esri"])
+    assert cmd[1].endswith("navera_tools/mission_bundle.py") and os.path.exists(cmd[1])
+    assert cmd[2:6] == ["build", "/data/bundles/m1", "--yes", "--progress-json"]
+    assert cmd[cmd.index("--start") + 1] == "35.82,10.596" and cmd[cmd.index("--dest") + 1] == "35.8215,10.606"
+    assert cmd[cmd.index("--waypoint") + 1] == "35.83,10.6" and cmd[-2:] == ["onboard", "esri"]
+    assert mp.bundle_command("check", out_dir="/b")[-2:] == ["/b", "--json"]
+    for bad in (dict(sources=["onboard; rm -rf /"]), dict(route=[[95, 10]]), dict(corridor_m=1e9)):
+        kw = dict(route=route, sources=["onboard"])
+        kw.update(bad)
+        with pytest.raises(ValueError):
+            mp.bundle_command("plan", **kw)
