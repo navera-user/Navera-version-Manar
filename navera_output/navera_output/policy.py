@@ -268,10 +268,11 @@ def bridge(cfg: Config, held: Optional[Held], now: float) -> Output:
     done honestly: no held estimate, the gap longer than bridge_max_s, or the grown accuracy coarser
     than max_forward_sigma_m.
 
-    With the ground velocity measured when it was held, the position moves along it and the
-    accuracy grows by the velocity error, the heading error x speed and half the unseen
-    acceleration x t^2. Without one the position stays and the accuracy grows by
-    max_speed_mps x t: the vehicle can have gone that far, in any direction.
+    With the velocity sent with the held position (else the ground velocity measured when it
+    was held), the position moves along it and the accuracy grows by the velocity error, the
+    heading error x speed and half the unseen acceleration x t^2. Without one the position stays
+    and the accuracy grows by max_speed_mps x t: the vehicle can have gone that far, in any
+    direction.
 
     The velocity sent with it is the one sent with the held position, its accuracy grown by the
     unseen acceleration x t; unknown (0 +- max_speed_mps) when none was.
@@ -284,8 +285,13 @@ def bridge(cfg: Config, held: Optional[Held], now: float) -> Output:
     if dt > cfg.bridge_max_s:
         return Output(KIND_NONE, f"gap of {dt:.0f} s longer than the bridge ({cfg.bridge_max_s:.0f} s)")
     lat, lon = held.lat, held.lon
-    if held.ground_vel is not None:
-        ve, vn, sig_v = held.ground_vel
+    # carried along the velocity the autopilot was given with it when there is one: its sigma
+    # covers a turn in the fit window (TrackVelocity.autopilot_velocity); the plain track
+    # velocity's does not — a plane bridged out of a corner was 284 m off, stated 108 m (SITL)
+    carry = (held.sent_vel[1], held.sent_vel[0], held.sent_vel[2]) if held.sent_vel is not None \
+        else held.ground_vel
+    if carry is not None:
+        ve, vn, sig_v = carry
         speed = math.hypot(ve, vn)
         if speed > 0.05:
             carried = dead_reckon(lat, lon, math.degrees(math.atan2(ve, vn)) % 360.0, speed, dt)

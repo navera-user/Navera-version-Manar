@@ -340,9 +340,13 @@ def test_a_bridged_position_carries_the_velocity_sent_before_its_accuracy_growin
     p = pos(source=DAY, details={}, var=(2500.0, 2500.0, 0))
     p.position_covariance_type = 2
     o = decide(VISION, STATE_DEGRADED, 0.1, p, 0.1, DAY, autopilot_vel=(15.0, 0.0, 2.0))
-    b = bridge(VISION, hold(o, 100.0, (15.0, 0.0, 1.0)), 104.0)
+    # the plain track velocity (north here) is not what the position is carried along
+    b = bridge(VISION, hold(o, 100.0, (0.0, 15.0, 1.0)), 104.0)
     assert (b.vel_n_mps, b.vel_e_mps) == (0.0, 15.0)
     assert b.vel_sigma_mps == pytest.approx(2.0 + 0.5 * 4.0)              # + unseen accel x t
+    lon_per_m = 1.0 / (111195.0 * math.cos(math.radians(o.lat)))
+    assert b.lat == pytest.approx(o.lat) and b.lon == pytest.approx(o.lon + 60.0 * lon_per_m, abs=1e-7)
+    assert b.sigma_h_m == pytest.approx(50.0 + 2.0 * 4.0 + math.radians(5.0) * 15.0 * 4.0 + 4.0)
     _, held = _held_east()                                                # sent without one
     b = bridge(VISION, held, 104.0)
     assert not b.has_velocity and b.vel_sigma_mps == VISION.max_speed_mps
