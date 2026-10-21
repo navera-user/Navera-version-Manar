@@ -186,3 +186,15 @@ def test_mbtiles_schema_is_the_one_prepare_area_reads(tmp_path, xyz_server):
     tiles = ts.bbox_tiles(bbox, 17)
     assert _present(out, 17, tiles) == set(tiles)
     assert sqlite3.connect(out).execute("SELECT value FROM metadata WHERE name='format'").fetchone()[0] == "jpg"
+
+
+def test_scenes_are_picked_to_cover_the_area():
+    def box(w, s, e, n):
+        return {"type": "Polygon", "coordinates": [[[w, s], [e, s], [e, n], [w, n], [w, s]]]}
+    bbox = (10.0, 35.0, 10.2, 35.2)
+    scenes = [dict(id="west_half_clear", geometry=box(9.0, 34.0, 10.1, 36.0)),
+              dict(id="east_half_clear", geometry=box(10.1, 34.0, 11.0, 36.0)),
+              dict(id="whole_cloudier", geometry=box(9.0, 34.0, 11.0, 36.0))]
+    assert [s["id"] for s in ts.pick_scenes(scenes, bbox)] == ["whole_cloudier"]
+    assert [s["id"] for s in ts.pick_scenes(scenes[:2], bbox)] == ["west_half_clear", "east_half_clear"]
+    assert ts.pick_scenes([dict(id="elsewhere", geometry=box(0, 0, 1, 1))], bbox) == []

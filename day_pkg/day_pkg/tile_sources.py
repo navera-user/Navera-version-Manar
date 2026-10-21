@@ -592,9 +592,41 @@ def sentinel2_scenes(bbox: Sequence[float], date: Optional[str] = None, max_clou
         if "visual" not in f.get("assets", {}):
             continue
         out.append(dict(id=f["id"], date=p["datetime"][:10], cloud=float(p.get("eo:cloud_cover", 100)),
-                        nodata=float(p.get("s2:nodata_pixel_percentage", 0)), href=f["assets"]["visual"]["href"]))
+                        nodata=float(p.get("s2:nodata_pixel_percentage", 0)), href=f["assets"]["visual"]["href"],
+                        geometry=f.get("geometry")))
     out.sort(key=lambda s: (round(s["cloud"]), s["nodata"], s["date"][::-1]))
     return out
+
+
+def _in_polygon(x: float, y: float, geometry: Optional[dict]) -> bool:
+    """Point (lon, lat) inside a GeoJSON (Multi)Polygon's outer rings (no geometry: True)."""
+    if not geometry:
+        return True
+    polys = [geometry["coordinates"]] if geometry["type"] == "Polygon" else geometry["coordinates"]
+    for poly in polys:
+        ring, inside = poly[0], False
+        for (x1, y1), (x2, y2) in zip(ring, ring[1:] + ring[:1]):
+            if (y1 > y) != (y2 > y) and x < x1 + (y - y1) * (x2 - x1) / (y2 - y1):
+                inside = not inside
+        if inside:
+            return True
+    return False
+
+
+def pick_scenes(scenes: List[dict], bbox: Sequence[float], max_scenes: int = 4, grid: int = 12) -> List[dict]:
+    """Scenes (best first) that together cover bbox: greedily the one adding the most uncovered
+    area (a grid of points), ties to the earlier (less cloudy) one; stops when covered."""
+    pts = [(bbox[0] + (i + 0.5) / grid * (bbox[2] - bbox[0]), bbox[1] + (j + 0.5) / grid * (bbox[3] - bbox[1]))
+           for i in range(grid) for j in range(grid)]
+    cover = [{k for k, p in enumerate(pts) if _in_polygon(p[0], p[1], s.get("geometry"))} for s in scenes]
+    left, chosen = set(range(len(pts))), []
+    while left and len(chosen) < max_scenes:
+        best = max(range(len(scenes)), key=lambda i: (len(cover[i] & left), -i))
+        if not cover[best] & left:
+            break
+        chosen.append(scenes[best])
+        left -= cover[best]
+    return chosen
 
 
 def _raster_writer(rasters: List[Tuple[str, "GeoTiff"]], zoom: int, min_valid: float = 0.5):
@@ -672,7 +704,7 @@ def fetch_tiles(tiles: Sequence[Tuple[int, int]], zoom: int, source, out_path: s
             if not found:
                 raise RuntimeError(f"no Sentinel-2 scene with < {max_cloud}% cloud over {bb} "
                                    f"in {date or 'the last year'}")
-            rasters = [(s["id"], GeoTiff(HttpFile(s["href"]))) for s in found[:max_scenes]]
+            rasters = [(s["id"], GeoTiff(HttpFile(s["href"]))) for s in pick_scenes(found, bb, max_scenes)]
             meta = {s["id"]: s["date"] for s in found}
             fetch = _raster_writer(rasters, zoom)
         elif src.kind == "geotiff":
