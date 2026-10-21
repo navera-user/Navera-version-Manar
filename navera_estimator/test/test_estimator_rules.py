@@ -154,3 +154,24 @@ def test_a_growth_refusal_holds_while_the_spoof_lasts_and_lifts_when_it_ends(nod
     assert first < 70.0
     assert all(why for t, why in log if first <= t < 100.0)         # the drift goes on: refused
     assert not log[-1][1]                                           # true GPS back after the spoof
+
+
+def test_node_freshness_defaults_are_the_deployed_ones(node):
+    """C4: the node's defaults equal config/estimator_params.yaml (the launch file loads it): day 5 s."""
+    import os
+    import yaml
+    cfg = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                       "navera_estimator", "config", "estimator_params.yaml")
+    with open(cfg) as f:
+        yml = yaml.safe_load(f)["estimator_node"]["ros__parameters"]
+    for name in ("gps_timeout_s", "day_timeout_s", "night_timeout_s", "cn_timeout_s", "imu_timeout_s"):
+        assert node.get_parameter(name).value == yml[name], name
+    assert node._day_timeout == 5.0
+
+
+def test_a_day_fix_stays_usable_5_s_then_goes_stale(node):
+    """C4 / NAV-TIM-01: a 4 s old day fix is still eligible (frames every 1-4 s under load), a 5.5 s one is not."""
+    for age, expected in ((4.0, True), (5.5, False)):
+        m = _msg(node, PositionEstimate.SOURCE_DAY_VISION, dt_s=-age, sigma=30.0)
+        node._on_day(m)
+        assert node._eval_source(node.get_clock().now(), m, node._day_timeout)[1] is expected, age

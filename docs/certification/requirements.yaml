@@ -907,15 +907,16 @@ requirements:
 - id: NAV-TIM-01
   category: TIM
   title: 'Source freshness windows'
-  text: 'A source shall be used only while its last measurement is younger than its window: GPS 3 s, day 3 s, night 5 s, celestial 45 s, IMU liveness 1 s (estimator defaults).'
+  text: 'A source shall be used only while its last measurement is younger than its window: GPS 3 s, day 5 s, night 5 s, celestial 45 s, IMU liveness 1 s (estimator defaults = config/estimator_params.yaml).'
   code:
     - navera_estimator/navera_estimator/nodes/estimator_node.py::EstimatorNode._age_s
     - navera_estimator/navera_estimator/nodes/estimator_node.py::EstimatorNode._measured_at
   match:
     - 'test_estimator\.py::<script>'
   evidence:
-    - {level: A, value: 'estimator_node.py declares day_timeout_s 3.0; VALIDATION_STATUS.md says "day-vision freshness window is 5 s" — doc / code mismatch to resolve', ref: 'estimator_node.py:168; VALIDATION_STATUS.md'}
-  status: partial
+    - {level: SIM, value: 'day window 3 s → 5 s (e1d0674): under load NAVERA alternated FIX / NO_FIX on 20–60 % of samples and the autopilot landed in a 6.7–9.2 s gap', ref: 'VALIDATION_STATUS.md, Vision positions carried to the present'}
+    - {level: UT, value: 'C4 resolved: the node default was 3.0 while the deployed yaml and the docs said 5 s — default now 5.0, a test keeps the node defaults equal to the yaml'}
+  status: verified-UT
   note: 'celestial 45 s window "to be measured under real cadence"'
 
 - id: NAV-TIM-02
