@@ -39,6 +39,7 @@ running, the new pair is DROPPED (logged) — never queued, never parallel.
 """
 import json
 import base64
+import os
 from collections import deque
 import threading
 import time
@@ -143,7 +144,8 @@ class CNSubscriber(Node):
         # Default: the camera standing on a level vehicle (camera +x up, +y left, +z back).
         self.declare_parameter("allsky_R_cam_body", [float(v) for v in allsky_mount.R_CAM_BODY_STANDING.ravel()])
         self.declare_parameter("allsky_lens_file", "")          # "" = sky360.LENS_FILE (NAVERA_INSTA360_LENS)
-        self.declare_parameter("allsky_catalogue", "")          # "" = the bundled bright-star list (offline)
+        # "" = the bright-star list shipped with cn_pkg; NAVERA_STAR_CATALOGUE: a mission bundle's copy (offline)
+        self.declare_parameter("allsky_catalogue", os.environ.get("NAVERA_STAR_CATALOGUE", ""))
         self.declare_parameter("allsky_f_scale_search", [0.96, 1.0, 1.04])
         self.declare_parameter("allsky_cal_min_samples", allsky_mount.CAL_MIN_SAMPLES)
         self.declare_parameter("allsky_cal_samples", allsky_mount.CAL_SAMPLES)
