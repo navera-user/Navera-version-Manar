@@ -23,17 +23,20 @@ def circle(v, radius):
 
 
 def fly(cal, track, delay, duration, period=1.0, noise=3.0, offset=(40.0, -25.0), outliers=0.0, seed=1,
-        gps_hz=5.0, t0=10.0):
+        gps_hz=5.0, t0=10.0, gps_noise=0.0):
     """GPS at gps_hz on `track`; a vision fix every `period` s, of the ground seen at the exposure,
     offset + noise, arriving `delay` s later.
     """
-    rng = np.random.default_rng(seed)
+    rng, grng = np.random.default_rng(seed), np.random.default_rng(seed + 100)
     tg = t0 - 6.0
     t = t0
     while t < t0 + duration:
         arrival = t + delay
         while tg <= arrival + 1.0:
-            cal.add_gps(tg, *ll(*track(tg)))
+            ge, gn = track(tg)
+            if gps_noise > 0:                          # its own generator: the vision noise stays the same
+                ge, gn = ge + grng.normal(0, gps_noise), gn + grng.normal(0, gps_noise)
+            cal.add_gps(tg, *ll(ge, gn))
             tg += 1.0 / gps_hz
         e, n = track(t)
         e, n = e + offset[0] + rng.normal(0, noise), n + offset[1] + rng.normal(0, noise)
@@ -166,3 +169,14 @@ def test_state_is_json_ready():
     cal = fly(LatencyCalibrator(), circle(60.0, 900.0), 1.0, 30.0)
     st = json.loads(json.dumps(cal.state()))
     assert set(st) >= {"estimate_s", "sigma_s", "applied_s", "delay_s", "samples", "stable", "frozen", "reason"}
+
+
+def test_a_noisy_gps_on_a_straight_leg_is_not_a_turn():
+    """10 m/s, 0.3 m of GPS noise per fix: samples are taken (were all refused as "turning")."""
+    cal = fly(LatencyCalibrator(), circle(10.0, None), 1.0, 60.0, gps_noise=0.3)
+    assert cal.samples > 40 and cal.rejected.get("turning", 0) < 5
+
+
+def test_a_sharp_turn_is_still_refused_with_a_noisy_gps():
+    cal = fly(LatencyCalibrator(), circle(60.0, 150.0), 1.0, 30.0, gps_noise=0.3)
+    assert cal.samples == 0 and cal.rejected.get("turning", 0) > 20

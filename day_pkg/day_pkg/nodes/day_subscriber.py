@@ -246,6 +246,11 @@ class DaySubscriber(Node):
         self.declare_parameter("gps_vo_width_px", 1280)    # frames reduced to at most this width
         declare_float(self, "gps_vo_height_tau_s", 60.0)
         self.declare_parameter("gps_vo_topic", "/navera/vision/odometry")
+        # tried first: a trusted GPS is metres off, and a small search window keeps a low (small)
+        # frame matchable; the wide radius only when this fails (0 = wide only)
+        declare_float(self, "gps_check_near_radius_m", 150.0)
+        # faster checks while auto_latency has no stable delay yet (0 = gps_check_period_s always)
+        declare_float(self, "gps_check_period_delay_s", 1.0)
         # Stated accuracy (1 sigma, m) of a local match: day_pkg.fix_sigma.day_fix_sigma_m (the
         # matcher's inlier-class sigma, a floor, the frame-time and attitude terms): 99.2 % within
         # 3 sigma on NAVERA's camera on the screen bench (2026-10-19, median 10.6 m) but only 48 % on
@@ -255,6 +260,9 @@ class DaySubscriber(Node):
         declare_float(self, "local_sigma_m", 30.0)
         declare_float(self, "local_sigma_floor_m", 5.0)
         declare_float(self, "frame_time_sigma_s", 0.05)
+        # the camera delay's 1-sigma while it is unknown (camera_latency_s 0 and no auto_latency
+        # estimate applied): added, times the ground speed, to every stated fix accuracy
+        declare_float(self, "unknown_delay_sigma_s", 1.0)
         declare_float(self, "attitude_sigma_deg", 0.5)
         # In-flight check of that sigma against the trusted GPS (fix_sigma.SigmaCalibration): the GPS check
         # frames measure this flight's real vision error; after min_samples the stated sigma is scaled to it.
@@ -377,6 +385,7 @@ class DaySubscriber(Node):
         self.local_sigma_m = float(self.get_parameter("local_sigma_m").value)
         self.local_sigma_floor_m = float(self.get_parameter("local_sigma_floor_m").value)
         self.frame_time_sigma_s = float(self.get_parameter("frame_time_sigma_s").value)
+        self.unknown_delay_sigma_s = float(self.get_parameter("unknown_delay_sigma_s").value)
         self.attitude_sigma_deg = float(self.get_parameter("attitude_sigma_deg").value)
         self.sigma_cal = SigmaCalibration(float(self.get_parameter("sigma_floor_no_cal_m").value),
                                           int(self.get_parameter("sigma_cal_min_samples").value))
@@ -396,6 +405,8 @@ class DaySubscriber(Node):
         self.gps_vo_period_s = float(self.get_parameter("gps_vo_period_s").value)
         self.gps_vo_width_px = int(self.get_parameter("gps_vo_width_px").value)
         self.gps_vo_height_tau_s = float(self.get_parameter("gps_vo_height_tau_s").value)
+        self.calib_near_radius_m = float(self.get_parameter("gps_check_near_radius_m").value)
+        self.calib_period_delay_s = float(self.get_parameter("gps_check_period_delay_s").value)
         # ── camera delay (exposure -> arrival), estimated online against the trusted GPS ──
         # navera_common.latency_cal: GPS-check matches vs the GPS track; applied (auto_latency)
         # only when stable and significantly different from camera_latency_s
@@ -596,6 +607,11 @@ class DaySubscriber(Node):
             cov = list(msg.position_covariance)
             self._anchor_sigma = math.sqrt(max(cov[0], cov[4])) if cov[0] > 0 else 5.0
             self.track.add(self._anchor_time, msg.latitude, msg.longitude, self._anchor_sigma)
+            # the GPS now measures the track: a carried velocity from an earlier dead-reckoning
+            # (e.g. at power-on, standing still) must not outlive it. It did: after the GPS loss
+            # the carry went on with that velocity — 0 m/s for a copter at 8 m/s, 97 m off in 10 s
+            # with a stated +-28 m (Isaac Sim closed loop 2026-10-21, low clouds at the GPS loss)
+            self._carry, self._vel_epoch = None, None
 
     def on_operator_position(self, msg: PositionEstimate):
         """The operator's start position: the search centre while no GPS is trusted, the
@@ -881,16 +897,14 @@ class DaySubscriber(Node):
         (the estimator never prefers it to a trusted GPS, but cross-checks GPS with it:
         a slowly spoofed GPS drifts away and is refused) and gives the height above
         ground. The tracking state (anchor) is not touched: GPS stays the prior."""
-        if self.local is None or self.calib_period_s <= 0 or time.time() - self._last_calib < self.calib_period_s:
+        if self.local is None or self.calib_period_s <= 0 or time.time() - self._last_calib < self._gps_check_period():
             return
         prior = self._gps_prior.fresh()
         mpp, _ = self._frame_m_per_px(img, meta)
         if prior is None or mpp is None:
             return
         self._last_calib = time.time()
-        res = self.local.locate(img, prior, self.calib_radius_m, mpp, scale_tol=self._scale_tol(meta),
-                                **self._match_heading_kw(meta), hfov_deg=self._hfov(meta),
-                                expected_tilt_deg=self._expected_tilt(meta))
+        res = self._gps_check_locate(img, prior, mpp, meta)
         self.get_logger().info(
             f"[day] GPS check frame={seq_id}: " + (f"vision {haversine_m(prior[0], prior[1], res['predicted_lat'], res['predicted_lon']):.0f} m from GPS "
                                                   f"({res.get('inliers')} inliers)" if res.get("accepted") else f"no match ({res.get('reason')})"))
@@ -954,6 +968,36 @@ class DaySubscriber(Node):
         de, dn, dt, q = step
         self.pub_gps_vo.publish(String(data=json.dumps({
             "t0": t - dt, "t1": t, "east_m": round(de, 3), "north_m": round(dn, 3), "quality": round(q, 3)})))
+
+    def _gps_check_period(self) -> float:
+        """Seconds between GPS-check matches: gps_check_period_s, or the faster
+        gps_check_period_delay_s while auto_latency has no stable delay yet — its 20 samples took
+        more than the 75 s of GPS flight at altitude at one check per 2 s (Isaac Sim closed loop
+        2026-10-21: 7-9 samples, never applied)."""
+        fast = float(getattr(self, "calib_period_delay_s", 0.0))
+        lc = getattr(self, "latency_cal", None)
+        if fast > 0.0 and getattr(self, "auto_latency", False) and lc is not None and not lc.stable:
+            return min(self.calib_period_s, fast)
+        return self.calib_period_s
+
+    def _gps_check_locate(self, img, prior, mpp, meta) -> dict:
+        """The GPS-check match: first within gps_check_near_radius_m of the GPS (a trusted GPS is
+        metres off), then, if that fails, within gps_check_radius_m (a GPS drifted that far).
+        A small frame against a 600 m window gave the learned matcher too few matches: Isaac Sim
+        closed loop 2026-10-21, copter at 250 m, 2 of 30 checks accepted while the same frames
+        matched 96 % around the carried position after the GPS loss — no delay, sigma or
+        spoof-check samples."""
+        radii = [self.calib_radius_m]
+        if 0.0 < self.calib_near_radius_m < self.calib_radius_m:
+            radii.insert(0, self.calib_near_radius_m)
+        res = {}
+        for r in radii:
+            res = self.local.locate(img, prior, r, mpp, scale_tol=self._scale_tol(meta),
+                                    **self._match_heading_kw(meta), hfov_deg=self._hfov(meta),
+                                    expected_tilt_deg=self._expected_tilt(meta))
+            if res.get("accepted"):
+                break
+        return res
 
     def _latency_sample(self, meta):
         """A GPS-check match is a camera-delay sample (its arrival = raw stamp + the camera's delay)."""
@@ -1530,7 +1574,24 @@ class DaySubscriber(Node):
         calibration against GPS (or at least the no-calibration floor), local_sigma_m without one."""
         if not result.get("sigma_m"):
             return self.local_sigma_m
-        return self.sigma_cal.apply(self._model_sigma(result, meta))
+        s = self.sigma_cal.apply(self._model_sigma(result, meta))
+        sd = self._unknown_delay_sigma_s()
+        if sd > 0.0:
+            v = self.track.velocity(time.time())
+            if v is not None:
+                s = math.hypot(s, sd * math.hypot(v[0], v[1]))
+        return s
+
+    def _unknown_delay_sigma_s(self) -> float:
+        """The camera delay's uncertainty while it is neither set (camera_latency_s) nor estimated
+        (auto_latency): the frame time can be off by that much, the fix by speed x that along the
+        track — a bias that turns with the track, which the in-flight calibration (map bias
+        removed) cannot see. Isaac Sim closed loop 2026-10-21: 1.3 s unknown delay at 10 m/s,
+        fixes stated +-7.8 m after the calibration, 24-40 m off after a turn (34 beyond 3 sigma)."""
+        lc = getattr(self, "latency_cal", None)
+        if lc is None or lc.applied is not None or lc.nominal != 0.0:
+            return 0.0
+        return float(getattr(self, "unknown_delay_sigma_s", 0.0))
 
     def _model_sigma(self, result, meta) -> float:
         """The model sigma of a local match, before the in-flight calibration."""
