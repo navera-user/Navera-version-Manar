@@ -164,7 +164,8 @@ def test_the_autopilot_velocity_accuracy_is_honest_for_30_m_fixes():
 
 def test_a_turn_the_chi_square_lets_through_widens_the_autopilot_velocity_sigma():
     """A plane at 22 m/s on a 300 m circle with +-30 m fixes: the line fit still passes, but the
-    velocity now is far from the window's chord — the stated sigma must cover it."""
+    velocity now is far from the window's chord — the stated sigma must cover it.
+    """
     def track(radius):
         tr = TrackVelocity()
         for i in range(10):

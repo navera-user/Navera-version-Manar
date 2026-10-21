@@ -122,7 +122,8 @@ class TrackVelocity:
     @staticmethod
     def _line(q):
         """(east slope, north slope, weighted mean time, sum w (t - tm)^2) of [(t, (x, y), w)],
-        or None (< 3 points)."""
+        or None (< 3 points).
+        """
         if len(q) < 3:
             return None
         sw = sum(c[2] for c in q)
