@@ -706,7 +706,8 @@ class NightLocalizer:
         """STHN forward: "torch" (STHN's own IHN.forward), "graph" (sthn_fast.STHNCore: the same
         network, homographies in closed form on the GPU, no CPU solves) or "trt" (that graph as a
         TensorRT engine, navera_tools/trt/build_engines.py). "auto": the engine when NAVERA_TRT
-        allows it (STHN_TRT_DEFAULT) and one is built, else the graph on CUDA, else torch."""
+        allows it (STHN_TRT_DEFAULT) and one is built, else the graph on CUDA, else torch.
+        """
         requested = (requested or "auto").strip().lower()
         if requested not in ("auto", "torch", "graph", "trt"):
             raise ValueError(f"sthn_backend {requested!r}: auto | torch | graph | trt")

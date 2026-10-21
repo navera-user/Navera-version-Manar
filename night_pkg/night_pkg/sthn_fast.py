@@ -21,7 +21,8 @@ import torch.nn as nn
 
 def rect_to_quad_points(disp: torch.Tensor, h: int, w: int) -> torch.Tensor:
     """Grid points (B, 2, h, w) of an h x w grid mapped by the homography taking the rectangle
-    (0, 0), (w-1, 0), (0, h-1), (w-1, h-1) to itself moved by disp (B, 2, 2, 2): [b, coord x|y, row, col]."""
+    (0, 0), (w-1, 0), (0, h-1), (w-1, h-1) to itself moved by disp (B, 2, 2, 2): [b, coord x|y, row, col].
+    """
     b = disp.shape[0]
     x0 = disp[:, 0, 0, 0]
     y0 = disp[:, 1, 0, 0]
