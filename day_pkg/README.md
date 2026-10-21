@@ -51,11 +51,20 @@ inliers **and** the fitted scale within `local_scale_tol` of the one the altitud
   9 conditions (0 new). Gyro bias 0.5 deg/s: same results. Not yet measured on a real gyro in flight.
 - Whole-map search (no prior) is disabled by default (`allow_global_search`): its score does
   not separate good from bad matches.
+- Visual odometry while GPS is trusted (`gps_vo_enabled`, default true): at most once per
+  `gps_vo_period_s` (1 s) the frame is phase-correlated with the previous one given
+  (`frame_odometry.FrameOdometry`, frames reduced to `gps_vo_width_px` 1280 px at most, ~0.14 s
+  of CPU per 1200 × 900 frame on the Orin), with the frame's heading (attitude, else the gyro
+  carry) and its height smoothed over `gps_vo_height_tau_s` (60 s), and the step is published on
+  `gps_vo_topic` (`/navera/vision/odometry`, std_msgs/String JSON: `t0`, `t1` frame instants s,
+  `east_m`, `north_m`, `quality`). No GPS enters the step (no prediction). The estimator compares
+  it with the GPS displacement over the same instants (`navera_common.gps_motion_check`: slow
+  spoofing).
 
 ## Topics
 In: `/day/image_raw`, `/day/frame_meta`, `/navera/estimate/gps`, `/day/camera/start`.
 Out: `/navera/estimate/day` (the contract), `/day/position_estimate`, `/day/day_status`,
-`/day/frame_done`, `/day/localizer_ready`.
+`/day/frame_done`, `/day/localizer_ready`, `/navera/vision/odometry` (while GPS is trusted).
 
 `/day/day_status` (JSON) also carries the search, for display: `search_center` (the last retained
 position), `search_radius_m`, `n_candidates` (tiles inside the circle), `top5` (lat, lon, score,

@@ -222,6 +222,16 @@ class DaySubscriber(Node):
         # GPS away from it), and the height above ground known when GPS is lost. 0 = off.
         declare_float(self, "gps_check_period_s", 2.0)
         declare_float(self, "gps_check_radius_m", 600.0)   # covers a GPS drifted this far
+        # while GPS is trusted, also measure the frame-to-frame displacement (visual odometry, phase
+        # correlation, ~0.14 s of CPU per 1200 px frame) at most once per gps_vo_period_s and publish it
+        # for the estimator's relative-motion test (navera_common.gps_motion_check: a slow spoof adds
+        # its drift to the GPS displacement, not to the image's). The VO scale uses the frame height
+        # smoothed over gps_vo_height_tau_s (a jump in the height estimate is not a jump in the VO).
+        self.declare_parameter("gps_vo_enabled", True)
+        declare_float(self, "gps_vo_period_s", 1.0)
+        self.declare_parameter("gps_vo_width_px", 1280)    # frames reduced to at most this width
+        declare_float(self, "gps_vo_height_tau_s", 60.0)
+        self.declare_parameter("gps_vo_topic", "/navera/vision/odometry")
         # Stated accuracy (1 sigma, m) of a local match: day_pkg.fix_sigma.day_fix_sigma_m (the
         # matcher's inlier-class sigma, a floor, the frame-time and attitude terms): 99.2 % within
         # 3 sigma on NAVERA's camera on the screen bench (2026-10-19, median 10.6 m) but only 48 % on
@@ -283,6 +293,10 @@ class DaySubscriber(Node):
         self.map_bias = VisionNavigator()
         # frame-to-frame visual odometry: the displacement through gaps in map matching
         self.vo = FrameOdometry()
+        # the same, while GPS is trusted (gps_vo_*): its own previous frame, no prediction from GPS
+        self.gps_vo = FrameOdometry(scale=1.0)
+        self._gps_vo_t = None                   # stamp of the last frame given to it
+        self._gps_vo_h = None                   # (smoothed height m, t)
         self._vo_step = None
         self._doubted = None                    # (t, lat, lon, sigma): a fix a gate doubted
         # the position carried frame by frame since the last fix (lat, lon, t, heading,
@@ -359,6 +373,10 @@ class DaySubscriber(Node):
         self._gps_was_trusted = False
         self.calib_period_s = float(self.get_parameter("gps_check_period_s").value)
         self.calib_radius_m = float(self.get_parameter("gps_check_radius_m").value)
+        self.gps_vo_enabled = bool(self.get_parameter("gps_vo_enabled").value)
+        self.gps_vo_period_s = float(self.get_parameter("gps_vo_period_s").value)
+        self.gps_vo_width_px = int(self.get_parameter("gps_vo_width_px").value)
+        self.gps_vo_height_tau_s = float(self.get_parameter("gps_vo_height_tau_s").value)
         # ── camera delay (exposure -> arrival), estimated online against the trusted GPS ──
         # navera_common.latency_cal: GPS-check matches vs the GPS track; applied (auto_latency)
         # only when stable and significantly different from camera_latency_s
@@ -425,6 +443,8 @@ class DaySubscriber(Node):
         self.pub_fix    = self.create_publisher(NavSatFix, fix_topic,    10)
         self.pub_status = self.create_publisher(String,    status_topic, 10)
         self.pub_vision_alt = self.create_publisher(Range, self.get_parameter("vision_altitude_topic").value, 10)
+        # visual odometry while GPS is trusted (JSON: t0, t1 s, east_m, north_m, quality) -> estimator
+        self.pub_gps_vo = self.create_publisher(String, self.get_parameter("gps_vo_topic").value, 10)
         # Additive: typed per-source estimate for navera_estimator. Same RELIABLE
         # depth-10 class as the fix/status topics. /day/* topics are UNTOUCHED.
         estimate_topic = self.get_parameter("estimate_topic").value
@@ -647,9 +667,11 @@ class DaySubscriber(Node):
                     if self._anchor_lat is not None else None,
                     "reason": "GPS valid — vision idle, tracking GPS as prior",
                     "latency": dict(self.latency_cal.state(), auto=self.auto_latency)})))
+                self._gps_odometry(img, meta)
                 self._prewarm(img, meta)
                 self._calibrate_altitude(seq_id, img, meta)
                 return
+            self._gps_vo_t = None                   # the GPS-time odometry chain ends here
             center, R = self._spatial_window(img, meta)
             if center is not None:
                 self.get_logger().info(f"[day] 🔎 localizing frame={seq_id}… (cercle R={R:.0f}m autour de l'anchor)")
@@ -864,6 +886,43 @@ class DaySubscriber(Node):
             self.get_logger().info(f"[day] height above ground calibrated while GPS is good: "
                                    f"{st.get('altitude_measured_m')} m (frame said {meta.get('altitude_m')} m, "
                                    f"{res.get('inliers')} inliers)", throttle_duration_sec=30.0)
+
+    def _gps_odometry(self, img, meta) -> None:
+        """GPS trusted: one visual-odometry step (this frame against the last one given, at most every
+        gps_vo_period_s) published for the estimator's relative-motion test. Needs the frame stamp, a
+        height and a heading (the frame's attitude, else the gyro-carried one); otherwise the chain
+        restarts."""
+        ns = meta.get("image_stamp_ns")
+        if not self.gps_vo_enabled or ns is None:
+            return
+        t = int(ns) / 1e9
+        if self._gps_vo_t is not None and 0.0 <= t - self._gps_vo_t < self.gps_vo_period_s:
+            return
+        mpp, _ = self._frame_m_per_px(img, meta)
+        heading = self._carry_heading(meta)[0]
+        if mpp is None or heading is None:
+            self.gps_vo.reset()
+            self._gps_vo_t = None
+            return
+        alt = float(meta["altitude_m"])
+        h = self._gps_vo_h
+        if h is None or not 0.0 < t - h[1] <= 30.0:
+            h = (alt, t)
+        else:
+            w = 1.0 - math.exp(-(t - h[1]) / self.gps_vo_height_tau_s) if self.gps_vo_height_tau_s > 0 else 1.0
+            h = (h[0] + w * (alt - h[0]), t)
+        self._gps_vo_h = h
+        width = img.shape[1]
+        self.gps_vo.scale = min(1.0, self.gps_vo_width_px / float(width)) if self.gps_vo_width_px > 0 else 1.0
+        if self._gps_vo_t is None:
+            self.gps_vo.reset()
+        self._gps_vo_t = t
+        step = self.gps_vo.step(img, heading, mpp * h[0] / alt, t)
+        if step is None:
+            return
+        de, dn, dt, q = step
+        self.pub_gps_vo.publish(String(data=json.dumps({
+            "t0": t - dt, "t1": t, "east_m": round(de, 3), "north_m": round(dn, 3), "quality": round(q, 3)})))
 
     def _latency_sample(self, meta):
         """A GPS-check match is a camera-delay sample (its arrival = raw stamp + the camera's delay)."""

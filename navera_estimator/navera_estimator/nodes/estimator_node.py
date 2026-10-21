@@ -60,6 +60,12 @@ Scope: honest single-winner arbitration across the LIVE sources.
     fixes actually show, at gps_trend_confirm_n fixes in a row. Such a refusal is lifted only
     once the offset is back nearer its value before the growth (agreeing within 3 sigma is not
     enough: the growth test refuses inside 3 sigma).
+    The RELATIVE-MOTION test (navera_common.GpsMotionCheck) compares, while GPS is trusted, the
+    GPS displacement (interpolated at the frame instants) with the day node's visual-odometry
+    displacement over the same instants (/navera/vision/odometry): a spoof adds v x T to the GPS
+    displacement only. The odometry's scale and heading are learned from the day map fixes, never
+    from GPS; a directional CUSUM in the residual's own measured noise refuses; the refusal is
+    lifted as a growth refusal's is.
   * Decisions are taken when an estimate arrives (no added latency, no
     measurement skipped when two arrive between ticks) and every
     1/publish_rate_hz to notice sources going silent.
@@ -102,8 +108,12 @@ Parameters:
     gps_trend_z (6.0), gps_trend_min_growth_sigmas (1.5), gps_trend_bias_rate_mps (0.2),
     gps_trend_min_jitter_m (3.0), gps_trend_min_fixes (6), gps_trend_confirm_n (3),
     gps_trend_windows_s ([8, 12, 16, 24, 32, 48, 64, 96, 128]) — see navera_common.gps_crosscheck.GpsDriftTrend
+    gps_motion_enabled (default true), gps_motion_topic (/navera/vision/odometry), gps_motion_h (12),
+    gps_motion_k (0.25), gps_motion_min_growth_m (12), gps_motion_bias_mps (0.5),
+    gps_motion_eps_floor (0.03) — see navera_common.gps_motion_check.GpsMotionCheck
 """
 import copy
+import json
 import math
 from collections import deque
 from typing import Optional
@@ -112,6 +122,7 @@ import rclpy
 from navera_common.covariance import covariance_sane, horizontal_sigma
 from navera_common.geo import is_finite_latlon
 from navera_common.gps_crosscheck import STREAK_N, GpsCrossCheck, GpsDriftTrend
+from navera_common.gps_motion_check import GpsMotionCheck
 from navera_common.lifecycle import die_with_parent
 from navera_common.params import declare_float
 from rclpy.executors import ExternalShutdownException
@@ -120,6 +131,7 @@ from navera_common.qos import SENSOR_QOS
 from rclpy.duration import Duration
 from rclpy.time import Time
 from sensor_msgs.msg import Imu
+from std_msgs.msg import String
 
 from navera_msgs.msg import NavStatus, PositionEstimate, SourceHealth
 
@@ -192,6 +204,14 @@ class EstimatorNode(Node):
         self.declare_parameter("gps_trend_min_fixes", 6)
         self.declare_parameter("gps_trend_confirm_n", 3)
         self.declare_parameter("gps_trend_windows_s", [8.0, 12.0, 16.0, 24.0, 32.0, 48.0, 64.0, 96.0, 128.0])
+        # slow spoofing: GPS displacement vs visual-odometry displacement (navera_common.GpsMotionCheck)
+        self.declare_parameter("gps_motion_enabled", True)
+        self.declare_parameter("gps_motion_topic", "/navera/vision/odometry")
+        declare_float(self, "gps_motion_h", 12.0, "CUSUM threshold (noise units)")
+        declare_float(self, "gps_motion_k", 0.25, "CUSUM reference (noise units per step)")
+        declare_float(self, "gps_motion_min_growth_m", 12.0, "drift accumulated needed to refuse (m)")
+        declare_float(self, "gps_motion_bias_mps", 0.5, "GPS / odometry drift allowed (m/s)")
+        declare_float(self, "gps_motion_eps_floor", 0.03, "odometry scale / heading error always allowed")
         # FIX also requires the stated horizontal sigma to be at most this.
         declare_float(self, "fix_max_sigma_m", 25.0)
         rate = float(self.get_parameter("publish_rate_hz").value)
@@ -217,9 +237,22 @@ class EstimatorNode(Node):
                 min_fixes=int(self.get_parameter("gps_trend_min_fixes").value),
                 confirm_n=int(self.get_parameter("gps_trend_confirm_n").value))
         self._xcheck = GpsCrossCheck(persist_s=self._crosscheck_persist, streak_n=STREAK_N, trend=trend)
+        self._motion = None
+        if bool(self.get_parameter("gps_motion_enabled").value):
+            self._motion = GpsMotionCheck(
+                h=float(self.get_parameter("gps_motion_h").value),
+                k=float(self.get_parameter("gps_motion_k").value),
+                min_growth_m=float(self.get_parameter("gps_motion_min_growth_m").value),
+                bias_mps=float(self.get_parameter("gps_motion_bias_mps").value),
+                eps_floor=float(self.get_parameter("gps_motion_eps_floor").value))
+        self._vo_pending = deque(maxlen=50)          # odometry steps waiting for the GPS after them
+        self._local_ref = None                       # (lat, lon) origin of the motion test's metres
+        self._last_day_fix_ns = None
         self._confirm_needed_since: Optional[Time] = None  # refused by the cross-check
         self._last_ref_at = Time(seconds=0, clock_type=self.get_clock().clock_type)
-        self._gps_hist = deque(maxlen=50)              # (stamp ns, lat, lon) of received GPS fixes
+        # (stamp ns, lat, lon) of received GPS fixes: 200 cover the odometry steps (up to ~5 s old when
+        # they arrive) at 20 Hz GPS
+        self._gps_hist = deque(maxlen=200)
         self._gps_doubt = None                         # (gap m, source) while GPS is in doubt
         self._agree_refs = set()                       # distinct fixes agreeing (re-acceptance)
         self._fix_max_sigma = float(self.get_parameter("fix_max_sigma_m").value)
@@ -257,6 +290,8 @@ class EstimatorNode(Node):
             PositionEstimate, "/navera/estimate/cn", self._on_cn, 10)
         self.sub_imu = self.create_subscription(
             Imu, str(self.get_parameter("imu_topic").value), self._on_imu, SENSOR_QOS)
+        self.sub_vo = self.create_subscription(
+            String, str(self.get_parameter("gps_motion_topic").value), self._on_odometry, 10)
 
         self.pub_pos = self.create_publisher(PositionEstimate, "/navera/position", 10)
         self.pub_status = self.create_publisher(NavStatus, "/navera/nav_status", 10)
@@ -291,6 +326,7 @@ class EstimatorNode(Node):
         if msg.valid and self._sane(msg):
             self._gps_hist.append((Time.from_msg(msg.header.stamp).nanoseconds, msg.latitude, msg.longitude))
         self._check_gps_plausibility(msg)
+        self._motion_steps(msg)
         self._tick()
 
     def _check_gps_plausibility(self, msg: PositionEstimate) -> None:
@@ -363,6 +399,8 @@ class EstimatorNode(Node):
         if restart:
             self._trusted_hist.clear()
             self._xcheck.reset()              # offsets seen before belong to another GPS track
+            if self._motion is not None:
+                self._motion.reset()          # (its odometry calibration owes nothing to GPS: kept)
         self._trusted_hist.append((lat, lon, stamp))
         while self._trusted_hist and (stamp - self._trusted_hist[0][2]).nanoseconds / 1e9 > self._jump_window:
             self._trusted_hist.popleft()
@@ -395,7 +433,8 @@ class EstimatorNode(Node):
         # with an accuracy no better than the gap (the operator sees it, the autopilot
         # weighs it less, and a later switch to vision is no jump outside its accuracy).
         # A gap over DOUBT_MAX_M is more likely a wrong vision match: not applied.
-        self._gps_doubt = (d, name, self._trend_note()) if self._xcheck.in_doubt and d <= DOUBT_MAX_M else None
+        doubt = self._xcheck.in_doubt or (self._motion is not None and self._motion.in_doubt)
+        self._gps_doubt = (d, name, self._trend_note()) if doubt and d <= DOUBT_MAX_M else None
         if reason is None:
             return False
         self._refuse(stamp, reason)
@@ -403,7 +442,9 @@ class EstimatorNode(Node):
 
     def _trend_note(self) -> str:
         """', offset growing x m/s' while the growth test passes but is not confirmed, else ''."""
-        tr = self._xcheck.trend
+        tr, mo = self._xcheck.trend, self._motion
+        if mo is not None and mo.in_doubt:
+            return ", GPS moving off the visual odometry"
         if tr is None or not tr.in_doubt or not tr.last:
             return ""
         return f", offset growing {tr.last['rate_mps']:.1f} m/s"
@@ -412,6 +453,8 @@ class EstimatorNode(Node):
         """GPS refused by the cross-check: only an independent fix can clear it."""
         self._gps_suspect = reason
         self._xcheck.reset()
+        if self._motion is not None:
+            self._motion.reset()
         self._gps_doubt = None
         self._confirm_needed_since = stamp
         self.get_logger().error(f"GPS refused: {reason}")
@@ -491,7 +534,74 @@ class EstimatorNode(Node):
     def _on_day(self, msg: PositionEstimate) -> None:
         self._note_rx(self._day_last, msg)
         self._day_last = msg
+        self._motion_fix(msg)
         self._tick()
+
+    # ---------- relative motion: GPS displacement vs visual odometry ----------
+
+    def _local_en(self, lat: float, lon: float):
+        """(east, north) metres of lat/lon from the motion test's origin (set on first use)."""
+        if self._local_ref is None:
+            self._local_ref = (lat, lon)
+        m_lat = 111195.0
+        return ((lon - self._local_ref[1]) * m_lat * math.cos(math.radians(self._local_ref[0])),
+                (lat - self._local_ref[0]) * m_lat)
+
+    def _motion_fix(self, msg: PositionEstimate) -> None:
+        """A measured day-vision (map) fix of stated accuracy calibrates the odometry (scale, heading)."""
+        if self._motion is None or msg.mode != PositionEstimate.MODE_MEASURED or not msg.valid \
+                or not self._sane(msg) or self._stated_sigma(msg) is None:
+            return
+        t_ns = self._measured_at(msg).nanoseconds
+        if self._last_day_fix_ns is not None and t_ns <= self._last_day_fix_ns:
+            return
+        self._last_day_fix_ns = t_ns
+        e, n = self._local_en(msg.latitude, msg.longitude)
+        at = self._gps_at(t_ns)
+        off = None
+        if at is not None:
+            ge, gn = self._local_en(*at)
+            off = (ge - e, gn - n)
+        self._motion.add_fix(t_ns / 1e9, e, n, off)
+
+    def _on_odometry(self, msg: String) -> None:
+        """A visual-odometry step from the day node (JSON t0, t1 s, east_m, north_m): queued until GPS
+        is known after its end."""
+        if self._motion is None:
+            return
+        try:
+            d = json.loads(msg.data)
+            step = tuple(float(d[k]) for k in ("t0", "t1", "east_m", "north_m"))
+        except (ValueError, TypeError, KeyError):
+            return
+        if all(math.isfinite(v) for v in step) and step[1] > step[0]:
+            self._vo_pending.append(step)
+            self._motion_steps(None)
+
+    def _motion_steps(self, gps_msg: Optional[PositionEstimate]) -> None:
+        """Odometry steps whose end the GPS now covers, against the GPS displacement over the same
+        instants (GPS interpolated), while GPS is trusted. A refusal goes the cross-check's way."""
+        if self._motion is None or not self._gps_hist:
+            return
+        newest = self._gps_hist[-1][0]
+        while self._vo_pending and self._vo_pending[0][1] * 1e9 <= newest:
+            t0, t1, de, dn = self._vo_pending.popleft()
+            if self._gps_trusted is None or self._gps_suspect is not None:
+                continue
+            g0, g1 = self._gps_at(int(t0 * 1e9)), self._gps_at(int(t1 * 1e9))
+            if g0 is None or g1 is None:
+                continue
+            e0, n0 = self._local_en(*g0)
+            e1, n1 = self._local_en(*g1)
+            why = self._motion.add_step(t0, t1, de, dn, e1 - e0, n1 - n0)
+            if why is None:
+                continue
+            if self._motion.refused_baseline is not None:
+                self._xcheck.baseline = self._motion.refused_baseline
+            stamp = Time.from_msg(gps_msg.header.stamp) if gps_msg is not None else self.get_clock().now()
+            self._refuse(stamp, f"GPS drifting away from day vision odometry: {why} — possible slow spoofing")
+            self._vo_pending.clear()
+            return
 
     def _on_night(self, msg: PositionEstimate) -> None:
         self._note_rx(self._night_last, msg)
