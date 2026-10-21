@@ -56,6 +56,7 @@ from day_pkg.nodes.day_localizer import IMAGES_DIR, DayLocalizer, haversine_m
 from day_pkg.fix_sigma import SigmaCalibration, day_fix_sigma_m
 from day_pkg.frame_odometry import FrameOdometry
 from day_pkg.gyro_heading import GyroHeading, heading_rate_dps
+from day_pkg.map_levels import area_zooms, choose_zoom
 from day_pkg.local_matcher import LocalMatcher
 from day_pkg.vision_nav import VisionNavigator, _en, _move, kinematic_margin_m
 
@@ -215,6 +216,10 @@ class DaySubscriber(Node):
         # a height measured by a match is trusted only from a strong match confirmed by
         # the next one (a wrong match must not set the altitude the next frames are judged by)
         self.declare_parameter("altitude_min_inliers", 20)
+        # an area holding several map zooms (area.json "zooms"): each frame is matched against the
+        # finest zoom at least this many times coarser than the frame (day_pkg.map_levels: a z18 map
+        # located 54 % of a real 60-140 m flight's frames instead of 36 % at z17); one zoom: that one
+        declare_float(self, "map_zoom_min_ratio", 2.0)
         # heights above ground measured by local matches (the camera uses them)
         self.declare_parameter("vision_altitude_topic", "/navera/vision/altitude_agl")
         # while GPS is trusted, match a frame this often around the GPS position: an
@@ -366,9 +371,16 @@ class DaySubscriber(Node):
         self._latency_applied = None
         self._last_calib = 0.0
         self.local = None
+        # the map's zooms (area.json; an area without it: 17), coarsest first: the matcher of the
+        # coarsest is built now, finer ones when a frame first needs them (_select_map)
+        self.map_zooms = area_zooms(IMAGES_DIR)
+        self.map_zoom_min_ratio = float(self.get_parameter("map_zoom_min_ratio").value)
+        self._matchers = {}
         kw = dict(min_inliers=int(self.get_parameter("local_min_inliers").value),
                   scale_tol=float(self.get_parameter("local_scale_tol").value),
-                  pose_tilt_guard_deg=float(self.get_parameter("pose_tilt_guard_deg").value))
+                  pose_tilt_guard_deg=float(self.get_parameter("pose_tilt_guard_deg").value),
+                  zoom=self.map_zooms[0])
+        self._matcher_kw = kw
         if self.matcher_mode in ("learned", "auto"):
             try:
                 from day_pkg.learned_matcher import LearnedMatcher
@@ -383,6 +395,11 @@ class DaySubscriber(Node):
         if self.matcher_mode == "local" and self.local is None:
             self.local = LocalMatcher(IMAGES_DIR, retry_features=int(self.get_parameter("local_retry_features").value),
                                       **kw)
+        if self.local is not None:
+            self._matchers[self.map_zooms[0]] = self.local
+            self.get_logger().info(f"map zooms {self.map_zooms}"
+                                   + (f" (finer for low frames, ratio {self.map_zoom_min_ratio})"
+                                      if len(self.map_zooms) > 1 else ""))
             self.get_logger().info(
                 f"matcher: local features vs the map ({'GPU' if self.local.torch else 'CPU'} matching), "
                 f"camera_hfov_deg={self.camera_hfov_deg}"
@@ -622,6 +639,7 @@ class DaySubscriber(Node):
                 self._publish_known(seq_id, meta)
                 return
             self._note_frame_heading(meta)
+            self._select_map(img, meta)
             # A live frame the camera could not use (e.g. too tilted): say why, no inference.
             if meta.get("usable") is False:
                 why = meta.get("reason") or "frame marked unusable by the camera"
@@ -1190,6 +1208,30 @@ class DaySubscriber(Node):
         if time.time() - self._anchor_saved_at >= 1.0 and self._anchor_lat is not None:
             self._anchor_saved_at = time.time()
             state_store.save("day_anchor", {"lat": self._anchor_lat, "lon": self._anchor_lon})
+
+    def _select_map(self, img, meta) -> None:
+        """Match this frame against the map zoom its ground resolution needs (day_pkg.map_levels);
+        the matcher of a zoom is built the first time it is needed (sharing the networks)."""
+        zooms = getattr(self, "map_zooms", None)
+        if self.local is None or not zooms or len(zooms) < 2:
+            return
+        mpp, _ = self._frame_m_per_px(img, meta)
+        lat = self._anchor_lat if self._anchor_lat is not None else None
+        z = choose_zoom(zooms, mpp, lat, self.map_zoom_min_ratio)
+        m = self._matchers.get(z)
+        if m is None:
+            base = self._matchers[zooms[0]]
+            kw = dict(self._matcher_kw, zoom=z)
+            if base.__class__.__name__ == "LearnedMatcher":
+                m = base.__class__(IMAGES_DIR, models_from=base, **kw)
+            else:
+                m = LocalMatcher(IMAGES_DIR, retry_features=int(self.get_parameter("local_retry_features").value),
+                                 **kw)
+            self._matchers[z] = m
+        if m is not self.local:
+            self.get_logger().info(f"[day] map zoom {getattr(self.local, 'z', '?')} -> {z} "
+                                   f"(frame {mpp:.2f} m/px)" if mpp else f"[day] map zoom -> {z}")
+            self.local = m
 
     def _heading_for_match(self, meta):
         """The frame top's azimuth when the live camera measured it (straightened frames),
