@@ -307,6 +307,10 @@ class Field:
         self.phone: dict = {}
         self.phone_recv = 0.0
         self.offsets = collections.deque(maxlen=60)       # server time - phone time, seconds
+        # The Jetson has no battery clock: it boots on the last saved time (hours or days off) and
+        # jumps when NTP reaches the internet, maybe mid-test. A jump makes the earlier offsets wrong.
+        self._wall_minus_mono = time.time() - time.monotonic()
+        self._ntp_checked, self._ntp_synced = 0.0, False
         self.speeds = collections.deque(maxlen=120)       # (server time, phone GPS speed m/s): the stopped flag's referee
         self.live: dict = {}
         self.preview: bytes = b""
@@ -361,9 +365,45 @@ class Field:
                     log(f"could not close {m['id']}: {e!r}")
 
     # ── phone ───────────────────────────────────────────────────────────
+    def _clock_jumped(self) -> bool:
+        """True (once) when the Jetson's wall clock stepped by more than 2 s (NTP after a boot without
+        internet, or a manual set): the phone offsets taken before it are dropped. Call with the lock."""
+        w = time.time() - time.monotonic()
+        if abs(w - self._wall_minus_mono) <= 2.0:
+            return False
+        step = w - self._wall_minus_mono
+        self._wall_minus_mono = w
+        self.offsets.clear()
+        log(f"Jetson clock stepped {step:+.1f} s: phone clock offsets restarted")
+        if self.session is not None:
+            self.session.event("clock_jump", step_s=round(step, 1))
+        return True
+
+    def ntp_synced(self) -> bool:
+        """The Jetson clock is synchronised to the internet (timedatectl), checked every 30 s."""
+        now = time.monotonic()
+        if now - self._ntp_checked > 30.0:
+            self._ntp_checked = now
+            try:
+                out = subprocess.run(["timedatectl", "show", "-p", "NTPSynchronized", "--value"],
+                                     capture_output=True, text=True, timeout=3).stdout.strip()
+                self._ntp_synced = out == "yes"
+            except Exception:
+                self._ntp_synced = False
+        return self._ntp_synced
+
+    def star_clock_offset_s(self):
+        """Offset to subtract from the Jetson time for a star solve, or None when no trusted time exists
+        (no phone clock yet and the Jetson not synchronised): a solve then would be thousands of km off."""
+        off = self.clock_offset_s()
+        if off is not None:
+            return off
+        return 0.0 if self.ntp_synced() else None
+
     def on_phone(self, d: dict):
         now = time.time()
         with self.lock:
+            self._clock_jumped()
             if d.get("phone_t_ms") is not None:
                 self.offsets.append(now - float(d["phone_t_ms"]) / 1000.0)
             self.phone, self.phone_recv = dict(d), now
@@ -437,8 +477,12 @@ class Field:
             "no GPS from the phone: allow location on the page" if not fresh or acc is None else f"accuracy {acc:.0f} m")
         if self.mode != "360":
             add("phone_tilt", "Phone sharing tilt", "ok" if att else "bad", "" if att else "allow motion sensors on the page")
-        add("clock", "Phone clock matches Jetson", "wait" if off is None else ("ok" if abs(off) <= 1.0 else "bad"),
-            "" if off is None else f"{off:+.2f} s")
+        if off is not None and abs(off) > 1.0 and not self.ntp_synced():
+            # no internet: the Jetson boots on its last saved time; star times use the phone's clock
+            add("clock", "Phone clock matches Jetson", "ok", f"Jetson clock not set ({off:+.0f} s): using the phone's clock")
+        else:
+            add("clock", "Phone clock matches Jetson", "wait" if off is None else ("ok" if abs(off) <= 1.0 else "bad"),
+                "" if off is None else f"{off:+.2f} s")
         if self.mode == "360":
             up, g, rate = self.camera.gravity()
             if up is not None:
@@ -779,7 +823,10 @@ class Field:
                     return
             if self.cat is None:
                 self.cat = allsky.Catalogue(limit_mag=4.0)
-            off = self.clock_offset_s() or 0.0
+            off = self.star_clock_offset_s()
+            if off is None:
+                rec["why"] = "no trusted time yet (Jetson clock not synchronised, phone clock not received)"
+                return
             utc = datetime.fromtimestamp(texp - off, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
             t0 = time.time()
             r = allsky.locate(img, up, utc, self.cat, f_scales=F_SCALE_SEARCH if self.f_scale is None else (self.f_scale,))
@@ -852,7 +899,10 @@ class Field:
         import base64
         try:
             from cn_pkg.nodes.solver import solve_image_b64_geoloc
-            off = self.clock_offset_s() or 0.0
+            off = self.star_clock_offset_s()
+            if off is None:
+                rec["why"] = "no trusted time yet (Jetson clock not synchronised, phone clock not received)"
+                return
             utc_epoch = texp - off                    # phone time = Jetson time - offset
             utc = datetime.fromtimestamp(utc_epoch, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
             p = self.phone
