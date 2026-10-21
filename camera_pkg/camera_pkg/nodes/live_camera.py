@@ -15,7 +15,7 @@ For each frame published, at the instant it was taken (grab time - capture_laten
                matches, `vision_altitude_topic`) carried by the vehicle's height above
                home (`relative_altitude_topic`, barometer) or the GPS altitude; over
                relief, minus the terrain under the vehicle when the map has a DEM
-               (`terrain_dir`, default $DAY_DATASET_DIR/terrain) and the arbiter's
+               (`terrain_dir`: "area" = $DAY_DATASET_DIR/terrain; default off) and the arbiter's
                position (`position_topic`) is known
     GPS        `gps_topic` (NavSatFix), recorded in the meta for evaluation only
 The frame is undistorted (calibration file from navera_tools/calibrate_camera.py, or
@@ -103,9 +103,11 @@ class LiveCamera(Node):
         # the vehicle's height above home (barometer), from vehicle_link: survives GPS loss
         self.declare_parameter("relative_altitude_topic", "/navera/vehicle/relative_alt")
         declare_float(self, "ground_altitude_m", float("nan"))  # site elevation (else first fix)
-        # the corridor's DEM stored with the map (prepare_area --dem / mission bundle): "" = the
-        # day area's ($DAY_DATASET_DIR/terrain), "none" = not used; and where the vehicle is
-        self.declare_parameter("terrain_dir", "")
+        # the corridor's DEM stored with the map (prepare_area --dem / mission bundle): "area" = the
+        # day area's ($DAY_DATASET_DIR/terrain), a directory, or "none" (default: off until the
+        # dead-reckoning regression seen with it on MARS-LVIG AMvalley03 is understood, see
+        # docs/VALIDATION_STATUS.md); and where the vehicle is
+        self.declare_parameter("terrain_dir", "none")
         self.declare_parameter("position_topic", "/navera/position")
         declare_float(self, "measured_altitude_sigma_m", 1.0)   # 1-sigma of the altitude_topic source
         self.declare_parameter("start_paused", False)
@@ -147,7 +149,7 @@ class LiveCamera(Node):
                                      on_ground=lambda d: state_store.save("ground", d))
         tdir = str(p("terrain_dir")).strip()
         if tdir != "none":
-            terrain = Terrain.load(tdir or os.environ.get("DAY_DATASET_DIR", ""))
+            terrain = Terrain.load(os.environ.get("DAY_DATASET_DIR", "") if tdir in ("", "area") else tdir)
             self.alt.set_terrain(terrain)
             if terrain is not None:
                 self.get_logger().info(f"height above ground over relief: DEM {terrain.describe()}")
