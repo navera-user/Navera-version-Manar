@@ -55,8 +55,11 @@ def _tile_xy(lat, lon, z):
             (1.0 - math.log(math.tan(r) + 1.0 / math.cos(r)) / math.pi) / 2.0 * n)
 
 
-# Online imagery for areas the onboard map lacks (development / demonstration).
-# Storing it for offline use in a product needs the provider's licence.
+# Online imagery for areas the onboard map lacks — DEVELOPMENT DEFAULT ONLY: Esri World
+# Imagery's terms forbid storing it offline or shipping it on a sold device (Esri Master
+# Agreement E204CW §3.2; docs/research/map_licensing_2026-10-21.md). Caches it fills are
+# labelled "esri_world_imagery" (dev only). A product map comes from a licence-labelled
+# source: day_pkg.tile_sources (prepare_area.py --source sentinel2_l2a, or bought GeoTIFF).
 TILE_URL = os.environ.get(
     "NAVERA_TILE_URL",
     "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}")

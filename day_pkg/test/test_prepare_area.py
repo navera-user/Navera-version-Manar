@@ -144,3 +144,21 @@ def test_point_along():
     assert p == pytest.approx(TUNISIA) and nxt == len(r) - 1
     p, nxt = point_along(r, 123_456.0)
     assert _haversine_m(PARIS, p) == pytest.approx(123_456.0, rel=1e-4) and 0 < nxt < len(r)
+
+
+def test_downloaded_cache_is_licence_labelled(tmp_path, mbtiles):
+    """The cache says where its tiles come from; another source is not mixed into it."""
+    from day_pkg import tile_sources
+    from day_pkg.prepare_area import download_missing, open_cache
+    path, needed = mbtiles
+    cache = str(tmp_path / "cache.mbtiles")
+    con = open_cache(cache)
+    tile_sources.label_mbtiles(con, tile_sources.SOURCES["esri_world_imagery"])
+    con.close()
+    info = tile_sources.read_map_info(cache)
+    assert info["source"] == "esri_world_imagery" and tile_sources.licence_warnings(info)
+    plan = plan_tiles(path, ROUTE, 1000.0, 17, cache)
+    with pytest.raises(ValueError):                 # a Sentinel-2 download into an Esri cache
+        download_missing(plan, "sentinel2_l2a", cache, path)
+    with pytest.raises(ValueError):                 # or another XYZ service
+        download_missing(plan, "http://127.0.0.1:9/{z}/{x}/{y}", cache, path)

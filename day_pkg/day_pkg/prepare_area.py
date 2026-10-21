@@ -18,6 +18,15 @@ with DAY_DATASET_DIR:
     prepare_area.py ... --fetch-url 'https://…/{z}/{y}/{x}' --cache world.mbtiles
                                          tiles the map lacks are downloaded into the
                                          cache MBTiles (mission areas anywhere)
+    prepare_area.py ... --source sentinel2_l2a --cache s2.mbtiles
+                                         the same from a licence-labelled source
+                                         (day_pkg.tile_sources.SOURCES); a base map
+                                         labelled with another source is not used
+
+Every downloaded cache is labelled with its source and licence (MBTiles metadata,
+day_pkg.tile_sources); area.json "map_source" copies the label and its
+"licence_warnings" say whether the map may ship on a sold device (Esri World
+Imagery: development only).
 
 Progress is printed as one JSON object per line ({"stage", "done", "total"}),
 so a ground-station page can show it. The dataset is built in a temporary
@@ -35,6 +44,8 @@ import sys
 import time
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
+
+from day_pkg import tile_sources
 
 M_PER_DEG = 111_320.0
 
@@ -353,10 +364,17 @@ def _progress(stage, done, total, **extra):
 def download_missing(plan, fetch_url, cache, mbtiles, workers=8):
     """Download the plan's missing tiles into the cache, and copy the base map's
     corridor tiles there too, so the cache alone covers the whole corridor (the
-    night localizer reads one map). Returns the number of tiles still missing."""
+    night localizer reads one map). Returns the number of tiles still missing.
+
+    fetch_url: an XYZ URL template, or the name of a tile_sources source. The cache
+    is labelled with the source's licence; a cache labelled with another source
+    raises ValueError (one map, one licence)."""
     zoom, n = plan["zoom"], 2 ** plan["zoom"]
+    registered = fetch_url in tile_sources.SOURCES
+    src = tile_sources.get_source(fetch_url) if registered else tile_sources.source_for_url(fetch_url)
     con = open_cache(cache)
     try:
+        tile_sources.label_mbtiles(con, src, zoom=zoom)
         if plan["in_base"] and mbtiles and os.path.exists(mbtiles):
             base = sqlite3.connect(f"file:{mbtiles}?mode=ro", uri=True)
             for x, y in plan["present"]:
@@ -367,6 +385,11 @@ def download_missing(plan, fetch_url, cache, mbtiles, workers=8):
                                 (zoom, x, n - 1 - y, r[0]))
             base.close()
             con.commit()
+        if registered:
+            con.close()
+            r = tile_sources.fetch_tiles(plan["missing"], zoom, fetch_url, cache, workers=workers,
+                                         progress=lambda s, d, t: _progress(s, d, t))
+            return r["failed"]
         todo = list(plan["missing"])
         failed, done = 0, 0
         with ThreadPoolExecutor(max_workers=workers) as ex:
@@ -457,6 +480,8 @@ def prepare(mbtiles, out_dir, route, buffer_m, zoom=17, fetch_url=None, cache=No
             "tiles": len(plan["needed"]), "prepared": len(valid),
             "missing": plan["missing"], "created": time.strftime("%Y-%m-%dT%H:%M:%S"),
             "build_s": round(time.time() - t0, 1), "device": device}
+    info["map_source"] = tile_sources.read_map_info(source)
+    info["licence_warnings"] = tile_sources.licence_warnings(info["map_source"])
     with open(os.path.join(tmp, "area.json"), "w") as f:
         json.dump(info, f)
     shutil.rmtree(out_dir, ignore_errors=True)
@@ -476,8 +501,18 @@ def main():
     ap.add_argument("--check", action="store_true", help="coverage report only")
     ap.add_argument("--fetch-url", help="XYZ tile URL template ({z} {x} {y}) for missing tiles")
     ap.add_argument("--cache", help="MBTiles file receiving downloaded tiles")
+    ap.add_argument("--source", choices=sorted(n for n, s in tile_sources.SOURCES.items() if s.kind != "geotiff"),
+                    help="licence-labelled source for missing tiles (instead of --fetch-url)")
     a = ap.parse_args()
     route = [tuple(float(v) for v in p.split(",")) for p in a.route]
+    if a.source:
+        if a.fetch_url:
+            ap.error("--source or --fetch-url, not both")
+        if not a.cache:
+            ap.error("--source needs --cache")
+        if tile_sources.read_map_info(a.mbtiles).get("source") != a.source:
+            a.mbtiles = ""                        # the base map is another source: not mixed in
+        a.fetch_url = a.source
     if a.check:
         p = plan_tiles(a.mbtiles, route, a.buffer_m, a.zoom, a.cache)
         print(json.dumps({"tiles": len(p["needed"]), "present": len(p["present"]),
