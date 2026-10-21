@@ -224,6 +224,8 @@ class DaySubscriber(Node):
         # tried first: a trusted GPS is metres off, and a small search window keeps a low (small)
         # frame matchable; the wide radius only when this fails (0 = wide only)
         declare_float(self, "gps_check_near_radius_m", 150.0)
+        # faster checks while auto_latency has no stable delay yet (0 = gps_check_period_s always)
+        declare_float(self, "gps_check_period_delay_s", 1.0)
         # Stated accuracy (1 sigma, m) of a local match: day_pkg.fix_sigma.day_fix_sigma_m (the
         # matcher's inlier-class sigma, a floor, the frame-time and attitude terms): 99.2 % within
         # 3 sigma on NAVERA's camera on the screen bench (2026-10-19, median 10.6 m) but only 48 % on
@@ -368,6 +370,7 @@ class DaySubscriber(Node):
         self.calib_period_s = float(self.get_parameter("gps_check_period_s").value)
         self.calib_radius_m = float(self.get_parameter("gps_check_radius_m").value)
         self.calib_near_radius_m = float(self.get_parameter("gps_check_near_radius_m").value)
+        self.calib_period_delay_s = float(self.get_parameter("gps_check_period_delay_s").value)
         # ── camera delay (exposure -> arrival), estimated online against the trusted GPS ──
         # navera_common.latency_cal: GPS-check matches vs the GPS track; applied (auto_latency)
         # only when stable and significantly different from camera_latency_s
@@ -828,7 +831,7 @@ class DaySubscriber(Node):
         (the estimator never prefers it to a trusted GPS, but cross-checks GPS with it:
         a slowly spoofed GPS drifts away and is refused) and gives the height above
         ground. The tracking state (anchor) is not touched: GPS stays the prior."""
-        if self.local is None or self.calib_period_s <= 0 or time.time() - self._last_calib < self.calib_period_s:
+        if self.local is None or self.calib_period_s <= 0 or time.time() - self._last_calib < self._gps_check_period():
             return
         prior = self._gps_prior.fresh()
         mpp, _ = self._frame_m_per_px(img, meta)
@@ -862,6 +865,17 @@ class DaySubscriber(Node):
             self.get_logger().info(f"[day] height above ground calibrated while GPS is good: "
                                    f"{st.get('altitude_measured_m')} m (frame said {meta.get('altitude_m')} m, "
                                    f"{res.get('inliers')} inliers)", throttle_duration_sec=30.0)
+
+    def _gps_check_period(self) -> float:
+        """Seconds between GPS-check matches: gps_check_period_s, or the faster
+        gps_check_period_delay_s while auto_latency has no stable delay yet — its 20 samples took
+        more than the 75 s of GPS flight at altitude at one check per 2 s (Isaac Sim closed loop
+        2026-10-21: 7-9 samples, never applied)."""
+        fast = float(getattr(self, "calib_period_delay_s", 0.0))
+        lc = getattr(self, "latency_cal", None)
+        if fast > 0.0 and getattr(self, "auto_latency", False) and lc is not None and not lc.stable:
+            return min(self.calib_period_s, fast)
+        return self.calib_period_s
 
     def _gps_check_locate(self, img, prior, mpp, meta) -> dict:
         """The GPS-check match: first within gps_check_near_radius_m of the GPS (a trusted GPS is

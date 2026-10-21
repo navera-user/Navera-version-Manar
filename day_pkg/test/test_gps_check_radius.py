@@ -32,3 +32,15 @@ def test_near_radius_zero_is_the_former_behaviour():
     n, radii = _node(accept_up_to_m=1000.0, near=0.0)
     n._gps_check_locate(None, (35.8, 10.6), 0.3, {})
     assert radii == [600.0]
+
+
+def test_checks_are_faster_until_the_delay_is_stable():
+    from navera_common.latency_cal import LatencyCalibrator
+    n = SimpleNamespace(calib_period_s=2.0, calib_period_delay_s=1.0, auto_latency=True,
+                        latency_cal=LatencyCalibrator())
+    period = MethodType(DaySubscriber._gps_check_period, n)
+    assert period() == 1.0
+    n.latency_cal.stable = True
+    assert period() == 2.0
+    n.latency_cal.stable, n.auto_latency = False, False
+    assert period() == 2.0
