@@ -9,7 +9,7 @@ and the problems log; none is improved here.
 | Document | What it is | Kept current by |
 |---|---|---|
 | [PRODUCT_READINESS.md](PRODUCT_READINESS.md) | one page: TRL per subsystem, the evidence, what moves it up | hand |
-| [REQUIREMENTS.md](REQUIREMENTS.md) | 63 system requirements (functional, performance, safety, offline, interfaces, timing, deployment) with IDs and status | **generated** from `requirements.yaml` |
+| [REQUIREMENTS.md](REQUIREMENTS.md) | 66 system requirements (functional, performance, safety, offline, interfaces, timing, deployment) with IDs and status | **generated** from `requirements.yaml` |
 | [TRACEABILITY.md](TRACEABILITY.md) | requirement → code → tests → evidence; requirements without a test; broken links | **generated** by `navera_tools/trace_matrix.py` |
 | [requirements.yaml](requirements.yaml) | the source of both pages: text, code references, test patterns, evidence | hand |
 | [SAFETY_ANALYSIS.md](SAFETY_ANALYSIS.md) | hazard log / FMEA: 16 hazards, detection, mitigation in code, residual risk, open items | hand |
