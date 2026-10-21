@@ -39,7 +39,7 @@ public-data evidence, not a field rate.
 | H-03 | Wrong night (thermal) fix accepted | Haz if forwarded | **High** (unvalidated) | 0 wrong accepts is on synthetic grey renders only; real LWIR never run (B4/B14, D22, F24) |
 | H-11 | Compute overload / out of memory / thermal throttling | Maj: OOM kill ends navigation (F5); stale fixes | **Medium** | no swap installed, no OOM protection, no thermal monitoring; integrity kept by freshness windows |
 | H-02 | Wrong day-vision fix accepted | Haz if forwarded: 100–650 m jumps (F16 tilted camera, F20 shake) | **Medium** | 1 / 2599 > 100 m on real drone data (PUB) but 2–7 wrong fixes per run under shake on the bench; F16/F20 open |
-| H-08 | Clock wrong (no battery RTC, F27) | Haz for celestial (≈28 km per minute of error, thousands of km at 16 h); wrong GPS time sent to the autopilot | **Medium** | product `cn_subscriber` falls back to the system clock without a trusted-time gate; celestial is never forwarded, which bounds the vehicle effect |
+| H-08 | Clock wrong (no battery RTC, F27) | Haz for celestial (≈28 km per minute of error, thousands of km at 16 h); wrong GPS time sent to the autopilot | **Medium** | celestial now solves only on a trusted time (NAV-SAF-20, UT); GPS_INPUT / NMEA time still from the system clock; a box can lack the DS3231 |
 | H-10 | Latency mismatch camera ↔ position | Haz/Min: along-track error (1.71 s uncompensated: 39.8 m at 80 m/s, F9) | **Medium** | per-camera delay is a setting / online fit; `GPS_DELAY_MS` recommendation not verified |
 | H-12 | Power loss / brown-out / reboot in flight | Maj: NAVERA silent ≥ boot time; GPS-denied restart needs a prior | **Medium** | boot-to-first-fix time never measured; reboot test of today's restart mechanism pending (DEP-14) |
 | H-09 | IMU bias / wrong heading / wrong mount | Haz/Min: day straightening error (4° at 300 m → 11 m median), night heading misses, celestial ~111 km/° | **Medium** | heading reference not checked on the real BNO085 (IMU-3); covariances are datasheet values |
@@ -133,10 +133,10 @@ H-14 storage full (Low–Medium), H-15 integrator settings (Medium), H-16 simula
 | Failure modes | no DS3231 / dead coin cell → Jetson boots at 1970 or the last saved time (16 h off on 2026-10-21), NTP step mid-mission, RTC in local time |
 | Effect | celestial ≈ 28 km per minute of error; GPS_INPUT week time and NMEA date from `datetime.now()` (`vehicle_output_node.py::VehicleOutputNode._tick`) wrong; logs misdated |
 | Detection | `rtc_pkg/rtc_pkg/nodes/rtc_node.py::RTCNode.publish_rtc` (valid only if UTC, power kept, drift explained); future stamps refused and never revived (`EstimatorNode._eval_source`, B6); clock step back resets histories (`sensor_history.py::History`) |
-| Mitigation | celestial uses the RTC time when valid (`cn_subscriber.py::CNSubscriber._utc_now`), **else the system clock** — no trusted-time gate in the product (the field tools have one, db2f95c) |
-| Evidence | HW: DS3231 reboot −0.148 s (2026-07-14); F27 shows a box can lack it |
+| Mitigation | celestial solves only on a trusted time (`navera_common/trusted_time.py::TrustedClock`, `cn_subscriber.py::CNSubscriber._utc_for`): DS3231 valid and not lost_power, a GNSS time (`gps_node.py::GPSNode._publish_time`) within 300 s, or NTP — with no wall-clock step since and none in the last 60 s; else no position, reason "no trusted time: …" (both solver modes; same rule as the field tools, db2f95c) |
+| Evidence | HW: DS3231 reboot −0.148 s (2026-07-14); F27 shows a box can lack it; UT `test_trusted_time.py`, `cn_pkg/test/test_cn_gates.py` (no source / lost power / clock step → no solve) |
 | Residual | **Medium** (celestial is never forwarded; time to the autopilot unverified) |
-| Open items | O-15 product celestial refuses to solve without a trusted time (RTC valid or GNSS time); O-16 check_box FAIL when no valid RTC; O-17 install procedure requires the coin cell / DS3231 |
+| Open items | O-15 done (UT) — run once on the box with the DS3231 removed and NTP off; O-16 check_box FAIL when no valid RTC; O-17 install procedure requires the coin cell / DS3231 |
 
 ### H-09 IMU bias, wrong heading or mount
 
@@ -223,7 +223,7 @@ simulated data. Residual **Low**.
 | O-25 | read and check the autopilot's EK3 / GPS parameters | H-13 | code |
 | O-13 | inertial dead-reckoning as an independent source (FEAT-2) | H-07 | code |
 | O-7, O-8 | real LWIR data; re-fit night thresholds | H-03 | data |
-| O-15–O-17 | trusted-time gate in product celestial; RTC mandatory | H-08 | code / install |
+| O-15–O-17 | trusted-time gate in product celestial (done, UT); RTC mandatory | H-08 | code / install |
 | O-20, O-21 | swap + OOM / memory limits; thermal monitoring | H-11 | deploy |
 | O-23 | reboot validation on a deployed box (commands in DEPLOYMENT_VALIDATION.md) | H-12 | test |
 | O-27 | install from a clean release clone; install.sh copies .git and .claude/worktrees (B18) | H-12, deployment | deploy |

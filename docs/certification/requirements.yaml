@@ -511,11 +511,10 @@ requirements:
 - id: NAV-SAF-05
   category: SAF
   title: 'Clock and timestamp integrity'
-  text: 'A message stamped more than future_tolerance_s (0.5 s) ahead shall be refused and never come back to life; the clock node shall report valid only for a UTC, powered, non-drifting DS3231; celestial shall use the RTC time when it is valid.'
+  text: 'A message stamped more than future_tolerance_s (0.5 s) ahead shall be refused and never come back to life; the clock node shall report valid only for a UTC, powered, non-drifting DS3231; celestial shall solve only on a trusted time (NAV-SAF-20).'
   code:
     - navera_estimator/navera_estimator/nodes/estimator_node.py::EstimatorNode._eval_source
     - rtc_pkg/rtc_pkg/nodes/rtc_node.py::RTCNode.publish_rtc
-    - cn_pkg/cn_pkg/nodes/cn_subscriber.py::CNSubscriber._utc_now
   match:
     - 'test_estimator_rules\.py::test_a_fix_that_arrived_from_the_future'
     - 'test_rtc_node\.py::'
@@ -525,7 +524,7 @@ requirements:
     - {level: HW, value: 'DS3231 power-cycle reboot 2026-07-14: valid, lost_power false, drift −0.148 s vs NTP', ref: 'CLAUDE.md §8'}
     - {level: BENCH, against: true, value: 'F27 (2026-10-21): no DS3231 on bus 1 of the field Jetson — booted 16 h off until NTP', ref: 'problems doc F27'}
   status: partial
-  note: 'product celestial falls back to the system clock without a trusted-time gate (field tools have one, db2f95c)'
+  note: 'a box can still lack the DS3231 (F27): RTC mandatory in the install (O-16/O-17); GPS_INPUT / NMEA time still from the system clock'
 
 - id: NAV-SAF-06
   category: SAF
@@ -720,6 +719,26 @@ requirements:
     - {level: UT, value: 'live_camera on a ROS camera: frozen pictures and an old-stamp frame published unusable with the reason, camera_health frozen, recovery on the first new picture (problems log D24, hazard H-01b)'}
   status: verified-UT
   note: 'not yet seen on a real stuck driver / RTSP stall; the localizers rely on the frame_meta usable flag (day and night already honour it)'
+
+- id: NAV-SAF-20
+  category: SAF
+  title: 'Celestial solves only on a trusted time'
+  text: 'cn_subscriber (geoloc and allsky360 modes) shall solve a live frame only on a trusted time: the exposure on the system clock vouched for by the DS3231 (rtc_time within 5 s and rtc_status valid, not lost_power), a GNSS time received within gnss_time_max_age_s (300 s) or NTP synchronisation, with no wall-clock step (wall minus monotonic > 1 s) since that evidence and none in the last 60 s; otherwise it shall publish no position with the reason "no trusted time: ...". gps_node shall publish the receiver UTC (RMC status A) on /navera/sensors/gnss_time.'
+  code:
+    - navera_common/navera_common/trusted_time.py::TrustedClock
+    - cn_pkg/cn_pkg/nodes/cn_subscriber.py::CNSubscriber._utc_for
+    - cn_pkg/cn_pkg/nodes/cn_subscriber.py::CNSubscriber._utc_now
+    - gps_pkg/gps_pkg/nodes/gps_node.py::rmc_utc_epoch
+    - gps_pkg/gps_pkg/nodes/gps_node.py::GPSNode._publish_time
+  match:
+    - 'test_trusted_time\.py::'
+    - 'test_cn_gates\.py::test_(no_star_solve|an_rtc_that_lost|a_valid_rtc|gnss_time_vouches|a_stated_time|allsky360_mode)'
+    - 'test_gnss_time\.py::'
+  evidence:
+    - {level: UT, value: 'no RTC / GNSS time / NTP → no solve; RTC lost_power → no solve; RTC 2 h ahead of the system clock → exposure solved on the RTC time; +1 h wall-clock step → no solve (same rule as the field server, db2f95c)'}
+    - {level: BENCH, against: true, value: 'F27 (2026-10-21): the field Jetson had no DS3231 and booted 16 h off — the gate now refuses instead of solving thousands of km off', ref: 'problems doc F27'}
+  status: verified-UT
+  note: 'GNSS time is as trustworthy as the GNSS (a spoofer controls it too); not yet run on the box with the DS3231 removed'
 
 # ───────────────────────────── Offline ─────────────────────────────
 - id: NAV-OFF-01

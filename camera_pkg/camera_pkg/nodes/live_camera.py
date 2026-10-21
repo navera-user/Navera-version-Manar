@@ -358,6 +358,8 @@ class LiveCamera(Node):
             msg = bridge.cv2_to_imgmsg(np.ascontiguousarray(out), "bgr8")
             msg.header.stamp.sec, msg.header.stamp.nanosec = int(t), int((t % 1) * 1e9)
             meta["image_stamp_ns"] = msg.header.stamp.sec * 1_000_000_000 + msg.header.stamp.nanosec
+            if meta.get("utc_time"):
+                meta["utc_source"] = "system_clock"         # not a trusted time by itself (celestial, H-08)
             if frozen:
                 # never a position from a stale picture: the localizers publish "no fix" with this reason
                 meta.update(usable=False, reason=f"camera image frozen: {frozen}")

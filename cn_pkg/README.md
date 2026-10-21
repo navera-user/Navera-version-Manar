@@ -52,8 +52,13 @@ The solve is anchored at the image centre with a 4th-order fit (`--crpix-center
 --tweak-order 4`) and skips the Python line-removal steps (they break on NumPy ≥ 1.24).
 
 ## Inputs that must be real
-- **Time:** `frame_meta.utc_time`, else parameter `utc_time`, else the DS3231 RTC
-  (`/navera/sensors/rtc_time`, when valid), else the system clock.
+- **Time:** a `frame_meta.utc_time` stated by a replay / the simulator, else parameter
+  `utc_time`, else the exposure on a **trusted** clock (`navera_common/trusted_time.py`, hazard
+  H-08): the DS3231 (`rtc_time` + `rtc_status` valid, not lost_power), a GNSS time received within
+  `gnss_time_max_age_s` (300 s, `/navera/sensors/gnss_time` from gps_node) or NTP, with no
+  wall-clock step since and none in the last 60 s. Otherwise **no solve**: the estimate is invalid
+  with the reason `no trusted time: ...`. live_camera's `utc_time` (system clock,
+  `utc_source: system_clock`) is never trusted by itself.
 - **Attitude:** `tilt`, `azimuth` from frame_meta; else from the IMU **at the frame's
   exposure** (`/navera/sensors/imu`, nearest sample to the image stamp) with the camera mounting
   (`camera_mount_elevation_deg` 90 = pointing up, `camera_mount_azimuth_deg`) and the
@@ -79,6 +84,8 @@ the 360 mode's `allsky.py`, `allsky_mount.py`, `allsky_locator.py`, `sky360.py` 
 | in | `/navera/sensors/imu` (`imu_topic`) | `sensor_msgs/Imu` | sensor QoS (BEST_EFFORT) |
 | in | `/navera/estimate/gps` (`gps_topic`) | `navera_msgs/PositionEstimate` (prior when none is set) | depth 10 |
 | in | `/navera/sensors/rtc_time` (`rtc_topic`) | `sensor_msgs/TimeReference` | depth 10 |
+| in | `/navera/sensors/rtc_status` (`rtc_status_topic`) | `std_msgs/String` (JSON) | depth 10 |
+| in | `/navera/sensors/gnss_time` (`gnss_time_topic`) | `sensor_msgs/TimeReference` | depth 10 |
 | out | `/navera/estimate/cn` | `navera_msgs/PositionEstimate` (the estimator's contract) | depth 10 |
 | out | `/cn/position_estimate` (`fix_topic`) | `sensor_msgs/NavSatFix` | depth 10 |
 | out | `/cn/cn_status` (`status_topic`) | `std_msgs/String` (JSON) | depth 10 |

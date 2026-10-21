@@ -34,6 +34,13 @@ Parameters:
     fix_topic      (str,  default "/cn/position_estimate")
     status_topic   (str,  default "/cn/cn_status")
 
+Time (hazard H-08): a star fix is ~28 km off per minute of clock error, so a frame is solved
+only on a trusted time (navera_common.trusted_time.TrustedClock): the utc_time parameter, a
+frame_meta utc_time that is not the camera's system clock, else the exposure's system time
+vouched for by the DS3231 (rtc_time + rtc_status valid, not lost_power), a recent GNSS time
+(gnss_time_topic) or NTP (timedatectl), with no wall-clock step since. Otherwise the frame
+is declared invalid with the reason ("no trusted time: ...") and nothing is solved.
+
 Concurrency: skip-if-busy. If a new pair arrives while the solver is still
 running, the new pair is DROPPED (logged) — never queued, never parallel.
 """
@@ -54,6 +61,7 @@ from navera_common.params import declare_float
 from navera_common.pairing import FramePairer, exposure_stamp, stamp_ns
 from navera_common.geo import haversine_m
 from navera_common.sensor_history import slerp
+from navera_common.trusted_time import TrustedClock
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
@@ -113,6 +121,10 @@ class CNSubscriber(Node):
         # Time source when frame_meta and utc_time do not give one: the DS3231
         # RTC (survives an offline boot), else the system clock.
         self.declare_parameter("rtc_topic", "/navera/sensors/rtc_time")
+        self.declare_parameter("rtc_status_topic", "/navera/sensors/rtc_status")
+        # a GNSS receiver's UTC (gps_node publishes it from RMC) vouches for the system clock this long
+        self.declare_parameter("gnss_time_topic", "/navera/sensors/gnss_time")
+        declare_float(self, "gnss_time_max_age_s", 300.0)
         declare_float(self, "prior_lon", float("nan"))
         # Camera attitude from the IMU (used when frame_meta has no tilt/azimuth):
         # how the star camera is mounted on the vehicle. 90 / 0 = pointing up.
@@ -188,9 +200,18 @@ class CNSubscriber(Node):
         self.create_subscription(Imu, self.get_parameter("imu_topic").value, self._on_imu, SENSOR_QOS)
         self.create_subscription(PositionEstimate, self.get_parameter("gps_topic").value,
                                  self._on_gps, 10)
-        self._rtc_sample = None   # (rtc_epoch, system_epoch_at_read)
+        # the time a star frame is solved with: only one something vouches for (H-08)
+        self.clock = TrustedClock(gnss_max_age_s=float(self.get_parameter("gnss_time_max_age_s").value),
+                                  on_step=lambda s: self.get_logger().error(
+                                      f"[cn] system clock stepped {s:+.1f} s: earlier RTC / GNSS time dropped, "
+                                      "no star solve until the time is trusted again"))
         self.create_subscription(TimeReference, self.get_parameter("rtc_topic").value,
                                  self._on_rtc, 10)
+        self.create_subscription(String, self.get_parameter("rtc_status_topic").value,
+                                 self._on_rtc_status, 10)
+        self.create_subscription(TimeReference, self.get_parameter("gnss_time_topic").value,
+                                 self._on_gnss_time, 10)
+        self.create_timer(1.0, self.clock.check_step)
 
         # ── State ───────────────────────────────────────────────
         self.bridge = CvBridge()
@@ -280,9 +301,23 @@ class CNSubscriber(Node):
             self._dispatch(*pair)
 
     def _on_rtc(self, msg: TimeReference):
-        """rtc_node publishes rtc_time only when the DS3231 time is valid (UTC)."""
-        sys_epoch = msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
-        self._rtc_sample = (msg.time_ref.sec + msg.time_ref.nanosec * 1e-9, sys_epoch)
+        """rtc_node publishes rtc_time when the DS3231 time is valid (UTC); rtc_status confirms it."""
+        self.clock.add_rtc(msg.time_ref.sec + msg.time_ref.nanosec * 1e-9,
+                           msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9)
+
+    def _on_rtc_status(self, msg: String):
+        """rtc_node health: the RTC time counts only while valid and not lost_power."""
+        try:
+            d = json.loads(msg.data)
+        except ValueError:
+            return
+        if isinstance(d, dict):
+            self.clock.add_rtc_status(d.get("valid") is True, d.get("lost_power") is not False)
+
+    def _on_gnss_time(self, msg: TimeReference):
+        """A GNSS receiver's UTC with the system time it arrived at."""
+        self.clock.add_gnss(msg.time_ref.sec + msg.time_ref.nanosec * 1e-9,
+                            msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9)
 
     def _on_imu(self, msg: Imu):
         q = msg.orientation
@@ -357,16 +392,14 @@ class CNSubscriber(Node):
             return self._gps_prior[0], self._gps_prior[1], "last GPS fix"
         return float("nan"), float("nan"), "none"
 
-    def _utc_now(self):
-        """(UTC "YYYY-MM-DD HH:MM:SS", source) — RTC-based when a recent valid
-        reading exists, else the system clock.
+    def _utc_now(self, system_epoch=None):
+        """(UTC "YYYY-MM-DD HH:MM:SS" of a system-clock instant (default now), source "rtc" /
+        "gnss" / "ntp"), or (None, why no time is trusted) — never the bare system clock.
         """
-        now = time.time()
-        if self._rtc_sample is not None and 0.0 <= now - self._rtc_sample[1] <= 5.0:
-            rtc_epoch, sys_epoch = self._rtc_sample
-            t = datetime.fromtimestamp(rtc_epoch + (now - sys_epoch), tz=timezone.utc)
-            return t.strftime("%Y-%m-%d %H:%M:%S"), "rtc"
-        return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"), "system_clock"
+        t, src = self.clock.utc(system_epoch)
+        if t is None:
+            return None, src
+        return datetime.fromtimestamp(t, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S"), src
 
     def on_meta(self, msg: String):
         try:
@@ -414,17 +447,23 @@ class CNSubscriber(Node):
         ).start()
 
     def _utc_for(self, meta):
-        """(UTC used, source): frame_meta, else the utc_time parameter, else the RTC / system clock."""
-        utc = meta.get("utc_time") or self.utc_time
-        src = "frame" if meta.get("utc_time") else "parameter"
-        if not utc:
-            utc, src = self._utc_now()
-        return utc, src
+        """(UTC used, source): a frame_meta time not taken from the camera's system clock (replay,
+        simulator), else the utc_time parameter, else the exposure on the trusted clock; (None,
+        reason) when no time is trusted.
+        """
+        if meta.get("utc_time") and meta.get("utc_source") != "system_clock":
+            return meta["utc_time"], "frame"
+        if self.utc_time:
+            return self.utc_time, "parameter"
+        exp = meta.get("image_stamp_ns")
+        return self._utc_now(int(exp) / 1e9 if exp is not None else None)
 
     def _solve_allsky(self, img, meta):
         """360 mode: the whole sky above the camera, 'up' from the camera or the vehicle (AllSkyLocator)."""
         utc, meta["utc_source"] = self._utc_for(meta)
         meta["utc_used"] = utc
+        if utc is None:
+            return {"success": False, "source": "allsky360", "error": f"frame not solved: {meta['utc_source']}"}
         exp = meta.get("image_stamp_ns")
         got = self._imu_at(int(exp) if exp is not None else self.get_clock().now().nanoseconds)
         q, rate = got if got is not None else (None, 0.0)
@@ -474,7 +513,9 @@ class CNSubscriber(Node):
                 utc, utc_src = self._utc_for(meta)
                 meta["utc_source"] = utc_src
                 meta["utc_used"] = utc
-                if att_src.startswith("imu: rotating"):
+                if utc is None:
+                    result = {"success": False, "error": f"frame not solved: {utc_src}"}
+                elif att_src.startswith("imu: rotating"):
                     result = {"success": False, "error": f"frame not solved: {att_src}"}
                 elif not (math.isfinite(tilt) and math.isfinite(azimuth)):
                     exp = meta.get("image_stamp_ns")
