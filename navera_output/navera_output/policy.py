@@ -16,9 +16,21 @@ The vehicle's autopilot treats whatever NAVERA sends as a GPS. The rules:
   exposure for vision), never the sending instant, and not at all when it was
   measured more than max_measurement_age_s ago: a 3 s old vision fix sent as
   current is 45 m wrong at 15 m/s, and the autopilot cannot know it.
-* Velocity is sent only with a GPS position, from the receiver's own velocity
-  (RMC), and only while that velocity is current. Vision and celestial fixes
-  carry no velocity.
+* Every position goes out WITH a velocity and its stated accuracy (F28): a GPS
+  position with the receiver's own velocity (RMC, while current; stated
+  gnss_speed_sigma_mps), a vision / celestial one with the velocity of NAVERA's
+  own recent fixes when it is trustworthy (TrackVelocity.autopilot_velocity: enough
+  fixes on a straight line within their accuracy; its sigma includes the fit's lag).
+  Without one the velocity is stated UNKNOWN: zero, with the vehicle's top speed
+  (max_speed_mps) as its accuracy. It is never left out: ArduPilot's MAVLink GPS keeps
+  the last velocity it received when a message carries none, and EKF3 resets its
+  velocity to it when a position comes back after a timeout — a 60 s old GPS velocity
+  flipped a plane's EKF velocity by 180 deg (SITL 2026-10-21). Never a vertical one.
+* After a gap in what the autopilot was given (nothing sent for reacquire_after_s), a
+  vision position is held back until NAVERA's velocity from the NEW fixes is trustworthy
+  to reacquire_vel_sigma_mps (reacquire()): the autopilot resets its position AND its
+  velocity onto the first fix after a timeout, and a plane whose EKF velocity was reset to
+  "zero, unknown" flew on with it for 70 s, 3.5 km past its waypoint (SITL 2026-10-21).
 * A short gap in the vision positions is bridged, never longer than bridge_max_s:
   the last forwarded estimate is carried along its velocity and sent again about
   once a second, its accuracy growing with the time (velocity error, unseen
@@ -63,6 +75,9 @@ class Output:
     gnss: bool = False                  # the position comes from a satellite receiver
     vel_n_mps: float = math.nan         # ground velocity north / east, NaN if unknown
     vel_e_mps: float = math.nan
+    # with a velocity: its 1-sigma accuracy (m/s, each axis). Without one (NaN vel_*): a finite
+    # value states the velocity UNKNOWN up to this speed (sent as 0 with this accuracy)
+    vel_sigma_mps: float = math.nan
     soft: bool = False                  # kind NONE only because no NEW position came: may be bridged
     bridged: bool = False               # a held position carried to now (see bridge())
 
@@ -101,6 +116,14 @@ class Config:
     # unseen acceleration of the vehicle in a bridged gap (as navera_common.track, 0.5)
     bridge_accel_mps2: float = 0.5
     bridge_heading_sigma_deg: float = 5.0
+    # stated accuracy of a GNSS receiver's velocity (RMC carries none; ArduPilot floors it at
+    # EK3_VELNE_M_NSE, 0.3 m/s by default)
+    gnss_speed_sigma_mps: float = 0.5
+    # after nothing was sent for this long, a vision position waits for a trustworthy velocity
+    # (0 = never wait) ...
+    reacquire_after_s: float = 5.0
+    # ... this good (1-sigma m/s), from the new fixes
+    reacquire_vel_sigma_mps: float = 8.0
 
     def validate(self) -> None:
         if self.forward_degraded and not (math.isfinite(self.degraded_sigma_m)
@@ -111,6 +134,10 @@ class Config:
                 and self.bridge_accel_mps2 >= 0 and self.bridge_heading_sigma_deg >= 0):
             raise ValueError("bridge_max_s >= 0, bridge_after_s > 0, bridge_period_s > 0 and the "
                              "bridge accel / heading sigma >= 0 are required")
+        if not (self.max_speed_mps > 0 and self.gnss_speed_sigma_mps > 0 and self.reacquire_after_s >= 0
+                and self.reacquire_vel_sigma_mps > 0):
+            raise ValueError("max_speed_mps, gnss_speed_sigma_mps and reacquire_vel_sigma_mps > 0, "
+                             "reacquire_after_s >= 0 are required")
         if self.forward_degraded and self.degraded_sigma_m > self.max_forward_sigma_m:
             raise ValueError(f"degraded_sigma_m {self.degraded_sigma_m:g} m > max_forward_sigma_m "
                              f"{self.max_forward_sigma_m:g} m: nothing would ever be forwarded")
@@ -127,7 +154,7 @@ def _details(pos) -> dict:
 def decide(cfg: Config, state: Optional[int], status_age_s: Optional[float],
            pos, pos_age_s: Optional[float], active_source: Optional[int],
            gps_vel_ne: Optional[tuple] = None, measured_age_s: Optional[float] = None,
-           ground_vel: Optional[tuple] = None) -> Output:
+           ground_vel: Optional[tuple] = None, autopilot_vel: Optional[tuple] = None) -> Output:
     """The output for this instant.
 
     state / status_age_s: last NavStatus state and its age (None = never heard).
@@ -141,6 +168,9 @@ def decide(cfg: Config, state: Optional[int], status_age_s: Optional[float],
         taken (0.5-2.5 s ago): it is carried to now along it (its accuracy grows by the
         speed error x age), or, without it, sent stamped when measured with its accuracy
         grown by max_speed_mps x age — never presented as current and as accurate.
+    autopilot_vel: (east m/s, north m/s, 1-sigma m/s) of the vehicle now, trustworthy enough to
+        hand the autopilot (TrackVelocity.autopilot_velocity), or None. Sent with a non-GPS
+        position; without it the velocity is stated unknown (0 +- max_speed_mps).
     """
     if state is None or status_age_s is None or status_age_s > cfg.nav_status_timeout_s:
         return Output(KIND_NONE, "arbiter silent")
@@ -181,9 +211,14 @@ def decide(cfg: Config, state: Optional[int], status_age_s: Optional[float],
     common = dict(lat=lat, lon=lon, alt_ellipsoid_m=alt, age_s=age, gnss=pos.source == SOURCE_GPS,
                   geoid_sep_m=float(sep) if isinstance(sep, (int, float)) else math.nan)
 
-    if (gps_vel_ne is not None and pos.source == SOURCE_GPS
-            and all(math.isfinite(v) for v in gps_vel_ne)):
-        common.update(vel_n_mps=float(gps_vel_ne[0]), vel_e_mps=float(gps_vel_ne[1]))
+    common.update(vel_sigma_mps=cfg.max_speed_mps)                    # unknown, unless measured:
+    if pos.source == SOURCE_GPS:
+        if gps_vel_ne is not None and all(math.isfinite(v) for v in gps_vel_ne):
+            common.update(vel_n_mps=float(gps_vel_ne[0]), vel_e_mps=float(gps_vel_ne[1]),
+                          vel_sigma_mps=cfg.gnss_speed_sigma_mps)
+    elif autopilot_vel is not None and all(math.isfinite(v) for v in autopilot_vel):
+        common.update(vel_n_mps=float(autopilot_vel[1]), vel_e_mps=float(autopilot_vel[0]),
+                      vel_sigma_mps=max(float(autopilot_vel[2]), 0.0))
 
     if state == STATE_FIX:
         return Output(KIND_FIX, "fix", sigma_h_m=horizontal_sigma(cov) + lag_sigma,
@@ -212,6 +247,8 @@ class Held:
     sigma_h_m: float
     t: float                                  # monotonic instant the position describes (the send)
     ground_vel: Optional[tuple] = None        # (east m/s, north m/s, 1-sigma speed error) at that time
+    # the velocity the autopilot was given with it (north, east, 1-sigma m/s), or None (unknown)
+    sent_vel: Optional[tuple] = None
 
 
 def hold(out: Output, t: float, ground_vel: Optional[tuple]) -> Optional[Held]:
@@ -221,7 +258,9 @@ def hold(out: Output, t: float, ground_vel: Optional[tuple]) -> Optional[Held]:
         return None
     gv = tuple(float(v) for v in ground_vel) if ground_vel is not None and all(
         math.isfinite(v) for v in ground_vel) else None
-    return Held(out.lat, out.lon, out.sigma_h_m, t, gv)
+    sv = (out.vel_n_mps, out.vel_e_mps, out.vel_sigma_mps) if out.has_velocity and math.isfinite(
+        out.vel_sigma_mps) else None
+    return Held(out.lat, out.lon, out.sigma_h_m, t, gv, sv)
 
 
 def bridge(cfg: Config, held: Optional[Held], now: float) -> Output:
@@ -233,6 +272,9 @@ def bridge(cfg: Config, held: Optional[Held], now: float) -> Output:
     accuracy grows by the velocity error, the heading error x speed and half the unseen
     acceleration x t^2. Without one the position stays and the accuracy grows by
     max_speed_mps x t: the vehicle can have gone that far, in any direction.
+
+    The velocity sent with it is the one sent with the held position, its accuracy grown by the
+    unseen acceleration x t; unknown (0 +- max_speed_mps) when none was.
     """
     if held is None or not cfg.forward_degraded or cfg.bridge_max_s <= 0:
         return Output(KIND_NONE, "no position to bridge")
@@ -257,8 +299,34 @@ def bridge(cfg: Config, held: Optional[Held], now: float) -> Output:
     if sigma > cfg.max_forward_sigma_m:
         return Output(KIND_NONE, f"bridged position too coarse (±{sigma / 1000:.1f} km > "
                                  f"{cfg.max_forward_sigma_m / 1000:.1f} km)")
+    vel = dict(vel_sigma_mps=cfg.max_speed_mps)
+    if held.sent_vel is not None:
+        vn, ve, sig = held.sent_vel
+        vel = dict(vel_n_mps=vn, vel_e_mps=ve,
+                   vel_sigma_mps=min(cfg.max_speed_mps, sig + cfg.bridge_accel_mps2 * dt))
     return Output(KIND_ESTIMATED, f"bridged {dt:.1f} s", lat=lat, lon=lon, sigma_h_m=sigma,
-                  satellites=0, age_s=0.0, bridged=True)
+                  satellites=0, age_s=0.0, bridged=True, **vel)
+
+
+def reacquire(cfg: Config, out: Output, quiet_s: Optional[float]) -> Output:
+    """`out`, or "no fix" while a vision position must wait for its velocity after a gap.
+
+    quiet_s: seconds since the autopilot was last given a position (any kind; None = never).
+    After reacquire_after_s without one, ArduPilot's EKF3 has timed its position aiding out
+    (7-10 s) and resets its position AND velocity onto the next fix, the velocity to the
+    message's own. NAVERA's velocity across the gap is unknown, and a plane given "zero,
+    unknown" flew on with it (SITL 2026-10-21, F28): the new fixes are held back until their
+    own velocity is known to reacquire_vel_sigma_mps (a few seconds of good fixes). A GPS fix
+    and a bridged position are never held back.
+    """
+    if (cfg.reacquire_after_s <= 0 or out.kind != KIND_ESTIMATED or out.gnss or out.bridged
+            or (quiet_s is not None and quiet_s < cfg.reacquire_after_s)):
+        return out
+    if out.has_velocity and out.vel_sigma_mps <= cfg.reacquire_vel_sigma_mps:
+        return out
+    have = f"±{out.vel_sigma_mps:.1f} m/s" if out.has_velocity else "none yet"
+    return Output(KIND_NONE, f"reacquiring after a gap: waiting for a velocity of the new fixes "
+                             f"(±{cfg.reacquire_vel_sigma_mps:g} m/s needed, {have})")
 
 
 def for_nmea(out: Output, allow_degraded: bool = False) -> Output:

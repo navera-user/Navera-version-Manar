@@ -39,6 +39,10 @@ Parameters:
     bridge_period_s      (1.0)   and repeats at this period
     bridge_accel_mps2    (0.5)   unseen acceleration of the vehicle in the accuracy growth
     bridge_heading_sigma_deg (5.0) heading error in the accuracy growth
+    gnss_speed_sigma_mps (0.5)   accuracy stated for the GPS receiver's velocity
+    reacquire_after_s    (5.0)   after nothing was sent for this long, a vision position waits
+                                 until the velocity of the new fixes is known (0 = never wait) ...
+    reacquire_vel_sigma_mps (8.0) ... to this 1-sigma (policy.reacquire, F28)
     drift_alarm_sigma_m  (100)   a forwarded (estimated) position this coarse raises a drift
                                  alarm in the log every 5 s: the vehicle is flying on a
                                  position that may be this far off (dead-reckoned, bridged)
@@ -82,7 +86,7 @@ from rclpy.node import Node
 
 from navera_output import mavlink_out, mavlink_url, nmea
 from navera_output.policy import (KIND_ESTIMATED, KIND_FIX, KIND_NONE, Config, bridge, decide,
-                                  for_nmea, hold)
+                                  for_nmea, hold, reacquire)
 
 
 class VehicleOutputNode(Node):
@@ -110,6 +114,9 @@ class VehicleOutputNode(Node):
         declare_float(self, "bridge_period_s", 1.0)
         declare_float(self, "bridge_accel_mps2", 0.5)
         declare_float(self, "bridge_heading_sigma_deg", 5.0)
+        declare_float(self, "gnss_speed_sigma_mps", 0.5)
+        declare_float(self, "reacquire_after_s", 5.0)
+        declare_float(self, "reacquire_vel_sigma_mps", 8.0)
         declare_float(self, "drift_alarm_sigma_m", 100.0)
         self.declare_parameter("fix_type_without_alt", 3)
         self.declare_parameter("ros_fix_topic", "/navera/fix")
@@ -136,7 +143,10 @@ class VehicleOutputNode(Node):
             bridge_after_s=float(self.get_parameter("bridge_after_s").value),
             bridge_period_s=float(self.get_parameter("bridge_period_s").value),
             bridge_accel_mps2=float(self.get_parameter("bridge_accel_mps2").value),
-            bridge_heading_sigma_deg=float(self.get_parameter("bridge_heading_sigma_deg").value))
+            bridge_heading_sigma_deg=float(self.get_parameter("bridge_heading_sigma_deg").value),
+            gnss_speed_sigma_mps=float(self.get_parameter("gnss_speed_sigma_mps").value),
+            reacquire_after_s=float(self.get_parameter("reacquire_after_s").value),
+            reacquire_vel_sigma_mps=float(self.get_parameter("reacquire_vel_sigma_mps").value))
         self.cfg.validate()
         rate = float(self.get_parameter("rate_hz").value)
         if rate <= 0:
@@ -172,6 +182,7 @@ class VehicleOutputNode(Node):
         self._sent_pos = None             # the last position message sent (sent once)
         self._held = None                 # the last forwarded estimate, for bridging a gap after it
         self._last_tx = None              # monotonic instant of the last position sent
+        self._last_pos_tx = None          # same, kept across GPS fixes (policy.reacquire)
         self._bridging = False
         self._drift_alarm = float(self.get_parameter("drift_alarm_sigma_m").value)
         self._vel = None                  # (north, east) m/s from the GPS receiver
@@ -240,10 +251,11 @@ class VehicleOutputNode(Node):
                      self._pos,
                      now - self._pos_rx if self._pos else None,
                      st.active_source if st else None, vel,
-                     self._measured_age(self._pos), self._ground_velocity())
+                     self._measured_age(self._pos), self._ground_velocity(), self._autopilot_velocity())
         out = self._bridged(out, now)
         if out is None:
             return                        # waiting: a bridge may start, nothing to send yet
+        out = reacquire(self.cfg, out, None if self._last_pos_tx is None else now - self._last_pos_tx)
         if out.kind != self._last_kind:
             # Separate call sites: rclpy refuses one call site changing severity.
             if out.kind == KIND_NONE:
@@ -258,7 +270,7 @@ class VehicleOutputNode(Node):
             self._held = hold(out, now, self._ground_velocity())
             self._bridging = False
         if out.kind != KIND_NONE:
-            self._last_tx = now
+            self._last_tx = self._last_pos_tx = now
         self._check_drift(out)
         # stamped with the measurement instant: GPS_INPUT time, NMEA time, NavSatFix stamp
         t_utc = datetime.now(timezone.utc) - timedelta(seconds=out.age_s)
@@ -329,6 +341,13 @@ class VehicleOutputNode(Node):
         if last is None or time.time() - last > 5.0:
             return None
         return self._track.velocity(time.time())
+
+    def _autopilot_velocity(self):
+        """(east, north, sigma) m/s trustworthy enough for the autopilot, or None."""
+        last = self._track.last_time()
+        if last is None or time.time() - last > 5.0:
+            return None
+        return self._track.autopilot_velocity(time.time())
 
     def _measured_age(self, pos):
         """Seconds since the position was measured (sensor_stamp, else header stamp)."""

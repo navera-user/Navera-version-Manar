@@ -107,7 +107,10 @@ def test_gps_input_fix_roundtrip():
     assert m.get_type() == "GPS_INPUT" and m.fix_type == mavlink_out.FIX_3D
     assert m.lat == 358288000 and m.lon == 106360000 and m.alt == pytest.approx(10.0)
     assert m.horiz_accuracy == pytest.approx(2.0) and m.satellites_visible == 9
-    assert m.ignore_flags & mavlink_out.IGNORE_VEL_HORIZ and not m.ignore_flags & mavlink_out.IGNORE_ALT
+    assert not m.ignore_flags & mavlink_out.IGNORE_ALT
+    # no receiver velocity: stated unknown (0 +- top speed), never left to the autopilot's last one
+    assert not m.ignore_flags & mavlink_out.IGNORE_VEL_HORIZ and (m.vn, m.ve) == (0.0, 0.0)
+    assert m.speed_accuracy == pytest.approx(30.0)
 
 
 def test_gps_input_no_fix_and_unknown_altitude():
@@ -149,19 +152,75 @@ def test_gps_velocity_is_sent_with_a_gps_position():
     assert not m.ignore_flags & mavlink_out.IGNORE_VEL_HORIZ
     assert m.ignore_flags & mavlink_out.IGNORE_VEL_VERT
     assert (m.vn, m.ve) == (pytest.approx(3.0), pytest.approx(-4.0))
+    # stated: a receiver's velocity accuracy is not in RMC; the configured one, never 0 / ignored
+    assert not m.ignore_flags & mavlink_out.IGNORE_SPEED_ACCURACY and m.speed_accuracy == pytest.approx(0.5)
     r = pynmea2.parse(nmea.rmc(o, T, 5.0, 306.87).strip())
     assert float(r.spd_over_grnd) == pytest.approx(5.0 / 0.514444, abs=0.01)
 
 
-def test_no_velocity_without_gps_velocity_or_for_other_sources():
+def test_an_unknown_velocity_is_stated_unknown_never_left_out():
+    """F28: ArduPilot keeps the last velocity it got when a GPS_INPUT flags it ignored, and EKF3
+    resets its velocity to it after a timeout. An unknown velocity goes out as 0 +- top speed.
+    """
     o = decide(Config(), STATE_FIX, 0.1, pos(), 0.1, GPS, None)
-    assert not o.has_velocity
-    assert _roundtrip(mavlink_out.gps_input_fields(o, T)).ignore_flags & mavlink_out.IGNORE_VEL_HORIZ
+    assert not o.has_velocity and o.vel_sigma_mps == 30.0
     day = pos(source=2)
-    o = decide(Config(), STATE_FIX, 0.1, day, 0.1, 2, (3.0, -4.0))
-    assert o.kind == KIND_FIX and not o.has_velocity
-    o = decide(Config(), STATE_FIX, 0.1, pos(), 0.1, GPS, (math.nan, 1.0))
-    assert not o.has_velocity
+    o2 = decide(Config(), STATE_FIX, 0.1, day, 0.1, 2, (3.0, -4.0))   # a GPS velocity is not a vision one
+    assert o2.kind == KIND_FIX and not o2.has_velocity
+    o3 = decide(Config(), STATE_FIX, 0.1, pos(), 0.1, GPS, (math.nan, 1.0))
+    assert not o3.has_velocity
+    est = decide(Config(forward_degraded=True, degraded_sigma_m=30.0, max_speed_mps=45.0),
+                 STATE_DEGRADED, 0.1, day, 0.1, 2)
+    for out in (o, o2, o3, est):
+        m = _roundtrip(mavlink_out.gps_input_fields(out, T))
+        assert m.fix_type == mavlink_out.FIX_3D and (m.vn, m.ve, m.vd) == (0.0, 0.0, 0.0)
+        assert not m.ignore_flags & (mavlink_out.IGNORE_VEL_HORIZ | mavlink_out.IGNORE_SPEED_ACCURACY)
+        assert m.ignore_flags & mavlink_out.IGNORE_VEL_VERT
+        assert m.speed_accuracy == pytest.approx(45.0 if out is est else 30.0)
+    # nothing stated at all (an Output built by hand): flagged ignored, as before
+    m = _roundtrip(mavlink_out.gps_input_fields(Output(KIND_ESTIMATED, lat=35.8, lon=10.6, sigma_h_m=30.0), T))
+    assert m.ignore_flags & mavlink_out.IGNORE_VEL_HORIZ and m.ignore_flags & mavlink_out.IGNORE_SPEED_ACCURACY
+    # "no fix": everything flagged ignored (ArduPilot's EKF does not read a fix_type 1 message)
+    m = _roundtrip(mavlink_out.gps_input_fields(Output(KIND_NONE), T))
+    assert m.ignore_flags & mavlink_out.IGNORE_VEL_HORIZ and m.ignore_flags & mavlink_out.IGNORE_VEL_VERT
+
+
+def test_a_vision_position_carries_navera_s_velocity_with_its_accuracy_and_never_a_vertical_one():
+    cfg = Config(forward_degraded=True, degraded_sigma_m=30.0)
+    o = decide(cfg, STATE_DEGRADED, 0.1, pos(source=DAY, alt=500.0), 0.1, DAY,
+               autopilot_vel=(-22.0, 1.5, 2.4))                      # east, north, sigma
+    assert o.kind == KIND_ESTIMATED and o.has_velocity and o.vel_sigma_mps == 2.4
+    m = _roundtrip(mavlink_out.gps_input_fields(o, T))
+    assert (m.vn, m.ve) == (pytest.approx(1.5), pytest.approx(-22.0))
+    assert m.speed_accuracy == pytest.approx(2.4)
+    assert m.ignore_flags & mavlink_out.IGNORE_VEL_VERT and m.vd == 0.0
+    assert m.ignore_flags & mavlink_out.IGNORE_ALT                       # F7 unchanged
+    assert not m.ignore_flags & (mavlink_out.IGNORE_VEL_HORIZ | mavlink_out.IGNORE_SPEED_ACCURACY)
+    # NMEA: only a measured velocity gives RMC a speed (an unknown one has none)
+    assert not decide(cfg, STATE_DEGRADED, 0.1, pos(source=DAY), 0.1, DAY).has_velocity
+
+
+def test_after_a_gap_a_vision_position_waits_for_the_velocity_of_the_new_fixes():
+    """F28: the first fix after an EKF3 timeout resets the autopilot's position AND velocity."""
+    from navera_output.policy import reacquire
+    cfg = Config(forward_degraded=True, degraded_sigma_m=30.0)
+    day = pos(source=DAY, details={})
+    unknown = decide(cfg, STATE_DEGRADED, 0.1, day, 0.1, DAY)
+    rough = decide(cfg, STATE_DEGRADED, 0.1, day, 0.1, DAY, autopilot_vel=(20.0, 0.0, 9.5))
+    good = decide(cfg, STATE_DEGRADED, 0.1, day, 0.1, DAY, autopilot_vel=(20.0, 0.0, 6.0))
+    for out in (unknown, rough):
+        for quiet in (5.0, 60.0, None):                                  # None: never sent anything
+            r = reacquire(cfg, out, quiet)
+            assert r.kind == KIND_NONE and "reacquiring" in r.reason and not r.soft
+    assert reacquire(cfg, good, 60.0) is good
+    assert reacquire(cfg, unknown, 4.9) is unknown                       # no gap: sent as it is
+    assert reacquire(Config(forward_degraded=True, degraded_sigma_m=30.0, reacquire_after_s=0.0),
+                     unknown, 60.0) is unknown                           # disabled
+    gps = decide(Config(), STATE_FIX, 0.1, pos(), 0.1, GPS)
+    assert reacquire(cfg, gps, 60.0) is gps                              # a GPS fix never waits
+    _, held = _held_east()
+    b = bridge(VISION, held, 104.0)
+    assert reacquire(cfg, b, 60.0) is b                                  # nor a bridged position
 
 
 def test_forwarded_accuracy_never_better_than_the_source_states():
@@ -277,6 +336,18 @@ def test_a_bridged_position_moves_along_the_velocity_with_a_growing_accuracy():
     assert prev == pytest.approx(first.sigma_h_m + 10.0 + math.radians(5.0) * 15.0 * 10.0 + 25.0, rel=1e-6)
 
 
+def test_a_bridged_position_carries_the_velocity_sent_before_its_accuracy_growing():
+    p = pos(source=DAY, details={}, var=(2500.0, 2500.0, 0))
+    p.position_covariance_type = 2
+    o = decide(VISION, STATE_DEGRADED, 0.1, p, 0.1, DAY, autopilot_vel=(15.0, 0.0, 2.0))
+    b = bridge(VISION, hold(o, 100.0, (15.0, 0.0, 1.0)), 104.0)
+    assert (b.vel_n_mps, b.vel_e_mps) == (0.0, 15.0)
+    assert b.vel_sigma_mps == pytest.approx(2.0 + 0.5 * 4.0)              # + unseen accel x t
+    _, held = _held_east()                                                # sent without one
+    b = bridge(VISION, held, 104.0)
+    assert not b.has_velocity and b.vel_sigma_mps == VISION.max_speed_mps
+
+
 def test_a_bridge_without_a_velocity_stays_put_and_grows_by_the_top_speed():
     o = decide(VISION, STATE_DEGRADED, 0.1, pos(source=DAY, details={}, var=(2500.0, 2500.0, 0)), 0.1, DAY)
     held = hold(o, 100.0, None)
@@ -305,6 +376,13 @@ def test_nothing_is_bridged_unless_forwarding_a_vision_estimate():
     assert bridge(Config(forward_degraded=True, degraded_sigma_m=50.0, bridge_max_s=0.0), held, 101.0).kind == KIND_NONE
     assert bridge(VISION, None, 101.0).kind == KIND_NONE
     assert bridge(VISION, held, 99.0).kind == KIND_NONE              # a clock that went backwards
+
+
+def test_velocity_settings_are_validated():
+    for bad in (dict(max_speed_mps=0.0), dict(gnss_speed_sigma_mps=0.0), dict(reacquire_after_s=-1.0),
+                dict(reacquire_vel_sigma_mps=0.0)):
+        with pytest.raises(ValueError):
+            Config(forward_degraded=True, degraded_sigma_m=50.0, **bad).validate()
 
 
 def test_bridge_settings_are_validated():
