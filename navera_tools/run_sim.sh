@@ -26,7 +26,7 @@ if ! flock -n 9; then
   echo "the NAVERA simulator is already running: open http://$(hostname -I | awk '{print $1}'):8190" >&2
   exit 1
 fi
-for port in 8181 8190 8443 5760 5762; do
+for port in 8181 "${NAVERA_SIM_PORT:-8190}" "${NAVERA_SIM_TLS_PORT:-8443}" 5760 5762; do
   if ss -ltn 2>/dev/null | grep -q ":$port "; then
     echo "port $port is in use (NAVERA web service, a demo, or another ArduPilot SITL): stop it first." >&2
     exit 1
