@@ -111,7 +111,8 @@ class TrtEngine:
     """One deserialised engine and its execution context, called with / returning torch CUDA tensors.
 
     Inputs are cast to the engine's input types and made contiguous; outputs are new tensors on the
-    current device, written on the current torch stream. One call at a time (a lock)."""
+    current device, written on the current torch stream. One call at a time (a lock).
+    """
 
     def __init__(self, path: str):
         import torch
