@@ -319,6 +319,8 @@ class DaySubscriber(Node):
         self.declare_parameter("reacquire_windows_per_frame", 4)
         declare_float(self, "reacquire_max_radius_m", 1500.0)
         self.declare_parameter("reacquire_min_inliers", 25)
+        # a frame stops trying windows after this long (s): the carry must not go stale between frames
+        declare_float(self, "reacquire_budget_s", 2.5)
 
         self.conf_threshold = float(self.get_parameter("conf_threshold").value)
         image_topic   = self.get_parameter("image_topic").value
@@ -443,6 +445,7 @@ class DaySubscriber(Node):
         self.reacquire_per_frame = int(self.get_parameter("reacquire_windows_per_frame").value)
         self.reacquire_max_radius_m = float(self.get_parameter("reacquire_max_radius_m").value)
         self.reacquire_min_inliers = int(self.get_parameter("reacquire_min_inliers").value)
+        self.reacquire_budget_s = float(self.get_parameter("reacquire_budget_s").value)
         self._scan = WindowScan()
         self.local_scale_tol_max = float(self.get_parameter("local_scale_tol_max").value)
         self.local_heading_tol_deg = float(self.get_parameter("local_heading_tol_deg").value)
@@ -1296,18 +1299,26 @@ class DaySubscriber(Node):
         The result says the window it came from ("_window": (centre, radius)), "windows_tried" and
         "radius_m" = R (the circle searched in all). The heading search, when on, runs in the carried
         position's window only."""
-        kw = dict(scale_tol=self._scale_tol(meta), **self._match_heading_kw(meta), hfov_deg=self._hfov(meta),
+        hk = self._match_heading_kw(meta)
+        kw = dict(scale_tol=self._scale_tol(meta), **hk, hfov_deg=self._hfov(meta),
                   expected_tilt_deg=self._expected_tilt(meta), **self._heading_search_kw())
         w = self._reacquire_window_m(img, mpp)
         if not getattr(self, "reacquire_windows", False) or R <= 1.25 * w:
             self._scan.reset()
             return self.local.locate(img, center, R, mpp, **kw)
+        if hk.get("heading_deg") is not None and "heading_search" in kw and not self.heading_search:
+            # re-acquiring: the frames fail for the position, not for a heading the frame states — the
+            # search after rejects in a row (local_heading_search_after) would try 12 headings in every
+            # window and height: 12-19 s a frame after a 60 s outage (Isaac Sim), the carry 10 s stale
+            kw["heading_search"] = False
         if not windows:
             res = self.local.locate(img, center, w, mpp, **kw)
             return dict(res, _window=(center, w), radius_m=float(R))
         cover = cover_windows(R, w)
-        best, tried = None, 0
+        best, tried, t0 = None, 0, time.monotonic()
         for de, dn in self._scan.pick(cover, self.reacquire_per_frame):
+            if tried and time.monotonic() - t0 > self.reacquire_budget_s:
+                break                                   # the rest of the scan goes on next frame
             c = _move(center, de, dn) if (de or dn) else center
             # a heading search (12 headings) only in the carried position's window: in every window
             # it would multiply the frame's time, and the chances of an accidental match, by 12

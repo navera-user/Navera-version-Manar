@@ -52,6 +52,7 @@ def _node(accept_at=None, inliers=60, per_frame=4):
     n = SimpleNamespace(local=SimpleNamespace(locate=locate), local_min_radius_m=80.0, local_max_radius_m=600.0,
                         reacquire_windows=True, reacquire_window_frac=0.65, reacquire_per_frame=per_frame,
                         reacquire_max_radius_m=1500.0, reacquire_min_inliers=25, _scan=WindowScan(),
+                        reacquire_budget_s=10.0, heading_search=False,
                         _scale_tol=lambda m: 0.15, _match_heading_kw=lambda m: {}, _hfov=lambda m: 77.0,
                         _expected_tilt=lambda m: 0.0, _heading_search_kw=lambda: {})
     for name in ("_locate_search", "_reacquire_window_m", "_window_gate", "_search_cap_m"):
@@ -138,3 +139,28 @@ def test_the_heading_search_runs_in_the_carried_position_window_only():
     n._locate_search(IMG, C, 1200.0, 0.3, {})
     assert seen == [True, False, False, False]
     assert _move(C, 0.0, 0.0) == C
+
+
+def test_no_heading_search_when_the_frame_states_its_heading():
+    seen = []
+    n, _ = _node(accept_at=None)
+    n._heading_search_kw = lambda meta=None: {"heading_search": True}
+    n._match_heading_kw = lambda m: {"heading_deg": 45.0, "heading_tol_deg": 20.0}
+    n.local.locate = lambda img, prior, r, mpp, **kw: seen.append(kw.get("heading_search")) or \
+        {"accepted": False, "inliers": 0, "reason": "none"}
+    n._locate_search(IMG, C, 1200.0, 0.3, {})
+    n._locate_search(IMG, C, 1200.0, 0.3, {}, windows=False)
+    assert seen == [False] * 5
+    seen.clear()
+    n._locate_search(IMG, C, 100.0, 0.3, {})          # tracked (one window): the search as configured
+    assert seen == [True]
+
+
+def test_a_frame_stops_trying_windows_past_its_time_budget():
+    import time
+    n, calls = _node(accept_at=None)
+    n.reacquire_budget_s = 0.05
+    slow = n.local.locate
+    n.local.locate = lambda *a, **k: time.sleep(0.06) or slow(*a, **k)
+    n._locate_search(IMG, C, 1200.0, 0.3, {})
+    assert len(calls) == 1
