@@ -1,0 +1,37 @@
+[Unit]
+Description=NAVERA Insta360 kit (One R in USB Android mode: day camera view + IMU attitude)
+# No network dependency: a vehicle in the field often has none, and all
+# NAVERA nodes talk over loopback DDS.
+After=local-fs.target navera-discover.service
+# what is connected is found first (navera-discover); a failed search does not block
+Wants=navera-discover.service
+# Never give up restarting (the default limit stops after 5 fast failures).
+StartLimitIntervalSec=0
+
+[Service]
+# Site settings shared by all NAVERA units (data paths, ROS_DOMAIN_ID...).
+# The leading "-" keeps the unit working if the file does not exist.
+EnvironmentFile=-/etc/navera/navera.env
+# Settings written by the web page (/mission), loaded after navera.env which they override.
+EnvironmentFile=-/var/lib/navera/settings.env
+# What navera-discover found at boot, for the settings left to "auto" (loaded last).
+EnvironmentFile=-/var/lib/navera/discovered.env
+Type=simple
+User=navera
+Group=navera
+# the camera's USB device: /etc/udev/rules.d/99-insta360.rules (deploy/udev, installed by
+# install.sh) gives read/write on vendor 2e1a to every user: no extra group needed
+WorkingDirectory=/home/navera/isaac_ros_common
+ExecStart=/home/navera/navera_boot_insta360.sh
+# always: `ros2 launch` exits with code 0 even when a node crashed (every node
+# has on_exit=Shutdown), so on-failure would never restart it. The node exits when the
+# camera is lost (unplugged, USB error): the restart opens it again.
+Restart=always
+RestartSec=5
+# Memory (F5 / H-11): a pipeline-class process (decodes 3840x1920 key frames, ~300 MB):
+# needed to navigate with the kit, taken after the web page and before the output chain.
+OOMScoreAdjust=-300
+ManagedOOMPreference=avoid
+
+[Install]
+WantedBy=multi-user.target

@@ -162,9 +162,97 @@ def analyze(folder: str) -> dict:
         "sky": sky_counts, "software": meta.get("software"), "notes": [e for e in events if e.get("kind") == "note"],
         "rows": rows,
     }
+    report["drive_measurements"] = drive_measurements(frames, phone, events)
     report["problems"] = _problems(report, frames, phone, meta)
     report["verdict"] = _verdict(report)
     return report
+
+
+STOP_MPS = 0.5                 # phone GPS speed below this = the car stands (a stop for fixes-per-stop)
+DRIVE_MPS = 3.0                # and above this it drives (vibration while moving)
+MIN_STOP_S = 8.0               # a stop shorter than this is not counted
+
+
+def _speed_at(phone: List[dict], t: float) -> Optional[float]:
+    pts = [p for p in phone if isinstance(p.get("speed"), (int, float)) and abs(p["t"] - t) <= 2.0]
+    return min(pts, key=lambda p: abs(p["t"] - t))["speed"] if pts else None
+
+
+def _med(v, nd=4):
+    v = [x for x in v if isinstance(x, (int, float)) and math.isfinite(x)]
+    return {"n": len(v), "median": round(statistics.median(v), nd), "p90": round(_pct(v, 0.9), nd),
+            "max": round(max(v), nd)} if v else None
+
+
+def drive_measurements(frames: List[dict], phone: List[dict], events: List[dict]) -> dict:
+    """What the real drive measures that simulation only assumed (F19): stops and trusted fixes per stop, the
+    stopped flag against the phone's speed (false stops / lost stops, the camera driver's test vs the long-window
+    test), vibration at rest and while driving, solve times with the Jetson's load, the image standstill measure,
+    the time source and the battery clock's error, camera reconnects. Every figure from the saved records."""
+    fr360 = [f for f in frames if f.get("mode") == "360"]
+    out: dict = {"frames_360": len(fr360)}
+    sp = sorted((p["t"], p["speed"]) for p in phone if isinstance(p.get("speed"), (int, float)))
+    stops, cur = [], None
+    for t, v in sp:
+        if v < STOP_MPS:
+            cur = [t, t] if cur is None else [cur[0], t]
+        else:
+            if cur and cur[1] - cur[0] >= MIN_STOP_S:
+                stops.append(cur)
+            cur = None
+    if cur and cur[1] - cur[0] >= MIN_STOP_S:
+        stops.append(cur)
+    per_stop = []
+    for a, b in stops:
+        inside = [f for f in fr360 if a <= (f.get("t_exp") or f["t"]) <= b]
+        per_stop.append({"start": round(a, 1), "s": round(b - a, 1), "frames": len(inside),
+                         "flagged_stopped": sum(1 for f in inside if f.get("stopped")),
+                         "fixes_trusted": sum(1 for f in inside if f.get("solved") and _trusted(f))})
+    out["stops"] = per_stop
+    out["trusted_fixes_per_stop"] = _med([p["fixes_trusted"] for p in per_stop], 1)
+    conf = {"stopped_flag_while_moving": 0, "stopped_flag_while_standing": 0, "moving_flag_while_standing": 0,
+            "driver_said_stopped_long_window_refused": 0, "frames_with_speed": 0}
+    vib_rest, vib_drive, gyro_rest, gyro_drive, gc_rest, gc_drive = [], [], [], [], [], []
+    for f in fr360:
+        v = _speed_at(phone, f.get("t_exp") or f["t"])
+        st = f.get("stillness") or {}
+        if st.get("driver_stopped") and not f.get("stopped"):
+            conf["driver_said_stopped_long_window_refused"] += 1
+        if v is None:
+            continue
+        conf["frames_with_speed"] += 1
+        if v > 1.0 and f.get("stopped"):
+            conf["stopped_flag_while_moving"] += 1
+        if v < STOP_MPS:
+            conf["stopped_flag_while_standing" if f.get("stopped") else "moving_flag_while_standing"] += 1
+        vib = f.get("imu_vib") or {}
+        if v < STOP_MPS:
+            vib_rest.append(vib.get("acc_hp_rms_g"))
+            gyro_rest.append(vib.get("gyro_rms_dps"))
+            gc_rest.append(f.get("ground_change"))
+        elif v > DRIVE_MPS:
+            vib_drive.append(vib.get("acc_hp_rms_g"))
+            gyro_drive.append(vib.get("gyro_rms_dps"))
+            gc_drive.append(f.get("ground_change"))
+    out["stopped_flag_vs_phone"] = conf
+    out["vibration"] = {"rest_acc_hp_rms_g": _med(vib_rest), "drive_acc_hp_rms_g": _med(vib_drive),
+                        "rest_gyro_rms_dps": _med(gyro_rest), "drive_gyro_rms_dps": _med(gyro_drive)}
+    out["ground_change"] = {"rest": _med(gc_rest, 2), "drive": _med(gc_drive, 2)}
+    solved = [f for f in fr360 if isinstance(f.get("solve_s"), (int, float))]
+    quiet = [f["solve_s"] for f in solved if ((f.get("host") or {}).get("load1") or 99) < 2.0]
+    out["solve_s"] = {"all": _med([f["solve_s"] for f in solved], 2), "quiet_jetson_load_lt_2": _med(quiet, 2),
+                      "load1": _med([(f.get("host") or {}).get("load1") for f in fr360], 2),
+                      "temp_c": _med([(f.get("host") or {}).get("temp_c") for f in fr360], 1)}
+    out["time_source"] = _count(f.get("time_source") for f in fr360 if f.get("time_source"))
+    out["rtc_minus_phone_s"] = _med([f.get("rtc_minus_phone_s") for f in fr360], 3)
+    out["time_sigma_s"] = _med([f.get("time_sigma_s") for f in fr360], 3)
+    health = [f.get("cam_health") or {} for f in fr360]
+    out["camera"] = {"reconnects": max([h.get("reconnects") or 0 for h in health] or [0]),
+                     "imu_restarts": max([h.get("imu_restarts") or 0 for h in health] or [0]),
+                     "usb_resets": max([h.get("usb_resets") or 0 for h in health] or [0]),
+                     "events": _count(e.get("kind") for e in events if e.get("kind") in
+                                      ("camera_lost", "camera_back", "clock_jump", "tilt_calibrated", "tilt_fit_refused"))}
+    return out
 
 
 def _trusted(fr: dict) -> bool:
@@ -292,7 +380,19 @@ def write_report(folder: str) -> dict:
              f"- Stopped by the camera's sensor but moving by the phone's GPS: {r['stopped_but_phone_moving']}",
              f"- Median confirmed stars: {r['stars_median']}",
              f"- No answer, by reason: {r['no_answer_by_reason']}", f"- Solver time (s): {r['solve_s']}",
-             f"- Sky: {r['sky']}", "", "## Problems", ""]
+             f"- Sky: {r['sky']}", ""]
+    dm = r.get("drive_measurements") or {}
+    if dm.get("frames_360"):
+        lines += ["## Drive measurements (F19)", "",
+                  f"- Stops (phone speed < {STOP_MPS} m/s for >= {MIN_STOP_S:g} s): {len(dm['stops'])}; trusted fixes "
+                  f"per stop: {dm['trusted_fixes_per_stop']}",
+                  f"- Stopped flag against the phone's speed: {dm['stopped_flag_vs_phone']}",
+                  f"- Vibration (camera IMU): {dm['vibration']}",
+                  f"- Image standstill measure (ground_change, logged only): {dm['ground_change']}",
+                  f"- Solve time (s): {dm['solve_s']}",
+                  f"- Time source: {dm['time_source']}; DS3231 minus phone (s): {dm['rtc_minus_phone_s']}",
+                  f"- Camera stream: {dm['camera']}", ""]
+    lines += ["## Problems", ""]
     lines += [f"- **{p['title']}** ({p['severity']}): {p['detail']} Fix: {p['fix']}" for p in r["problems"]] or ["- none found"]
     with open(os.path.join(folder, "report.md"), "w") as f:
         f.write("\n".join(lines) + "\n")

@@ -9,7 +9,7 @@
 #   isaac_link     the vehicle's sensors + camera from Isaac Sim, and the record
 #   vehicle_output (VEHICLE_OUT set: closed loop) NAVERA's position -> the autopilot as GPS_INPUT
 #
-# Environment: RUN (run name), DAY_ARGS (extra day_subscriber -p ...), GIMBAL (true: stabilised camera), VEHICLE_OUT (pymavlink URL of the autopilot), DEGRADED_SIGMA, MAX_SPEED (m/s), GROUND_ALT (site elevation m), LINK_ARGS
+# Environment: RUN (run name), DAY_ARGS (extra day_subscriber -p ...), CAM_ARGS (extra live_camera -p ...), GIMBAL (true: stabilised camera), VEHICLE_OUT (pymavlink URL of the autopilot), DEGRADED_SIGMA, MAX_SPEED (m/s), GROUND_ALT (site elevation m), LINK_ARGS
 # (extra "-p name:=value" for isaac_link), MATCHER (auto = DISK+LightGlue on the GPU | local = SIFT).
 export ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-77} ROS_LOCALHOST_ONLY=1
 source /opt/ros/humble/setup.bash             # (not under set -u: ROS setup reads unset variables)
@@ -48,11 +48,11 @@ ros2 run camera_pkg live_camera.py --ros-args -r __ns:=/day -p input:=ros \
   -p input_topic:=/isaac/camera/image_raw -p width:=${CAM_W:-1344} -p height:=${CAM_H:-760} \
   -p calibration_file:=/results/lens.yaml -p fps:=${CAM_FPS:-3.0} -p wait_for_ready:=true \
   -p ready_topic:=/day/localizer_ready -p ground_altitude_m:=${GROUND_ALT:-nan} \
-  -p gimbal:=${GIMBAL:-false} > $L/camera.log 2>&1 &
+  -p gimbal:=${GIMBAL:-false} $CAM_ARGS > $L/camera.log 2>&1 &
 pids+=($!)
 trap 'kill ${pids[@]} $link 2>/dev/null; exit 0' INT TERM
 # ready marker for the launcher: day_subscriber has its map and models
-( until grep -q "awaiting frames\|DayLocalizer ready" $L/day.log 2>/dev/null; do sleep 1; done; touch /results/navera_ready ) &
+( until grep -q "awaiting frames\|DayLocalizer ready\|localizer_ready=True" $L/day.log 2>/dev/null; do sleep 1; done; touch /results/navera_ready ) &
 wait $link
 sleep 2
 kill ${pids[@]} 2>/dev/null

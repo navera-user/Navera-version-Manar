@@ -165,3 +165,20 @@ def test_https_when_a_certificate_is_configured(tmp_path):
             plain.getresponse()
     finally:
         httpd.shutdown()
+
+
+def test_the_code_guard_forgets_old_addresses(monkeypatch):
+    """Wrong codes from many addresses over hours: ended lock-outs and old failures are dropped."""
+    from simulation_web import web_common as wc
+    now = [1000.0]
+    monkeypatch.setattr(wc.time, "monotonic", lambda: now[0])
+    g = wc._CodeGuard()
+    for i in range(500):
+        for _ in range(g.FAILS_ALLOWED):
+            g.failed(f"10.0.{i // 250}.{i % 250}")
+        now[0] += 1.0
+    assert g.blocked_for("10.0.1.249") > 0                          # the newest is still locked out
+    now[0] += g.LOCK_S + g.WINDOW_S + 1
+    g.failed("10.9.9.9")
+    assert set(g._until) == set() and set(g._fails) == {"10.9.9.9"}
+    assert g.blocked_for("10.0.1.249") == 0

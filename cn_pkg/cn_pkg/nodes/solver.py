@@ -76,7 +76,7 @@ def solve_image_b64(image_b64: str) -> dict:
 def solve_image_b64_geoloc(image_b64: str, tilt: float, azimuth: float,
                            utc_time: str, prior_lat: float = float('nan'),
                            prior_lon: float = float('nan'),
-                           fov_deg: float = float('nan')) -> dict:
+                           fov_deg: float = float('nan'), up_cam=None) -> dict:
     """Real celestial geolocation.
 
     Runs drone_sky_prep.py (astrometry RA/Dec + observer tilt/azimuth + UTC
@@ -94,6 +94,10 @@ def solve_image_b64_geoloc(image_b64: str, tilt: float, azimuth: float,
         prior_lon: approximate longitude, same use as prior_lat (NaN = none).
         fov_deg:   horizontal field of view of the star camera (NaN = unknown,
                    slower wide search).
+        up_cam:    'up' (3 values) in the camera's optical frame (x right, y down,
+                   z along the axis) from the IMU's roll/pitch and the camera's full
+                   mounting: the fix then uses the plate solve's whole rotation, no
+                   compass, no prior (B11); tilt/azimuth are only reported.
     """
     img_bytes = base64.b64decode(image_b64)
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -117,12 +121,24 @@ def solve_image_b64_geoloc(image_b64: str, tilt: float, azimuth: float,
             cmd += ['--prior-lat', str(prior_lat)]
         if prior_lon == prior_lon:
             cmd += ['--prior-lon', str(prior_lon)]
+        if up_cam is not None:
+            cmd += ['--up-cam', ','.join(f'{float(v):.9f}' for v in up_cam)]
         _, out, err, timed_out = _run_group(cmd, 300)
         if timed_out:
             return {'success': False, 'error': 'drone_sky_prep timeout (300s)'}
         log_odds = None
         lat = lon = ra = dec = None
+        method, R_icrs_cam = None, None
         for line in out.splitlines():
+            if 'Method' in line and ':' in line:
+                method = line.split(':', 1)[-1].strip().split(' ')[0]
+                continue
+            if 'R_icrs_cam' in line:
+                try:
+                    R_icrs_cam = [float(v) for v in line.split(':', 1)[-1].split(',')]
+                except ValueError:
+                    R_icrs_cam = None
+                continue
             if 'Latitude' in line:
                 m = re.search(r'([-+]?\d+\.?\d*)\s*°?\s*([NS])?', line.split(':', 1)[-1])
                 if m:
@@ -166,4 +182,7 @@ def solve_image_b64_geoloc(image_b64: str, tilt: float, azimuth: float,
             # astrometry.net's own confidence in the star match (log-odds);
             # it says nothing about the attitude or time used afterwards.
             'log_odds': log_odds,
+            # "zenith" (camera rotation + IMU up, no compass) or "boresight" (tilt + compass azimuth)
+            'method': method,
+            'R_icrs_cam': R_icrs_cam,
         }

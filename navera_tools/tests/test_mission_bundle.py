@@ -363,3 +363,81 @@ def test_selftest_points_avoid_featureless_stretches():
     assert len(d) == 6 and max(d) < 13010.0 and d == sorted(d)
     assert mb._textured_distances(1000.0, [[0.0, 1.0]], 6) == []
     assert len(mb._textured_distances(1000.0, [], 4)) == 4
+
+
+def test_old_or_undated_imagery_is_warned():
+    import datetime as dt
+    from navera_tools.mission_bundle import imagery_age_warning
+    today = dt.date(2026, 10, 22)
+    assert imagery_age_warning("2023-05-01", today) is None
+    assert "2017" in imagery_age_warning("2017-03-01", today)
+    assert "2017" in imagery_age_warning("2024-01-01; 2017", today)       # the oldest counts
+    assert "unknown" in imagery_age_warning("unknown", today)
+    assert "unknown" in imagery_age_warning(None, today)
+
+
+# ── map sharpness (C13): upscaled imagery is warned ────────────────────
+def _natural(n_px, seed=4):
+    """Grey ground with a natural 1/f spectrum (real imagery's statistics; the flat-shape texture
+    above is smoother than a real map and reads as ~2x upscaled)."""
+    rng = np.random.default_rng(seed)
+    fx, fy = np.fft.fftfreq(n_px)[:, None], np.fft.fftfreq(n_px)[None, :]
+    r = np.hypot(fx, fy)
+    r[0, 0] = 1.0
+    img = np.real(np.fft.ifft2((rng.normal(size=(n_px, n_px)) + 1j * rng.normal(size=(n_px, n_px))) / r))
+    return np.clip((img - img.mean()) / img.std() * 40 + 120, 0, 255).astype(np.uint8)
+
+
+def _upscaled(img, f):
+    h, w = img.shape[:2]
+    small = cv2.resize(img, (int(w / f), int(h / f)), interpolation=cv2.INTER_AREA)
+    big = cv2.resize(small, (w, h), interpolation=cv2.INTER_CUBIC)
+    return cv2.imdecode(cv2.imencode(".jpg", big, [cv2.IMWRITE_JPEG_QUALITY, 85])[1], cv2.IMREAD_COLOR)
+
+
+def _retiled(src, dst, f):
+    """A copy of the map src whose tiles are natural ground, upscaled f times (1: native)."""
+    shutil.copy(src, dst)
+    con = sqlite3.connect(dst)
+    rows = con.execute("SELECT rowid FROM tiles").fetchall()
+    tex = _natural(256 * 8)
+    for k, (rid,) in enumerate(rows):
+        j, i = divmod(k % 64, 8)
+        t = tex[j * 256:(j + 1) * 256, i * 256:(i + 1) * 256]
+        t = _upscaled(t, f) if f > 1 else t
+        con.execute("UPDATE tiles SET tile_data=? WHERE rowid=?", (cv2.imencode(".jpg", t)[1].tobytes(), rid))
+    con.commit()
+    con.close()
+    return dst
+
+
+def test_tile_upscale_factor_reads_the_real_detail():
+    tex = _natural(1024)
+    tiles = [tex[j:j + 256, i:i + 256] for j in range(0, 1024, 256) for i in range(0, 1024, 256)]
+    native = [mb.tile_upscale_factor(cv2.imencode(".jpg", t)[1].tobytes()) for t in tiles]
+    assert np.median(native) < 2.0, native
+    for f, lo, hi in ((2.0, 2.0, 3.0), (4.0, 3.0, 6.0), (8.0, 4.0, 8.0)):   # 8x: read "at least 4x"
+        got = np.median([mb.tile_upscale_factor(_upscaled(t, f)) for t in tiles])
+        assert lo <= got <= hi, (f, got)
+    assert mb.tile_upscale_factor(np.full((256, 256), 90, np.uint8)) is None      # uniform: nothing to measure
+    s = mb.map_sharpness([_upscaled(t, 4.0) for t in tiles], 1.2)
+    assert s["warning"] and "upscaled" in s["warning"] and s["effective_mpp"] >= 3.6
+    assert "mostly fail" in s["warning"]
+    assert mb.map_sharpness([cv2.imencode(".jpg", t)[1].tobytes() for t in tiles], 1.2)["warning"] is None
+
+
+def test_plan_and_check_warn_an_upscaled_map(world, bundle, tmp_path):
+    spec = _spec()
+    sharp = _retiled(world, str(tmp_path / "sharp.mbtiles"), 1)
+    p = mb.plan_bundle(spec, [mb.MBTilesSource(sharp)])
+    assert p["map_sharpness"]["tiles_measured"] > 5 and p["map_sharpness"]["warning"] is None
+    assert not any("upscaled" in w for w in p["warnings"])
+    # every tile upscaled 4x (a ~4 m source stored at zoom 17)
+    soft = _retiled(world, str(tmp_path / "soft.mbtiles"), 4.0)
+    p2 = mb.plan_bundle(spec, [mb.MBTilesSource(soft)])
+    assert any("upscaled" in w for w in p2["warnings"]), p2["warnings"]
+    assert p2["map_sharpness"]["upscale"] >= 3.0 and "upscaled" in mb.format_estimate(p2)
+    # check measures the bundle's own tiles (a warning, never a failure)
+    r = mb.check_bundle(bundle, mission_date=_iers_date())
+    assert r["checks"]["map_sharpness"]["tiles_measured"] > 5 and r["checks"]["map_sharpness"]["ok"]
+    assert r["checks"]["map_sharpness"]["effective_mpp"] is not None

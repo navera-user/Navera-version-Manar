@@ -26,6 +26,12 @@ ExecStart=/home/navera/navera_boot_pipeline_cn.sh
 # has on_exit=Shutdown), so on-failure would never restart it.
 Restart=always
 RestartSec=10
+# Memory (F5 / H-11): the vision pipeline is the biggest process (day: ~3.5 GB peak with
+# the learned matcher, F5). Protected from the OOM killer before the desktop, the web
+# page and the tools, never before the small units the output depends on (-900).
+# A swap file is needed (deploy/install.sh makes one; check_boot.sh warns without it).
+OOMScoreAdjust=-300
+ManagedOOMPreference=avoid
 
 [Install]
 WantedBy=multi-user.target

@@ -27,18 +27,20 @@ discovery-based, and the camera ↔ localizer handshake uses latched topics).
 | Unit | Started by | Runs | Enable it when |
 |---|---|---|---|
 | `navera-discover` | `navera_boot_discover.sh` | Once per boot, before the others: finds what is connected and decides the sources left to `auto` (§5) → `/var/lib/navera/discovered.env`, report `/var/lib/navera/discovery.json` | Always |
+| `navera-hotplug` | `navera_boot_hotplug.sh` | After boot: a GPS, autopilot, camera or CAN bus connected later fills a source navera-discover left idle (§5); never changes a working source, never switches the GPS while the vehicle is armed | Recommended (enabled by `install.sh`) |
 | `navera-estimator` | `navera_boot_estimator.sh` | Position arbiter: GPS > day > night > celestial → `/navera/position`, `/navera/nav_status` | Always |
 | `navera-gps` | `navera_boot_gps.sh` | NAVERA's GPS source, per `NAVERA_GPS_SOURCE` (box receiver, autopilot's 2nd GPS, or a ROS topic); idle when none is found (`none`) | Always (NAVERA needs a GPS fix at start, or an operator start position — see §5) |
 | `navera-pipeline-day` | `navera_boot_pipeline_day.sh` | Day camera + day vision (GPU) | Day operation (default) |
 | `navera-pipeline-night` | `navera_boot_pipeline_night.sh` | Thermal camera + STHN night vision (GPU) | Night operation, **instead of** day |
 | `navera-pipeline-cn` | `navera_boot_pipeline_cn.sh` | Celestial pipeline (astrometry.net, CPU) | See §10 — as shipped it replays a bundled sky image |
 | `navera-imu` | `navera_boot_imu.sh` | Box IMU (BNO085, I²C bus 1 @ 0x4A) → `/navera/sensors/imu`; idle when navera-discover found no BNO085 (`NAVERA_BOX_IMU=0`) | `NAVERA_SENSOR_SOURCE=box` and a BNO085 fitted (enabling it elsewhere is harmless) |
-| `navera-rtc` | `navera_boot_rtc.sh` | Real-time clock (DS3231, I²C bus 1 @ 0x68) → `/navera/sensors/rtc_time`; idle when no DS3231 was found (`NAVERA_BOX_RTC=0`) | A DS3231 is fitted (the reference box has one) |
+| `navera-insta360` | `navera_boot_insta360.sh` | The Insta360 kit: the One R in USB "Android" mode (one process owns it) → straight-down day view `/navera/sensors/insta360/nadir/image_raw` (stamped at exposure) and attitude `/navera/sensors/insta360/imu` (sensor_msgs/Imu with orientation, 100 Hz), status `/navera/sensors/insta360/status`; exits when the camera is lost (restart 5 s); idle unless `NAVERA_SENSOR_SOURCE` or `NAVERA_CAMERA_INPUT` is `insta360` | The IRIS kit (Insta360 as camera and IMU; enabling it elsewhere is harmless) |
+| `navera-rtc` | `navera_boot_rtc.sh` | Real-time clock (DS3231, I²C bus 1 @ 0x68) → `/navera/sensors/rtc_time`; idle when no DS3231 was found (`NAVERA_BOX_RTC=0`) | Optional: a DS3231 is fitted. Star time comes first from the GPS anchor and the autopilot (§10); the DS3231 helps only after a reboot with the GPS denied and no autopilot |
 | `navera-vehicle-link` | `navera_boot_vehicle_link.sh` | Reads the autopilot over MAVLink → `/navera/vehicle/*` (attitude, rangefinder, barometric height, 2nd GPS, armed state), and relays NAVERA's MAVLink output to it (local UDP 14650); idle when no autopilot is found or configured | `NAVERA_SENSOR_SOURCE=vehicle`, `NAVERA_GPS_SOURCE=vehicle`, or a MAVLink output through its relay; also recommended with any MAVLink autopilot, so that `/mission` knows when the vehicle is armed |
 | `navera-output` | `navera_boot_output.sh` | Output to the vehicle: NMEA, MAVLink `GPS_INPUT`, ROS `NavSatFix` on `/navera/fix` | NAVERA feeds the autopilot or a ROS consumer |
 | `navera-web` | `navera_boot_web.sh` | Web bridge on port 8181: operator view `/operator`, dashboard `/`, mission preparation `/mission` | Always |
 
-All eleven units run as user `navera`, from the workspace `/home/navera/isaac_ros_common`
+All thirteen units run as user `navera`, from the workspace `/home/navera/isaac_ros_common`
 (`WorkingDirectory=` of every unit, and `NAVERA_WS` in `navera_boot_lib.sh`), and execute
 the wrapper scripts installed in `/home/navera/` (`ExecStart=/home/navera/navera_boot_*.sh`).
 
@@ -90,6 +92,22 @@ would never restart anything. Instead:
   serial port is missing or disconnects, `vehicle_output` when an output cannot be opened or
   written, the live camera when the camera cannot be opened or stops sending frames.
 
+- a camera that gives no frame for 10 s (`camera_stall_restart_s`: unplugged, USB reset,
+  stuck driver, stalled stream) makes the live camera exit for a restart; a replugged USB camera
+  is found again under its `/dev/v4l/by-id/...` name.
+
+### Memory, swap and logs (8 GB Jetson)
+
+The day pipeline uses 2.5 GB (real flight replay, 100 m) to 5 GB (bench mission, ~520 m); it
+was OOM-killed without swap (F5). `install.sh` therefore makes an 8 GB `/swapfile`
+(`deploy/setup_swap.sh`, `NAVERA_SWAP_MB`) when less than `NAVERA_MIN_SWAP_MB` (4 GB) of swap
+on disk is active — JetPack's zram is in RAM and does not count — and every pipeline start,
+`check_boot.sh` and `check_box.py` warn without it. The units set who the kernel's OOM killer
+takes first: the web page and the discovery (`OOMScoreAdjust=500`, capped by `MemoryHigh` /
+`MemoryMax`, beyond which they go to swap), then the vision pipelines (-300), last the output
+chain (estimator, output, GPS, IMU, RTC, vehicle link: -900; systemd-oomd never picks them).
+The journal is capped at 1 GB with 2 GB kept free (`/etc/systemd/journald.conf.d/navera.conf`).
+
 A restart in flight does not start from scratch: the ground altitude and day vision's last
 position are kept on disk (§9).
 
@@ -131,7 +149,7 @@ they would be hidden under the mount point.
 
 It never overwrites an existing `/etc/navera/navera.env`, and switches the Jetson to a
 headless boot only with `--headless` (that ends the desktop session). It enables
-`navera-discover navera-estimator navera-gps navera-imu navera-rtc navera-vehicle-link
+`navera-discover navera-hotplug navera-estimator navera-gps navera-imu navera-insta360 navera-rtc navera-vehicle-link
 navera-pipeline-day navera-output navera-web` unless `--units` says otherwise. The steps
 it runs are detailed below, for a manual installation or a review.
 
@@ -184,7 +202,7 @@ pip3 install --user --no-deps --index-url https://pypi.jetson-ai-lab.io/jp6/cu12
 pip3 install --user -c ~/navera-constraints.txt \
     "numpy<2" "scipy>=1.11,<1.14" timm kornia safetensors einops huggingface_hub \
     scikit-learn pandas "astropy<7" opencv-python==4.11.0.86 \
-    pyserial pynmea2 pymavlink pygeomag==1.1.0 \
+    pyserial pynmea2 pymavlink pygeomag==1.1.0 dronecan==1.0.27 \
     Jetson.GPIO adafruit-blinka adafruit-circuitpython-bno08x adafruit-circuitpython-ds3231
 '
 ```
@@ -197,6 +215,7 @@ pip3 install --user -c ~/navera-constraints.txt \
 | `astropy` | celestial pipeline |
 | `serial` (pyserial), `pynmea2` | GPS driver, NMEA output |
 | `pymavlink` | MAVLink output (`GPS_INPUT`) and the vehicle link |
+| `dronecan` (pydronecan, pure Python, MIT) | DroneCAN GPS on a CAN bus (`NAVERA_GPS_SOURCE=dronecan`) and its discovery |
 | `pygeomag` | true north for the box IMU (World Magnetic Model 2025) |
 | `board`, `busio`, `adafruit_bno08x`, `adafruit_ds3231` (Blinka) | box IMU and clock drivers |
 | `yaml` | camera calibration files |
@@ -309,7 +328,7 @@ accuracy gates: `docs/test_reports/perf_2026-10-21.md`.
 Pick from the table in §1. A typical box with its own sensors, feeding an autopilot over MAVLink:
 
 ```bash
-sudo systemctl enable navera-discover navera-estimator navera-gps navera-imu navera-rtc \
+sudo systemctl enable navera-discover navera-hotplug navera-estimator navera-gps navera-imu navera-insta360 navera-rtc \
     navera-pipeline-day navera-output navera-web
 # The vehicle's sensors / 2nd GPS over MAVLink, the MAVLink output relay, or the armed
 # lock on /mission:
@@ -319,7 +338,7 @@ sudo systemctl enable navera-vehicle-link
 sudo systemctl set-default multi-user.target
 
 # Start now without rebooting (one command: systemd runs navera-discover first)
-sudo systemctl restart navera-discover navera-estimator navera-gps navera-imu navera-rtc \
+sudo systemctl restart navera-discover navera-hotplug navera-estimator navera-gps navera-imu navera-insta360 navera-rtc \
     navera-vehicle-link navera-pipeline-day navera-output navera-web
 ```
 
@@ -360,6 +379,15 @@ Systems, e.g. from a USB disk, then give them to `navera`):
 | `TORCH_HOME` | `/data/navera/torch_cache` | DINOv2 model cache, filled once with internet (§3.8) | day pipeline |
 | `NAVERA_AREAS_DIR`, `NAVERA_TILE_CACHE` | `/data/navera/areas`, `…/areas/downloaded_tiles.mbtiles` | route maps generated by `/mission`, downloaded tiles | `/mission`, day pipeline |
 
+> **Licence of the delivered map.** The Sousse sample map (`sousse_satellite.mbtiles`) is
+> presumed to be Esri World Imagery, whose terms forbid storing the tiles offline outside
+> licensed ArcGIS applications. It is for **development and IRIS-internal demonstrations
+> only**: it may not ship on a sold device, nor on a demo unit that leaves IRIS. A product
+> needs a map built from imagery licensed for offline storage on the device (e.g. Airbus, or
+> imagery the customer licenses in its own name); free Sentinel-2 (10 m) is legal but too
+> coarse for day matching at 300–800 m. See
+> [map_licensing_2026-10-21.md](../docs/research/map_licensing_2026-10-21.md).
+
 ```bash
 sudo rsync -a --info=progress2 /media/<usb>/navera/ /data/navera/
 sudo chown -R navera:navera /data/navera
@@ -369,10 +397,42 @@ sudo -u navera -H test -r /data/navera/sousse_satellite.mbtiles && echo readable
 Recordings (`navera_tools/record_session.sh`) also go on this disk (§11, and
 [FIELD_TEST_PROCEDURE.md](../docs/FIELD_TEST_PROCEDURE.md)). Maps of other areas: §8.
 
+### 3.11 Wiring: serial pins and power (Jetson Orin Nano Super developer kit)
+
+**Serial ports.** Checked on this Jetson (2026-10-22, "Jetson Orin Nano Engineering Reference
+Developer Kit Super", carrier P3768, JetPack 6.2.1) from the live device tree and NVIDIA's own
+40-pin header definition (the Jetson-IO overlay `/boot/tegra234-p3767-0000+p3509-a02-hdr40.dtbo`,
+which lists the P3768 Super boards):
+
+| Device | Controller | Where | Use |
+|---|---|---|---|
+| `/dev/ttyTHS1` | UARTA, `serial@3100000` | **40-pin header J12: pin 8 = TX, pin 10 = RX** (pin 11 = RTS, pin 36 = CTS; GND e.g. pin 6) | the box GPS receiver (`NAVERA_GPS_PORT` default) |
+| `/dev/ttyTHS2` | UARTE, `serial@3140000` | **not on the 40-pin header** (the header definition has only UARTA). Its routing on the carrier (NVIDIA's carrier documentation places a UART on the M.2 Key E slot) was not verified here | do not plan a wire on it |
+| `/dev/ttyTCU0` | combined debug UART | kernel console (`console=ttyTCU0` on the command line) | never probed by navera-discover |
+
+So on the developer kit **the header has one UART**: wire the GPS to pins 8/10 (crossed: Jetson
+TX → GPS RX, Jetson RX ← GPS TX) and reach the autopilot over a **USB-to-serial adapter**
+(`/dev/serial/by-id/…`), or over UDP. The examples elsewhere that use `/dev/ttyTHS2` stand for
+"a second serial port": on another carrier board, check its pinout. The header is **3.3 V
+logic**: never RS-232 levels, never 5 V logic without a level shifter.
+
+**Power.** Measured on this Jetson with its on-module INA3221 monitor (`VDD_IN` = the module's
+input; `/sys/bus/i2c/drivers/ina3221/1-0040/hwmon/*`, 300 samples over 60 s, power mode
+MAXN_SUPER), 2026-10-22: **mean 10.5 W, p95 11.7 W, max 12.1 W** (CPU+GPU rail mean 4.6 W, max
+5.8 W; SoC rail 1.9 W; GPU load mean 31 %, peaks 99 %), under a mixed development load — a
+night-vision (STHN, GPU) benchmark, the field server and unit tests — **not the day pipeline
+alone**: the day pipeline was not started for this measurement because other GPU work was
+running on the same Jetson. These figures are the **module only**: the carrier board, the fan,
+the data disk, the cameras and the GPS draw on top and were not measured; nor were the
+brown-out behaviour and the draw at the DC jack. For sizing: NVIDIA's Super release gives the
+Orin Nano 8 GB a 25 W power mode and MAXN_SUPER, which is not power-capped — budget at least
+25 W for the module plus the peripherals until a measurement at the jack with the day
+pipeline is recorded.
+
 ## 4. Camera
 
 Settings (`/etc/navera/navera.env`): `NAVERA_CAMERA=live` (the default `replay` plays recorded
-frames, for demonstration), `NAVERA_CAMERA_INPUT=usb|csi|gst|ros` (or `auto`, §5),
+frames, for demonstration), `NAVERA_CAMERA_INPUT=usb|csi|gst|ros|insta360` (or `auto`, §5; `insta360` = the kit, §5.1),
 `NAVERA_CAMERA_DEVICE`, `NAVERA_CAMERA_SIZE`, `NAVERA_CAMERA_CALIBRATION`, mounting and
 gimbal — all described in `navera.env.example`.
 
@@ -412,6 +472,13 @@ sudo install -m 0644 /home/navera/camera.yaml /etc/navera/camera.yaml
 sudo systemctl start navera-pipeline-day
 ```
 
+A network camera (RTSP / HTTP) is calibrated live too: replace `--device …` with
+`--url "rtsp://<user>:<password>@<camera-ip>:554/<path>"` (read through OpenCV's FFmpeg
+backend, over TCP; the password is not printed). `--size` is then only checked when given —
+the stream has its own size, which must be `NAVERA_CAMERA_SIZE`. A file made from a URL
+records no `camera_id` (that check is for USB cameras). Photos taken beforehand:
+`--images <folder>`.
+
 The tool runs as `navera`, which cannot write `/etc/navera`: write the file to a folder
 `navera` owns (`/home/navera`, `/var/lib/navera`) and install it with `sudo` as above. (The
 example at the top of `calibrate_camera.py` writes `--out /etc/navera/camera.yaml`
@@ -424,6 +491,20 @@ calibration — none" with the field of view only. The `/mission` page does **no
 for frames that do not state their own field of view (replayed frames); a live frame always
 carries its own.
 
+**Camera delay — measured, then learned in flight (`auto_latency`, on by default).** A
+frame is dated "arrival − delay"; a wrong delay moves every vision fix by speed × error
+along the track. The starting value is `NAVERA_CAMERA_LATENCY_S` (or, when it is 0, the
+delay stored in the calibration file by `navera_tools/bench/camera_latency.py --calib`).
+While the GPS is trusted, the **day** pipeline also estimates the delay itself from its
+GPS-check matches against the GPS track (`navera_common/latency_cal.py`): it needs ≥ 20
+samples taken at ≥ 5 m/s with heading or speed changes (a straight line at one speed never
+gives one), and replaces the starting value only when the estimate is stable (σ < 0.1 s)
+and more than 3 σ away from it. It freezes at a GPS loss or refusal and drops the last
+20 s of samples. This is the `day_subscriber` ROS parameter `auto_latency` (default
+`true`; `false` = estimate and publish only, in the status JSON `latency`); there is **no
+`navera.env` key** for it. The night and celestial pipelines do not estimate the delay.
+See [day_pkg/README.md](../day_pkg/README.md).
+
 ## 5. Sensor and GPS sources
 
 ### Automatic detection (default: `auto`)
@@ -435,21 +516,37 @@ units) for:
 | What | How it is found |
 |---|---|
 | The box's IMU and clock | I²C buses 1 and 7: BNO085 at 0x4A/0x4B, DS3231 at 0x68 → `NAVERA_BOX_IMU` / `NAVERA_BOX_RTC` (1 or 0) and their bus; without the chip `navera-imu` / `navera-rtc` stay idle |
-| A GPS receiver | checksummed NMEA **with satellite data** (GSV/GSA: an autopilot's NMEA output has none) on `/dev/ttyTHS*`, `/dev/ttyUSB*`, `/dev/ttyACM*` (4800–921600 baud); several: the one with a fix, wired UART first, and a warning |
-| An autopilot (any MAVLink) | an autopilot heartbeat (ground stations, cameras, companions ignored) on those serial ports, on UDP 14550/14551, or on `NAVERA_DISCOVER_MAVLINK`; it is then asked for attitude, rangefinder, height above home and its GPS receiver types (`GPS_TYPE`/`GPS_TYPE2`). Several: its wired TELEM port first, and a warning when they are different autopilots |
+| A GPS receiver on a serial port | on `/dev/ttyTHS*`, `/dev/ttyUSB*`, `/dev/ttyACM*` (4800–921600 baud): u-blox **UBX** (checksummed `NAV-PVT` frames — also through a passive tap, a Y-cable on the TX wire of the GPS the autopilot uses, which ArduPilot sets to UBX at 230400), or checksummed NMEA **with satellite data** (GSV/GSA: an autopilot's NMEA output has none); UBX without `NAV-PVT` (u-blox 6) is reported, not used. Several: the one with a fix, wired UART first, and a warning |
+| A DroneCAN GPS | `uavcan.equipment.gnss.Fix2` (or `Fix`) on every SocketCAN interface that is **up** (and `NAVERA_DISCOVER_CAN`), heard for 3 s by a **passive** DroneCAN node (no node id: it sends nothing). A node that also sends ESC / actuator commands (an autopilot re-broadcasting its own GPS) is not a GPS. Reported: CAN interfaces that are down (bringing them up needs root, below), a device asking for a node id that nobody gives (a GPS alone on NAVERA's CAN: `NAVERA_GPS_CAN_ALLOCATE=1`), pydronecan missing |
+| A GPS on the network | NMEA / UBX on the addresses of `NAVERA_DISCOVER_GPS_URLS` (`tcp:host:port`, `tcp:host` = its ports 10110, 2000, 4001, `udp:port`); none by default |
+| An autopilot (any MAVLink) | an autopilot heartbeat (ground stations, cameras, companions ignored) on those serial ports, on UDP 14550/14551, TCP `127.0.0.1:5760` (mavlink-router's default server, SITL), or on `NAVERA_DISCOVER_MAVLINK`; it is then asked for attitude, rangefinder, height above home, its two GPS (`GPS_RAW_INT`, `GPS2_RAW`) and their types (`GPS_TYPE`/`GPS_TYPE2`, `GPS1_TYPE`/`GPS2_TYPE` on 4.6+). Several: its wired TELEM port first, and a warning when they are different autopilots |
 | A ROS vehicle | `sensor_msgs` Imu / NavSatFix / Image / Range topics on ROS domain 0, `ROS_DOMAIN_ID` and `NAVERA_DISCOVER_ROS_DOMAINS` (8 s of DDS discovery) |
 | Cameras | USB (`/dev/v4l/by-id/*-video-index0`, except the star camera `NAVERA_STAR_CAMERA_DEVICE`), CSI (Jetson video inputs); a written `NAVERA_CAMERA_DEVICE` is always kept; several USB cameras: the first, with a warning — set `NAVERA_CAMERA_DEVICE` |
+| The Insta360 kit | an Insta360 One R in USB "Android" mode: USB id `2e1a:0002` read from `/sys/bus/usb/devices` (the camera is **not opened**: one wrong probe has wedged it until replugged, D10); an Insta360 in webcam mode is a CHECK line ("set its USB mode to Android") |
 
-and chooses: **attitude** box IMU > autopilot > ROS; **GPS** box receiver > autopilot's 2nd GPS
-> ROS; **camera** USB > CSI > ROS (depth images excluded; a ROS camera is flagged "check it
-looks at the ground"). The autopilot's second GPS is used only when `GPS_TYPE2` says it is
-a real receiver (fix or not yet) — never type 14, the MAVLink-fed GPS that NAVERA itself
-feeds (a loop), and not when the types cannot be read. **No GPS found: the GPS service
-stays idle** — no default port is ever opened. **Outputs:** an autopilot found → NAVERA's
+and chooses: **attitude** box IMU > autopilot > ROS > the Insta360's own IMU (the kit: chosen
+only when nothing better exists — the autopilot's EKF has the GPS, a compass and the vehicle's
+dynamics, the camera's filter only gravity and the gyro); **GPS** serial receiver (UBX or NMEA) >
+DroneCAN > network > autopilot's 2nd GPS > autopilot's 1st GPS > ROS (within one form, a
+receiver with a fix first); **camera** the Insta360 kit (One R in Android mode: only the kit can read
+it) > USB > CSI > ROS (depth images excluded; a ROS camera is
+flagged "check it looks at the ground"). An autopilot's GPS is used only when its type says it
+is a real receiver (fix or not yet) — never type 14, the MAVLink-fed GPS that NAVERA itself
+feeds, nor type 5 (NMEA) while NAVERA's NMEA output (`NAVERA_NMEA_PORT`) is on (a loop), and
+not when the types cannot be read. Its **first** GPS (`vehicle_gps1`) is the wiring where the
+client's GPS stays on the autopilot and NAVERA is its second GPS (`GPS_TYPE2=14`): ArduPilot's
+`GPS_RAW_INT` is always instance 1, and `navera-vehicle-link` re-reads `GPS_TYPE` at every
+connection and every 30 s, stopping at once if it becomes 14 (`NAVERA_GPS_MONITOR_GPS1=0`: never).
+**Probing only reads:** a GPS receiver is never configured, the CAN bus never written to.
+**No GPS found: the GPS service stays idle** — no default port is ever opened — until
+**navera-hotplug** finds one (below). **Outputs:** an autopilot found → NAVERA's
 position over MAVLink, as the autopilot's companion (its system id), on the same link,
 relayed by `navera-vehicle-link` (local UDP 14650), no mavlink-router needed
-(`NAVERA_MAVLINK_URL=off` to never send it — **set it with PX4**, which ignores
-`GPS_INPUT`: [PX4_INTEGRATION.md](../docs/PX4_INTEGRATION.md)); `NAVERA_MAVLINK_SYSID` is
+(`NAVERA_MAVLINK_URL=off` to never send it). **A PX4 autopilot is recognised** (heartbeat
+`MAV_AUTOPILOT_PX4`): PX4 ignores `GPS_INPUT`, so with `NAVERA_MAVLINK_URL` empty the output
+is left off and the report says "CHECK output: the autopilot is PX4 …" — nothing to set by
+hand; do not write an address there on a PX4 vehicle
+([PX4_INTEGRATION.md](../docs/PX4_INTEGRATION.md)); `NAVERA_MAVLINK_SYSID` is
 set to the autopilot's system id, used by both MAVLink nodes; a ROS vehicle →
 `/navera/fix`. A ROS vehicle is used only when it is on NAVERA's ROS domain with
 `ROS_LOCALHOST_ONLY` not 1, or with `ROS_DOMAIN_ID=auto` (NAVERA then joins it, §6);
@@ -461,15 +558,51 @@ written to (its data-stream and parameter requests).
 
 A value written in `navera.env` instead of `auto` is always kept. See what was found:
 `navera_tools/check_box.py` (first lines; lines with "NO" or "CHECK" are WARN) or
-`/var/lib/navera/discovery.json`. **Discovery runs once per boot.** A device connected
-later — or a ROS vehicle whose computer boots after NAVERA — is not seen: reboot, or
+`/var/lib/navera/discovery.json`. **Discovery runs once per boot; navera-hotplug fills what
+it left idle.** `navera-hotplug` (enabled with the others; `NAVERA_HOTPLUG=0` to turn it off)
+lists the serial ports, the CAN interfaces that are up, the USB cameras and an Insta360 One R in
+USB Android mode (§5.1) every 3 s and
+probes only the new ones (read-only, as discovery); while no GPS is found it also listens
+again to the silent ports, the CAN buses and `NAVERA_DISCOVER_GPS_URLS` every
+`NAVERA_HOTPLUG_RESCAN_S` (60 s: a GPS powered after the box, a DroneCAN GPS given its node id
+late). It then decides again and rewrites `discovered.env` for the **idle needs only** (no GPS,
+no autopilot, no camera, no attitude) — a working source is never changed — and the idle
+units (`navera-gps`, `navera-vehicle-link`) restart by themselves with it. **The GPS is never
+switched while the vehicle is armed:** with an autopilot link it is filled only once the
+autopilot reports disarmed (armed or unknown: deferred and retried). No udev rule and no root
+are needed. A device unplugged is not followed (its unit restarts until it comes back); a ROS
+vehicle whose computer boots after NAVERA is not seen: reboot, or
 `sudo systemctl restart navera-discover` then the units concerned (§3.9). For a ROS
 vehicle that may boot late, write its sources (`NAVERA_SENSOR_SOURCE=ros`,
 `NAVERA_ROS_IMU_TOPIC`, `NAVERA_GPS_SOURCE=ros`, `NAVERA_ROS_GPS_TOPIC`, …) and its
 `ROS_DOMAIN_ID` instead of relying on `auto`. Verified: this Jetson's bench (a ROS robot simulation found, no box
 sensors), virtual serial GPS/autopilot ports (unit tests), ArduPilot SITL with a second
 GPS (`navera_tools/tests/sitl_discovery.py`: autopilot found, attitude and GPS taken from
-it, NAVERA's messages relayed). Not yet with real box sensors or a real autopilot.
+it, NAVERA's messages relayed), ArduPilot SITL with the client's GPS as GPS1 and NAVERA as GPS2
+(`navera_tools/tests/sitl_gps1_monitor.py`: found over TCP, GPS1 read, reading stopped when
+`GPS_TYPE` becomes 14), simulated UBX / NMEA streams on pseudo-terminals, TCP and UDP and a
+virtual DroneCAN bus (`navera_tools/tests/test_gps_sources.py`, `navera_common/test/test_gnss.py`,
+`test_discovery.py`, `test_hotplug.py`). Not yet with real box sensors, a real autopilot, a
+real u-blox / Y-cable tap or a real DroneCAN GPS on `can0`.
+
+**CAN bus (DroneCAN GPS).** NAVERA reads a CAN interface only when it is up, and bringing it
+up needs root — once, at installation:
+
+```bash
+# now (DroneCAN: 1 Mbit/s)
+sudo ip link set can0 up type can bitrate 1000000 restart-ms 100
+# at every boot: systemd-networkd brings can0 up (NetworkManager does not manage CAN)
+sudo install -m 0644 deploy/can/80-navera-can0.network /etc/systemd/network/
+sudo systemctl enable --now systemd-networkd
+```
+
+On the vehicle's CAN bus shared with the autopilot, NAVERA only listens (it acknowledges
+frames like any CAN controller but never sends one); to make the controller itself silent use
+`ListenOnly=yes` in that file — never with a GPS alone on NAVERA's bus (nobody would
+acknowledge its frames). A DroneCAN GPS alone on NAVERA's CAN gets no node id without an
+autopilot: `NAVERA_GPS_CAN_ALLOCATE=1` makes NAVERA its allocator (NAVERA then transmits, as
+node 125). To test without hardware: `sudo modprobe vcan && sudo ip link add vcan0 type vcan
+&& sudo ip link set vcan0 up`.
 
 ### Imposing a source
 
@@ -478,19 +611,23 @@ celestial pipelines and the estimator's IMU liveness check; `navera_common/vehic
 
 | Value | Attitude | Height above ground | Needs |
 |---|---|---|---|
-| `box` (auto finds nothing) | `/navera/sensors/imu` (BNO085) | from the GPS altitude and the image | `navera-imu` |
+| `box` (auto finds nothing) | `/navera/sensors/imu` (an optional BNO085; the reference kit's Insta360 One R IMU is not yet wired into the boot services — problem F37) | from the GPS altitude and the image | `navera-imu` |
 | `vehicle` | `/navera/vehicle/imu` (autopilot attitude) | `/navera/vehicle/altitude_agl` (downward rangefinder), `/navera/vehicle/relative_alt` (barometric height above home) | `navera-vehicle-link`, `NAVERA_VEHICLE_MAVLINK_URL` |
 | `ros` | `NAVERA_ROS_IMU_TOPIC` (sensor_msgs/Imu, contract in §6) — required | `NAVERA_ROS_ALTITUDE_TOPIC` (sensor_msgs/Range), optional | the vehicle's ROS graph (§6) |
+| `insta360` | `/navera/sensors/insta360/imu`: the Insta360 One R's own IMU, roll / pitch from its gyro + accelerometer (acceleration rejection), yaw from its gyro set by the GPS course and day-vision headings (variance π² until then: the live camera then gives frames no heading) — `camera_pkg/insta360_attitude.py` | from the GPS altitude and the image (no rangefinder, no barometer) | `navera-insta360` (§5.1) |
 
 **GPS — `NAVERA_GPS_SOURCE`** (`navera_boot_gps.sh`; every mode publishes
 `/navera/sensors/gps_fix` and `/navera/estimate/gps` the same way):
 
 | Value | GPS | Node |
 |---|---|---|
-| `serial` (the key absent) | the box's receiver, NMEA on `NAVERA_GPS_PORT` (default `/dev/ttyTHS1`) at `NAVERA_GPS_BAUD` (default 9600) | `gps_node` |
+| `serial` (the key absent) | a receiver on `NAVERA_GPS_PORT` (default `/dev/ttyTHS1`) at `NAVERA_GPS_BAUD` (default 9600): NMEA and/or u-blox UBX `NAV-PVT` (+ `NAV-DOP`), recognised automatically; UBX gives the receiver's own accuracy (`hAcc`/`vAcc` → covariance, diagonal known), ellipsoid height, velocity and UTC; while `NAV-PVT` arrives the same receiver's NMEA is not published twice. Read-only (a passive tap works) unless `NAVERA_GPS_CONFIGURE=1` (turns `NAV-PVT` on, in the receiver's RAM only). Nothing valid for 5 s: it listens at the next common baud (an autopilot reconfiguring a tapped u-blox after boot is followed) | `gps_node` |
+| `network` | the same, over the network: `NAVERA_GPS_URL` = `tcp:host:port` (NAVERA connects; the connection lost → the service restarts) or `udp:port` (NAVERA listens) | `gps_node` |
+| `dronecan` | a DroneCAN GNSS (`Fix2`, legacy `Fix`) on `NAVERA_GPS_CAN_IFACE` (default `can0`, or `slcan:/dev/ttyACM0`), node `NAVERA_GPS_CAN_NODE` (0 = the first heard with a fix after 2 s, never a node commanding motors); accuracy from its covariance; passive unless `NAVERA_GPS_CAN_ALLOCATE=1` | `dronecan_gps_node` |
 | `vehicle` | the autopilot's **second** GPS (`GPS2_RAW`, 3D fix or better), read by `navera-vehicle-link` and republished from `/navera/vehicle/gps2`: altitude above the ellipsoid when the autopilot sends `alt_ellipsoid` (otherwise above mean sea level, with a warning: then set `NAVERA_GROUND_ALTITUDE_M` as MSL too), accuracy from the receiver's `h_acc` / `v_acc` | `ros_gps_node` |
+| `vehicle_gps1` | the autopilot's **first** GPS (`GPS_RAW_INT`), read by `navera-vehicle-link` (`read_gps1`) only while `GPS_TYPE` says NAVERA does not feed it (not 0, not 14, not 5 with NAVERA's NMEA output on), republished from `/navera/vehicle/gps1` | `ros_gps_node` |
 | `ros` | the vehicle's `sensor_msgs/NavSatFix` topic `NAVERA_ROS_GPS_TOPIC` (required); BEST_EFFORT or RELIABLE publishers | `ros_gps_node` |
-| `none` (auto finds nothing) | no GPS: the service stays idle | — |
+| `none` (auto finds nothing) | no GPS: the service stays idle until navera-hotplug finds one | — |
 
 A GPS position is **FIX** only with a stated accuracy: a covariance of a defined type
 (approximated, diagonal known or known) with a horizontal sigma of at least 1 cm. A
@@ -511,11 +648,41 @@ flight, day vision can resume from its last position if it is less than 5 minute
 > NAVERA's own `GPS_INPUT`/NMEA output feeds, not `/navera/fix`. NAVERA would check its
 > output against itself. This is why `vehicle` mode reads only the autopilot's **second**
 > GPS, which must be a real receiver (NAVERA then feeds GPS 1 — see
-> [ARDUPILOT_INTEGRATION.md](../docs/ARDUPILOT_INTEGRATION.md)).
+> [ARDUPILOT_INTEGRATION.md](../docs/ARDUPILOT_INTEGRATION.md)), and `vehicle_gps1` its first
+> GPS only while the autopilot's own `GPS_TYPE` says it is not NAVERA's.
 
 Box IMU settings (used by `navera-imu`): `NAVERA_IMU_MOUNT_RPY` (mounting angles) and
 `NAVERA_DECLINATION_DEG` (declination used until a position is known; the IMU node then
 switches to the World Magnetic Model). See [imu_pkg/README.md](../imu_pkg/README.md).
+
+### 5.1 The Insta360 kit (`navera-insta360`)
+
+IRIS's own kit uses the Insta360 One R (360 module) as the day camera **and** the IMU. In USB
+"Android" mode (camera menu) it sends its full 3840x1920 dual fisheye (H.264, 2 key frames/s
+used) and its 500 Hz IMU over one vendor USB interface (reverse-engineered protocol,
+`navera_common/insta360_protocol.py`). Only one process can hold it: `navera-insta360`
+(`camera_pkg` `insta360_node.py`, `insta360.launch.py`), which publishes the attitude and a
+body-fixed straight-down view; the day pipeline's live camera reads that view with
+`NAVERA_CAMERA_INPUT=insta360` (an ideal lens of `NAVERA_INSTA360_VIEW_HFOV_DEG`, the mount
+already applied) and the attitude with `NAVERA_SENSOR_SOURCE=insta360` (also the day node's
+gyro heading carry, night and celestial).
+
+Install-time pieces (`install.sh`): `deploy/udev/99-insta360.rules` → `/etc/udev/rules.d/`
+(vendor 2e1a / 4255, mode 0666; **replug the camera** after it), `libusb-1.0-0`,
+pyusb 1.2.1 and PyAV 12.3.0 for user `navera`, the unit (memory class: pipeline). Calibration
+files to copy once: `/var/lib/navera/insta360_lens.json` (the two lenses, from the screen
+dot-grid bench) and `/var/lib/navera/insta360_imu.json` (6-position IMU calibration); without
+them the box check WARNs (rough lens guess; neutral accelerometer, the gyro bias is still
+measured at every stop). Mount: `NAVERA_INSTA360_MOUNT_AXES` (default `+x,+z,-y`: lying, the
+left lens straight down, the camera's top to the nose), trim `NAVERA_INSTA360_MOUNT_RPY`.
+Picture stamps: each key frame is decoded alone and stamped with its own packet's camera time
+(the 1.5 s F15 offset was the field decoder holding three key frames, 3 x 500 ms) mapped to
+the host clock by the IMU packets.
+
+Check: `navera_tools/check_box.py` (lines `Insta360 …`, `attitude`), `journalctl -u
+navera-insta360`. A bench / replay without the camera:
+`ros2 launch camera_pkg insta360.launch.py source:=replay replay_path:=<raw folder>`.
+IRIS's field server (`navera-field`, a bench tool) also opens the camera: never both.
 
 ## 6. ROS vehicles: joining the vehicle's ROS graph
 
@@ -536,10 +703,14 @@ NAVERA (a test laptop running `navera_tools/sensor_sim.py`, for instance) — ke
 closed. `check_box.py` FAILs "ROS network" when a source is `ros` while
 `ROS_LOCALHOST_ONLY=1`.
 
-`ROS_DOMAIN_ID=auto` asks navera-discover to join the domain of a ROS vehicle it finds
-(NAVERA's nodes stay on 42, loopback only, when none is found). The decision is verified by
-unit tests; joining a real vehicle's network has not been tested yet — writing the
-vehicle's domain number, as above, is the simplest. Discovery runs once per boot: a
+`ROS_DOMAIN_ID=auto`: at each boot navera-discover looks for a ROS vehicle (Imu / NavSatFix /
+Image topics) on domain 0 and the domains of `NAVERA_DISCOVER_ROS_DOMAINS`. Found: it writes
+`ROS_DOMAIN_ID=<that domain>` and `ROS_LOCALHOST_ONLY=0` in `/var/lib/navera/discovered.env`,
+which every other NAVERA unit loads after `navera.env`, so they all join that domain. None
+found: the units run on domain 42, loopback only (`navera_boot_lib.sh`). **Verified by unit
+tests only** (`navera_common/test/test_discovery.py`: the decision, and discovery running with
+`auto`); joining a real vehicle's network has not been tested. When the vehicle's domain is
+known, writing its number (as above) is the deterministic choice. Discovery runs once per boot: a
 vehicle computer that boots after NAVERA is not seen (restart navera-discover, or write
 the sources).
 
@@ -590,6 +761,30 @@ receives "no fix" and its own failsafe acts — unless forwarding is enabled exp
 | `NAVERA_NMEA_FORWARD_DEGRADED` | false | NMEA carries no accuracy an autopilot uses (ArduPilot fuses an NMEA GPS with its own ~0.5 m noise): with forwarding, degraded positions go over MAVLink and ROS only and NMEA says "no fix" for them, unless this is `true` (a warning is logged; not recommended) |
 | `NAVERA_MAX_MEASUREMENT_AGE_S` | 5.0 | a position measured longer ago is not sent (also: a position older than 5 s is no longer current) |
 | `NAVERA_BRIDGE_MAX_S` | 10 | a gap in the forwarded vision positions is bridged this long at most (0 = never; 0 recommended on a fixed-wing with an airspeed sensor, docs/ARDUPILOT_INTEGRATION.md §3) |
+
+**GPS lost, default settings — what happens.** NAVERA keeps computing vision positions: they
+are on the operator view and, by default, on ROS `/navera/fix` (`status.service` = 0, with
+their accuracy), but the **autopilot** (MAVLink `GPS_INPUT` and NMEA) receives **"no fix"**.
+Its own GPS-loss / EKF failsafe then acts as configured in the autopilot — in ArduPilot SITL
+Copter LANDs and Rover/boat HOLDs — and it does not resume its mission by itself when NAVERA
+has positions again ([ARDUPILOT_INTEGRATION.md](../docs/ARDUPILOT_INTEGRATION.md)). Set the
+autopilot's failsafe to the action you want on a GPS loss: with the defaults, NAVERA never
+prevents it. PX4 receives nothing over MAVLink anyway (§5).
+
+**When to enable forwarding (`NAVERA_FORWARD_DEGRADED=true`)** — only when all of these hold:
+
+1. the autopilot is ArduPilot, connected over MAVLink and configured as in
+   [ARDUPILOT_INTEGRATION.md](../docs/ARDUPILOT_INTEGRATION.md) (`GPS_TYPE = 14`,
+   `EK3_SRC1_VELXY = 0`, `EK3_SRC1_VELZ = 0`, arming checks adapted to 0 satellites);
+2. NAVERA's day-vision accuracy has been **measured on this vehicle, camera and terrain** —
+   flights with GPS in shadow mode (`NAVERA_SHADOW_MODE=true`,
+   [FIELD_TEST_PROCEDURE.md](../docs/FIELD_TEST_PROCEDURE.md)) — and `NAVERA_DEGRADED_SIGMA_M`
+   is set from that measurement (at most 100 m with ArduPilot);
+3. the route is over ground vision can match (the `/mission` terrain warning, §8), and the
+   first GPS-denied flights have a safety pilot able to take over.
+
+Otherwise keep the default: a GPS loss ends in the autopilot's failsafe, which is the
+behaviour you configured and tested, rather than in positions whose accuracy is unknown.
 
 **Vision positions are carried to the present.** A vision position describes where its
 photo was taken, 1–2.5 s before it reaches the output. The output learns the ground
@@ -669,7 +864,10 @@ other route, either:
 
 **The imagery licence must allow storing its tiles offline in a product** — many public
 tile services forbid it; check before setting `NAVERA_TILE_URL`
-([VALIDATION_STATUS.md](../docs/VALIDATION_STATUS.md), limitation 5). Missing tiles are
+([VALIDATION_STATUS.md](../docs/VALIDATION_STATUS.md), limitation 5). **Esri World Imagery
+does not allow it** (Esri Master Agreement §3.2(c): no download or storage outside Esri
+Content Packages in licensed ArcGIS apps): use it for development only
+([map_licensing_2026-10-21.md](../docs/research/map_licensing_2026-10-21.md)). Missing tiles are
 reported: inside them day vision has nothing to match.
 
 **Terrain warning.** At planning, the page estimates the stretches of the route without
@@ -710,7 +908,7 @@ would take the processor vision needs`). The armed state comes from `navera-vehi
 two commands:
 
 - `systemctl restart navera-pipeline-day.service` — "Activate" a route map;
-- `systemctl try-restart navera-estimator.service navera-imu.service navera-pipeline-day.service navera-pipeline-night.service navera-pipeline-cn.service`
+- `systemctl try-restart navera-estimator.service navera-imu.service navera-insta360.service navera-pipeline-day.service navera-pipeline-night.service navera-pipeline-cn.service`
   — "Apply settings" (`NAVERA_UNITS` in `navera_web_bridge.py`); `try-restart` restarts only
   the units that are running.
 
@@ -746,14 +944,86 @@ sudo systemctl enable --now navera-pipeline-night
 sudo systemctl restart navera-web
 ```
 
+**Night uses the same camera settings as day.** The night launch
+(`night_pipeline.launch.py`, `NAVERA_CAMERA=live`) reads the live camera with the
+`NAVERA_CAMERA_*` keys — there is no separate thermal-camera key. Switching to night
+therefore also means pointing those keys at the **thermal** camera, and back at the day
+camera when switching to day:
+
+```bash
+# /etc/navera/navera.env — keep both blocks, one of them commented out
+# --- day camera ---
+#NAVERA_CAMERA_INPUT=usb
+#NAVERA_CAMERA_DEVICE=/dev/v4l/by-id/usb-<day camera>-video-index0
+#NAVERA_CAMERA_SIZE=1920x1080
+#NAVERA_CAMERA_CALIBRATION=/etc/navera/camera.yaml
+# --- thermal camera (e.g. an RTSP camera; a USB thermal core: usb + its by-id device) ---
+NAVERA_CAMERA_INPUT=gst
+NAVERA_CAMERA_GST_PIPELINE="rtspsrc location=rtsp://<user>:<password>@<camera-ip>:554/Streaming/Channels/201 latency=0 ! decodebin ! videoconvert ! video/x-raw,format=BGR ! appsink name=sink drop=true max-buffers=1 sync=false"
+NAVERA_CAMERA_SIZE=1280x720
+NAVERA_CAMERA_CALIBRATION=/etc/navera/thermal.yaml
+NAVERA_CAMERA_LATENCY_S=1.0          # measured for this camera (Hikvision bench unit: ~1.0 s)
+```
+
+- Write `NAVERA_CAMERA_INPUT` explicitly: with `auto`, navera-discover picks the USB
+  camera it finds (the day camera), and it never finds an RTSP camera.
+- **Thermal calibration.** The thermal camera needs its own lens calibration file, made at
+  its own resolution (the live camera refuses a file made at another `NAVERA_CAMERA_SIZE`).
+  A thermal camera does not see a printed checkerboard: warm the board (sun, a heat lamp)
+  or use a board of two materials of different emissivity, so the squares show in the
+  thermal picture, then run `calibrate_camera.py` as in §4 — `--url <rtsp URL>` for a
+  network camera, `--device` for a USB one — usually with `--model pinhole` (narrow
+  thermal lenses). Without a calibration, set `NAVERA_CAMERA_HFOV_DEG` to the thermal
+  lens's field of view (ideal lens; `check_box.py` warns).
+- The camera delay (`NAVERA_CAMERA_LATENCY_S`) is per camera too; the screen-flash bench
+  (`camera_latency.py`) does not work with a thermal camera (it does not see a screen):
+  set it by hand. The day pipeline's automatic delay estimate (§4) does not run at night.
+- `NAVERA_THERMAL_HFOV_DEG` is for **replayed** thermal frames only; a live frame states its
+  own field of view (from the calibration or `NAVERA_CAMERA_HFOV_DEG`).
+- Status: night vision is not flown; a 160 × 120 thermal camera is too coarse for it
+  ([VALIDATION_STATUS.md](../docs/VALIDATION_STATUS.md)).
+
 The celestial unit (CPU only) has no `Conflicts=`: it can run beside day or night, and the
-arbiter uses it after them (GPS > day > night > celestial). **As shipped, however, the
-celestial launch (`cn_pipeline.launch.py`) replays a bundled sample sky image** with
-launch-time attitude, time and operating-area constants (Sousse); its camera waits for a
-mission start from the celestial bridge (`NAVERA_PIPELINE=cn`). It is a demonstration of
-the chain, not a live star-camera installation. Star-camera settings:
-`NAVERA_STAR_CAMERA_ELEVATION_DEG`, `NAVERA_STAR_CAMERA_AZIMUTH_DEG`,
-`NAVERA_MAGNETIC_DECLINATION_DEG`, `NAVERA_ATTITUDE_SIGMA_DEG` (see `navera.env.example`).
+arbiter uses it after them (GPS > day > night > celestial). It has two modes, chosen by
+`NAVERA_STAR_CAMERA_INPUT` (`cn_pipeline.launch.py`):
+
+- **`NAVERA_STAR_CAMERA_INPUT` set — a live star camera.** The live camera is read with the
+  `NAVERA_STAR_CAMERA_*` settings (same keys as the day camera, prefix `NAVERA_STAR_CAMERA_`:
+  `_INPUT`, `_DEVICE`, `_SIZE`, `_FPS`, `_CALIBRATION`, `_HFOV_DEG`, `_GST_PIPELINE`); the
+  attitude comes from the IMU at each exposure (no IMU: no position), the time from a
+  trusted source (below), the prior from NAVERA's last position. Mounting:
+  `NAVERA_STAR_CAMERA_ELEVATION_DEG`, `NAVERA_STAR_CAMERA_AZIMUTH_DEG`; accuracy:
+  `NAVERA_ATTITUDE_SIGMA_DEG`; `NAVERA_MAGNETIC_DECLINATION_DEG` only for an attitude source
+  in magnetic north (see `navera.env.example`). A star camera on USB is never taken as the
+  day camera when `NAVERA_STAR_CAMERA_DEVICE` is written. The celestial position is coarse
+  (kilometres: ~1.85 km per arcminute of attitude error).
+- **Unset (the template's default) — a demonstration.** The service replays a bundled sample
+  sky image with launch-time attitude, time and operating-area constants (Sousse); its
+  camera waits for a mission start from the celestial bridge (`NAVERA_PIPELINE=cn`). This
+  is not navigation.
+
+**Time for the stars (no hardware clock required, 2026-10-22).** 1 s of clock error is ~0.5 km.
+The Jetson has no battery clock: it boots on its last saved time and steps when NTP reaches
+the internet. cn_subscriber (`navera_common/trusted_time.py`) uses, in this order:
+
+1. the **GPS time anchor**: the receiver's UTC (`/navera/sensors/gnss_time`: UBX NAV-PVT valid
+   and fully resolved, RMC status A, ZDA next to a fix), taken only while `/navera/nav_status`
+   shows the GPS contributing (the estimator neither refuses nor suspects it), then carried by
+   the monotonic clock: it holds through hours of GPS loss and through a system clock step.
+   Stated 1-sigma 0.5 s + 20 ppm of the time since (`time_drift_ppm`, `gnss_time_sigma_s`). A
+   later GPS time off the first anchor is ignored and logged (spoofing);
+2. the **autopilot's SYSTEM_TIME** (`navera-vehicle-link` → `/navera/vehicle/system_time`; ArduPilot
+   sets it from its GPS and keeps it while powered). It also cross-checks the anchor: more than
+   1 s apart → no star fix, logged;
+3. the **DS3231** (`navera-rtc`), optional;
+4. **NTP** (the system clock when synchronised).
+
+The anchor is **not valid across a reboot** and is never stored: there is no battery clock
+to carry the monotonic clock through a power-off. A Jetson that reboots in flight with the GPS
+denied therefore relies on SYSTEM_TIME (fit `navera-vehicle-link` with a MAVLink autopilot) or
+a DS3231; with neither, the celestial pipeline publishes "no trusted time" until the GPS is
+back. `/navera/time_status` (JSON, 1 Hz) shows the source, its 1-sigma, the anchor's age and
+jumps, and the anchor minus SYSTEM_TIME (a measure of the Jetson clock's drift).
 
 ## 11. Checks
 
@@ -805,7 +1075,7 @@ sudo rm /etc/systemd/system/navera-pipeline-day.service
 sudo systemctl daemon-reload
 
 # Everything
-sudo systemctl disable --now navera-discover navera-estimator navera-gps navera-imu navera-rtc \
+sudo systemctl disable --now navera-discover navera-hotplug navera-estimator navera-gps navera-imu navera-insta360 navera-rtc \
     navera-pipeline-day navera-pipeline-night navera-pipeline-cn \
     navera-output navera-vehicle-link navera-web
 sudo rm /etc/systemd/system/navera-*.service /etc/sudoers.d/navera-web

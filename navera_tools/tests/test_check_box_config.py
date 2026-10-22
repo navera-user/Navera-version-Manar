@@ -27,6 +27,17 @@ def main():
             "NAVERA_FORWARD_DEGRADED": "true", "NAVERA_DEGRADED_SIGMA_M": "30"}
     if check_box.config_findings(good):
         fails.append(f"a good configuration flagged: {check_box.config_findings(good)}")
+    # the GPS sources of every connection (network, DroneCAN, the autopilot's first GPS)
+    for env, flagged in (({"NAVERA_GPS_SOURCE": "vehicle_gps1"}, "NAVERA_VEHICLE_MAVLINK_URL is empty"),
+                         ({"NAVERA_GPS_SOURCE": "network", "NAVERA_GPS_URL": "http://x"}, "GPS address"),
+                         ({"NAVERA_GPS_SOURCE": "dronecan", "NAVERA_GPS_CAN_IFACE": "nosuchcan9"},
+                          "nosuchcan9 is missing")):
+        got = check_box.config_findings(env)
+        if not any(lv == check_box.FAIL and flagged in d for lv, _, d in got):
+            fails.append(f"not flagged: {flagged} ({got})")
+    ok_net = check_box.config_findings({"NAVERA_GPS_SOURCE": "network", "NAVERA_GPS_URL": "udp:10110"})
+    if ok_net:
+        fails.append(f"a good network GPS flagged: {ok_net}")
     d = tempfile.mkdtemp()
     empty = os.path.join(d, "empty.mbtiles")
     open(empty, "w").close()
@@ -40,6 +51,19 @@ def main():
         fails.append("an empty map file passed")
     if check_box.mbtiles_verdict(full)[0] != check_box.OK:
         fails.append("a valid map file failed")
+    # the Insta360 kit: used when either source is insta360; its USB node's permission
+    if not check_box.insta360_used({"NAVERA_CAMERA_INPUT": "insta360"}) or check_box.insta360_used({}):
+        fails.append("Insta360 kit use not recognised")
+    sysfs, dev = os.path.join(d, "sys"), os.path.join(d, "dev")
+    os.makedirs(os.path.join(sysfs, "1-2.1"))
+    open(os.path.join(sysfs, "1-2.1", "busnum"), "w").write("1\n")
+    open(os.path.join(sysfs, "1-2.1", "devnum"), "w").write("10\n")
+    if check_box.usb_node_writable("1-2.1", sysfs, dev) is not None:
+        fails.append("a missing USB node was judged")
+    os.makedirs(os.path.join(dev, "001"))
+    open(os.path.join(dev, "001", "010"), "w").close()
+    if check_box.usb_node_writable("1-2.1", sysfs, dev) is not True:
+        fails.append("a writable USB node was refused")
     print(text)
     for f in fails:
         print("FAIL", f)
@@ -49,3 +73,4 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
+

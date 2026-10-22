@@ -1,4 +1,12 @@
-# imu_pkg — box IMU driver (BNO085)
+# imu_pkg — box IMU driver (BNO085, optional)
+
+> **Reference kit.** The IRIS reference kit no longer fits a BNO085: its IMU is the **Insta360
+> One R camera's own IMU** (gyroscope + accelerometer, ~500 Hz, no magnetometer and no attitude
+> quaternion), read over the camera's USB link by `camera_pkg`'s `insta360_imu_node`
+> (`/navera/sensors/insta360/imu`). Its integration into the boot services is in progress
+> (problem F37). The BNO085 described here stays supported and auto-detected, as an option.
+> GPS: any NMEA serial receiver (a u-blox NEO-M8N gave a fix on the box), or the autopilot's /
+> the vehicle's ROS GPS.
 
 `imu_node` reads the BNO085 (9-DoF with on-chip fusion) over I²C and publishes
 `/navera/sensors/imu` (sensor_msgs/Imu) — by default on bus 1 (header pins 27 SDA / 28 SCL)

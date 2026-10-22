@@ -126,6 +126,7 @@ function statusLines(){
   var cam=chk("camera"),st=chk("stars"),f=S.last_fix||{};
   return '<div class="checks">'+gpsLine()+line(navOk?"ok":"bad","NAVERA connected",navOk?"":"the phone cannot reach the Jetson")+
     line(cam.status==="ok"?"ok":"bad","Camera",cam.status==="ok"?"":(cam.detail||"no picture"))+
+    (function(){var t=chk("star_time");return line(t.status==="ok"?"ok":"bad","Star time",t.detail||"")})()+
     line(st.status==="ok"?"ok":"wait","Stars",(S.live||{}).confirmed==null?"waiting for the sky":S.live.confirmed+" seen")+
     (S.recording?line((S.fixes||0)>0?"ok":"wait","Positions from the sky",(S.fixes||0)+(f.err_km==null?"":" · last "+f.err_km+" km from GPS")):"")+'</div>'}
 function banner(){

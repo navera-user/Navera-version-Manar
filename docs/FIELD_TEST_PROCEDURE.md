@@ -97,7 +97,7 @@ The vehicle settings can be set either there or on the `/mission` page (port 818
 systemd runs navera-discover first; drop the units you have not enabled):
 
 ```bash
-sudo systemctl restart navera-discover navera-estimator navera-gps navera-imu navera-rtc \
+sudo systemctl restart navera-discover navera-hotplug navera-estimator navera-gps navera-imu navera-rtc \
     navera-vehicle-link navera-pipeline-day navera-output navera-web
 ```
 
@@ -156,7 +156,12 @@ of view the camera settings FAIL; with a field of view only, "lens calibration" 
    image is the ERROR of the current setting, not the latency:
    new `NAVERA_CAMERA_LATENCY_S` = current setting + (stamp - time shown). (Or set it to 0 for
    this check: the difference stamp - time shown is then the latency itself.) On the bench, `navera_tools/bench/camera_latency.py`
-   measures it directly (screen flashes, median - frame period / 2).
+   measures it directly (screen flashes, median - frame period / 2); with `--calib <calibration.yaml>`
+   it is written into the camera's calibration file, and the day node then uses it as the set delay
+   (stated with 0.1 s). This is the main source of the delay: the GPS may be lost right after
+   take-off. Re-measure after any change of camera, resolution, frame rate, encoder or stream
+   settings. In-flight calibration (`auto_latency`) needs at least two turns of ≥ 90° at cruise
+   speed more than 20 s before the GPS can be lost (day_pkg/README.md, "Camera delay").
 
 ## 7. Recording flights (GPS valid, vision in shadow mode)
 

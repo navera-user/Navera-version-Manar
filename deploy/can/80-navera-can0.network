@@ -1,0 +1,15 @@
+# systemd-networkd: bring the Jetson's CAN interface up at boot for a DroneCAN GPS (1 Mbit/s,
+# the DroneCAN default). NAVERA itself never needs root to read it once it is up.
+#   sudo install -m 0644 deploy/can/80-navera-can0.network /etc/systemd/network/
+#   sudo systemctl enable --now systemd-networkd
+#   ip -details link show can0          # state UP, bitrate 1000000
+[Match]
+Name=can0
+
+[CAN]
+BitRate=1M
+RestartSec=100ms
+# On a bus shared with the autopilot, the controller can be made completely silent (it then
+# does not even acknowledge frames). Never with a GPS alone on this bus: nobody would
+# acknowledge its frames.
+#ListenOnly=yes

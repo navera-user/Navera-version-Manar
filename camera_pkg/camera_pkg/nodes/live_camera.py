@@ -6,6 +6,8 @@ Image input (parameter `input`):
     usb   a USB camera (V4L2), e.g. the Insta360 ONE R in webcam mode: /dev/videoN
     csi   a CSI camera through GStreamer (nvarguscamerasrc)
     ros   any sensor_msgs/Image topic (`input_topic`): the vehicle's own camera
+    insta360  the Insta360 kit's straight-down view (camera_pkg insta360_node, which owns the
+          camera in USB Android mode): an image topic stamped at the exposure, an ideal lens
 
 For each frame published, at the instant it was taken (grab time - capture_latency_s):
     attitude   from `imu_topic` (sensor_msgs/Imu, body ENU): NAVERA's BNO085, or the
@@ -32,6 +34,11 @@ moved (navera_common.health.FrozenFrameDetector) is published marked unusable ("
 image frozen: ..."), so no localizer turns it into a position; <ns>/camera_health (JSON)
 reports it, and a camera input frozen longer than `frozen_restart_s` exits so the service
 restarts and reopens the device. The first new picture ends the freeze.
+
+Camera stall: a camera input (usb / csi / gst) that delivers no frame for
+`camera_stall_restart_s` (unplugged, USB reset, stuck driver, stalled stream, or a grab that
+never returns) is reported on <ns>/camera_health ("stalled") and the node exits so the service
+restarts and reopens it (camera_pkg.grab_watchdog).
 """
 import json
 import math
@@ -48,6 +55,7 @@ from navera_common.camera_model import CameraModel, parse_crop
 from navera_common.frame_builder import FrameBuilder
 from navera_common.geo import haversine_m
 from navera_common.health import FrozenFrameDetector
+from camera_pkg.grab_watchdog import GrabWatchdog
 from navera_common.lifecycle import die_with_parent
 from navera_common.params import declare_float
 from navera_common.sensor_history import History, slerp
@@ -73,7 +81,7 @@ class LiveCamera(Node):
     def __init__(self, **kwargs):
         super().__init__("live_camera", **kwargs)
         self.declare_parameter("camera_type", "day")
-        self.declare_parameter("input", "usb")                 # usb | csi | gst | ros
+        self.declare_parameter("input", "usb")                 # usb | csi | gst | ros | insta360
         # input gst: any GStreamer pipeline ending in "appsink name=sink" giving BGR frames
         # (an IP/RTSP camera, a gimbal's video stream...)
         self.declare_parameter("gst_pipeline", "")
@@ -97,6 +105,10 @@ class LiveCamera(Node):
         self.declare_parameter("require_attitude", True)
         self.declare_parameter("imu_topic", "/navera/sensors/imu")
         self.declare_parameter("attitude_source", "imu")        # label recorded in the meta
+        # an attitude whose yaw is not a heading (orientation_covariance yaw sigma above this, e.g.
+        # the Insta360's gyro yaw before the GPS course or vision set it): the frame is straightened
+        # but carries no heading_deg, and the day node uses its gyro-carried vision heading instead
+        declare_float(self, "max_heading_sigma_deg", 5.0)
         self.declare_parameter("gps_topic", "/navera/sensors/gps_fix")
         self.declare_parameter("altitude_topic", "/navera/sensors/altitude_agl")
         self.declare_parameter("vision_altitude_topic", "/navera/vision/altitude_agl")
@@ -122,6 +134,8 @@ class LiveCamera(Node):
         declare_float(self, "frozen_motion_m", 5.0)
         # a camera input (not a ROS topic) frozen this long exits: systemd restarts and reopens it
         declare_float(self, "frozen_restart_s", 20.0)
+        # a camera input that gives no frame this long exits: systemd restarts and reopens it
+        declare_float(self, "camera_stall_restart_s", 10.0)
         self.declare_parameter("frame_id", "camera_link")
         p = lambda n: self.get_parameter(n).value               # noqa: E731
 
@@ -132,6 +146,8 @@ class LiveCamera(Node):
         self.cw, self.ch = (self.crop[2], self.crop[3]) if self.crop else (self.w, self.h)
         self.period = 1.0 / max(float(p("fps")), 1e-3)
         self.latency_s = float(p("capture_latency_s"))
+        from navera_common.delay_monitor import DelayChangeMonitor
+        self.delay_mon = DelayChangeMonitor()
         cam = self._camera_model(p("calibration_file"), float(p("camera_hfov_deg")))
         self.builder = FrameBuilder(cam, (p("mount_roll_deg"), p("mount_pitch_deg"), p("mount_yaw_deg")),
                                     float(p("max_tilt_deg")), p("camera_type"), bool(p("gimbal")),
@@ -139,6 +155,8 @@ class LiveCamera(Node):
         self.attitude_source, self.frame_id = p("attitude_source"), p("frame_id")
         self.measured_sigma_m = float(p("measured_altitude_sigma_m"))
         self.att = History(maxlen=4000, max_gap_s=0.2, interp=slerp)
+        self.yaw_sigma = History(maxlen=4000, max_gap_s=0.2)    # deg, from orientation_covariance
+        self.max_heading_sigma = float(p("max_heading_sigma_deg"))
         self._last_q, self._same, self._frozen_n = None, 0, 50     # 1 s at 50 Hz
         self._tilt_log = []                     # (time, too tilted) of the last minute's frames
         self.gps = History(maxlen=600, max_gap_s=1.5)
@@ -162,6 +180,7 @@ class LiveCamera(Node):
         self.freeze = FrozenFrameDetector(float(p("frozen_still_diff")))
         self.frozen_motion_deg, self.frozen_motion_m = float(p("frozen_motion_deg")), float(p("frozen_motion_m"))
         self.frozen_restart_s = float(p("frozen_restart_s"))
+        self.watchdog = GrabWatchdog(float(p("camera_stall_restart_s")))
         self._prev_t = None                                     # exposure of the previous frame sent
         # sensors in their own callback group: converting images never delays them
         sensors = MutuallyExclusiveCallbackGroup()
@@ -196,9 +215,11 @@ class LiveCamera(Node):
         self._lock = threading.Lock()
         self._stop = threading.Event()
         self.count = 0
-        if self.input == "ros":
-            # sensor-data QoS (best effort): accepts both best-effort and reliable camera publishers
-            self.create_subscription(Image, p("input_topic"), self._on_image, qos_profile_sensor_data,
+        if self.input in ("ros", "insta360"):
+            # sensor-data QoS (best effort): accepts both best-effort and reliable camera publishers;
+            # the Insta360 kit's own reliable view (2 frames/s, a lost 3 MB frame is a lost fix)
+            qos = qos_img if self.input == "insta360" else qos_profile_sensor_data
+            self.create_subscription(Image, p("input_topic"), self._on_image, qos,
                                      callback_group=MutuallyExclusiveCallbackGroup())
         else:
             threading.Thread(target=self._grab_loop, args=(p("device"),), daemon=True).start()
@@ -238,6 +259,8 @@ class LiveCamera(Node):
             return cam
         if not math.isfinite(hfov):
             raise ValueError("set calibration_file (navera_tools/calibrate_camera.py) or camera_hfov_deg")
+        if self.input == "insta360":                            # a computed view: an ideal lens by construction
+            return CameraModel.ideal(hfov, (self.cw, self.ch))
         self.get_logger().warn("no calibration file: the lens is taken as distortion-free — "
                                "calibrate it (navera_tools/calibrate_camera.py) before a real test")
         return CameraModel.ideal(hfov, (self.cw, self.ch))
@@ -256,6 +279,8 @@ class LiveCamera(Node):
                                     throttle_duration_sec=10.0)
             return
         self.att.add(stamp_s(m.header.stamp), q)
+        v = float(m.orientation_covariance[8])
+        self.yaw_sigma.add(stamp_s(m.header.stamp), math.degrees(math.sqrt(v)) if v > 0 and math.isfinite(v) else 0.0)
 
     def _on_gps(self, m: NavSatFix):
         if m.status.status >= NavSatStatus.STATUS_FIX and math.isfinite(m.latitude):
@@ -307,24 +332,29 @@ class LiveCamera(Node):
             self.context.try_shutdown()
             return
         fails = 0
+        self.watchdog.start(time.monotonic())
         while not self._stop.is_set():
             ok = cap.grab()                                     # paced by the camera itself
             t = self.get_clock().now().nanoseconds * 1e-9 - self.latency_s
+            if ok:
+                self._watch_delay(cap)
             frame = None
             if ok and self._want.is_set():
                 ok, frame = cap.retrieve()                      # decode only the frame to send
             elif ok:
                 fails = 0
+                self.watchdog.ok(time.monotonic())
                 continue
             if not ok or frame is None:
                 fails += 1
-                if fails > 50:
-                    self.get_logger().fatal("the camera stopped sending frames — exiting so the service restarts")
-                    self.context.try_shutdown()
+                stalled = self.watchdog.stalled(time.monotonic())
+                if fails > 50 or stalled:
+                    self._camera_stalled(stalled or f"{fails} failed grabs")
                     return
                 time.sleep(0.05)
                 continue
             fails = 0
+            self.watchdog.ok(time.monotonic())
             if frame.shape[1] != self.w or frame.shape[0] != self.h:
                 self.get_logger().error(f"camera gives {frame.shape[1]}x{frame.shape[0]}, set to {self.w}x{self.h}",
                                         throttle_duration_sec=10.0)
@@ -336,6 +366,21 @@ class LiveCamera(Node):
                 self._latest = (frame, t)
             self._want.clear()
         cap.release()
+
+    def _watch_delay(self, cap) -> None:
+        """Feed navera_common.delay_monitor with the frame's (arrival, source stamp): the V4L2
+        buffer timestamp (CLOCK_MONOTONIC) or the GStreamer buffer PTS (running time). A change
+        of the queueing after the source stamps the frame is a change of the camera delay."""
+        try:
+            if isinstance(getattr(cap, "stamps", None), tuple):
+                self.delay_mon.add(*cap.stamps)
+            elif self.input == "usb":
+                import cv2
+                ms = cap.get(cv2.CAP_PROP_POS_MSEC)
+                if ms and ms > 0:
+                    self.delay_mon.add(time.monotonic(), ms / 1000.0)
+        except Exception:                                   # noqa: BLE001 — the monitor is optional
+            pass
 
     def _on_image(self, m: Image):
         from cv_bridge import CvBridge
@@ -362,7 +407,7 @@ class LiveCamera(Node):
             if not self._acked.wait(self.ack_timeout_s) and self._awaiting is not None:
                 self.get_logger().warn(f"no ack for frame {self._awaiting} in {self.ack_timeout_s:.0f} s — sending the next")
             t0 = time.monotonic()
-            if self.input != "ros" and not requested:
+            if self.input not in ("ros", "insta360") and not requested:
                 # camera inputs: a frame decoded for an earlier request (while this loop
                 # slept for the frame rate) is up to one period old — ask for a new one
                 with self._lock:
@@ -372,6 +417,11 @@ class LiveCamera(Node):
             with self._lock:
                 item, self._latest = self._latest, None
             if item is None:
+                # a grab that never returns is seen here (the grab thread cannot judge itself)
+                stalled = self.watchdog.stalled(time.monotonic()) if self.input not in ("ros", "insta360") else None
+                if stalled:
+                    self._camera_stalled(stalled)
+                    break
                 time.sleep(0.02)
                 continue
             requested = False
@@ -386,6 +436,12 @@ class LiveCamera(Node):
             msg = bridge.cv2_to_imgmsg(np.ascontiguousarray(out), "bgr8")
             msg.header.stamp.sec, msg.header.stamp.nanosec = int(t), int((t % 1) * 1e9)
             meta["image_stamp_ns"] = msg.header.stamp.sec * 1_000_000_000 + msg.header.stamp.nanosec
+            self._check_heading(meta, t)
+            meta["capture_latency_s"] = self.latency_s          # already subtracted: the localizers' set delay
+            meta["delay_monitor"] = self.delay_mon.state()     # the delay's change since start (no GPS needed)
+            if self.delay_mon.significant:
+                self.get_logger().warn(f"camera delay changed by {self.delay_mon.change_s:+.3f} s since the start "
+                                       "(queueing after the camera's stamp)", throttle_duration_sec=30.0)
             if meta.get("utc_time"):
                 meta["utc_source"] = "system_clock"         # not a trusted time by itself (celestial, H-08)
             if frozen:
@@ -405,6 +461,16 @@ class LiveCamera(Node):
                     + ("" if meta["usable"] else f" — {meta['reason']}"))
             self.count += 1
             time.sleep(max(0.0, self.period - (time.monotonic() - t0)))
+
+    def _check_heading(self, meta, t):
+        """Drop the frame's heading when the attitude's yaw is not a heading (sigma too large)."""
+        if meta.get("heading_deg") is None:
+            return
+        s = self.yaw_sigma.at(t)
+        if s is not None and s > self.max_heading_sigma:
+            meta.update(heading_deg=None, heading_sigma_deg=round(min(s, 180.0), 1),
+                        heading_note=f"attitude yaw sigma {min(s, 180.0):.0f} deg > {self.max_heading_sigma:.0f}: "
+                                     "no heading from the attitude (the day node carries the vision heading)")
 
     def _moved(self, t0, t1):
         """True when the IMU or the GPS says the vehicle moved between two exposures, False when
@@ -439,12 +505,23 @@ class LiveCamera(Node):
             self.pub_health.publish(String(data=json.dumps({
                 "frozen": bool(why), "reason": why or "", "frozen_frames": self.freeze.repeats,
                 "frozen_s": round(since, 1), "input": self.input})))
-        if why and self.input != "ros" and since > self.frozen_restart_s:
+        if why and self.input not in ("ros", "insta360") and since > self.frozen_restart_s:
             self.get_logger().fatal(f"camera image frozen for {since:.0f} s — exiting so the service restarts "
                                     "and reopens the camera")
             self._stop.set()
             self.context.try_shutdown()
         return why
+
+    def _camera_stalled(self, why):
+        """Report a stalled camera input and exit: systemd restarts the service, which reopens it."""
+        if self._stop.is_set():
+            return
+        self._stop.set()
+        self.pub_health.publish(String(data=json.dumps({
+            "frozen": False, "stalled": True, "reason": why, "input": self.input})))
+        self.get_logger().fatal(f"the camera stopped sending frames ({why}) — exiting so the service restarts "
+                                "and reopens it")
+        self.context.try_shutdown()
 
     def _rate_dps(self, t):
         """The vehicle's rotation rate around the exposure (deg/s, from the attitude 0.2 s

@@ -1,6 +1,7 @@
 # NAVERA — Validation status and known limitations
 
-**Release 0.2 — field validation pending.** Last updated 2026-10-03.
+**Release 0.2 — field validation pending.** Last updated 2026-10-22 (the dated sections below
+give each measurement's date; the summary and the known limitations reflect all of them).
 
 This document states what has been measured, how, and what still has to be validated in
 the field. Every number below comes from a run on the Jetson Orin Nano (bench, replay and
@@ -16,12 +17,16 @@ been measured. Open engineering items are tracked in
 | Automatic restart after a crash | Mechanism verified; not yet reboot-tested on a deployed unit | Node exit → launch exit, verified |
 | Day vision — local feature matching (default since 2026-10-01) | **Accurate on aerial test frames; measured with NAVERA's camera on a screen bench only (not flown)** | 32/33 frames within 9 m (median 4 m), no wrong position accepted, 0.16 s/frame |
 | Day vision — DISK + LightGlue matcher, navigation between matches (2026-10-06/07) | **Screen bench with the Insta360 (other-date imagery) and simulator; not flown** | below: "Day vision with NAVERA's camera — screen bench" |
-| Day vision — stated sigma on real drone flights (UAV-VisLoc, 8 flights, 2026-10-20) | **Model alone unsafe (65 % within 3σ); self-calibration + 30 m floor safe (99.8 / 99.9 %) only with a pose–attitude guard not yet in the product — as-is 70 of 2600 fixes 100–325 m off, 13 of them beyond the self-calibrated 3σ** | below: "Day: real drone flights" |
+| Day vision — stated sigma on real drone flights (UAV-VisLoc, 8 flights, 2026-10-20) | **Model alone unsafe (65 % within 3σ); self-calibration + 30 m floor safe with the pose–attitude guard, in the product since 2026-10-20 (VL-1, `pose_tilt_guard_deg`): median 16 m, p90 34 m, 1 of 2599 fixes > 100 m, 0.999 (floor) / 0.993 (self-cal) within 3σ. Without the guard (code before VL-1): 70 fixes 100–325 m off** | below: "Day: real drone flights" |
 | Day vision — a real flight replayed through the whole chain: IMU straightening, tracking, estimator (MARS-LVIG, 2026-10-21) | **Real drone camera and IMU replayed (not NAVERA's camera, 80–130 m, one valley flight + 55 s of another):** GPS cut after 120 s, 310 s without: fixes 6–7 m median, never over 17 m, 100 % within 3σ, 0 over 50 m in 1 493; 36 % of frames matched at z17 (54 % at z18); dead-reckoning alone 4 / 12 m (median / max) over 70 s after two fixes of this branch | below: "Day: a real flight replayed" |
+| Day vision — real drone imagery against NAVERA's map source (Esri World Imagery, as a mission prepares it; UAV-VisLoc 10 flights + AerialVL 4 sequences, 2026-10-22) | **Other vehicles' cameras, single frames, not flown; map 1–9 years newer than the photos** | UAV-VisLoc 1461/4251 frames located (34 %; 54 % → 33 % on the same photos vs the dataset's own map), median 19 m, p90 38 m, 3 fixes > 100 m; AerialVL (Qingdao, March, 210–250 m, incl. sunset) 561/1152 (49 %), 18 m raw / 3–8 m after the labels' 2–2.75 s lag; within 3σ (floor / self-cal) 0.997–1.000; below: "Day: more public flights" |
+| Day vision — guards on recorded real-camera runs (shake, confident wrong fixes, blending, coast, heading search; 2026-10-22) | **Offline replay of bench logs and real drone photos; not flown** | wind/shake runs: outputs > 50 m 51 → 16 (3 seeds), right fixes kept; injected 100–650 m wrong matches believed 16 → 3 (flights) / 20 → 9 (missions); blending with the gyro heading: other conditions 57 → 13; coast failed frame 6–20 s → 0.5–1.4 s; heading search: wrong/unknown heading 0/20 → 17–19/20 located; below: "Day: robustness fixes on recorded data" |
 | Day vision — DINOv2 tile retrieval (former method, fallback) | **Not accurate enough to replace GPS** | Median 442 m on labelled replay frames |
-| Night vision (STHN homography) | Frames scaled and turned north-up from altitude, camera field of view and heading; motion gate; **not flown. Real aerial thermal (2026-10-21, orthomosaic frames, below): night LWIR 28–38 % of frames give a position at 700–1000 m, 10–12 m median, 0 wrong accept with a 640 px camera; a 160 px camera made wrong accepts through the retries** | 8–13 m median on synthetic frames (250–600 m, any heading); simulated night mission, GPS jammed, vehicle barometer (2026-10-07): 10 m median, 21 m max, stated accuracy (simulator-calibrated) 100 % within 3 sigma; **needs an independent height (barometer) after GPS loss** |
+| Night vision (STHN homography) | Frames scaled and turned north-up from altitude, camera field of view and heading; motion gate; **not flown. Real aerial thermal (2026-10-21, orthomosaic frames, below): night LWIR 28–38 % of frames give a position at 700–1000 m, 10–12 m median, 0 wrong accept with a 640 px camera; a 160 px camera made wrong accepts through the retries (0 since the retry gate). 2026-10-22: every hypothesis needs consistency ≥ 0.97 (0 wrong on 940 real-thermal frames incl. a 15° heading error), stated sigma refitted on real thermal (100 % within 3σ) and published by default** | 8–13 m median on synthetic frames (250–600 m, any heading); simulated night mission, GPS jammed, vehicle barometer (2026-10-07): 10 m median, 21 m max, stated accuracy (simulator-calibrated) 100 % within 3 sigma; **needs an independent height (barometer) after GPS loss** |
+| Night vision on real recorded night thermal frames (Thermal-UAV, DJI M4T 35.5°, ~300 m, 2026-10-22) | **Outside the envelope: footprint 5–12 % of the reference** | 0/262 positions, 0 wrong (all refused "fly higher"; with coverage gates off still 0 accepted, 0 wrong; raw STHN 140/146 wrong): needs ≥ ~900 m or a wider lens; below: "Night vision on REAL recorded night thermal frames" |
 | Celestial 360 all-sky solver (`cn_pkg.allsky`) on **real night skies** (public ESO all-sky cameras, 2026-10-21) | **Real sky, but single up-looking fisheye cameras, not NAVERA's Insta360; mount 'up' known (fixed camera / truth fit)** | 559 real frames: 0 wrong positions accepted (61 wrong identifications all refused); clear moonless nights 100 % solved, 2.9 km median; below: "Celestial 360 on real night skies" |
-| Celestial (astrometry.net) | Run end to end on simulated star fields; **coarse: bounded by the IMU attitude (~111 km per degree); simulator only — not run on a real sky** | 5.5–6.5 km with a perfect attitude; 24–119 km with a BNO085-class IMU; simulated night mission without barometer (2026-10-07): 29 km median, 40 km max, 100 % within its stated sigma |
+| Celestial (astrometry.net) | Run end to end on simulated star fields; **coarse: bounded by the IMU attitude (~111 km per degree); simulator only — not run on a real sky**. Compass-free when the camera's full mount is known (B11, 2026-10-22, unit-tested on synthetic plate solutions only) | 5.5–6.5 km with a perfect attitude; 24–119 km with a BNO085-class IMU; simulated night mission without barometer (2026-10-07): 29 km median, 40 km max, 100 % within its stated sigma; compass error 1/5/10° → 51/256/516 km with the compass method, 0.24 km with the zenith method |
+| Celestial 360 in a car: trusted ('stopped') fixes and the learned tilt of 'up' (2026-10-22) | **Simulation only (car drive: synthetic IMU and sky)**; real drive planned from 31 Oct | glass road: 'stopped' frames with 'up' > 0.3° off 106 → 1 (4 seeds: 394 → 2), no stop lost on 13 profiles; trusted fixes through the server p90 265 → 9.3 km, max 825 → 22 km; tilt fit with 1–4 bad samples in 12: 33–101 km → 0.8–2.4 km; below: "Celestial: field-test readiness fixes" |
 | Day vision dead-reckoning along the measured track (no match: sea, uniform ground, frame unusable) | Implemented 2026-10-02; **simulator only** | Land route: no failsafe, error median 10 m, max 33 m; across the bay: carried 90 s over the sea stating ±300 m, true error at most 146 m |
 | Vision position carried to the present (output, operator view) | Implemented; unit tests and simulator only | 1.5 s old photo at 40 m/s: moved 60 m, stated ±31.5 m |
 | Inertial navigation (integrating the IMU) | **Not implemented** — the IMU gives attitude and heading changes | — |
@@ -154,6 +159,20 @@ The 307 m and 554 m maxima were the carried position folding turns; fixed after
 8 years older than the map (2017): no match with any matcher. Limits: the screen is flat
 (no relief, no perspective of buildings), no vibration or real blur; the camera was
 re-aimed between campaigns. **Not a flight measurement.**
+
+**Offline regression benchmark (2026-10-22, NAV-PERF-02, `navera_tools/bench/day_perf.py`,
+`navera_tools/tests/test_perf_day_vision.py`, nightly with `NAVERA_PERF=1`, ~3.7 min on the GPU).**
+Campaign 4 recorded no frames, so it cannot be replayed. Two offline proxies, product matcher
+(`matcher:=auto`, DISK + LightGlue, the node's gates): (1) 80 recorded real Insta360 frames of the
+2026-10-20 screen flights (clear 20 / 60 m/s, heavy rain, flare; the screen showed NAVERA's own map,
+prior 0–150 m off): 80/80 located, median 2.9–3.9 m, p95 8–13 m, max 13 m, 0 wrong; (2) campaign 4's
+mission (racetrack, height ±20 %, IMU heading ±5°, one 135 s lap after the GPS loss, VisionNavigator +
+FrameOdometry) with the camera replaced by the other-date terrain cut at its geometry: land median
+0.9–2.0 m, p95 1.6–2.7 m (farms once 10.5 m), coast median 3.2 m, availability 100 % everywhere, 0
+wrong, 100 % within 3σ. Far better than campaign 4 on the same terrains: the losses there (coast
+availability, farm p95) come from the screen + camera chain, which only part (1) carries. The test
+asserts campaign 4's numbers (land median ≤ 5.5 m, p95 ≤ 20 m, coast ≥ 50 % / ≤ 7.3 m, 0 wrong) and
+this baseline with ~2× margin.
 
 ### Day: real drone flights (UAV-VisLoc, 8 flights, 2026-10-20)
 
@@ -468,6 +487,259 @@ check yet** — the tool had been crashing since the camera-delay estimation was
 it now runs but publishes no output in either version (tiles of its default area missing,
 e.g. `tile_17_69415_51534.jpg`): identical 0 / 0, no evidence either way.
 
+### Day: more public flights, on NAVERA's own map source (UAV-VisLoc 02 / 09, Esri re-run, AerialVL; 2026-10-22)
+
+NAVERA has not flown. Two gaps of the runs above: they used **each dataset's own satellite map**
+(UAV-VisLoc's), not the map a mission would carry, and they covered one camera type at 300–780 m.
+Here the product matcher (`LearnedMatcher`, DISK + LightGlue, VL-1 guard 4°, exactly as
+`uavvisloc_eval.py` runs it) is measured against **Esri World Imagery z17 tiles prepared with
+`prepare_area.py --source esri_world_imagery`** as for a mission (evaluation only: Esri's terms do
+not allow storing it on a sold device, DEP-11), on two more UAV-VisLoc flights, the eight earlier
+ones again, and a second dataset (AerialVL: another vehicle, camera, region, season, 210–250 m).
+Same protocol as above: each frame alone, prior 250 m off in a random direction, search 350 m,
+no tracking; "wrong" here = **> 50 m**. Map dates from the Esri metadata layer
+(`esri_imagery_dates.py`). Results in `~/.navera_sim/pubdata/` (`uavvisloc/f*_esri.json`,
+`aerialvl/s*.json`, `tables_2026-10-22.txt`).
+
+**Data and licences.**
+- **UAV-VisLoc** flights 02 (Jiujiang / Yangtze, flat river plain, Sep 2018, 389 m above ground,
+  1071 photos) and 09 (Huzhou, flat, Jun 2019, 542 m, 766 photos), from the Hugging Face mirror
+  `mvidem/UAV-VisLoc` (labelled MIT there; the official repository states no licence — ask the
+  authors before quoting it commercially), on the ADATA disk `NAVERA_TESTDATA/uavvisloc/full/`.
+  Flight 07 (30 photos) was not run: its CSV has no attitude / heading columns and its map's
+  extent in the dataset is 50 m tall (broken). Flight 09's map comes in four tiles (not
+  converted): flight 09 is on Esri only.
+- **AerialVL** (Hugging Face `hmf21/AerialVL`, **CC BY 4.0**; code MIT): Qingdao (China), coastal
+  farmland, villages, suburbs and ponds, 11–18 March 2023 (early spring, bare fields), multirotor
+  with a gimballed nadir RGB camera (FLIR BFS-U3-31S4C, 2048 × 1536), NovAtel GNSS (1.5 m RMS
+  single point), frames at 2 Hz turned east-up by the authors. 4 of the 11 sequences, every 4th
+  frame (6th for the longest; 2–3 s apart): 1152 frames, ~4.5 GB, read member by member from the
+  56 GB split zip (`NAVERA_TESTDATA/aerialvl/`). One sequence ends at sunset (16 Mar, 18:04–18:15
+  local, "nightfall" in the paper). **The dataset gives no height and no lens:** the frame scale is
+  fitted per sequence on 12 frames (210–250 m at a nominal 60°, `aerialvl_eval.py`) and then held
+  fixed, like a barometer height; the paper says 120–200 m. The gimbal keeps the camera nadir: the
+  position is the frame centre (no pose). Esri imagery there: Feb / Apr 2025 (2 years newer).
+
+**1. UAV-VisLoc on the Esri map.** Esri imagery under the flights is 2021–2025: 1–9 years newer
+than the photos (03 / 04: 2018 → 2025; 05: 2016 → 2023; 11: 2023 → 2024). Eight earlier flights at
+every 2nd photo (same field of view as before, flight 06's mislabelled 06_0099–0180 excluded),
+02 and 09 at every photo:
+
+| Flight | Ground, photo → map date | Accepted | Median / p90 / max (m) | > 50 m | > 100 m | Floor 30 m | Self-cal | > 50 m beyond 3σ (self-cal) |
+|---|---|---|---|---|---|---|---|---|
+| 03 | flat, 2018 → 2025 | 187/384 (49 %) | 15.9 / 31 / 54 | 2 | 0 | 1.000 | 1.000 | 0 |
+| 04 | flat, 2018 → 2025 | 140/369 (38 %) | 25.1 / 51 / 130 | 17 | 2 | 0.986 | 0.980 | 2 |
+| 01 | flat, 2018 → 2025 | 81/409 (20 %) | 20.7 / 50 / 94 | 9 | 0 | 0.988 | 0.982 (not cal.) | 1 |
+| 05 | hills, 2016 → 2023 | 8/237 (3 %) | 27.8 / 45 / 148 | 1 | 1 | 0.875 | 0.833 (not cal.) | 1 |
+| 06 | valley, 2022 → 2024 | 47/131 (36 %) | 17.0 / 28 / 66 | 1 | 0 | 1.000 | 1.000 (not cal.) | 0 |
+| 08 | flat, 2019 → 2023–25 | 47/517 (9 %) | 21.5 / 44 / 65 | 3 | 0 | 1.000 | 1.000 (not cal.) | 0 |
+| 10 | 473–490 m, 2018 → 2025 | 1/72 (1 %) | 54.7 | 1 | 0 | 1.000 | (not cal.) | 0 |
+| 11 | 1713–2013 m, 2023 → 2024 | 293/295 (99 %) | 20.8 / 35 / 74 | 7 | 0 | 1.000 | 0.995 | 1 |
+| **02 (new)** | flat, 2018 → 2021 | 296/1071 (28 %) | 16.4 / 34 / 84 | 5 | 0 | 1.000 | 1.000 | 0 |
+| **09 (new)** | flat, 2019 → 2025 | 361/766 (47 %) | 19.4 / 38 / 84 | 13 | 0 | 1.000 | 1.000 | 0 |
+| **All** | | **1461/4251 (34 %)** | **18.9 / 38 / 148** | **59 (4.0 %)** | **3** | **0.997** | **0.995** | **5** |
+
+Flight 02 on its own dataset map, for comparison: 272/1071, 14.8 / 32 / 104 m, 3 > 50 m, 1 > 100 m
+(02_0935, the frame centre with the photo tilted 12.6°: the bench artefact of 04_0420 above).
+
+- **The map source matters more than the matcher: on the same 2414 photos of the 8 earlier
+  flights, the dataset's map gives a position for 54 %, Esri for 33 %.** The loss follows the
+  map's age: flights 03 / 04 (7 years) 90 % → 38–49 %, 06 81 → 36 %, 08 27 → 9 %; flight 11, the
+  only one whose Esri image is 1 year from the flight, gains (89 → 99 %). Accuracy of what is
+  accepted is close (median 19 vs 16 m).
+- **Wrong fixes:** 3 accepted fixes > 100 m on the Esri map (04_0663 130 m, 04_0439 109 m,
+  05_0149 148 m) where the dataset map had none on these photos. 04_0439 and 05_0149 are poses from
+  12–14 inliers whose tilt (6.1° / 12.7°) agrees within 4° with the photo's own tilt (3.1° / 8.5°):
+  the VL-1 guard lets them through because the bench photos are not straightened; in the product
+  the IMU straightens the frame first (expected tilt 0) and these poses would be refused, leaving
+  the frame centre (48 m / 57 m off). 04_0663 (58 inliers, pose 13°, photo 7–10° tilted) is the
+  same case. Replayed straightened (2026-10-22, "Day: robustness fixes on recorded data"): no fix
+  > 100 m — two photos not accepted at all, 04_0663 21–58 m. With the 30 m floor / self-calibration, 0.997 / 0.995 of the fixes are within 3σ;
+  5 fixes > 50 m (2 > 100 m) are beyond the self-calibrated 3σ. Flights that match rarely on
+  this map (01, 05, 06, 08, 10) never calibrate and publish the 30 m floor.
+
+**2. AerialVL (Esri map, the dataset's GNSS labels as they are):**
+
+| Sequence | Scene, light | Fitted height | Accepted | Median / p90 / max (m) | > 50 m | Floor 30 m / self-cal within 3σ |
+|---|---|---|---|---|---|---|
+| 2023-03-11 11:48 | farmland, villages, noon | 250 m | 114/231 (49 %) | 22.3 / 46 / 73 | 6 | 1.000 / 1.000 |
+| 2023-03-16 18:04 | town, suburbs, **sunset** | 211 m | 169/331 (51 %) | 25.2 / 30 / 37 | 0 | 1.000 / 1.000 |
+| 2023-03-18 14:38 | long loop, afternoon | 215 m | 183/352 (52 %) | 14.8 / 28 / 38 | 0 | 1.000 / 1.000 |
+| 2023-03-18 16:30 | short loop, late afternoon | 225 m | 95/238 (40 %) | 15.9 / 20 / 31 | 0 | 1.000 / 1.000 (not cal.) |
+| **All** | | | **561/1152 (49 %)** | **18.1 / 33 / 73** | **6** | **1.000 / 1.000** |
+
+- **The labels lag the frames.** The errors point backwards along the track whatever the
+  direction (flying east: 35 m west; south: 9 m north…). `truth_lag.py` fits a label time offset
+  and a constant shift to the accepted fixes: **−2.0 to −2.75 s on all four sequences** plus
+  8–25 m of constant shift; corrected, the errors are **median 3.2–7.6 m, p90 13–16 m, max
+  25–47 m, 0 > 50 m** (the 6 "wrong" fixes of 11 March are this: 50–73 m while flying east at
+  the start). The same frames against the dataset's own Google Earth map give the same offset
+  (−2.75 s, shift −16 / −20 m), so it is in the labels, not in Esri's registration. On UAV-VisLoc
+  the same fit finds +0.25 / +0.5 / −0.25 s and < 4 m shift (flights 03, 04, 02, 09): no lag there.
+- The sunset sequence is located as well as by day (51 %, 3.2 m corrected).
+- Refusals: too few inliers on bare March fields and new buildings (2–11 of 12 needed) and, on
+  two sequences, "fitted scale 0.78–0.84 ≠ 1" with 15–48 inliers at the right place: the drone
+  changed height within the sequence (the paper flies 120 / 150 / 200 m) while the eval holds one
+  height — with a barometer this is an eval artefact, not a product refusal.
+
+**Verdict (2026-10-22: 2989 frames not used before + 2414 re-scored, two datasets, NAVERA's map provider):**
+- Day vision on real drone imagery against the map a mission would carry: **median 18–19 m,
+  p90 33–38 m; 34 % (UAV-VisLoc) and 49 % (AerialVL) of single frames give a position**; 3 of
+  2022 accepted fixes > 100 m (0.15 %), all three pose solutions on tilted, unstraightened photos.
+- **Map age is the first-order risk:** the same photos lose 40 % of their fixes when the map is
+  newer than the flight by 5–7 years; it is the reverse of a mission (a map older than the
+  flight) but the same mismatch. A mission area whose imagery is old or seasonal will give
+  fewer fixes; the wrong fixes did not grow in proportion (3 > 100 m in 2022).
+- The stated sigma holds with the 30 m floor and self-calibration (0.995–1.000 within 3σ);
+  the model alone still does not (0.70–0.73).
+- Limits: still another vehicle's camera and not a NAVERA flight; frames one by one from a
+  perturbed prior (no tracking, no IMU straightening); AerialVL's height and lens fitted;
+  public labels with their own errors (AerialVL lag, UAV-VisLoc 06).
+
+### Day: robustness fixes on recorded data — shake, confident wrong fixes, blending, coast, heading search (2026-10-22)
+
+Branch `work/day-robust-2026-10-22`. Problems F20, F16 / D17, F23, F4, D18 and the three UAV-VisLoc
+fixes > 100 m on the Esri map. **Everything here is an offline replay of recorded data** (real-camera
+screen-bench logs, recorded missions, real drone photos); nothing was flown.
+
+**Data.** The 76-run real-camera campaign of 2026-10-19 (`~/navera-field/day_real_2026-10-19`) kept
+its per-frame CSV logs only — **no frames were recorded** — plus the re-check and day-image sets of
+2026-10-19/20 (25 runs, 10 of them with every frame recorded) and campaigns 4-7's screen missions
+(29 runs, every matcher result). `navera_tools/bench/replay_day_guards.py` rebuilds each run's truth
+(the bench circuit / the mission's integrated heading), puts each logged match at truth + its logged
+error and replays the GPS-lost part through `VisionNavigator` (the node's rules, pure Python) with
+the heading carried by a simulated gyro as the node carries it (true turn rate + 0.1 deg/s bias +
+noise, reset at fixes ±2°), 3 seeds. Limits: the live gate had already refused some matches (their
+vectors were not logged), so a replay can refuse more but never believe more; the bench camera did
+not move (the 'wind' overlay shakes the *scene*), so there is no real gyro at the exposure.
+Results: `~/.navera_sim/pubdata/day_guards_replay_2026-10-22.txt`. "base" = feat/field-sky-test
+d77f8c4 with the gyro heading; "product" = the defaults below.
+
+**F20 — wind / camera shake.** What carried the wrong fixes was not blur: on the 115 recorded frames of
+the wind run, sharpness (`image_quality.sharpness`) of the 10 wrong fixes 0.54–0.81 vs 0.58–0.86 for
+the right ones (median 0.68) — no separation; frame-time alignment of the shaken scene does not
+explain them either (best global offset 0–25 ms, median error unchanged). The shake rate does carry
+part of them (bench overlay rate > 40 deg/s: 62 % of the wrong, 40 % of the right fixes). Replayed
+(3 seeds, 443 lost frames a seed on 8 wind runs):
+
+| wind runs | measured output > 50 m | right fixes (≤ 20 m) not used | output median / p95 / max m | within 3σ |
+|---|---|---|---|---|
+| base | 51 | 13 / 540 | 12.0 / 75 / 166 | 83 % |
+| **product (blend + strong 3σ)** | **16** | 15 / 540 | **10.5 / 68 / 159** | 87 % (99.5 % with the 30 m floor) |
+| product + rate gate 6 px | 9 | **185** / 540 | 13.4 / 105 / 246 | 89 % |
+| product + rate gate 10 px | 16 | 39 / 540 | 10.5 / 69 / 124 | 87 % |
+| product + rate gate 15 px | 16 | 18 / 540 | 10.6 / 68 / 159 | 87 % |
+
+On the vibration runs (0 wrong in all arms) the rate gate refused 132 / 621 right fixes at 10 px, 45
+at 15 px. **Down-weighting wins, refusing does not:** the blend (each fix averaged with the carried
+position by their sigmas) cuts the wrong outputs by 3x without losing right fixes; a hard rate gate
+removes more wrong fixes only by refusing a third of the right ones, and the dead-reckoning that
+replaces them is worse than the fixes. So `day_pkg/frame_gate.py` (gyro smear at the exposure,
+sharpness against the flight's running median) is in the node but **off by default**
+(`frame_max_blur_px` 0, `frame_sharp_rel` 0), to be tried on a real vehicle, where the attitude at
+the exposure (not modelled on the bench) also depends on the rate.
+
+**F16 / D17 — a confident wrong match.** The track gate exists since 2026-10-19 (kinematic: speed ×
+time + 3 × the two sigmas; 3σ of the carried position; a doubted fix believed once a second agrees).
+Two gaps: a strong fix (≥ 100 inliers) was gated at 6σ only, and a believed wrong fix moved the
+output all the way. Now `day_pkg/fix_consistency.py` (used by the node and VisionNavigator) gates
+strong fixes at 3σ too (`strong_gate_k_sigma` 3), and the blend shares a fix's error with the carry.
+The hand-tilt log of 2026-10-19 (tilt2) is no longer on disk, so confident wrong matches were
+injected into the recorded runs instead: 5 % of the lost matches replaced by one 100–650 m off with
+100–228 inliers (the tilt2 run's), alone or two in a row at the same place:
+
+| injected (3 seeds) | believed: base → strong 3σ → product | measured output > 50 m: base → product | right fixes not used: base → product |
+|---|---|---|---|
+| flights, single (579) | 16 → 5 → **3** | 123 → **29** | 137 → 80 / 14303 |
+| missions, single (548) | 20 → 9 → **9** | 26 → **15** | 399 → 288 / 9371 |
+| flights, two in a row (1151) | 52 → 35 → **22** | 162 → **60** | 164 → 109 / 13768 |
+| missions, two in a row (1029) | 83 → 55 → **51** | 87 → **55** | 509 → 414 / 8907 |
+
+Re-acquisition confidence (`reacquire_confirm`: while the carried position is lost, σ > 50 m, a fix
+further from it than 3 × its own sigma waits for a second agreeing one): believed injected 9 → 2
+(missions) but right fixes refused 288 → 804 and availability 94 → 89 %, on the real recorded fixes
+703 vs 271 refused. **Off by default** (it delays every legitimate re-acquisition after a gap,
+where fixes are sparse). Two wrong matches in a row at the same place are still believed (a moving
+lens near the screen did that on the bench): D17 stays partly open — what is left is a real
+multi-hypothesis track.
+
+**F23 — blending with the gyro heading** (strong fixes at 3σ in all arms; measured output > 50 m /
+output p95 m / within 3σ):
+
+| set | no heading: off → blend | true heading: off → blend | gyro heading: off → blend |
+|---|---|---|---|
+| wind (443 frames × 3) | 57 → 15 / 90 → 88 / 81 → 82 % | 57 → 15 / 75 → 67 / 82 → 87 % | 51 → 16 / 75 → 68 / 83 → 87 % |
+| other conditions (5067 × 3) | 63 → **75** / 60 → **98** / 95 → 93 % | 57 → 15 / 22 → 21 / 99.4 → 99.1 % | 57 → **13** / 19 → **17** / 99.4 → 99.1 % |
+| missions camp4-7 (3979 × 3) | 6 → 6 / 414 → **805** | 6 → 6 / 24 → 23 | 6 → 6 / 25 → 24 / 98.4 → 97.9 % |
+
+Without a heading the blend lags in turns (the F23 finding, reproduced: worse on the circuit and the
+missions); with the gyro-carried heading it is as good as with the true one. **`blend_fixes` is on
+in the node, applied only when the carry turns with a heading** (frame attitude or gyro) and never to
+a re-acquisition. One mission max grew 150 → 211 m: a carried output stated ±290 m (honest, 1σ);
+the 30 m floor arm: 100 % within 3σ on missions and other conditions.
+
+**F4 — coast, time per failed frame.** The uniform-frame rejection (1a97204) is in the integration
+branch (`learned_matcher._locate_learned`: frame features before the map window, with the map
+levels added since). Measured with `navera_tools/bench/day_fail_timing.py` (product matcher,
+campaign 4's other-date coast terrain, 40 frames at 520 m over land, shore and sea, prior up to
+half the radius off):
+
+| search radius | accepted (wrong) | failed | failed frame: median / p90 / max |
+|---|---|---|---|
+| 150 m | 29 (0) | 11 | 1.35 / 3.8 / 5.7 s (map windows not yet cached) |
+| 400 m | 29 (0) | 11 | 0.48 / 0.56 / 0.69 s |
+| 600 m | 28 (0) | 12 | 0.74 / 1.07 / 1.09 s |
+
+Campaigns 6/7 took 6–20 s per failed frame: now 0.5–1.4 s (median) — about the time of a success
+(0.45–0.7 s). None of these sea frames was "uniform" (noise and JPEG give DISK ≥ 10 features): they
+fail at the matching, quickly. The heading search, when it runs, now stops at once on a uniform
+frame (D18 below). Not re-measured on the camera; the coast availability (no landmarks at sea) is
+unchanged (D19).
+
+**D18 — heading search** (`navera_tools/bench/heading_search_eval.py`: UAV-VisLoc flight 04 on the
+Esri map, 20 photos the Esri run located + 20 it refused, prior 100 m off, search 250 m, the heading
+given wrong by the error; product matcher):
+
+| heading error | search off: located / wrong / ms (all, failed) | search on: located / wrong / ms (all, failed) |
+|---|---|---|
+| 0° | 20/20 / 0 / 578, 1574 | 19/20 / 1 / 1292, 2497 |
+| 15° | 12/20 / 1 / 324, 357 | 18/20 / 1 / 586, 2466 |
+| 30° | 0/20 / 0 / 358, 358 | 18/20 / 2 / 1475, 2424 |
+| 60° / 120° / 180° | 0/20 / 0 / ~330 | 19 / 19 / 18 of 20, 0–2 wrong, ~2.4 s |
+| unknown (none given) | 0/20 / 0 / 97 | 17/20 / 0 / 2264, 2344 |
+
+Without a magnetometer a wrong or missing heading means no day fix at all; the search recovers
+85–95 % of the photos whatever the error, at ~2.4 s per frame that fails (12 headings) instead of
+0.3–1.6 s, and finds 1–2 more wrong fixes in 40 (left to the track gate). **Default now
+automatic** (`local_heading_search_after` 3; `local_heading_search` still forces it): the search runs
+when the frame has no heading (no attitude heading, no gyro-carried one) or after 3 frames in a row
+without a match; with a known heading the cost is nil. A uniform frame stops the search at once
+(rotation adds no texture). Not measured with NAVERA's camera.
+
+**The three UAV-VisLoc fixes > 100 m on the Esri map, replayed straightened**
+(`navera_tools/bench/uavvisloc_straightened.py`): each photo warped to the straight-down view by
+its recorded attitude (the dataset does not say how Omega / Kappa map to the image axes: of the 8
+conventions, the one that located 9/10 well-matched tilted photos of flights 01/04/06/11, pose tilt
+median 1.4°, was used) and located with expected tilt 0 — the product path — from 8 priors 250 m
+off (search 350 m):
+
+| photo (tilt) | as the bench (unstraightened) | straightened, expected tilt 0 |
+|---|---|---|
+| 04_0439 (3.2°) | 8/8 accepted, 33–96 m, 0 > 100 m | 0/8 accepted |
+| 04_0663 (9.1°) | 8/8 accepted, 64–131 m, 1 > 100 m (pose guard 7/8) | 8/8 accepted, 21–58 m, 0 > 100 m (pose guard 3/8) |
+| 05_0149 (8.9°) | 2/8 accepted, 56 / 90 m | 0/8 accepted |
+
+**No fix > 100 m on the product path** (0 of 8 accepted for two photos; 21–58 m for the third,
+where the guard refused 3 of 8 poses and kept the frame centre). The original 109–148 m fixes came
+from one prior each in the Esri run; here the unstraightened arm gave 1 > 100 m in 24. Limits: the
+attitude convention is fitted, not documented; the photos' poses on well-matched frames (median
+1.8° unstraightened for 4.5–12° recorded tilts) suggest a partly stabilised camera.
+
+**Defaults changed by this work:** `strong_gate_k_sigma` 6 → 3; `blend_fixes` on (with a heading);
+`local_heading_search_after` 3 (automatic heading search). New, off: `reacquire_confirm`,
+`frame_max_blur_px`, `frame_sharp_rel`. Open: F20 and D17 need a real vehicle (shake moves the
+camera, not the scene; two wrong matches in a row at the same place are still believed).
+
 ### Night vision (`night_pkg`, STHN one-stage)
 
 - Before 2026-09-28 the model ran with **random weights**: the checkpoint keys never
@@ -550,6 +822,19 @@ e.g. `tile_17_69415_51534.jpg`): identical 0 / 0, no evidence either way.
 camera calibration, and the wrong-fix thresholds (re-check 25 m, map correlation 0.05),
 set on synthetic frames only: a real thermal frame will correlate less with a daylight map.
 STHN's consistency score does not detect a wrong match; the re-check and the motion gate do.
+
+**Offline regression benchmark (2026-10-22, NAV-PERF-03, `navera_tools/bench/night_perf.py`,
+`navera_tools/tests/test_perf_night_vision.py`, nightly with `NAVERA_PERF=1`, ~3.5 min on the GPU; 7 min the first time, while the thermal frames are rendered into `~/.cache/navera_perf`).**
+NightLocalizer with the node's default gates and retries. Synthetic (`night_conditions.py`, 24 poses):
+nominal 400 m 24/24, 10.8 / 16.2 / 23.4 m (median / p90 / max), 600 m 24/24, 10.5 / 16.5 / 18.0 m,
+farmland 22/24, 10.8 m, open sea and uniform frames 0/24 accepted, 0 wrong. Real night LWIR (below,
+Bordeaux, the 60 poses of 2026-10-21, 1000 m): Boson 640 23/60, 10.3 / 20.3 / 31.5 m; Hikvision 160 17/60,
+10.7 / 26.0 / 49.7 m; 0 wrong, 100 % within 3σ — identical to the retry-gate runs below. **Re-run 2026-10-22
+after the first-try gate and the sigma refit (below):** synthetic unchanged (nominal 24/24 10.8 / 16.2 / 23.4 m,
+600 m 24/24 10.5 m, farmland 22/24 10.8 m, sea / uniform 0/24, 100 % within 3σ); Boson 640 22/60,
+10.0 / 18.3 / 31.5 m; Hikvision 160 17/60, 10.7 / 26.0 / 49.7 m; 0 wrong; 100 % within 3σ (new sigma);
+4 / 4 tests passed, 207 s. The earlier
+"8–13 m median at 250–600 m" used an 84° camera; with the 75° camera 250 m is refused and 350 m mostly (5/24, footprint, 2026-10-17).
 
 ### Night vision on REAL aerial thermal imagery (2026-10-21)
 
@@ -692,6 +977,68 @@ the earlier set incl. `terrain_coast_flat_sea`, the 72-pose A/B set, heading 10/
   retry accept seen before the centring fix did not recur. One frame at a time; the tracker
   (`night_track.py`) only sees fewer retried fixes and was not re-run.
 
+**Night vision — fixes of 2026-10-22 (D3 / D22, D20, D21, F12, B16, B4 / B14).** Every hypothesis of
+1624 frames re-probed on the GPU (`night_retry_probe`, now also recording the retries after a first try
+< 0.985 and the footprint quad's rotation; data and logs on the ADATA disk under
+`NAVERA_TESTDATA/thermal/results_2026-10-22/`): real thermal Bordeaux night LWIR (Boson 640 / Hikvision
+160 × 120, 500 / 700 / 1000 m; black-hot Boson 700 m; 15° heading error at 1000 m), Clermont day MWIR (both
+cameras 500–1000 m; 15° heading error at 700 m), synthetic `night_conditions.py` (13 conditions incl. sea,
+noise, uniform, flat-sea coast; the 72-pose A/B set; heading 10 / 20°, height −10 / +20 %, field of view
+−10 %, 350 m). Localize's choice replayed through the product gates (`night_retry_gate_eval` /
+`night_retry_probe.decide`); the end-to-end perf benchmark (above) gives the same numbers on its frames.
+
+- **First-try gate (F12, D20):** the first hypothesis now needs STHN quad consistency ≥ 0.97 like a retry
+  (`first_min_conf`); a weaker first match is refused and goes through the heading / height retries.
+  Right first tries below 0.97 were all poor (12–40 m, median 27 m); 6 of the 9 wrong first-try accepts of
+  2026-10-21 were below it. In today's records: the two Bordeaux 15°-heading wrong fixes (60, 65 m) become
+  right ones (14, 26 m) through the retries; the stress test's last wrong accept (heading 10° off, 53 m at
+  consistency 0.9698, F12) becomes 18 m; the flat-sea coast 92 m is refused. Left: one flat-sea coast frame,
+  60 m at consistency 0.986 (synthetic; no real-thermal wrong accept left). Quad rotation does not separate
+  them (STHN's quad stays within 0.6° of north-up even with a 15° heading error): not used.
+- **Stated sigma (D3 / D22):** refitted on the real thermal: `fix_sigma_m` = hypot(10 m + 1 % of the height
+  above 400 m, the two-centre disagreement) (was hypot(8 m + 1 %, 0.8 × disagreement), synthetic fit). 100 %
+  of fixes within 3σ in every camera / height, largest error / sigma 2.47 nominal, 2.98 with the 15° heading
+  error. Published as covariance by default (`state_fix_sigma`, APPROXIMATED; `state_sim_calibrated_sigma`
+  now only adds the simulator fallback sigma of a fix without re-check): night fixes are bounded (FIX
+  below the estimator's 25 m) and usable by the GPS cross-check. The errors include the thermal products'
+  own registration to the map (Bordeaux ~12 m north): conservative.
+- **Heading at the exposure (D20):** frame_meta's heading is the attitude at the exposure (FrameBuilder);
+  without it the node took the LATEST IMU heading (0.1–1 s late: ~10° in a 20°/s turn). IMU headings are
+  now kept on their stamps and interpolated at `image_stamp_ns` (`heading_history.py`).
+- **Featureless / cold-cloud mask on real thermal (D21):** Bordeaux 700 / 1000 m, both cameras, 240 frames,
+  with the first-try gate: 76 → 73 accepted, 0 → 0 wrong, median 9.5–11.6 → 9.6–11.6 m (Hikvision
+  1000 m p90 26 → 18 m); 2 frames refused as "only 23 % textured" (Garonne, clipped warm). No wrong accept to
+  remove (there are no clouds in the orthomosaic): **no gain, it stays off** (`mask_featureless` false).
+- **Track (B16):** the gate's reach now grows from the last MEASURED fix (max speed × time since it +
+  margin, from it); dead reckoning used to reset that clock every frame, keeping the reach ~1 s wide around
+  a wrong dead-reckoned track. The single-jump limit (150 m) stays measured from the dead-reckoned anchor
+  (+10 % of the dead-reckoned distance). Regression: 5 agreeing wrong fixes after a 40 s gap, then correct
+  fixes every 6 s: back on the truth at the 2nd correct fix (was locked ~35 s). `night_track.py` mock: 3 /
+  5 wrong in a row 5 → 3 / 8 → 5 frames > 100 m; defaults and single wrong fixes unchanged.
+- **Replay set (B4 / B14):** bb8f916 had already relabelled it (thermal headings from the track; day
+  labels moved to their own pictures, day j = thermal j − 8) and marked it a day-derived stand-in; a
+  regression test (`night_pkg/test/test_replay_labels.py`) keeps the thermal labels within 10 m / 3° of the
+  map fixes and the day twins on the same place.
+
+Accepted (share), error median / p90 (m), wrong (> 50 m), within 3 stated σ — before (retry gate only,
+old sigma) → after (first-try gate, new sigma):
+
+| Set (frames) | Accepted | Median / p90 | Wrong | Within 3σ |
+|---|---|---|---|---|
+| Bordeaux night, nominal, 2 cameras × 500/700/1000 m (360) | 105 (29 %) → 101 (28 %) | 12.4 / 24.2 → 12.2 / 19.8 | 0 → 0 | 100 → 100 % |
+| Bordeaux night, black-hot Boson 700 m (60) | 16 (27 %) → 16 (27 %) | 9.3 / 22.4 → 9.3 / 22.4 | 0 → 0 | 100 → 100 % |
+| Bordeaux night, heading 15° off, 1000 m (120) | 32 (27 %) → 32 (27 %) | 12.4 / 34.2 → 12.4 / 25.8 | **2 → 0** | 93.8 → 100 % |
+| Clermont day, nominal (300) | 225 (75 %) → 225 (75 %) | 7.4 / 14.5 → 7.4 / 14.4 | 0 → 0 | 100 → 100 % |
+| Clermont day, heading 15° off, 700 m (100) | 70 (70 %) → 70 (70 %) | 13.3 / 30.5 → 12.2 / 30.5 | 0 → 0 | 95.7 → 100 % |
+| Synthetic, 13 conditions + A/B set (504) | 339 (67 %) → 333 (66 %) | 9.7 / 17.4 → 9.4 / 16.7 | **2 → 1** | 99.1 → 100 % |
+| Synthetic heading / height / fov errors, 350 m (180) | 160 (89 %) → 160 (89 %) | 12.8 / 23.9 → 12.8 / 22.8 | **1 → 0** | 96.9 → 100 % |
+| **All real thermal (940)** | 448 (48 %) → 444 (47 %) | 9.0 / 20.6 → 9.0 / 19.3 | **2 → 0** | 98.9 → 100 % |
+| **All synthetic (684)** | 499 (73 %) → 493 (72 %) | 10.5 / 19.9 → 10.4 / 19.5 | **3 → 1** | 98.4 → 100 % |
+
+The Clermont 15° wrong fixes of 2026-10-21 (58, 61 m, consistency 0.99) did not recur in today's re-run
+(other STHN backend / frame noise); on the 2026-10-21 records the first-try gate removes 6 of the 9 wrong
+first tries (left: those two and the flat-sea 60 m). Still an orthomosaic, not a NAVERA flight.
+
 **Camera verdict (what resolution / field of view is needed).**
 - **Resolution:** STHN works at ~1.7 m/px internally, so the Boson 640 (0.7–1.5 m/px at
   500–1000 m) and the 160 × 120 Hikvision (3–6 m/px) reach similar availability by day and at
@@ -708,12 +1055,52 @@ the earlier set incl. `terrain_coast_flat_sea`, the 72-pose A/B set, heading 10/
   at night against a summer day map (no wrong accept with the 640 px camera). A real night
   flight with the product camera remains the blocker for any accuracy claim.
 
+### Night vision on REAL recorded night thermal frames — Thermal-UAV, Changsha (2026-10-22)
+
+`navera_tools/bench/night_real_frames.py`. Unlike the section above (frames cut from an
+orthomosaic), these are **a drone thermal camera's own night frames**: real geometry (relief,
+building lean, street lights, cars), real radiometry and AGC. Still not NAVERA's camera.
+
+**Data.** Thermal-UAV (Hugging Face `FloralHercules/Thermal-UAV`, **Apache-2.0**, the card adds
+"intended for academic research"; SCC-Loc paper, arXiv 2604.03120): DJI Matrice 4T, gimballed
+**nadir** thermal camera (640 × 512 sensor delivered as 1280 × 1024, 12 mm lens on a 7.68 mm-wide
+sensor: **35.5° horizontal**), per frame GNSS lat/lon, height above take-off, gimbal pitch (−90°)
+and yaw. Changsha (China), **night** sequences: city1 (21 Dec 2025, 21:54–23:01), village1
+(17 Dec 2025, 18:14), city7 and village5 (22 Mar 2026, 19:08–20:17); 205–329 m above take-off
+(median ~300–315 m). 262 frames (every 3rd–10th; read member by member from the 20 GB zip,
+`NAVERA_TESTDATA/thermal_uav_changsha/`). Map: Esri World Imagery z17 (Apr / Aug 2025 there),
+fetched for the frames. Each frame goes `NightLocalizer.localize` as `night_subscriber` calls it
+(map check, re-check, heading and height retries), height = the recorded height above take-off,
+heading = recorded yaw + N(0, 2°), prior 100–250 m off.
+
+**Result: 0 of 262 frames give a position, 0 wrong.** Every frame is refused before matching:
+"camera footprint too small for night matching (≈ 200 m wide at 300 m, covers 5–12 % of the
+539 m reference) — fly higher" (also after the +10/+20 % height retries). With this 35.5° camera
+NAVERA night needs ≥ ~900 m above ground (a 5:4 frame must cover 85 % of the reference, ~570 ×
+460 m; the reference is 539 m wide at 28° N, 433 m at Bordeaux); the dataset never flies there.
+
+**Diagnostic — not the product** (`--min-coverage 0`: the frame filled into the reference with
+the mean, both coverage gates off): still 0/262 accepted, 0 wrong — "map check failed" 189,
+"not confirmed from a second search centre" 73. With every gate off and no retries
+(`--min-ncc -1 --recheck-max -1 --no-retry`, city1 + village5, 146 frames) STHN returns a
+position for all and **140 of 146 are wrong (median 232–241 m, p90 371–391 m)**, with 82–87 %
+"within 3 sigma" of its own sigma: STHN cannot locate a 200 m patch in a 539 m window, and the
+map check / re-check are what keep that from being published.
+
+**Verdict:** on real night thermal frames from a narrow (35°) camera at 300 m, NAVERA night
+gives nothing — by design, and safely (0 wrong accepts in 262 frames, gates on or coverage gates
+off). It confirms the camera requirement above as a hard limit: a wide lens or ≥ ~900 m with
+this one. Thermal-UAV has no frame inside NAVERA's envelope, so it says nothing about accuracy.
+
 ### Celestial (`cn_pkg`)
 
-- The latitude formula took a single root. Any camera facing the southern half of the sky
-  produced positions hundreds to thousands of km off. It now computes both solutions and
-  picks the one matching a prior position. If the prior can't tell them apart, no
-  position is reported.
+- The latitude formula took a single root. It is right only when the camera direction's hour
+  angle is within ±90° (corrected 2026-10-22: the earlier "southern half of the sky" wording was
+  inaccurate, problems log B11); elsewhere it gave positions hundreds to thousands of km off. It
+  now computes both solutions and picks the one matching a prior position. If the prior can't
+  tell them apart, no position is reported. Near H = ±90° the two roots merge and a heading error
+  is stretched by cos(lat) / (cos(dec) |cos H|): with the camera's full mount known, the
+  compass-free zenith method (below, "Celestial: field-test readiness fixes") avoids this.
 - Star coordinates are now corrected for precession to the date of observation. The
   error was about 0.4° in right ascension in 2026, i.e. tens of km.
 - The node no longer uses a fixed test date or camera angles. Without a measured camera
@@ -848,6 +1235,23 @@ fixes (it removes the dominant error); (4) keep the raw recorder on — the real
 (how many stars a video frame shows) is the remaining unknown; (5) a refusal is the expected
 answer under cloud or bright moon, not a fault.
 
+### Celestial: field-test readiness fixes (2026-10-22)
+
+Problems B11, D8/D12, D11, F10, F14, F18, F19, F27 of the problems log, before the first real-sky drive
+(31 Oct or later). **Simulation, synthetic data and the existing real data sets only** — nothing here is a
+new real-sky measurement.
+
+| Item | What changed | Before → after (data) |
+|---|---|---|
+| B11 narrow star camera without a compass | `geoloc` mode: when the camera's full mounting is known (`camera_R_cam_body`, or `camera_mount_roll_deg` with the elevation/azimuth), the position is the zenith among the stars: the plate solve's **whole** camera rotation (read from the WCS) times 'up' from the IMU's roll/pitch. One answer, no compass, declination or prior; the tilt of 'up' is learned on fixes with a fresh GPS as in the 360 mode. Without the roll, the compass method stays and the status says so (`fix_method`). | Synthetic TAN plate solution, camera 70° / az 30° / roll 15°, tilted vehicle: compass error 1 / 5 / 10° → **51 / 256 / 516 km** (compass method), **0.24 km** (zenith) whatever the heading. A wrong mount roll costs ~(vehicle tilt × roll error): 0 level, ~48 km for 5° × 5°. Not run on a real narrow camera. |
+| D8 / D12 'stopped' fooled on a smooth road | `cn_pkg/standstill.py` (used by the field server, `replay360`, the car simulation): the driver's exposure window AND \|a\| within 0.004 g of its value at rest AND, over the last 10 s, the **gyro-propagated vertical** steady within 0.3°, unless \|a\| shows the earlier state was the accelerated one (braking to the stop). | Car drive simulation, detector on every key frame (1 068 per drive). Glass road: frames called stopped with 'up' > 0.3° off **106 → 1** (max 7.4° → 0.48°); seeds 2/3/4: 96/99/93 → 0/1/0. Moving frames called stopped 333 → 64 (left: constant-speed cruise, where 'up' is right). At-rest frames called stopped: **unchanged on all 13 profiles and 3 more seeds** (normal, rough, smooth, idle 15 Hz / strong, angular vibration, 8° slope, IMU gaps, ±300 ms stamp error). Full run through the field server (rendered sky, 4 stops): trusted (stopped) fixes p90 / max **265 / 825 km → 9.3 / 21.7 km**, within 3σ 56/72 → **30/30**; after the tilt calibration 1.6 / 266 / 272 km (median / p90 / max) → 1.1 / 6.7 / 17.7 km; stopped fixes per stop unchanged (5, 4, 4, 4); the frames now flagged moving carry the 5° sigma (12/12 within 3σ). |
+| D11 tilt learned online | `allsky_mount.fit_tilt` robust: soft-L1 fit, samples beyond 3.5 robust σ (0.3–1.0°) left out and not counted; applied only with a clear majority (≥ 3 agreeing, > half) and a tilt ≤ 5°; keeps learning until 12 agree (or 24 taken). Field server and flight node. | 1° tilt, 12 samples, 1–4 bad ones 1.5–8° off: plain fit 0.30–0.91° (**33–101 km** on every later fix) → robust **0.007–0.021° (0.8–2.4 km)**; clean samples unchanged; 2 bad of the first 4 → no fit applied until more agree. |
+| F10 quality gate | unchanged; re-checked with the detector shared with the bench | ESO MASCOT, 58 real frames re-run: identical to the 2026-10-21 results (49 solved, 0 wrong); all 1 118 ESO solves re-judged: 0 wrong accepted, 81 wrong identifications refused. Real screen campaign (162 cases) re-judged: 80 right, **0 wrong**. Simulated stress set (celestial360_conditions, 324 frames): junk **0/36** false accepts; the wrong fixes (22) are all in the conditions that tilt 'up' on purpose (accelerometer bias 0.5°, braking 0.1 g, highway curve, misaligned lenses, centre off), unchanged — the stillness test and the tilt calibration are what catch those. |
+| F18 bench peak finder | `allsky.detect_spots_view`: the field detector (local noise, one spot per blob, extended / saturated / hot-pixel blobs dropped) on the pinhole view; `celestial_screen.py` uses it (`--peak-finder legacy` for comparison, `--save-frames` keeps the views). The fisheye `detect_spots` output is unchanged (36 simulated frames × 2 lenses identical). | Offline ideal-camera bench, 135 cases (3 fields × 15 conditions × 3 star limits), camera-like noise: spurious spots clouds 60 → 6, rain 60 → 13, insects 35 → 14, reflections 60 → 22; right fixes accepted **77 → 85**, wrong **0 → 0**. White per-pixel noise: 78 → 78, 0 wrong. The real-camera screen campaign has to be re-run to measure it on the camera (frames were not saved in October). |
+| F14 camera IMU feed stops | read-only review of `insta360_usb.py`: the driver re-sends StartLiveStream after 1.5 s of IMU silence (every 3 s); the server reopens the whole USB connection after 10 s of silence — now one tested step, every reconnect and IMU restart counted in the frame records. | Fake silent driver: reconnect after 10 s, counters right. Not yet seen reviving a real dead feed (needs the real fault). |
+| F19 what the drive measures | every 360 frame record: camera vibration (`imu_vib`), stillness details, `host` load / temperature, camera health, `ground_change` (image standstill measure, logged only), time source; `analyze.py` sums them ("Drive measurements"). | Runbook table "What the drive must measure". |
+| F27 trusted time | field server: a wired DS3231 (read over raw I2C or a kernel RTC, stamped at the seconds tick) is a trusted star time after the phone; refused when it lost power, is unset, holds local time or the system clock stepped. `cn_subscriber` already used it (NAV-SAF-20). | Fake RTC tests. This Jetson today: no DS3231 answers on bus 1 (`Remote I/O error`). |
+
 ### Robustness (bench)
 
 | Test | Result |
@@ -871,6 +1275,25 @@ answer under cloud or bright moon, not a fault.
 | Output: forwarding switch `enabled` / `on`, sigma above 1000 m | Refused at start with the reason (before: silently false / accepted) |
 | Web: control without token / cross-site request / bad input | Refused (401 / 415 / 400) |
 | Web: 100 wrong control codes in a row | After 5 wrong codes in 60 s the address is refused (429) for 60 s (before: no delay) |
+| Camera stops sending (GStreamer source ends: unplugged, USB reset, stalled stream; `test_live_camera_stall.py`, 2026-10-22) | `camera_health` "stalled", node exits 2.8 s after the last frames (`camera_stall_restart_s` 3 s in the test, 10 s shipped), systemd restarts the pipeline (before: > 50 failed grabs — 100 s with GStreamer's 2 s pull timeout, minutes with V4L2's 10 s, never for a grab that blocks) |
+| Frozen camera picture on a real recorded flight (MARS-LVIG AMvalley03 at 1 Hz, 513 frames incl. 52 still on the ground / in the hover; `test_frozen_replay.py`, 2026-10-22) | 0 false freezes; real frames while moving differ by ≥ 16.2 grey levels (threshold 0.5); a driver re-delivering the last picture: caught on every frame; a stream re-encoding the stuck picture: caught from its 2nd frame — one JPEG re-encode changes it by 0.9 (q95) – 3.6 (q75) grey levels, so the 1st one (~1 s old) passes |
+
+### Memory of the day pipeline (Orin Nano 8 GB, 2026-10-22)
+
+F5: a 30 min day run reached 3.5 GB and was OOM-killed after 4.6 min without swap. Measured
+again on this Jetson (16 GB swap file present, other jobs idle), RSS of the process and the
+system's used memory (MemTotal − MemAvailable) sampled every 0.5 s:
+
+| Run | Peak RSS | System used (from → peak) | Swap used added |
+|---|---|---|---|
+| Product day chain (DaySubscriber + EstimatorNode in one process, learned matcher DISK + LightGlue, every shipped default) replaying the real MARS-LVIG AMvalley03 flight 40–470 s (104 m above ground median, z17 map; `replay_flight_dataset.py --arm imu`); fixes after the loss 6.1 / 8.7 / 12.3 m (median / p90 / max) | **2.48 GB** | 2.99 → 4.50 GB | 0 |
+| `day_perf.py mission` (city + coast at ~520 m equivalent height; the bench's terrain imagery in the same process) | **5.0 GB** | 2.70 → 6.79 GB | +0.26 GB |
+
+The peak grows with the height (a bigger search area and map level): 2.5 GB at 100 m, 3.5–3.7 GB
+at 1500 m (F5, D14), 5 GB in the bench mission with its imagery. On the 8 GB box with the rest of
+the stack this needs swap on disk: `deploy/install.sh` now makes an 8 GB `/swapfile` when less
+than 4 GB is active, every pipeline start and `check_boot.sh` warn without it, and the units set
+the OOM order (output chain last, web page first). Not yet run as root on a box.
 
 ### Autopilot in the loop (ArduPilot SITL — simulation)
 
@@ -996,9 +1419,18 @@ holds the only results from the real sensors. No sensor recording (log, bag) was
 
 1. **Accuracy is not established on real data.** No real flight has been recorded with
    camera, GPS and IMU together. This is the first thing to do with a vehicle.
-2. **Day vision is not accurate enough** (see above).
-3. **No inertial navigation.** The IMU gives the camera's attitude and heading changes;
-   it is not integrated into a position. Without vision matches, day vision dead-reckons
+2. **Day vision accuracy is measured on public real imagery and on a bench, not with NAVERA's
+   camera in flight.** Local matching (the default since 2026-10-01; DISK + LightGlue, SIFT
+   fallback) with the pose–attitude guard: 8 real drone flights (UAV-VisLoc) median 16 m,
+   p90 34 m, 1 of 2599 fixes > 100 m; a real flight replayed through the whole chain
+   (MARS-LVIG) 6–7 m median, never over 17 m, but only 36 % of frames matched at z17; screen
+   bench with the Insta360 3.6–7.3 m median. The stated sigma is honest only after in-flight
+   self-calibration (30 m floor before it). The former DINOv2 tile retrieval (fallback,
+   `NAVERA_DAY_MATCHER=retrieval`) is **not** accurate enough (442 m median) and must not be
+   used to replace GPS. See [PRODUCT_READINESS.md](certification/PRODUCT_READINESS.md).
+3. **No inertial navigation (not pursued: FEAT-2, NAV-FUN-20).** The IMU gives the camera's
+   attitude and heading changes; it is not integrated into a position — a low-cost MEMS IMU
+   would drift hundreds of metres within a minute. Without vision matches, day vision dead-reckons
    along the track measured before the gap for at most 2 minutes, while its stated accuracy
    stays within 500 m (the first limit reached: ~1 minute at 10 m/s; simulator figures above),
    then NAVERA gives no position until a frame matches again (`max_dead_reckon_s`,

@@ -24,22 +24,30 @@ Parameters:
                    the star match (20.7 ~ odds of 1e9, astrometry's own default).
     camera_fov_deg (float, default NaN) — star camera horizontal field of view;
                    unknown = slower wide search.
-    solver_mode    (str, default "geoloc") — "geoloc": narrow-field astrometry.net with the
-                   boresight from tilt/azimuth; "allsky360": the 360 camera's full dual-fisheye
-                   frame, all-sky star identification + quality gate (cn_pkg.allsky, the same
-                   code as the field tools) with 'up' from the camera or the vehicle IMU through
-                   the camera-to-body mount rotation (allsky_* parameters, see __init__).
+    solver_mode    (str, default "geoloc") — "geoloc": narrow-field astrometry.net; with the camera's
+                   full mounting known (camera_R_cam_body, or camera_mount_roll_deg with the
+                   elevation/azimuth) the fix is compass-free: the plate solve's whole rotation +
+                   'up' from the IMU's roll/pitch (B11); without it, the boresight from tilt and the
+                   compass azimuth (two candidate positions, a prior picks one);
+                   "allsky360": the 360 camera's full dual-fisheye frame, all-sky star
+                   identification + quality gate (cn_pkg.allsky, the same code as the field tools)
+                   with 'up' from the camera or the vehicle IMU through the camera-to-body mount
+                   rotation (allsky_* parameters, see __init__).
     image_topic    (str,  default "/celestial/image_raw")
     meta_topic     (str,  default "/celestial/frame_meta")
     fix_topic      (str,  default "/cn/position_estimate")
     status_topic   (str,  default "/cn/cn_status")
 
-Time (hazard H-08): a star fix is ~28 km off per minute of clock error, so a frame is solved
+Time (hazard H-08): a star fix is ~0.46 km off per second of clock error, so a frame is solved
 only on a trusted time (navera_common.trusted_time.TrustedClock): the utc_time parameter, a
 frame_meta utc_time that is not the camera's system clock, else the exposure's system time
-vouched for by the DS3231 (rtc_time + rtc_status valid, not lost_power), a recent GNSS time
-(gnss_time_topic) or NTP (timedatectl), with no wall-clock step since. Otherwise the frame
-is declared invalid with the reason ("no trusted time: ...") and nothing is solved.
+corrected by, in this order: the GPS anchor (a GNSS UTC taken while the estimator elects the
+GPS — nav_status GPS contributing — held on the monotonic clock for the rest of the flight),
+the autopilot's SYSTEM_TIME (autopilot_time_topic, vehicle_link), the DS3231 (rtc_time +
+rtc_status valid, not lost_power) or NTP (timedatectl). The GPS anchor and SYSTEM_TIME must
+agree within 1 s. Otherwise the frame is declared invalid with the reason ("no trusted
+time: ...") and nothing is solved. The choice and its uncertainty are published at 1 Hz on
+time_status_topic (JSON) and each frame's status carries utc_source and utc_sigma_s.
 
 Concurrency: skip-if-busy. If a new pair arrives while the solver is still
 running, the new pair is DROPPED (logged) — never queued, never parallel.
@@ -68,13 +76,13 @@ from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 
 from sensor_msgs.msg import Image, Imu, NavSatFix, NavSatStatus, TimeReference
-from navera_msgs.msg import PositionEstimate
+from navera_msgs.msg import NavStatus, PositionEstimate, SourceHealth
 import math
 from std_msgs.msg import Int32, String
 from cv_bridge import CvBridge
 
 from cn_pkg.nodes import solver as cn_solver
-from cn_pkg.nodes.celestial_math import boresight_altaz
+from cn_pkg.nodes.celestial_math import boresight_altaz, mount_rotation, up_in_camera
 from cn_pkg import allsky_mount
 
 
@@ -123,9 +131,14 @@ class CNSubscriber(Node):
         # RTC (survives an offline boot), else the system clock.
         self.declare_parameter("rtc_topic", "/navera/sensors/rtc_time")
         self.declare_parameter("rtc_status_topic", "/navera/sensors/rtc_status")
-        # a GNSS receiver's UTC (gps_node publishes it from RMC) vouches for the system clock this long
+        # a GNSS receiver's UTC (gps_node: UBX NAV-PVT / RMC / ZDA): anchors the time while the GPS is trusted
         self.declare_parameter("gnss_time_topic", "/navera/sensors/gnss_time")
-        declare_float(self, "gnss_time_max_age_s", 300.0)
+        self.declare_parameter("nav_status_topic", "/navera/nav_status")
+        declare_float(self, "gps_trust_max_age_s", 2.0)          # nav_status saying "GPS contributing" this recent
+        self.declare_parameter("autopilot_time_topic", "/navera/vehicle/system_time")
+        self.declare_parameter("time_status_topic", "/navera/time_status")
+        declare_float(self, "time_drift_ppm", 20.0)              # Jetson crystal: a few ppm, 20 stated until measured
+        declare_float(self, "gnss_time_sigma_s", 0.5)            # time message latency, no PPS
         declare_float(self, "prior_lon", float("nan"))
         # Camera attitude from the IMU (used when frame_meta has no tilt/azimuth):
         # how the star camera is mounted on the vehicle. 90 / 0 = pointing up.
@@ -135,6 +148,12 @@ class CNSubscriber(Node):
         declare_float(self, "camera_mount_elevation_deg", 90.0)
         declare_float(self, "camera_mount_azimuth_deg", 0.0)
         declare_float(self, "magnetic_declination_deg", 0.0)
+        # B11: the camera's FULL mounting makes the fix compass-free (the plate solve's whole rotation + 'up' from
+        # the IMU's roll/pitch). Either the 9 values of R_cam_body (optical-frame vector = R @ body FLU vector,
+        # row-major; NaN = unknown) or the roll of the image about its axis with the elevation/azimuth above
+        # (celestial_math.mount_rotation; NaN = unknown). Unknown: the compass method, stated in the status.
+        self.declare_parameter("camera_R_cam_body", [float("nan")] * 9)
+        declare_float(self, "camera_mount_roll_deg", float("nan"))
         self.declare_parameter("imu_topic", "/navera/sensors/imu")
         declare_float(self, "imu_timeout_s", 1.0)
         # 1-sigma attitude accuracy of the IMU (deg). Each degree of attitude
@@ -181,6 +200,11 @@ class CNSubscriber(Node):
         self.mount_el = float(self.get_parameter("camera_mount_elevation_deg").value)
         self.mount_az = float(self.get_parameter("camera_mount_azimuth_deg").value)
         self.declination = float(self.get_parameter("magnetic_declination_deg").value)
+        self.R_cam_body = self._narrow_mount()
+        # the tilt of 'up' in the narrow camera (mount angles as measured vs as installed), learned on fixes with a
+        # fresh GPS reference as in the 360 mode (allsky_mount.TiltCalibration, robust)
+        self.geoloc_cal = allsky_mount.TiltCalibration(int(self.get_parameter("allsky_cal_min_samples").value),
+                                                       int(self.get_parameter("allsky_cal_samples").value))
         self.imu_timeout = float(self.get_parameter("imu_timeout_s").value)
         self.max_rot_dps = float(self.get_parameter("max_rotation_dps").value)
         self.imu_max_gap = float(self.get_parameter("imu_max_gap_s").value)
@@ -203,17 +227,26 @@ class CNSubscriber(Node):
         self.create_subscription(PositionEstimate, self.get_parameter("gps_topic").value,
                                  self._on_gps, 10)
         # the time a star frame is solved with: only one something vouches for (H-08)
-        self.clock = TrustedClock(gnss_max_age_s=float(self.get_parameter("gnss_time_max_age_s").value),
+        self.clock = TrustedClock(drift_ppm=float(self.get_parameter("time_drift_ppm").value),
+                                  gnss_sigma_s=float(self.get_parameter("gnss_time_sigma_s").value),
                                   on_step=lambda s: self.get_logger().error(
-                                      f"[cn] system clock stepped {s:+.1f} s: earlier RTC / GNSS time dropped, "
-                                      "no star solve until the time is trusted again"))
+                                      f"[cn] system clock stepped {s:+.1f} s: no star solve for 60 s "
+                                      "(frames stamped before it are on the old clock)"),
+                                  on_event=self._on_time_event)
+        self._utc_sigma = None              # 1-sigma (s) of the last trusted time given
+        self._gps_elected_t = None          # monotonic time of the last nav_status with GPS contributing
+        self.create_subscription(NavStatus, self.get_parameter("nav_status_topic").value,
+                                 self._on_nav_status, 10)
+        self.create_subscription(TimeReference, self.get_parameter("autopilot_time_topic").value,
+                                 self._on_autopilot_time, 10)
+        self.pub_time_status = self.create_publisher(String, self.get_parameter("time_status_topic").value, 10)
         self.create_subscription(TimeReference, self.get_parameter("rtc_topic").value,
                                  self._on_rtc, 10)
         self.create_subscription(String, self.get_parameter("rtc_status_topic").value,
                                  self._on_rtc_status, 10)
         self.create_subscription(TimeReference, self.get_parameter("gnss_time_topic").value,
                                  self._on_gnss_time, 10)
-        self.create_timer(1.0, self.clock.check_step)
+        self.create_timer(1.0, self._time_tick)
 
         # ── State ───────────────────────────────────────────────
         self.bridge = CvBridge()
@@ -270,6 +303,10 @@ class CNSubscriber(Node):
             self.get_logger().info(
                 f"  tilt/azimuth    : {self.tilt}° / {self.azimuth}°  utc={self.utc_time}"
             )
+            self.get_logger().info(
+                "  geoloc method   : " + ("zenith (camera rotation + IMU up, no compass)" if self.R_cam_body is not None
+                                          else "boresight + COMPASS (camera mount roll unknown: set camera_R_cam_body"
+                                               " or camera_mount_roll_deg for the compass-free fix)"))
         self.get_logger().info("  policy          : skip-if-busy, latest-pair")
         self.get_logger().info("=" * 60)
 
@@ -291,6 +328,16 @@ class CNSubscriber(Node):
         self.get_logger().info(f"  allsky360       : {len(loc.cat.vec)} stars, up from {loc.up_source}, "
                                f"R_cam_body {np.round(loc.R_cam_body, 4).tolist()}")
         return loc
+
+    def _narrow_mount(self):
+        """R_cam_body of the narrow star camera (B11), or None when its full mounting is not known."""
+        vals = [float(v) for v in self.get_parameter("camera_R_cam_body").value]
+        if len(vals) == 9 and all(math.isfinite(v) for v in vals):
+            return allsky_mount.rotation_matrix(vals)
+        roll = float(self.get_parameter("camera_mount_roll_deg").value)
+        if math.isfinite(roll):
+            return mount_rotation(self.mount_el, self.mount_az, roll)
+        return None
 
     def on_image(self, msg: Image):
         try:
@@ -317,9 +364,35 @@ class CNSubscriber(Node):
             self.clock.add_rtc_status(d.get("valid") is True, d.get("lost_power") is not False)
 
     def _on_gnss_time(self, msg: TimeReference):
-        """A GNSS receiver's UTC with the system time it arrived at."""
+        """A GNSS receiver's UTC with the system time it arrived at: anchors only while the estimator
+        elects the GPS (not refused, not suspected of spoofing).
+        """
+        lim = float(self.get_parameter("gps_trust_max_age_s").value)
+        trusted = self._gps_elected_t is not None and time.monotonic() - self._gps_elected_t <= lim
         self.clock.add_gnss(msg.time_ref.sec + msg.time_ref.nanosec * 1e-9,
-                            msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9)
+                            msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9, trusted=trusted,
+                            why_untrusted="GPS not elected by the estimator (refused, invalid or no nav_status)")
+
+    def _on_nav_status(self, msg: NavStatus):
+        """The estimator's verdict: the GPS is trusted while it contributes the published position."""
+        if any(h.source == SourceHealth.SOURCE_GPS and h.alive and h.contributing for h in msg.sources):
+            self._gps_elected_t = time.monotonic()
+
+    def _on_autopilot_time(self, msg: TimeReference):
+        """The autopilot's SYSTEM_TIME (vehicle_link), with the system time it arrived at."""
+        self.clock.add_autopilot(msg.time_ref.sec + msg.time_ref.nanosec * 1e-9,
+                                 msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9)
+
+    def _on_time_event(self, kind: str, text: str):
+        if kind in ("gnss_jump", "disagree"):
+            self.get_logger().error(f"[cn] time: {text}")
+        else:
+            self.get_logger().info(f"[cn] time: {text}")
+
+    def _time_tick(self):
+        """1 Hz: wall-clock step check and the time status (source, uncertainty, anchor)."""
+        self.clock.check_step()
+        self.pub_time_status.publish(String(data=json.dumps(self.clock.status())))
 
     def _on_imu(self, msg: Imu):
         q = msg.orientation
@@ -373,19 +446,29 @@ class CNSubscriber(Node):
             self._gps_t = time.monotonic()
 
     def _attitude(self, meta):
-        """(tilt, azimuth, source): frame_meta, else a fresh IMU, else parameters."""
+        """(tilt, azimuth, source, up_cam): frame_meta, else a fresh IMU, else parameters. up_cam ('up' in the
+        camera's optical frame, B11) comes with it when the camera's full mounting is known (or frame_meta gives
+        it), else None: the compass method is then the only one.
+        """
+        up_cam = None
+        if meta.get("up_cam") is not None:
+            v = np.asarray(meta["up_cam"], float).ravel()
+            if v.shape == (3,) and np.all(np.isfinite(v)) and np.linalg.norm(v) > 0:
+                up_cam = v / np.linalg.norm(v)
         if meta.get("tilt") is not None and meta.get("azimuth") is not None:
-            return float(meta["tilt"]), float(meta["azimuth"]), "frame"
+            return float(meta["tilt"]), float(meta["azimuth"]), "frame", up_cam
         exp = meta.get("image_stamp_ns")
         got = self._imu_at(int(exp) if exp is not None else self.get_clock().now().nanoseconds)
         if got is not None:
             q, self._rate_dps = got
             if self._rate_dps > self.max_rot_dps:
                 return (float("nan"), float("nan"),
-                        f"imu: rotating {self._rate_dps:.1f} deg/s (max {self.max_rot_dps:.0f})")
+                        f"imu: rotating {self._rate_dps:.1f} deg/s (max {self.max_rot_dps:.0f})", None)
             alt, az = boresight_altaz(q, self.mount_el, self.mount_az, self.declination)
-            return alt, az, "imu (at exposure)" if exp is not None else "imu (latest)"
-        return self.tilt, self.azimuth, "parameter"
+            if up_cam is None and self.R_cam_body is not None:
+                up_cam = up_in_camera(q, self.R_cam_body)
+            return alt, az, "imu (at exposure)" if exp is not None else "imu (latest)", up_cam
+        return self.tilt, self.azimuth, "parameter", up_cam
 
     def _prior(self):
         if math.isfinite(self.prior_lat):
@@ -395,13 +478,16 @@ class CNSubscriber(Node):
         return float("nan"), float("nan"), "none"
 
     def _utc_now(self, system_epoch=None):
-        """(UTC "YYYY-MM-DD HH:MM:SS" of a system-clock instant (default now), source "rtc" /
-        "gnss" / "ntp"), or (None, why no time is trusted) — never the bare system clock.
+        """(UTC "YYYY-MM-DD HH:MM:SS.sss" of a system-clock instant (default now), source "gnss" /
+        "autopilot" / "rtc" / "ntp"), or (None, why no time is trusted) — never the bare system clock.
+        Milliseconds kept: a whole-second truncation alone is up to 0.46 km.
         """
-        t, src = self.clock.utc(system_epoch)
-        if t is None:
+        off, src, sigma = self.clock.offset_sigma()
+        self._utc_sigma = sigma
+        if off is None:
             return None, src
-        return datetime.fromtimestamp(t, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S"), src
+        t = (time.time() if system_epoch is None else float(system_epoch)) + off
+        return datetime.fromtimestamp(t, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3], src
 
     def on_meta(self, msg: String):
         try:
@@ -453,12 +539,15 @@ class CNSubscriber(Node):
         simulator), else the utc_time parameter, else the exposure on the trusted clock; (None,
         reason) when no time is trusted.
         """
+        meta["utc_sigma_s"] = None
         if meta.get("utc_time") and meta.get("utc_source") != "system_clock":
             return meta["utc_time"], "frame"
         if self.utc_time:
             return self.utc_time, "parameter"
         exp = meta.get("image_stamp_ns")
-        return self._utc_now(int(exp) / 1e9 if exp is not None else None)
+        got = self._utc_now(int(exp) / 1e9 if exp is not None else None)
+        meta["utc_sigma_s"] = None if self._utc_sigma is None else round(self._utc_sigma, 3)
+        return got
 
     def _solve_allsky(self, img, meta):
         """360 mode: the whole sky above the camera, 'up' from the camera or the vehicle (AllSkyLocator)."""
@@ -486,6 +575,31 @@ class CNSubscriber(Node):
             self.get_logger().info(f"[cn] allsky360 tilt of 'up' learned: {result['tilt_calibrated']}")
         return result
 
+    def _geoloc_tilt(self, result, up_cam, utc):
+        """Zenith method: remove the learned tilt of 'up' (as the 360 mode) and, with a fresh GPS reference while
+        still, take this fix as a calibration sample.
+        """
+        R = result.get("R_icrs_cam")
+        if not result.get("success") or R is None or len(R) != 9:
+            return
+        R = np.asarray(R, float).reshape(3, 3)
+        result["raw_lat"], result["raw_lon"] = result["predicted_lat"], result["predicted_lon"]
+        got = self.geoloc_cal.corrected(R, up_cam, utc)
+        if got is not None:
+            result["predicted_lat"], result["predicted_lon"] = got
+            fit = self.geoloc_cal.fit
+            result["tilt_cal"] = {"n": fit["n"], "sigma_deg": round(fit["sigma_deg"], 4),
+                                  "frozen": self.geoloc_cal.frozen}
+        fresh = self._gps_prior and self._gps_t is not None and \
+            time.monotonic() - self._gps_t <= float(self.get_parameter("allsky_cal_gps_max_age_s").value)
+        if fresh and self._rate_dps <= float(self.get_parameter("allsky_cal_still_dps").value) \
+                and not self.geoloc_cal.frozen:
+            fit = self.geoloc_cal.add(R, up_cam, allsky_mount.zenith_icrs(self._gps_prior[0], self._gps_prior[1], utc))
+            result["cal_sample"] = len(self.geoloc_cal.samples)
+            if fit is not None:
+                result["tilt_calibrated"] = {"samples": fit["n"], "samples_total": fit["n_total"], "ok": fit["ok"],
+                                             "rejected": fit["rejected"], "residual_deg": round(fit["rms_deg"], 3)}
+
     def _process_frame(self, seq_id, img, meta):
         try:
             if meta.get("usable") is False:
@@ -508,10 +622,15 @@ class CNSubscriber(Node):
                 f"[cn] 🛰  solving frame={seq_id} (mode={self.solver_mode}, 10-60s)…"
             )
             if self.solver_mode == "geoloc":
-                tilt, azimuth, att_src = self._attitude(meta)
+                tilt, azimuth, att_src, up_cam = self._attitude(meta)
                 prior_lat, prior_lon, prior_src = self._prior()
                 meta.update(attitude_source=att_src, tilt_used=tilt, azimuth_used=azimuth,
-                            prior=[prior_lat, prior_lon], prior_source=prior_src)
+                            prior=[prior_lat, prior_lon], prior_source=prior_src,
+                            fix_method="zenith (camera rotation + IMU up, no compass)" if up_cam is not None else
+                            "boresight (tilt + compass azimuth: camera mount roll unknown, set camera_R_cam_body)")
+                if up_cam is not None:
+                    meta.update(up_cam=[round(float(v), 7) for v in up_cam], prior=None,
+                                prior_source="none (zenith method: one answer)")
                 utc, utc_src = self._utc_for(meta)
                 meta["utc_source"] = utc_src
                 meta["utc_used"] = utc
@@ -519,7 +638,7 @@ class CNSubscriber(Node):
                     result = {"success": False, "error": f"frame not solved: {utc_src}"}
                 elif att_src.startswith("imu: rotating"):
                     result = {"success": False, "error": f"frame not solved: {att_src}"}
-                elif not (math.isfinite(tilt) and math.isfinite(azimuth)):
+                elif up_cam is None and not (math.isfinite(tilt) and math.isfinite(azimuth)):
                     exp = meta.get("image_stamp_ns")
                     hist = list(self._imu_hist)
                     near = None
@@ -534,9 +653,13 @@ class CNSubscriber(Node):
                                        + ")"}
                 else:
                     t0 = time.monotonic()
-                    result = cn_solver.solve_image_b64_geoloc(
-                        b64, tilt, azimuth, utc, prior_lat, prior_lon,
-                        self.camera_fov_deg)
+                    if up_cam is not None:
+                        result = cn_solver.solve_image_b64_geoloc(
+                            b64, tilt, azimuth, utc, float("nan"), float("nan"), self.camera_fov_deg, up_cam=up_cam)
+                        self._geoloc_tilt(result, up_cam, utc)
+                    else:
+                        result = cn_solver.solve_image_b64_geoloc(
+                            b64, tilt, azimuth, utc, prior_lat, prior_lon, self.camera_fov_deg)
                     result["solve_s"] = round(time.monotonic() - t0, 1)
             else:
                 result = cn_solver.solve_image_b64(b64)
@@ -569,8 +692,10 @@ class CNSubscriber(Node):
             "solve_s": result.get("solve_s"),
             "tilt":   meta.get("tilt_used"), "azimuth": meta.get("azimuth_used"),
             "attitude_source": meta.get("attitude_source"),
+            "fix_method": meta.get("fix_method"), "up_cam": meta.get("up_cam"),
             "prior": meta.get("prior"), "prior_source": meta.get("prior_source"),
             "utc": meta.get("utc_used"), "utc_source": meta.get("utc_source"),
+            "utc_sigma_s": meta.get("utc_sigma_s"),
             "sigma_m": self._sigma_m(),
             "min_log_odds": self.min_log_odds,
         }
@@ -582,6 +707,9 @@ class CNSubscriber(Node):
                 "up_source", "up_cam", "moving", "spots", "matched", "used", "rms_deg", "p_chance",
                 "lens_disagree_deg", "sigma_fit_deg", "f_scale", "f_scale_found", "matched_per_lens", "raw_lat",
                 "raw_lon", "tilt_cal", "cal_sample", "tilt_calibrated", "retried_with") if k in result})
+        else:
+            status.update({k: result[k] for k in ("method", "raw_lat", "raw_lon", "tilt_cal", "cal_sample",
+                                                  "tilt_calibrated") if k in result})
 
         log_odds = result.get("log_odds")
         if result.get("success") and not allsky and (log_odds is None or log_odds < self.min_log_odds):

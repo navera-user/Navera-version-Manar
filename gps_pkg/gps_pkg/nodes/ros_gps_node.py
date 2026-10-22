@@ -11,10 +11,17 @@ Never point it at a position NAVERA itself produces (the autopilot's fused posit
 or a GPS fed by NAVERA's GPS_INPUT): NAVERA would check its own output against itself.
 
 Parameters:
-    fix_topic   (default /navera/vehicle/gps2) — sensor_msgs/NavSatFix input
+    fix_topic         (default /navera/vehicle/gps2) — sensor_msgs/NavSatFix input
+    satellites_topic  (default /navera/vehicle/gps2_satellites) — std_msgs/UInt32, the
+                      receiver's satellite count (NavSatFix has none; MAVROS publishes it as
+                      .../raw/satellites). Without a fresh one the fix is forwarded with 0
+                      satellites, and an autopilot fed only by NAVERA never sets its EKF origin
+                      (Isaac Sim closed loop, 2026-10-21). "" = none.
 """
 import json
 import math
+import time
+from typing import Optional
 
 import rclpy
 from navera_common.lifecycle import die_with_parent
@@ -23,10 +30,16 @@ from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import NavSatFix, NavSatStatus
+from std_msgs.msg import UInt32
+
+SATS_MAX_AGE_S = 2.0   # a count older than this is not this fix's
 
 
-def estimate_from_fix(m: NavSatFix) -> PositionEstimate:
-    """The GPS source contract for one NavSatFix: valid only with a fix and a position."""
+def estimate_from_fix(m: NavSatFix, num_sats: Optional[int] = None) -> PositionEstimate:
+    """The GPS source contract for one NavSatFix: valid only with a fix and a position.
+
+    num_sats: the receiver's satellite count when known (stated in details as gps_node does).
+    """
     est = PositionEstimate()
     est.header = m.header
     valid = m.status.status >= NavSatStatus.STATUS_FIX and math.isfinite(m.latitude) and \
@@ -50,7 +63,10 @@ def estimate_from_fix(m: NavSatFix) -> PositionEstimate:
     est.reason = "" if valid else "no fix"
     est.sensor_stamp = m.header.stamp
     est.producer, est.model_id, est.frame_index = "ros_gps_node", "navsatfix", -1
-    est.details_json = json.dumps({"frame_id": m.header.frame_id})
+    details = {"frame_id": m.header.frame_id}
+    if valid and num_sats is not None and num_sats > 0:
+        details["num_sats"] = int(num_sats)
+    est.details_json = json.dumps(details)
     return est
 
 
@@ -58,18 +74,31 @@ class RosGps(Node):
     def __init__(self):
         super().__init__("ros_gps")
         self.declare_parameter("fix_topic", "/navera/vehicle/gps2")
+        self.declare_parameter("satellites_topic", "/navera/vehicle/gps2_satellites")
         topic = str(self.get_parameter("fix_topic").value)
+        sats_topic = str(self.get_parameter("satellites_topic").value)
+        self._sats = None                       # (count, monotonic time received)
+        if sats_topic:
+            self.create_subscription(UInt32, sats_topic, self._on_sats, qos_profile_sensor_data)
         self.pub_fix = self.create_publisher(NavSatFix, "/navera/sensors/gps_fix", 10)
         self.pub_est = self.create_publisher(PositionEstimate, "/navera/estimate/gps", 10)
         self.create_subscription(NavSatFix, topic, self._on_fix, qos_profile_sensor_data)
         self.get_logger().info(f"GPS from {topic}")
+
+    def _on_sats(self, m: UInt32):
+        self._sats = (int(m.data), time.monotonic())
+
+    def _fresh_sats(self) -> Optional[int]:
+        if self._sats is None or time.monotonic() - self._sats[1] > SATS_MAX_AGE_S:
+            return None
+        return self._sats[0]
 
     def _on_fix(self, m: NavSatFix):
         if m.header.stamp.sec == 0 and m.header.stamp.nanosec == 0:
             m.header.stamp = self.get_clock().now().to_msg()      # unstamped driver: receipt time
         if self.pub_fix.topic_name != self.get_parameter("fix_topic").value:
             self.pub_fix.publish(m)
-        self.pub_est.publish(estimate_from_fix(m))
+        self.pub_est.publish(estimate_from_fix(m, self._fresh_sats()))
 
 
 def main(args=None):

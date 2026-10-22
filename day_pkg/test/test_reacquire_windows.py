@@ -126,3 +126,15 @@ def test_the_jump_gate_allows_a_dead_reckoned_anchor_its_own_uncertainty():
     assert margin({}, {}) == 360.0
     n._anchor_sigma, n._fix_sigma = 90.0, (lambda r, m: 30.0)
     assert margin({}, {}) == 270.0
+
+
+def test_the_heading_search_runs_in_the_carried_position_window_only():
+    from day_pkg.vision_nav import _move
+    seen = []
+    n, _ = _node(accept_at=None)
+    n._heading_search_kw = lambda meta=None: {"heading_search": True}
+    n.local.locate = lambda img, prior, r, mpp, **kw: seen.append(kw.get("heading_search")) or \
+        {"accepted": False, "inliers": 0, "reason": "none"}
+    n._locate_search(IMG, C, 1200.0, 0.3, {})
+    assert seen == [True, False, False, False]
+    assert _move(C, 0.0, 0.0) == C

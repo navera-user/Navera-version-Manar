@@ -44,6 +44,7 @@ def _named_sources():
 
 SETTINGS_FILE = os.environ.get("NAVERA_SETTINGS_FILE", "/var/lib/navera/settings.env")
 BUFFER_M = 1000.0
+MAX_PLANS = 20                    # route plans kept for Generate (the newest; each holds a route + profile)
 DISK_MARGIN_MB = 2048.0
 TILE_KB, DESC_KB = 20.0, 3.0
 VEHICLE_TYPES = ("drone", "plane", "boat", "robot", "other")
@@ -279,7 +280,10 @@ class AreaJobs:
                     active=self.active_dir() == self.path(aid),
                     terrain=self._terrain(aid) or self._quick_terrain(legs))
         with self.lock:
+            self.plans.pop(aid, None)
             self.plans[aid] = plan
+            while len(self.plans) > MAX_PLANS:              # the oldest plans go: never grows
+                self.plans.pop(next(iter(self.plans)))
         return plan
 
     def _quick_terrain(self, legs):
@@ -418,9 +422,11 @@ class AreaJobs:
 
 
 # ── offline mission bundle (navera_tools/mission_bundle.py) ─────────────
-# The page calls the bundle tool as a subprocess, like prepare_area.py: `plan` (--json: the
-# estimate, BEFORE any download), `build` (--progress-json: one {"stage", "done", "total"} JSON
-# object per line, then a summary line) and `check` (--json: the offline verdict, report["ok"]).
+# Helpers for a FUTURE web feature: no page or bridge route calls them yet (bundles are made
+# with the CLI, navera_tools/README.md). They build the bundle tool's command line, to run as a
+# subprocess like prepare_area.py: `plan` (--json: the estimate, BEFORE any download), `build`
+# (--progress-json: one {"stage", "done", "total"} JSON object per line, then a summary line)
+# and `check` (--json: the offline verdict, report["ok"]). Tested in test_mission_prep.py.
 BUNDLE_TOOL = os.environ.get("NAVERA_BUNDLE_TOOL") or os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__)))), "navera_tools", "mission_bundle.py")
 BUNDLE_SOURCES = re.compile(r"^(onboard|esri|xyz:https?://\S+|mbtiles:/\S+|fn:[\w.]+:\w+(:[\w.-]+)?)$")

@@ -288,6 +288,8 @@ class SimCamera360:
 
     def __init__(self, sim):
         self.sim, self.cam, self.error, self.frame_ms = sim, fake_driver(), None, None
+        self.stillness = server.Stillness()                 # the server's own stopped test (driver + long window)
+        server.Stillness.extend_history(self.cam)
 
     def latest(self):
         fr = self.sim.newest_frame()
@@ -301,7 +303,7 @@ class SimCamera360:
         return self.cam.gravity(at_ms=self.frame_ms) if at_frame and self.frame_ms is not None else self.cam.gravity()
 
     def stopped(self, at_frame=False):
-        return self.cam.stopped(at_ms=self.frame_ms) if at_frame and self.frame_ms is not None else self.cam.stopped()
+        return self.stillness.judge(self.cam, self.frame_ms if at_frame and self.frame_ms is not None else None)
 
 
 class Sim:
@@ -590,7 +592,11 @@ def main():
     ap.add_argument("--interval", type=float, default=20.0, help="server solve interval (NAVERA_FIELD_INTERVAL_S)")
     ap.add_argument("--json", default="")
     ap.add_argument("--keep", default="", help="folder for the session files (default: a temp folder)")
+    ap.add_argument("--driver-stillness-only", action="store_true",
+                    help="the camera driver's stopped() alone, without the long-window test (before 2026-10-22)")
     a = ap.parse_args()
+    if a.driver_stillness_only:
+        server.Stillness.LONG_CHECK = False
     out = {}
     for name in a.profile.split(","):
         p = Profile(**{**asdict(PROFILES[name])})

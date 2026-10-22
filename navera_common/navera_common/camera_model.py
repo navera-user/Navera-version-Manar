@@ -103,7 +103,14 @@ class CameraModel:
     def from_calibration(cls, d: dict) -> "CameraModel":
         """From a calibration dict (navera_tools/calibrate_camera.py writes it as YAML):
         {model, image_width, image_height, camera_matrix: [9], distortion: [n]}.
+
+        `model` is required whenever there is a distortion: 4 coefficients fit both models, and a
+        fisheye read as pinhole is a different field of view (Hikvision visible lens file of
+        2026-10-20, no model: 47 deg instead of 77 deg).
         """
+        if d.get("distortion") and d.get("model") not in ("fisheye", "pinhole"):
+            raise ValueError("calibration file: 'model' must be fisheye or pinhole "
+                             f"(got {d.get('model')!r})")
         try:
             return cls(d["camera_matrix"], d.get("distortion", []),
                        (d["image_width"], d["image_height"]), d.get("model", "pinhole"),

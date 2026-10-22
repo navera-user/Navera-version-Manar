@@ -124,6 +124,14 @@ def test_calibration_dict():
         CameraModel.from_calibration({"image_width": 10, "image_height": 10})
 
 
+def test_a_distorted_lens_needs_its_model():
+    d = {"image_width": 1920, "image_height": 1080, "camera_matrix": [900, 0, 960, 0, 900, 540, 0, 0, 1],
+         "distortion": [-0.05, 0.01, -0.004, 0.0005]}
+    with pytest.raises(ValueError, match="model"):
+        CameraModel.from_calibration(d)
+    assert CameraModel.from_calibration({**d, "distortion": []}).model == "pinhole"
+
+
 def test_altitude_from_scale():
     hfov, w = 84.0, 1920
     for true_h, guess_h in ((150.0, 100.0), (400.0, 450.0)):

@@ -246,6 +246,9 @@ class FakeUsb:
     def write(self, ep, data, timeout):
         self.written.append(data)
 
+    def reset(self):
+        self.resets = getattr(self, "resets", 0) + 1
+
     def read(self, ep, size, timeout):
         if not self.chunks:
             time.sleep(0.01)
@@ -270,6 +273,26 @@ def test_live_source_with_a_fake_camera():
     assert fake.written[0] == proto.frame_packet(proto.PKT_SYNC)
     assert fake.written[1] == proto.frame_packet(proto.message_payload(proto.CMD_START_LIVE, 1, proto.START_FULL))
     assert fake.written[-1] == proto.frame_packet(proto.message_payload(proto.CMD_STOP_LIVE, 2, b""))
+
+
+def test_silent_imu_restarts_the_stream_then_resets_the_usb_device():
+    """F14: StartLiveStream again every 2.5 s while the IMU is silent; after 3 in vain, a USB reset."""
+    fake, clock = FakeUsb([]), [1000.0]
+    src = ii.UsbImuSource(lambda t, p: None, usb_core=fake, usb_util=fake, now=lambda: clock[0])
+    src._stop.set()
+    for th in src._threads:
+        th.join(timeout=2.0)
+    start = proto.frame_packet(proto.message_payload(proto.CMD_START_LIVE, 2, proto.START_FULL))
+    actions = []
+    for _ in range(12):                                    # 12 s of silence, one keepalive a second
+        clock[0] += 1.0
+        n = len(fake.written)
+        src.keepalive_once()
+        actions.append(sum(1 for w in fake.written[n:] if w != proto.frame_packet(proto.PKT_KEEPALIVE)))
+    assert src.restarts == 3 and src.usb_resets == 1 and fake.resets == 1
+    assert fake.written.count(start) == 1                  # seq 2 = the first restart (seq 1 = the start)
+    assert proto.frame_packet(proto.PKT_SYNC) in fake.written[2:]                 # the stream opened again
+    assert "USB device reset" in src.error
 
 
 # ── the ROS node ─────────────────────────────────────────────────────────

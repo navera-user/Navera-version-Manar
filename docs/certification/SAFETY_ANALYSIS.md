@@ -37,7 +37,7 @@ public-data evidence, not a field rate.
 | H-13 | Autopilot misconfigured (`EK3_SRC1_POSZ = 3`, velocity sources, `GPS_AUTO_SWITCH`) | Cat: EKF height −277 m in 20 s, vehicle climbs to 825 m (SITL) | **High** | NAVERA cannot read or enforce autopilot parameters; documentation only |
 | H-01b | Camera image frozen (same picture delivered again) | Haz: a static vision fix repeated as fresh; with GPS trusted, the growth test may refuse the GOOD GPS | **Medium** | frame-content freeze detector + UT (NAV-SAF-19); not yet seen on a real stuck driver |
 | H-03 | Wrong night (thermal) fix accepted | Haz if forwarded | **High** (unvalidated) | 0 wrong accepts is on synthetic grey renders only; real LWIR never run (B4/B14, D22, F24) |
-| H-11 | Compute overload / out of memory / thermal throttling | Maj: OOM kill ends navigation (F5); stale fixes | **Medium** | compute health monitor + degraded flag (NAV-SAF-21, UT); no OOM protection in the units; integrity kept by freshness windows |
+| H-11 | Compute overload / out of memory / thermal throttling | Maj: OOM kill ends navigation (F5); stale fixes | **Medium** | compute health monitor + degraded flag (NAV-SAF-21, UT); swap file made by install.sh and warned at boot, OOM order and memory caps in the units (NAV-PERF-06, UT; to run as root on a box); integrity kept by freshness windows |
 | H-02 | Wrong day-vision fix accepted | Haz if forwarded: 100–650 m jumps (F16 tilted camera, F20 shake) | **Medium** | 1 / 2599 > 100 m on real drone data (PUB) but 2–7 wrong fixes per run under shake on the bench; F16/F20 open |
 | H-08 | Clock wrong (no battery RTC, F27) | Haz for celestial (≈28 km per minute of error, thousands of km at 16 h); wrong GPS time sent to the autopilot | **Medium** | celestial now solves only on a trusted time (NAV-SAF-20, UT); GPS_INPUT / NMEA time still from the system clock; a box can lack the DS3231 |
 | H-10 | Latency mismatch camera ↔ position | Haz/Min: along-track error (1.71 s uncompensated: 39.8 m at 80 m/s, F9) | **Medium** | per-camera delay is a setting / online fit; `GPS_DELAY_MS` recommendation not verified |
@@ -133,10 +133,10 @@ H-14 storage full (Low), H-15 integrator settings (Medium), H-16 simulation on a
 | Failure modes | no DS3231 / dead coin cell → Jetson boots at 1970 or the last saved time (16 h off on 2026-10-21), NTP step mid-mission, RTC in local time |
 | Effect | celestial ≈ 28 km per minute of error; GPS_INPUT week time and NMEA date from `datetime.now()` (`vehicle_output_node.py::VehicleOutputNode._tick`) wrong; logs misdated |
 | Detection | `rtc_pkg/rtc_pkg/nodes/rtc_node.py::RTCNode.publish_rtc` (valid only if UTC, power kept, drift explained); future stamps refused and never revived (`EstimatorNode._eval_source`, B6); clock step back resets histories (`sensor_history.py::History`) |
-| Mitigation | celestial solves only on a trusted time (`navera_common/trusted_time.py::TrustedClock`, `cn_subscriber.py::CNSubscriber._utc_for`): DS3231 valid and not lost_power, a GNSS time (`gps_node.py::GPSNode._publish_time`) within 300 s, or NTP — with no wall-clock step since and none in the last 60 s; else no position, reason "no trusted time: …" (both solver modes; same rule as the field tools, db2f95c) |
-| Evidence | HW: DS3231 reboot −0.148 s (2026-07-14); F27 shows a box can lack it; UT `test_trusted_time.py`, `cn_pkg/test/test_cn_gates.py` (no source / lost power / clock step → no solve) |
+| Mitigation | celestial solves only on a trusted time (`navera_common/trusted_time.py::TrustedClock`, `cn_subscriber.py::CNSubscriber._utc_for`, NAV-SAF-20), in this order (decision 2026-10-22, no hardware clock required): the GPS anchor (a vouched-for receiver UTC taken while the estimator trusts the GPS, carried by the monotonic clock: survives GPS loss and wall-clock steps; later jumps ignored and logged), the autopilot's SYSTEM_TIME (cross-check: > 1 s from the anchor → no time), the DS3231 if fitted, NTP; each with a stated 1-sigma growing at 20 ppm; no stamp converted for 60 s after a wall-clock step; else no position, reason "no trusted time: …" (both solver modes and the field server) |
+| Evidence | HW: DS3231 reboot −0.148 s (2026-07-14); F27 shows a box can lack it; UT `test_trusted_time.py`, `cn_pkg/test/test_cn_gates.py`, `test_field_rtc.py`, `test_field_time_feeds.py` (no source / lost power / clock step / untrusted GPS / anchor-SYSTEM_TIME disagreement → no solve; anchor held 3 h and through a step) |
 | Residual | **Medium** (celestial is never forwarded; time to the autopilot unverified) |
-| Open items | O-15 done (UT) — run once on the box with the DS3231 removed and NTP off; O-16 check_box FAIL when no valid RTC; O-17 install procedure requires the coin cell / DS3231 |
+| Open items | O-15 done (UT) — run once on the box with the DS3231 removed and NTP off, with a real GPS and autopilot; O-16 / O-17 superseded 2026-10-22 (DS3231 optional); a Jetson reboot in flight with the GPS denied and no autopilot leaves celestial without time (stated, the anchor is not persisted); vehicle_output still stamps GPS_INPUT / NMEA with the system clock |
 
 ### H-09 IMU bias, wrong heading or mount
 
@@ -164,10 +164,10 @@ H-14 storage full (Low), H-15 integrator settings (Medium), H-16 simulation on a
 |---|---|
 | Effect | frames processed late or not at all (F4: failed frames 6–20 s), OOM kill of the day pipeline after 4.6 min without swap (F5), GPU clocks throttled |
 | Detection | `navera_estimator/nodes/compute_health_node.py::ComputeHealthNode` (`navera_common/compute_health.py`): temperatures, memory, swap, GPU load, throttling from /sys and /proc without root → `/diagnostics`, `/navera/compute_health`; no swap reported at start; freshness windows make late fixes ineligible (`EstimatorNode._eval_source`); output refuses measurements > 5 s old |
-| Mitigation | at 95 C or ≤ 8 % memory available the latched `/navera/compute/degraded` makes day and night skip their optional height / heading retries (`compute_health.py::watch_degraded`); strictly serial back-pressure camera → localizer (camera waits for `frame_done`); one GPU pipeline (`Conflicts=`); coarser map level at height (D14); uniform frames rejected early (3180629); restart after a kill (`Restart=always`) |
-| Evidence | BENCH: F5, D14 (3.7 GB RSS at 1500 m); UT `test_compute_health.py`, `test_compute_health_node.py`; read without root on the Orin Nano |
+| Mitigation | at 95 C or ≤ 8 % memory available the latched `/navera/compute/degraded` makes day and night skip their optional height / heading retries (`compute_health.py::watch_degraded`); strictly serial back-pressure camera → localizer (camera waits for `frame_done`); one GPU pipeline (`Conflicts=`); coarser map level at height (D14); uniform frames rejected early (3180629); restart after a kill (`Restart=always`); swap on disk made by `deploy/setup_swap.sh` (install.sh, 8 GB when < 4 GB active; zram does not count), warned by every pipeline start (`navera_boot_lib.sh::navera_check_swap`), `check_boot.sh` and `check_box.py`; OOM order in the units: output chain (estimator, output, GPS, IMU, RTC, vehicle link) `OOMScoreAdjust=-900` + systemd-oomd `omit`, vision pipelines -300 + `avoid`, web and discovery +500 with `MemoryHigh` / `MemoryMax` (beyond it they go to swap, never into the pipeline's RAM), checked by `verify_units.py` |
+| Evidence | BENCH: F5, D14 (3.7 GB RSS at 1500 m); 2026-10-22: product day chain on a real recorded flight (104 m) 2.48 GB RSS, day_perf mission bench (~520 m) 5.0 GB RSS; UT `test_compute_health.py`, `test_compute_health_node.py`, `deploy/test/test_swap.py`, `deploy/test/test_memory_protection.py`; read without root on the Orin Nano |
 | Residual | **Medium** (integrity protected; availability not) |
-| Open items | O-20 swap file and `OOMScoreAdjust=` / `MemoryHigh=` in the units; O-21 temperature / throttle monitor done (NAV-SAF-21) — still to show on the operator view and in check_box; O-22 TensorRT (latency) |
+| Open items | O-20 swap file and OOM scores / memory caps: done in deploy (UT, staged) — to run once as root on a box (DEPLOYMENT_VALIDATION.md §2) and an OOM provoked there; O-21 temperature / throttle monitor done (NAV-SAF-21) — still to show on the operator view and in check_box; O-22 TensorRT (latency) |
 
 ### H-12 Power loss or reboot in flight
 
@@ -223,8 +223,8 @@ simulated data. Residual **Low**.
 | O-25 | read and check the autopilot's EK3 / GPS parameters | H-13 | code |
 | O-13 | inertial dead-reckoning as an independent source (FEAT-2) | H-07 | code |
 | O-7, O-8 | real LWIR data; re-fit night thresholds | H-03 | data |
-| O-15–O-17 | trusted-time gate in product celestial (done, UT); RTC mandatory | H-08 | code / install |
-| O-20, O-21 | swap + OOM / memory limits; thermal monitoring (monitor done, UT) | H-11 | deploy |
+| O-15–O-17 | trusted-time gate in product celestial (done, UT); GPS-anchored time with SYSTEM_TIME cross-check (done, UT, 2026-10-22: RTC optional); box run with real GPS + autopilot open | H-08 | code / test |
+| O-20, O-21 | swap + OOM / memory limits (done in deploy, UT; root run on a box pending); thermal monitoring (monitor done, UT) | H-11 | deploy |
 | O-23 | reboot validation on a deployed box (commands in DEPLOYMENT_VALIDATION.md) | H-12 | test |
 | O-27 | install from a clean release clone; install.sh no longer copies .git, .claude/worktrees, caches or recordings (B18 fixed, UT) | H-12, deployment | deploy |
 | O-3, O-4 | shake / tilt gates (F20, F16) on a real vehicle | H-02 | code / test |

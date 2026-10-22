@@ -130,6 +130,8 @@ def main():
                          "those of the full --sensors / --agl set")
     ap.add_argument("--min-ncc", type=float, default=None, help="map-check gate override (<= -1: off)")
     ap.add_argument("--recheck-max", type=float, default=None, help="re-check gate override, m (<= -1: off)")
+    ap.add_argument("--featureless-mask", action="store_true",
+                    help="leave featureless areas (cloud, calm water, clipped warm river) out of the query")
     ap.add_argument("--save-frames", default="", help="save the first frames of each run here")
     ap.add_argument("--probe-jsonl", default="",
                     help="run every retry of each frame and write its evidence here (night_retry_probe); "
@@ -170,7 +172,7 @@ def main():
     weights = os.environ.get("NAVERA_STHN_WEIGHTS", os.path.join(sthn, "weights/one_stage/model.safetensors"))
     overrides = (("min_match_ncc", a.min_ncc), ("recheck_max_m", a.recheck_max))
     gates = {k: (v if v > -1 else None) for k, v in overrides if v is not None}
-    loc = NightLocalizer(sthn, weights, mb, device=a.device, **gates)
+    loc = NightLocalizer(sthn, weights, mb, device=a.device, mask_featureless=a.featureless_mask, **gates)
     only = {(x.split(":")[0], float(x.split(":")[1])) for x in a.only_runs.split(",") if x.strip()}
     save = Path(a.save_frames) if a.save_frames else None
     if save:
