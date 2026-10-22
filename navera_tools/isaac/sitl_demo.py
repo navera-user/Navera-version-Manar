@@ -50,6 +50,8 @@ def main():
     ap.add_argument("--cut-after", type=float, default=15.0, help="s after reaching the altitude")
     ap.add_argument("--isaac-port", type=int, default=15500)
     ap.add_argument("--link-port", type=int, default=15501)
+    ap.add_argument("--extra-dest", action="append", default=[],
+                    help="HOST:PORT also sent the truth stream (hardware-in-the-loop: the NAVERA box's recorder)")
     ap.add_argument("--timeout", type=float, default=1200.0)
     ap.add_argument("--legs", type=int, default=4, help="diamond legs (4 = the full diamond)")
     ap.add_argument("--hold-home", type=float, default=45.0, help="s over home (RTL) before the demo ends")
@@ -59,6 +61,13 @@ def main():
     geo = GeoRef(a.lat0, a.lon0)
     ev = open(os.path.join(a.results, "sitl_events.jsonl"), "a")
     out = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    dests = [("127.0.0.1", a.isaac_port), ("127.0.0.1", a.link_port)]
+    dests += [(d.rsplit(":", 1)[0], int(d.rsplit(":", 1)[1])) for d in a.extra_dest]
+    # the autopilot's GPS as it received NAVERA's GPS_INPUT (GPS_RAW_INT), on this PC's clock:
+    # with NAVERA's own record (hil_record.py) it gives the box -> autopilot delivery time
+    gps_f = open(os.path.join(a.results, "sitl_gps.csv"), "a")
+    if gps_f.tell() == 0:
+        gps_f.write("wall,t,lat,lon,fix_type,sats,eph\n")
     m = mavutil.mavlink_connection(a.master, source_system=245)
     m.wait_heartbeat(timeout=120)
     ts, tc = m.target_system, m.target_component
@@ -73,7 +82,8 @@ def main():
         print(f"[{d['t']:7.1f}] {kind} {kw}", flush=True)
 
     for msgid, hz in ((mavutil.mavlink.MAVLINK_MSG_ID_SIM_STATE, 50), (mavutil.mavlink.MAVLINK_MSG_ID_GLOBAL_POSITION_INT, 10),
-                      (mavutil.mavlink.MAVLINK_MSG_ID_EKF_STATUS_REPORT, 2), (mavutil.mavlink.MAVLINK_MSG_ID_HOME_POSITION, 1)):
+                      (mavutil.mavlink.MAVLINK_MSG_ID_EKF_STATUS_REPORT, 2), (mavutil.mavlink.MAVLINK_MSG_ID_HOME_POSITION, 1),
+                      (mavutil.mavlink.MAVLINK_MSG_ID_GPS_RAW_INT, 10)):
         m.mav.command_long_send(ts, tc, mavutil.mavlink.MAV_CMD_SET_MESSAGE_INTERVAL, 0, msgid, int(1e6 / hz),
                                 0, 0, 0, 0, 0)
 
@@ -84,8 +94,11 @@ def main():
 
     def send(d):
         data = json.dumps(d).encode()
-        for port in (a.isaac_port, a.link_port):
-            out.sendto(data, ("127.0.0.1", port))
+        for dest in dests:
+            try:
+                out.sendto(data, dest)
+            except OSError:                                 # an unreachable box never stops the flight
+                pass
 
     def upload():
         rel = mavutil.mavlink.MAV_FRAME_GLOBAL_RELATIVE_ALT_INT
@@ -139,6 +152,11 @@ def main():
                 if msg.lat:
                     state["ekf"] = [msg.lat / 1e7, msg.lon / 1e7, msg.alt / 1000.0]
                 state["rel"] = msg.relative_alt / 1000.0
+            elif typ == "GPS_RAW_INT" and msg.get_srcSystem() == ts:
+                wall = time.time()
+                gps_f.write(f"{wall:.3f},{wall - t0:.3f},{msg.lat / 1e7:.7f},{msg.lon / 1e7:.7f},{msg.fix_type},"
+                            f"{msg.satellites_visible},{msg.eph}\n")
+                gps_f.flush()
             elif typ == "HOME_POSITION" and state["home"] is None:
                 state["home"] = [msg.latitude / 1e7, msg.longitude / 1e7, msg.altitude / 1000.0]
                 log("home", home=state["home"])

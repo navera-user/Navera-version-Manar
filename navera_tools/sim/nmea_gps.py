@@ -6,11 +6,18 @@ The receiver is driven by the simulator's true position and a fault mode:
     spoof_jump   a spoofer takes over: positions suddenly 2 km away
     spoof_drift  a spoofer pulls the position away slowly (4 m/s)
     off          the receiver is silent (cable cut, power loss)
+
+serve_tcp(port) also offers the same sentences on a TCP server (every connected client gets
+every sentence), like a network GPS / NMEA multiplexer: NAVERA's network GPS source
+(NAVERA_GPS_SOURCE=network, NAVERA_GPS_URL=tcp:<host>:<port>) reads it — the hardware-in-the-
+loop test feeds the real box this way (navera_tools/isaac/run_hil.sh).
 """
 import math
 import os
 import pty
 import random
+import socket
+import threading
 import tty
 from datetime import datetime, timezone
 
@@ -51,6 +58,32 @@ class NmeaGps:
         self.noise = [0.0, 0.0]
         self.spoof = [0.0, 0.0]
         self.sats = 12
+        self._clients = []
+        self._clients_lock = threading.Lock()
+        self._server = None
+
+    def serve_tcp(self, port: int, host: str = "0.0.0.0") -> int:
+        """Also send every sentence to the TCP clients of host:port (0: any free port).
+        Returns the port. A client that stops reading is dropped, never waited for."""
+        srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        srv.bind((host, port))
+        srv.listen(4)
+        self._server = srv
+
+        def accept():
+            while True:
+                try:
+                    c, _ = srv.accept()
+                except OSError:
+                    return                        # server closed
+                c.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+                c.settimeout(0.5)
+                with self._clients_lock:
+                    self._clients.append(c)
+
+        threading.Thread(target=accept, daemon=True).start()
+        return srv.getsockname()[1]
 
     def set_mode(self, mode):
         if mode not in MODES:
@@ -67,6 +100,14 @@ class NmeaGps:
             os.write(self.master, text.encode("ascii"))
         except (BlockingIOError, OSError):
             pass                                  # nobody reading: drop, like a UART
+        if self._clients:
+            with self._clients_lock:
+                for c in list(self._clients):
+                    try:
+                        c.sendall(text.encode("ascii"))
+                    except OSError:               # gone or not reading
+                        self._clients.remove(c)
+                        c.close()
 
     def reported(self, lat, lon, dt):
         """Position the receiver reports (truth + noise + spoofing)."""
@@ -100,6 +141,12 @@ class NmeaGps:
         return rlat, rlon
 
     def close(self):
+        if self._server is not None:
+            self._server.close()
+        with self._clients_lock:
+            for c in self._clients:
+                c.close()
+            self._clients = []
         for fd in (self.master, self._slave):
             try:
                 os.close(fd)

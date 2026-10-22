@@ -215,11 +215,12 @@ class LiveFeed:
     one per SIM_STATE, t = seconds since the demo's t0 on this PC's clock), kept as a history
     so that state(t) answers like Trajectory (interpolated; held at the ends)."""
 
-    def __init__(self, port: int, geo: "GeoRef", z_ref: float = 0.0, keep_s: float = 900.0):
+    def __init__(self, port: int, geo: "GeoRef", z_ref: float = 0.0, keep_s: float = 900.0,
+                 host: str = "127.0.0.1"):
         import socket
         self.geo, self.z_ref, self.keep_s = geo, z_ref, keep_s
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.sock.bind(("127.0.0.1", port))
+        self.sock.bind((host, port))     # host 0.0.0.0: the truth from another machine (HIL)
         self.sock.setblocking(False)
         self.c = {k: [] for k in ("t", "e", "n", "alt", "rel", "vn", "ve", "vd", "roll", "pitch", "heading",
                                   "p", "q", "r")}

@@ -21,6 +21,14 @@ equipment would give NAVERA — SIMULATED data, deliberately imperfect:
            sitl_demo cuts it), then jammed (no fix); --spoof-mps drags it away from
            --spoof-start-s to the cut (a slow spoof)
 
+Hardware in the loop (run_hil.sh: NAVERA runs on the real box, not next to this link):
+  stream_url     the camera frames, at their delivery time, also go out as an H.264 network
+                 camera: ffmpeg (libx264, zerolatency) publishes them to this RTSP URL (an RTSP
+                 server, mediamtx, serves them to the box) — stream.csv logs each frame's send
+                 time (this PC's clock) and its true exposure t
+  nmea_tcp_port  the NMEA receiver is also served on this TCP port (the box's network GPS source)
+  ros_camera     false: no /isaac/camera/image_raw (nobody on this PC reads it in HIL)
+
 and records NAVERA's answers against the truth into --results (live, for live_plot.py):
   position.csv  every /navera/position (the arbiter's output): source, mode, sigma, error
                 vs the truth at its sensor stamp
@@ -273,6 +281,17 @@ class IsaacLink(Node):
         self.nmea = NmeaGps(seed)
         with open(os.path.join(self.results, "gps_port"), "w") as f:
             f.write(self.nmea.port)
+        # hardware in the loop: the same NMEA on TCP, the camera as an RTSP stream
+        nmea_tcp = int(p("nmea_tcp_port", 0))
+        if nmea_tcp:
+            self.nmea.serve_tcp(nmea_tcp)
+            self.get_logger().info(f"NMEA receiver also on TCP port {nmea_tcp}")
+        self.stream_url = str(p("stream_url", ""))
+        self.stream_bitrate = str(p("stream_bitrate", "4M"))
+        self.stream_gop = int(p("stream_gop", 5))
+        self.ros_camera = bool(p("ros_camera", True))
+        self.stream_q = queue.Queue(maxsize=10)
+        self.stream_f = None
 
         lens = yaml.safe_load(open(self.lens_file))
         sc = self.lens_scale
@@ -354,6 +373,11 @@ class IsaacLink(Node):
         threading.Thread(target=self._frames, daemon=True).start()
         threading.Thread(target=self._loop, args=(0.01, self._tick), daemon=True).start()
         threading.Thread(target=self._loop, args=(0.02, self._deliver), daemon=True).start()
+        if self.stream_url:
+            self.stream_f = open(os.path.join(self.results, "stream.csv"), "a")
+            if self.stream_f.tell() == 0:
+                self.stream_f.write("wall,t_exposure,n\n")
+            threading.Thread(target=self._stream_out, daemon=True).start()
         self.get_logger().info(f"flight t0 {self.t0:.1f}, vehicle {self.prof.vehicle if self.truth_port else 'recorded'}, lens "
                                f"{self.lens['image_width']}x{self.lens['image_height']} fisheye, delay {self.delay_s} s, "
                                f"GPS cut at {self.gps_cut_s} s" + (f", spoof {self.spoof_mps} m/s" if self.spoof_mps else ""))
@@ -565,10 +589,44 @@ class IsaacLink(Node):
                 os.replace(tmp, os.path.join(self.results, "latest_frame.jpg"))
             k += 1
 
+    def _stream_out(self):
+        """The delivered frames as an H.264 RTSP stream (HIL): one ffmpeg, wall-clock stamps,
+        a keyframe every stream_gop frames (a receiver joining late decodes within ~1 s)."""
+        enc, n = None, 0
+        while True:
+            t, img = self.stream_q.get()
+            if enc is None or enc.poll() is not None:
+                h, w = img.shape[:2]
+                enc = subprocess.Popen(
+                    ["ffmpeg", "-loglevel", "error", "-f", "rawvideo", "-pix_fmt", "bgr24", "-s", f"{w}x{h}",
+                     "-use_wallclock_as_timestamps", "1", "-i", "-", "-c:v", "libx264", "-preset", "ultrafast",
+                     "-tune", "zerolatency", "-pix_fmt", "yuv420p", "-b:v", self.stream_bitrate,
+                     "-g", str(self.stream_gop), "-f", "rtsp", "-rtsp_transport", "tcp", self.stream_url],
+                    stdin=subprocess.PIPE)
+                self.get_logger().info(f"camera stream: {w}x{h} H.264 {self.stream_bitrate} -> {self.stream_url}")
+            try:
+                enc.stdin.write(img.tobytes())
+                enc.stdin.flush()
+            except (BrokenPipeError, OSError) as e:
+                self.get_logger().error(f"camera stream: ffmpeg {e!r}, restarting it")
+                enc = None
+                continue
+            self.stream_f.write(f"{time.time():.4f},{t:.4f},{n}\n")
+            self.stream_f.flush()
+            n += 1
+
     def _deliver(self):
         now = time.time()
         while self.delivery and self.delivery[0][0] <= now:
             _, t, img = self.delivery.pop(0)
+            if self.stream_url:
+                try:
+                    self.stream_q.put_nowait((t, img))
+                except queue.Full:
+                    self.get_logger().warn("camera stream: encoder behind, frame dropped", throttle_duration_sec=5.0)
+            if not self.ros_camera:
+                self.live["frames_out"] += 1
+                continue
             m = Image()
             self._stamp(m.header, now)
             m.header.frame_id = "camera"
