@@ -32,7 +32,8 @@ def _small_rot(rng, deg, perp_to=None):
 
 def _samples(n, bad=(), seed=0, noise_deg=0.05):
     """[(R_icrs_imu, up, z_true)]: up near the camera's +x (standing), z_true = R (Q0 up) + noise; samples whose
-    index is in bad get z_true moved by 1.5-8 deg (what a 'stopped' frame taken while moving does)."""
+    index is in bad get z_true moved by 1.5-8 deg (what a 'stopped' frame taken while moving does).
+    """
     rng = np.random.default_rng(seed)
     up0 = np.array([1.0, 0.0, 0.0])
     Q0 = am.rotvec(math.radians(TRUE_TILT_DEG) * np.array([0.0, 0.6, -0.8]))
@@ -99,7 +100,8 @@ def test_implausible_tilt_is_not_applied():
 
 def test_calibration_keeps_learning_past_outliers_then_freezes():
     """The first 4 samples hold 2 bad ones: no fit is applied until a majority agrees; outliers do not count
-    towards the 12, so the calibration freezes on 12 agreeing samples, and the correction is right."""
+    towards the 12, so the calibration freezes on 12 agreeing samples, and the correction is right.
+    """
     s, Q0 = _samples(20, bad=(0, 1, 7), seed=11)
     cal = am.TiltCalibration(min_samples=4, max_samples=12)
     applied = []

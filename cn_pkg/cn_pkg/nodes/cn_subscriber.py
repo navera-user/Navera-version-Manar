@@ -404,7 +404,8 @@ class CNSubscriber(Node):
     def _attitude(self, meta):
         """(tilt, azimuth, source, up_cam): frame_meta, else a fresh IMU, else parameters. up_cam ('up' in the
         camera's optical frame, B11) comes with it when the camera's full mounting is known (or frame_meta gives
-        it), else None: the compass method is then the only one."""
+        it), else None: the compass method is then the only one.
+        """
         up_cam = None
         if meta.get("up_cam") is not None:
             v = np.asarray(meta["up_cam"], float).ravel()
@@ -526,7 +527,8 @@ class CNSubscriber(Node):
 
     def _geoloc_tilt(self, result, up_cam, utc):
         """Zenith method: remove the learned tilt of 'up' (as the 360 mode) and, with a fresh GPS reference while
-        still, take this fix as a calibration sample."""
+        still, take this fix as a calibration sample.
+        """
         R = result.get("R_icrs_cam")
         if not result.get("success") or R is None or len(R) != 9:
             return

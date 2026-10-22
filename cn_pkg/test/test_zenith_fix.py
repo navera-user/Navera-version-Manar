@@ -112,7 +112,8 @@ def test_zenith_fix_is_right_and_needs_no_heading(yaw):
 
 def test_compass_method_with_a_heading_error_is_far_off_and_zenith_is_not():
     """The B11 comparison on one scene: a 5 deg compass error moves the one-direction fix by tens to hundreds of
-    km (depending on the hour angle); the zenith fix does not move."""
+    km (depending on the hour angle); the zenith fix does not move.
+    """
     R_eb, Rcb, R = _scene(yaw=37.0)
     R_wcs = cm.camera_rotation_from_wcs(_wcs_header(R))
     z = R_wcs[:, 2]
@@ -130,7 +131,8 @@ def test_compass_method_with_a_heading_error_is_far_off_and_zenith_is_not():
 
 def test_wrong_roll_of_the_mount_costs_tilt_times_roll_error():
     """When the mount's roll is wrong by d, a level vehicle is still exact (the camera's 'up' is on its axis
-    only for a zenith camera); the error grows with the vehicle tilt. Stated so a user knows what to measure."""
+    only for a zenith camera); the error grows with the vehicle tilt. Stated so a user knows what to measure.
+    """
     R_eb, Rcb, R = _scene(yaw=10.0, pitch=0.0, roll=0.0, mount=(90.0, 0.0, 0.0))
     R_wcs = cm.camera_rotation_from_wcs(_wcs_header(R))
     lat, lon = cm.zenith_fix(R_wcs, cm.up_in_camera(_quat(R_eb), cm.mount_rotation(90.0, 0.0, 5.0)), UTC)

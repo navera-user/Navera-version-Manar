@@ -72,7 +72,8 @@ class AllSkyLocator:
     def process(self, frame: np.ndarray, utc: str, meta: Optional[dict] = None, q_xyzw=None,
                 rate_dps: float = 0.0, reference: Optional[Tuple[float, float]] = None) -> dict:
         """One frame → the node's result dict: success, predicted_lat/lon, sigma_m, error and the solver's details.
-        reference: a trusted position at the exposure (fresh GPS) — the fix then also teaches the tilt of 'up'."""
+        reference: a trusted position at the exposure (fresh GPS) — the fix then also teaches the tilt of 'up'.
+        """
         meta = meta or {}
         up, src, why = self.up(meta, q_xyzw)
         out = {"success": False, "source": "allsky360", "up_source": src}

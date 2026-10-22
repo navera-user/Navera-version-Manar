@@ -160,7 +160,8 @@ def fit_tilt(samples, sigma_floor_deg: float = CAL_SIGMA_FLOOR_DEG, robust: bool
 def stated_sigma_km(base_deg: float, sigma_fit_deg: Optional[float], moving: bool = False,
                     clock_err_s: float = 0.0, moving_deg: float = MOVING_ATTITUDE_SIGMA_DEG) -> float:
     """1-sigma horizontal accuracy (km) of a 360 fix: the attitude of 'up' (base_deg), the star fit and, while the
-    vehicle moves, its acceleration in 'up' add in quadrature; a clock error adds the sky's turn."""
+    vehicle moves, its acceleration in 'up' add in quadrature; a clock error adds the sky's turn.
+    """
     att = math.hypot(base_deg, sigma_fit_deg or 0.0)
     if moving:
         att = math.hypot(att, moving_deg)
@@ -169,7 +170,8 @@ def stated_sigma_km(base_deg: float, sigma_fit_deg: Optional[float], moving: boo
 
 def rotation_matrix(values: Sequence[float]) -> np.ndarray:
     """A proper rotation from 9 row-major values (the nearest one by SVD: a matrix typed to 4 decimals is
-    re-orthonormalised). Raises ValueError for anything that is not close to a rotation."""
+    re-orthonormalised). Raises ValueError for anything that is not close to a rotation.
+    """
     M = np.asarray(values, float).reshape(3, 3)
     U, s, Vt = np.linalg.svd(M)
     R = U @ Vt

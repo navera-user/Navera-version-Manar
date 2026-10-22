@@ -192,7 +192,8 @@ def boresight_altaz(q_xyzw, mount_elevation_deg: float = 90.0, mount_azimuth_deg
 def camera_rotation_from_wcs(header, step_px: float = 20.0) -> np.ndarray:
     """R_icrs_cam (3x3, columns = the camera's optical x, y, z axes in ICRS) from a plate solution (FITS WCS
     header with IMAGEW/IMAGEH, or NAXIS1/NAXIS2). Raises ValueError for a mirrored solution (parity flipped:
-    not a camera picture as taken) or a header without a usable solution."""
+    not a camera picture as taken) or a header without a usable solution.
+    """
     from astropy.wcs import WCS
     w = WCS(header)
     width = header.get("IMAGEW") or header.get("NAXIS1")
@@ -224,7 +225,8 @@ def camera_rotation_from_wcs(header, step_px: float = 20.0) -> np.ndarray:
 
 def zenith_position(z_icrs, utc: str) -> Tuple[float, float]:
     """(lat, lon) of the observer whose zenith is the ICRS unit vector z_icrs at utc (shared by the 360 and the
-    narrow-camera compass-free fixes)."""
+    narrow-camera compass-free fixes).
+    """
     z = np.asarray(z_icrs, float) / np.linalg.norm(z_icrs)
     ra, dec = math.degrees(math.atan2(z[1], z[0])) % 360.0, math.degrees(math.asin(max(-1.0, min(1.0, float(z[2])))))
     ra_a, dec_a = apparent_radec(ra, dec, utc)
@@ -259,7 +261,8 @@ def mount_rotation(elevation_deg: float, azimuth_deg: float, roll_deg: float) ->
 
 def up_in_camera(q_xyzw, R_cam_body) -> np.ndarray:
     """'up' (unit) in the camera's optical frame from the vehicle IMU's orientation (only its roll and pitch matter:
-    a heading error turns the body about 'up' and leaves it unchanged)."""
+    a heading error turns the body about 'up' and leaves it unchanged).
+    """
     x, y, z, w = (float(v) for v in q_xyzw)
     n = math.sqrt(x * x + y * y + z * z + w * w)
     if not n > 0:

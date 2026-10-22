@@ -68,7 +68,8 @@ LENS_FILE = os.environ.get("NAVERA_INSTA360_LENS", os.path.expanduser("~/.navera
 
 def default_lenses(path: Optional[str] = None) -> List[Lens]:
     """The two lenses: measured values (bench/lens_calib_screen.py, lens_calib_wide.py) where there are some, else
-    the first guess. path: the lens file (default LENS_FILE, read at each call so a live change applies)."""
+    the first guess. path: the lens file (default LENS_FILE, read at each call so a live change applies).
+    """
     lenses = [Lens("left", 938.5, 969.5, F_GUESS, R_LEFT), Lens("right", 2906.7, 966.2, F_GUESS, R_RIGHT)]
     try:
         import json
@@ -108,7 +109,8 @@ class Window:
 
 class PinholeView:
     """A fixed straight view cut from one lens (maps computed once): looks along fwd_imu, image-up towards
-    up_hint_imu. apply(frame) → width x height image; R_view_imu maps IMU vectors into the view frame."""
+    up_hint_imu. apply(frame) → width x height image; R_view_imu maps IMU vectors into the view frame.
+    """
 
     def __init__(self, lens: Lens, fwd_imu, up_hint_imu, hfov_deg: float, width: int, height: int):
         fwd = np.asarray(fwd_imu, float) / np.linalg.norm(fwd_imu)
@@ -175,12 +177,12 @@ def solve_window(win: Window, up_imu: np.ndarray, utc: str, scale_margin: float 
         p = os.path.join(d, "w.png")
         img = win.image if win.image.ndim == 2 else cv2.cvtColor(win.image, cv2.COLOR_BGR2GRAY)
         cv2.imwrite(p, img)
-        r = subprocess.run(["solve-field", p, "--config", ASTROMETRY_CFG, "--overwrite", "--no-plots", "--no-verify",
-                            "--scale-units", "degwidth", "--scale-low", str(win.hfov_deg * (1 - scale_margin)),
-                            "--scale-high", str(win.hfov_deg * (1 + scale_margin)), "--crpix-center",
-                            "--tweak-order", "2", "--downsample", "1", "--objs", "400", "--cpulimit", str(cpulimit_s),
-                            "--no-remove-lines", "--uniformize", "0"],
-                           capture_output=True, text=True, cwd=d, timeout=cpulimit_s + 30)
+        subprocess.run(["solve-field", p, "--config", ASTROMETRY_CFG, "--overwrite", "--no-plots", "--no-verify",
+                        "--scale-units", "degwidth", "--scale-low", str(win.hfov_deg * (1 - scale_margin)),
+                        "--scale-high", str(win.hfov_deg * (1 + scale_margin)), "--crpix-center",
+                        "--tweak-order", "2", "--downsample", "1", "--objs", "400", "--cpulimit", str(cpulimit_s),
+                        "--no-remove-lines", "--uniformize", "0"],
+                       capture_output=True, text=True, cwd=d, timeout=cpulimit_s + 30)
         wf = os.path.join(d, "w.wcs")
         if not os.path.exists(wf):
             out["why"] = "not solved"
