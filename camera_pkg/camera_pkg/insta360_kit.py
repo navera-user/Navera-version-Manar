@@ -39,6 +39,20 @@ FIELD_DECODER_DELAY_FRAMES = 3                 # parser 1 + decoder 2 (module do
 KIT_EXPOSURE_LAG_MS = FRAME_STAMP_LAG_MS - FIELD_DECODER_DELAY_FRAMES * KEYFRAME_INTERVAL_MS
 
 
+BOX_IMU_CALIBRATION = "/var/lib/navera/insta360_imu.json"
+
+
+def imu_calibration_file(path: str = "") -> str:
+    """The IMU calibration in use: path, else NAVERA_INSTA360_IMU, else the box's
+    /var/lib/navera/insta360_imu.json when it exists, else the bench file (insta360_protocol)."""
+    import os
+    from navera_common.insta360_protocol import IMU_CALIBRATION
+    for p in (path, os.environ.get("NAVERA_INSTA360_IMU", "")):
+        if p:
+            return p
+    return BOX_IMU_CALIBRATION if os.path.isfile(BOX_IMU_CALIBRATION) else IMU_CALIBRATION
+
+
 def has_keyframe(p: bytes, start: int = 12) -> bool:
     """True when the H.264 access unit holds an IDR slice (NAL 5) or a sequence header (7)."""
     i = p.find(b"\x00\x00\x01", start)

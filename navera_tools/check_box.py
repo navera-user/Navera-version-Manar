@@ -184,8 +184,8 @@ def check_insta360():
                f"{v.coverage:.0%} covered")
     except Exception as e:                                         # noqa: BLE001
         report(FAIL, "Insta360 day view", str(e))
-    from navera_common.insta360_protocol import IMU_CALIBRATION
-    cal = kit["calibration_file"] or IMU_CALIBRATION
+    from camera_pkg.insta360_kit import imu_calibration_file
+    cal = imu_calibration_file(kit["calibration_file"])
     report(OK if os.path.isfile(cal) else WARN, "Insta360 IMU calibration",
            cal if os.path.isfile(cal) else f"{cal} missing: neutral values (the gyro bias is still measured "
                                            "at every stop; the accelerometer's 6-position calibration is not)")

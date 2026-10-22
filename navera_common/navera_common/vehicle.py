@@ -195,15 +195,15 @@ def _size(raw: str, key: str):
 
 
 def insta360_kit_params(environ=None) -> dict:
-    """insta360_node parameters (the Insta360 kit) from the installation settings:
-      NAVERA_INSTA360_MOUNT_AXES      camera IMU axes along body x,y,z (default +x,+z,-y: lying, the
-                                      LEFT lens looking down, the camera's top towards the nose)
-      NAVERA_INSTA360_MOUNT_RPY       small trim roll,pitch,yaw (deg) after the axes
-      NAVERA_INSTA360_VIEW_SIZE       the straight-down view WIDTHxHEIGHT (default 1200x900)
-      NAVERA_INSTA360_VIEW_HFOV_DEG   its width in degrees (default 100)
-      NAVERA_INSTA360_LENS / NAVERA_INSTA360_IMU   lens / IMU calibration files (default: the box's
-                                      /var/lib/navera/insta360_lens.json, ~/.navera_sim/ files)
-    Raises ValueError."""
+    """insta360_node parameters (the Insta360 kit) from the installation settings.
+
+    NAVERA_INSTA360_MOUNT_AXES: camera IMU axes along body x,y,z (default +x,+z,-y: lying, the
+    LEFT lens looking down, the camera's top towards the nose); NAVERA_INSTA360_MOUNT_RPY: a small
+    trim roll,pitch,yaw (deg) after the axes; NAVERA_INSTA360_VIEW_SIZE: the straight-down view
+    WIDTHxHEIGHT (default 1200x900); NAVERA_INSTA360_VIEW_HFOV_DEG: its width in degrees (default
+    100); NAVERA_INSTA360_LENS / NAVERA_INSTA360_IMU: lens / IMU calibration files (default: the
+    box's /var/lib/navera/insta360_lens.json, then the ~/.navera_sim/ files). Raises ValueError.
+    """
     env = os.environ if environ is None else environ
     get = lambda k, d="": str(env.get(k, "") or d).strip()     # noqa: E731
     axes = get("NAVERA_INSTA360_MOUNT_AXES", INSTA360_DEFAULT_MOUNT_AXES).replace(" ", "")
@@ -243,11 +243,15 @@ def insta360_kit_params(environ=None) -> dict:
 def insta360_camera_params(environ=None, prefix: str = "NAVERA_CAMERA_") -> dict:
     """live_camera parameters for NAVERA_CAMERA_INPUT=insta360: the kit's straight-down view (an
     image topic stamped at the exposure, an ideal lens of NAVERA_INSTA360_VIEW_HFOV_DEG, the mount
-    already applied by the kit: NAVERA_CAMERA_MOUNT_RPY / _CROP / _CALIBRATION do not apply)."""
+    already applied by the kit: NAVERA_CAMERA_MOUNT_RPY / _CROP / _CALIBRATION do not apply).
+    """
     env = os.environ if environ is None else environ
     get = lambda k, d="": str(env.get(k, "") or d).strip()     # noqa: E731
     for k in ("MOUNT_RPY", "CROP", "CALIBRATION"):
-        if get(prefix + k):
+        v = get(prefix + k)
+        if k == "MOUNT_RPY" and v.replace(" ", "") in ("0,0,0", "0.0,0.0,0.0"):
+            continue                                      # the example's default: nothing to apply
+        if v:
             raise ValueError(f"{prefix}INPUT=insta360: {prefix}{k} does not apply (the kit cuts a straight "
                              f"view from the calibrated 360 lenses; its mount is NAVERA_INSTA360_MOUNT_AXES / _RPY)")
     kit = insta360_kit_params(env)

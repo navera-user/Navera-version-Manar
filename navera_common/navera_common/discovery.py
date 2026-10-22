@@ -274,7 +274,8 @@ INSTA360_USB_ID = ("2e1a", "0002")          # the One R in USB "Android" mode (i
 
 def probe_insta360(sysfs: str = "/sys/bus/usb/devices") -> List[str]:
     """USB device paths of Insta360 One R cameras in USB "Android" mode (read from sysfs only:
-    the camera is never opened here — a wrong probe has wedged it until replugged, D10)."""
+    the camera is never opened here — a wrong probe has wedged it until replugged, D10).
+    """
     out = []
     for d in sorted(glob.glob(os.path.join(sysfs, "*"))):
         try:

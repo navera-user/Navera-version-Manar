@@ -327,6 +327,7 @@ def test_settings_for_the_kit():
     assert insta360_kit_params({})["mount_axes"] == LYING
     with pytest.raises(ValueError):
         insta360_camera_params(dict(env, NAVERA_CAMERA_MOUNT_RPY="0,-20,0"))
+    assert insta360_camera_params(dict(env, NAVERA_CAMERA_MOUNT_RPY="0,0,0", NAVERA_CAMERA_SIZE="1920x1080"))["width"] == 1200
     with pytest.raises(ValueError):
         insta360_kit_params({"NAVERA_INSTA360_MOUNT_AXES": "+x,+y,-z"})        # a mirror
     with pytest.raises(ValueError):

@@ -37,7 +37,7 @@ import threading
 import time
 
 import rclpy
-from navera_common.insta360_protocol import IMU_CALIBRATION, load_imu_calibration
+from navera_common.insta360_protocol import load_imu_calibration
 from navera_common.lifecycle import die_with_parent
 from navera_common.params import declare_float
 from navera_msgs.msg import PositionEstimate
@@ -52,7 +52,7 @@ from camera_pkg.insta360_attitude import AttitudeFilter, GpsCourse
 from camera_pkg.insta360_imu import (
     MEASURED_ACCEL_SAMPLE_STD_G, MEASURED_GYRO_SAMPLE_STD_DPS, G, ImuStream, UsbImuSource, covariance_diag,
     mount_rotation)
-from camera_pkg.insta360_kit import KIT_EXPOSURE_LAG_MS, Insta360Kit, replay_all
+from camera_pkg.insta360_kit import KIT_EXPOSURE_LAG_MS, Insta360Kit, imu_calibration_file, replay_all
 from camera_pkg.insta360_view import NadirView, load_lenses
 
 IMU_QOS = QoSProfile(reliability=ReliabilityPolicy.RELIABLE, durability=DurabilityPolicy.VOLATILE,
@@ -147,7 +147,7 @@ class Insta360Node(Node):
         R = mount_rotation(str(p("mount_axes")), float(p("mount_roll_deg")), float(p("mount_pitch_deg")),
                            float(p("mount_yaw_deg")))
         dec = max(1, int(p("decimation")))
-        cal_path = str(p("calibration_file")).strip() or IMU_CALIBRATION
+        cal_path = imu_calibration_file(str(p("calibration_file")).strip())
         stream = ImuStream(R, dec, load_imu_calibration(cal_path), bias_at_rest=bool(p("bias_at_rest")))
         flt = AttitudeFilter(kp=float(p("kp")), ki=float(p("ki")), acc_gate_g=float(p("acc_gate_g")),
                              turn_gate_dps=float(p("turn_gate_dps")), tilt_floor_deg=float(p("tilt_floor_deg")),

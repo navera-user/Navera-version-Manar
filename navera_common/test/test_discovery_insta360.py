@@ -1,5 +1,6 @@
 """Discovery of the Insta360 kit: a One R in USB Android mode (2e1a:0002) is the camera AND, when
-no better attitude source is found, the IMU; it is found from sysfs without opening it."""
+no better attitude source is found, the IMU; it is found from sysfs without opening it.
+"""
 import os
 
 from navera_common.discovery import decide, probe_insta360
