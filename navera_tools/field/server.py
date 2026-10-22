@@ -108,6 +108,10 @@ LIVE_PARAMS = {
     "insta360_usb.STILL_ACC_STD_G": ("float", 0.0005, 0.03, "stopped: accelerometer steadiness (g)"),
     "insta360_usb.STILL_RATE_DPS": ("float", 0.05, 5.0, "stopped: rotation rate (deg/s)"),
     "server.STACK_SECONDS": ("float", 0.0, 8.0, "stopped: solve the mean of the key frames of the last s (0 = off)"),
+    "standstill.LONG_S": ("float", 2.0, 15.0, "stopped: s back a gentle change of 'up' is looked for"),
+    "standstill.DIR_TOL_DEG": ("float", 0.05, 2.0, "stopped: propagated 'up' steady within (deg)"),
+    "standstill.MAG_TOL_G": ("float", 0.001, 0.03, "stopped: |a| within this of its value at rest (g)"),
+    "Stillness.LONG_CHECK": ("int", 0, 1, "stopped: 1 = long-window test on, 0 = the camera driver's test only"),
 }
 
 
@@ -213,6 +217,111 @@ class Camera:
         return self.model.undistort(g), t - self.latency_s
 
 
+def host_stats() -> dict:
+    """The Jetson's 1-minute load, hottest thermal zone and available memory (solve times depend on them)."""
+    out = {}
+    try:
+        out["load1"] = round(os.getloadavg()[0], 2)
+    except OSError:
+        pass
+    temps = []
+    for z in range(12):
+        try:
+            with open(f"/sys/class/thermal/thermal_zone{z}/temp") as fh:
+                temps.append(int(fh.read().strip()) / 1000.0)
+        except (OSError, ValueError):
+            continue
+    if temps:
+        out["temp_c"] = round(max(temps), 1)
+    try:
+        with open("/proc/meminfo") as fh:
+            for line in fh:
+                if line.startswith("MemAvailable:"):
+                    out["mem_avail_mb"] = int(line.split()[1]) // 1024
+                    break
+    except OSError:
+        pass
+    return out
+
+
+_GROUND_MASKS: dict = {}
+
+
+def ground_mask(shape, up, step: int = 8) -> np.ndarray:
+    """Pixels of a frame downsampled by `step` that look below the horizon (both lenses, 'up' in the IMU frame),
+    for the image standstill measure. Cached per 'up' rounded to 1 deg."""
+    from navera_tools.field import allsky, sky360
+    u = np.asarray(up, float) / np.linalg.norm(up)
+    key = (tuple(shape), step, tuple(np.round(u, 2)))
+    if key in _GROUND_MASKS:
+        return _GROUND_MASKS[key]
+    h, w = shape
+    yy, xx = np.mgrid[0:h, 0:w]
+    xs, ys = (xx * step).ravel().astype(float), (yy * step).ravel().astype(float)
+    m = np.zeros(h * w, bool)
+    for L in sky360.default_lenses():
+        inside = np.hypot(xs - L.cx, ys - L.cy) < L.radius - 8
+        if inside.any():
+            alt = np.degrees(np.arcsin(np.clip(allsky.unproject(L, xs[inside], ys[inside]) @ u, -1, 1)))
+            m[np.nonzero(inside)[0][alt < -2.0]] = True
+    m = m.reshape(h, w)
+    if len(_GROUND_MASKS) > 64:
+        _GROUND_MASKS.clear()
+    _GROUND_MASKS[key] = m
+    return m
+
+
+class Stillness:
+    """The vehicle at rest at a frame's exposure: the camera driver's stopped() (exposure window steady) AND the
+    long-window test of cn_pkg.standstill (D8/D12: 'up' must not have moved without the camera turning over the
+    last LONG_S s, |a| at its value at rest). The driver keeps 7 s of IMU, too short for the long window, so the
+    history is extended on each new driver (extend_history). g_ref is |a| at rest, learned from the windows the
+    driver calls still (median of the last 60), 1.0 until then (6-position calibrated accelerometer)."""
+
+    HISTORY_S = 20.0
+    LONG_CHECK = True                     # False: the driver's test alone (the behaviour before 2026-10-22)
+
+    def __init__(self):
+        self.g_ref = 1.0
+        self._mags = collections.deque(maxlen=60)
+
+    @staticmethod
+    def extend_history(drv, seconds: float = HISTORY_S):
+        """Keep `seconds` of the driver's IMU rows (its own deque holds 7 s at 500 Hz)."""
+        n = int(seconds * 500)
+        lock = getattr(drv, "_lock", None)
+        if lock is None or not hasattr(drv, "_imu") or (drv._imu.maxlen or 0) >= n:
+            return
+        with lock:
+            drv._imu = collections.deque(drv._imu, maxlen=n)
+
+    def judge(self, drv, at_ms=None) -> dict:
+        from cn_pkg import standstill
+        st = drv.stopped(at_ms=at_ms)
+        if not self.LONG_CHECK or not st.get("stopped"):
+            return st
+        back = standstill.LONG_S + standstill.RUN_EXTRA_S + 0.5
+        rows = drv._rows(back, at_ms, standstill.AFTER_S) if at_ms is not None \
+            else drv._rows(back + standstill.AFTER_S, None)
+        if not rows:
+            return {**st, "stopped": False, "why": "no sensor data"}
+        arr = np.array([r[1:8] for r in rows], float)
+        acc = (arr[:, 1:4] - drv.acc_bias) / drv.acc_scale
+        gyr = arr[:, 4:7] - drv.gyro_bias
+        exp_ms = at_ms if at_ms is not None else float(arr[-1, 0]) - 1000.0 * standstill.AFTER_S
+        j = standstill.judge(arr[:, 0], acc, gyr, exp_ms, g_ref=self.g_ref)
+        mag = self.g_ref + j.get("mag_excess_g", 0.0)
+        if abs(mag - 1.0) < 0.01:
+            self._mags.append(mag)
+            if len(self._mags) >= 10:
+                self.g_ref = float(np.median(self._mags))
+        out = {**st, **{k: v for k, v in j.items() if k not in ("acc_std_g", "rate_dps")}, "g_ref": round(self.g_ref, 5),
+               "driver_stopped": True}
+        if not j["stopped"]:
+            out["why"] = j.get("why")
+        return out
+
+
 class Camera360:
     """The Insta360's full 360 frame and its own gravity over USB (USB mode "Android"); reconnects if it drops."""
     device = "insta360-usb (Android mode)"
@@ -227,6 +336,9 @@ class Camera360:
         self.error = None
         self.frame_ms = None
         self.raw = None                               # RawRecorder while a test records (kept across reconnects)
+        self.stillness = Stillness()
+        self.reconnects: list = []                    # [{"t", "why"}] of every reconnect (F14)
+        self.imu_restarts_total = 0                   # the driver's IMU stream restarts, summed over reconnects
         self._open()
         threading.Thread(target=self._watch, daemon=True).start()
 
@@ -234,6 +346,7 @@ class Camera360:
         self.opened_at = time.time()
         try:
             self.cam = self._mod.Insta360Usb()
+            Stillness.extend_history(self.cam)
             self.error = None
             if self.raw is not None:
                 self.cam.record(self.raw)
@@ -259,20 +372,53 @@ class Camera360:
     def _watch(self):
         while True:
             time.sleep(3.0)
-            f, t = self.cam.latest() if self.cam else (None, 0.0)
-            if self.cam is not None and time.time() - self.opened_at < 20.0:
-                continue                              # the decoder waits for the stream's next key frame
-            imu_dead = self.cam is not None and self.cam.imu_age() > 10.0   # restarting the stream did not bring it back
-            if f is None or time.time() - t > 8.0 or imu_dead:
-                if self.cam is not None:
-                    self.error = ("camera IMU silent for 10 s: reconnecting" if imu_dead
-                                  else self.cam.error or "no frame for 8 s: reconnecting")
-                    try:
-                        self.cam.close()
-                    except Exception:
-                        pass
-                    time.sleep(2.0)
-                self._open()
+            self._watch_once()
+
+    def _watch_once(self):
+        """One check of the stream (every 3 s): a dead camera, no frame for 8 s or an IMU silent for 10 s (F14: the
+        IMU feed stopped after its first packet on early starts; the driver re-sends StartLiveStream after 1.5 s of
+        silence, and when that does not bring it back, the whole USB connection is reopened here). Returns why it
+        reconnected, else None. Every reconnect is counted and kept (reconnects, imu_restarts_total) so a test
+        records how often the camera needed it (F19)."""
+        f, t = self.cam.latest() if self.cam else (None, 0.0)
+        if self.cam is not None and time.time() - self.opened_at < 20.0:
+            return None                               # the decoder waits for the stream's next key frame
+        imu_dead = self.cam is not None and self.cam.imu_age() > 10.0   # restarting the stream did not bring it back
+        if not (f is None or time.time() - t > 8.0 or imu_dead):
+            return None
+        why = "no camera"
+        if self.cam is not None:
+            why = "camera IMU silent for 10 s" if imu_dead else (self.cam.error or "no frame for 8 s")
+            self.error = f"{why}: reconnecting"
+            self.imu_restarts_total += int(getattr(self.cam, "imu_restarts", 0) or 0)
+            self.reconnects.append({"t": round(time.time(), 1), "why": str(why)[:120]})
+            del self.reconnects[:-50]
+            try:
+                self.cam.close()
+            except Exception:
+                pass
+            time.sleep(2.0)
+        self._open()
+        return why
+
+    def imu_stats(self, at_frame=True) -> Optional[dict]:
+        """Vibration over the frame's exposure window (cn_pkg.standstill.vibration_stats), for the logs (F19)."""
+        from cn_pkg import standstill
+        drv = self.cam
+        if drv is None:
+            return None
+        at = self.frame_ms if at_frame else None
+        rows = drv._rows(2.0, at, 0.5) if at is not None else drv._rows(2.5, None)
+        if not rows:
+            return None
+        arr = np.array([r[2:8] for r in rows], float)
+        return standstill.vibration_stats((arr[:, 0:3] - drv.acc_bias) / drv.acc_scale, arr[:, 3:6] - drv.gyro_bias)
+
+    def health(self) -> dict:
+        """Camera stream health for the frame records (F14/F19): reconnects so far and the IMU stream restarts."""
+        cur = int(getattr(self.cam, "imu_restarts", 0) or 0) if self.cam else 0
+        return {"reconnects": len(self.reconnects), "imu_restarts": self.imu_restarts_total + cur,
+                "imu_age_s": _round(self.cam.imu_age(), 2) if self.cam else None}
 
     def latest(self):
         """(grey full 360 frame, exposure time) or (None, 0)."""
@@ -295,7 +441,7 @@ class Camera360:
     def stopped(self, at_frame=False):
         if not self.cam:
             return {"stopped": False, "why": "no camera"}
-        return self.cam.stopped(at_ms=self.frame_ms) if at_frame and self.frame_ms is not None else self.cam.stopped()
+        return self.stillness.judge(self.cam, self.frame_ms if at_frame and self.frame_ms is not None else None)
 
 
 class Field:
@@ -585,10 +731,14 @@ class Field:
     # ── live settings ───────────────────────────────────────────────────
     def _lp_target(self, key):
         from navera_tools.field import allsky, insta360_usb
+        from cn_pkg import standstill
         scope, _, name = key.partition(".")
         if scope == "field":
             return self, name
-        return {"server": sys.modules[__name__], "allsky": allsky, "insta360_usb": insta360_usb}[scope], name
+        if scope == "Stillness":
+            return Stillness, name
+        return {"server": sys.modules[__name__], "allsky": allsky, "insta360_usb": insta360_usb,
+                "standstill": standstill}[scope], name
 
     def live_params_tick(self, force=False):
         """Apply live_params.json when it changed (at most once a second). Never raises."""
