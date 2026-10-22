@@ -72,6 +72,8 @@ CONDITIONS = {
     "spoof": ("slow GPS spoof 3 m/s for 30 s before the cut", SHORT + " --link-args '-p spoof_mps:=3.0'"),
     "plane15": ("plane 15 m/s, 400 m, body-fixed camera", PLANE + " --speed 15 --model plane"),
     "plane30": ("plane 30 m/s, 400 m, body-fixed camera", PLANE + " --speed 30 --model plane"),
+    "plane30_nostaged": ("plane 30 m/s, staged delay apply off (as before F31)",
+                         PLANE + " --speed 30 --model plane --day-args '-p latency_partial_max_sigma_s:=0.0'"),
     "plane60": ("plane 60 m/s (jet model), 500 m", PLANE.replace("--alt 400", "--alt 500")
                 + " --speed 60 --model plane-jet --radius 1500"),
     "worst_copter": ("dusk + dust 3 km + rain + wind 10 + outage 30 (full mission)",
