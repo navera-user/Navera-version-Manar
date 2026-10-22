@@ -6,6 +6,8 @@
 #   run_hil.sh --name NAME --box BOX_IP [--alt 250] [--radius 400] [--speed 10] [--legs 3]
 #       [--cut-after 75] [--time 10:30] [--hold 5] [--instance 5] [--rtsp-port 8564]
 #       [--nmea-port 10117] [--truth-port 15531] [--duration 1500] [--link-args "-p k:=v"]
+#   --duration S  Isaac Sim's render time and the mission's time limit (a long flight: many --legs,
+#                 e.g. --legs 32 --duration 2700 for ~30 min around the 400 m diamond at 10 m/s)
 #
 # What the box gets (the same signals a real installation gives it):
 #   camera  the vehicle camera as an RTSP / H.264 network camera: rtsp://<PC>:RTSP_PORT/navera
@@ -131,7 +133,7 @@ log "SITL + MAVProxy started"
 "$VENV/bin/python" "$here/sitl_demo.py" --master udpin:127.0.0.1:$gcs_port --results "$res" --lat0 "$lat0" --lon0 "$lon0" \
   --alt "$alt" --radius "$radius" --speed "$speed" --cut-after "$cut_after" --vehicle copter --legs "$legs" \
   --isaac-port $pose_port --link-port $link_port --extra-dest "$box:$truth_port" \
-  --arm-after-file "$res/arm_ok" > "$res/sitl/demo.log" 2>&1 &
+  --arm-after-file "$res/arm_ok" --timeout "$duration" > "$res/sitl/demo.log" 2>&1 &
 demo=$!
 pids+=($demo)
 
