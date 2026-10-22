@@ -160,7 +160,7 @@ def test_heading_span():
 
 
 def test_a_climb_on_one_heading_is_not_learned_but_a_persisted_calibration_stays():
-    """F38 (Isaac Sim h600, 2026-10-22): GPS checks during a climb on one heading (height 136-570 m) gave a
+    """F41 (Isaac Sim h600, 2026-10-22): GPS checks during a climb on one heading (height 136-570 m) gave a
     1.2 deg 'mount' with a 0.33 deg sigma — a map shift — that put the fixes 16 m off instead of 10 m."""
     cal = MountCalibration(prior_deg=2.0, min_samples=12)
     for i in range(40):

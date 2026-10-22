@@ -32,7 +32,7 @@ def test_equal_sigmas_meet_half_way_with_a_smaller_sigma():
 
 
 def test_the_error_common_to_fix_and_carry_is_not_averaged_down():
-    """F38: the unknown delay's and the mount's error is in every fix, so in the carry made of them —
+    """F41: the unknown delay's and the mount's error is in every fix, so in the carry made of them —
     it sets neither the weight nor shrinks: sigma = hypot(sqrt(k) x the fix's own part, the common part)."""
     fix = _move(P0, 40.0, 0.0)
     st = {}

@@ -290,7 +290,7 @@ def _replay(ds, rec, params, setup):
         node.latency_cal.applied = float(lat["applied_s"])
         node.latency_cal.applied_sigma = float(lat.get("applied_sigma_s") or 0.0)
     # the mount calibration learned by the cut — if the code under test would have learned it: its rule
-    # for a GPS-check sample (F38: _mount_sample_refused) with the camera delay as it stood at the cut
+    # for a GPS-check sample (F41: _mount_sample_refused) with the camera delay as it stood at the cut
     if node.mount_cal is not None and rec.get("mount_cal_on") and \
             (not hasattr(node, "_mount_sample_refused") or node._mount_sample_refused(gps_velocity(rec)) is None):
         for k, v in (rec.get("mount") or {}).items():

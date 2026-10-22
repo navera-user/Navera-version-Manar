@@ -312,7 +312,7 @@ class DaySubscriber(Node):
         self.declare_parameter("mount_cal", True)
         declare_float(self, "mount_sigma_deg", 2.0)
         self.declare_parameter("mount_cal_min_samples", 12)
-        # F38: a GPS check is a mount sample only while its dating error (ground speed x the camera delay's
+        # F41: a GPS check is a mount sample only while its dating error (ground speed x the camera delay's
         # sigma) is at most mount_cal_max_dating_m and the delay is known (set by the camera or estimated
         # and applied): with the delay unknown its offset along the track was learned as a mount pitch
         # (Isaac Sim 2026-10-22). An in-flight fit is used once its samples span mount_cal_min_heading_span_deg
@@ -912,7 +912,7 @@ class DaySubscriber(Node):
         turns, F23). A fix with few inliers is noisy, not biased: averaged, its error is shared with the
         carry's; a confident wrong one that passed the gate pulls the output part of the way only.
 
-        Only the fix's independent error is averaged (F38). The carry is made of the earlier fixes (the
+        Only the fix's independent error is averaged (F41). The carry is made of the earlier fixes (the
         track holds the measured fixes, not this output), so the errors common to all of them — the
         unknown camera delay (speed x its sigma, along the track) and the camera mount's (height x
         tan(its sigma)) — are in the carry too: they set neither the weight nor shrink in the stated
@@ -1781,7 +1781,7 @@ class DaySubscriber(Node):
         return s
 
     def _fix_sigma_common(self, result, meta) -> float:
-        """The part of a local fix's stated sigma that every fix of this flight shares (F38): the camera
+        """The part of a local fix's stated sigma that every fix of this flight shares (F41): the camera
         delay's (speed x its sigma, the frame-time sigma when it is known) and the camera mount's (height x
         tan(its sigma)), in quadrature. Averaging fixes does not reduce it."""
         v = self.track.velocity(time.time())
@@ -2073,7 +2073,7 @@ class DaySubscriber(Node):
 
     def _mount_sample_refused(self, vel):
         """Why a GPS check now gives no mount sample (None: it does): the camera delay unknown, or the
-        frame's dating error (ground speed x the delay's sigma) above mount_cal_max_dating_m (F38)."""
+        frame's dating error (ground speed x the delay's sigma) above mount_cal_max_dating_m (F41)."""
         lc = getattr(self, "latency_cal", None)
         if lc is None:
             return None
@@ -2220,7 +2220,7 @@ class DaySubscriber(Node):
                 # the track (the carry's velocity and start) holds the MEASURED fix with its own sigma,
                 # never the blended output: fed its own output the carry was a filter of itself — its
                 # velocity fitted to smoothed points, its sigma shrinking, the fixes weighted down and
-                # the output lagging (Isaac Sim 2026-10-22: 100 m behind a copter, F38)
+                # the output lagging (Isaac Sim 2026-10-22: 100 m behind a copter, F41)
                 self.track.add(t_fix, float(raw_lat), float(raw_lon), meas_sigma)
                 self._gyro_reset(t_fix, result)
                 self._track_heading = self._carry_heading(meta)[0]

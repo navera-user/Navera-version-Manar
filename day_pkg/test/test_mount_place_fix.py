@@ -207,7 +207,7 @@ def _check(n, speed):
 
 
 def test_no_mount_sample_while_the_frame_time_is_unknown():
-    """F38: a copter flies nose first — the unknown delay's offset (speed x delay) lies along the frame top
+    """F41: a copter flies nose first — the unknown delay's offset (speed x delay) lies along the frame top
     like a pitch error (Isaac Sim 2026-10-22: 1.5 deg 'learned' for the point under the camera)."""
     n = _node()
     n.latency_cal = LatencyCalibrator()                           # no delay set, nothing applied

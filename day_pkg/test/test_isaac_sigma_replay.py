@@ -1,4 +1,4 @@
-"""F38 regression: the GPS-lost part of two Isaac Sim closed-loop flights (copter 250 m, 10 m/s, camera
+"""F41 regression: the GPS-lost part of two Isaac Sim closed-loop flights (copter 250 m, 10 m/s, camera
 delay 1.3 s unknown to NAVERA; 2026-10-22, code d0ab1c2) replayed offline through the day node's own fix
 logic (navera_tools/bench/replay_sigma_isaac.py: the recorded matcher answers -> mount correction, map
 bias, gates, blending, track, carry, dead-reckoning; the node built by its own __init__ with the shipped

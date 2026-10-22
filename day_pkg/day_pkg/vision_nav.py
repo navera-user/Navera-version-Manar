@@ -399,7 +399,7 @@ class VisionNavigator:
                 out = _move(pred[:2], k * de, k * dn) + (math.sqrt(k) * sig,)
             # a weak fix places the vehicle but does not measure its velocity (campaign 5: the
             # velocity of weak fixes carried the output to 68-142 m). The carry starts from the
-            # MEASURED fix: fed the blended output it filtered itself (as day_subscriber, F38)
+            # MEASURED fix: fed the blended output it filtered itself (as day_subscriber, F41)
             self._set_fix(t, lat, lon, sig, heading_deg, velocity=inl >= self.weak_inliers)
             self._out = None if out is None else (t,) + out
         return True

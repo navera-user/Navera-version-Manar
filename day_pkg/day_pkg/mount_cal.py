@@ -26,7 +26,7 @@ applied from the first frame, refined by whatever GPS checks the flight gives. W
 prior is zero with prior_deg, and that sigma stays in the stated accuracy for the whole flight.
 export() gives what to persist (only samples older than the spoof rollback window).
 
-What the fit cannot separate it must not learn (F38, Isaac Sim 2026-10-22). Two cases made the
+What the fit cannot separate it must not learn (F41, Isaac Sim 2026-10-22). Two cases made the
 learned correction WORSE than none and its posterior sigma (independent residuals assumed) far too
 small: (1) frames dated with an unknown camera delay — a copter flies nose first, so the delay's
 offset (speed x delay, along the track) lies along the frame top like a pitch error: 1.2-1.5 deg
