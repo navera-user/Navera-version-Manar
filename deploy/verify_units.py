@@ -254,7 +254,8 @@ def memory_findings(units):
             out.append(('PASS' if ok else 'FAIL', name, 'non-critical: OOMScoreAdjust > 0, MemoryHigh and MemoryMax',
                         f'OOMScoreAdjust={adj} MemoryHigh={",".join(high) or "-"} MemoryMax={",".join(mx) or "-"}'))
         else:
-            out.append(('FAIL', name, 'memory class', 'not in CRITICAL / PIPELINE / NONCRITICAL_UNITS of verify_units.py'))
+            out.append(('FAIL', name, 'memory class',
+                        'not in CRITICAL / PIPELINE / NONCRITICAL_UNITS of verify_units.py'))
     return out
 
 

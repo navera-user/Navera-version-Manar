@@ -47,7 +47,7 @@ def test_a_staged_setup_makes_a_swap_file_and_one_fstab_line_and_is_idempotent(t
     f = root / 'swapfile'
     assert f.stat().st_size == 16 << 20 and oct(f.stat().st_mode & 0o777) == '0o600'
     assert f.read_bytes()[4086:4096] == b'SWAPSPACE2'              # mkswap's signature
-    assert (root / 'etc' / 'fstab').read_text() == '/swapfile none swap sw 0 0\n'
+    assert (root / 'etc' / 'fstab').read_text() == '/swapfile none swap sw,nofail 0 0\n'
     assert not (root / 'swapfile.part').exists()
 
 
@@ -65,7 +65,7 @@ def test_a_foreign_file_and_a_full_disk_are_refused(tmp_path):
 def test_the_real_mode_dry_run_prints_the_root_commands(tmp_path):
     r = _run(['--dry-run'], _swaps(tmp_path, ZRAM_ONLY), NAVERA_SWAP_FILE=str(tmp_path / 'sf'), NAVERA_SWAP_MB=16)
     assert r.returncode == 0, r.stderr
-    for cmd in ('fallocate -l 16M', 'mkswap', 'swapon ' + str(tmp_path / 'sf'), 'none swap sw 0 0'):
+    for cmd in ('fallocate -l 16M', 'mkswap', 'swapon ' + str(tmp_path / 'sf'), 'none swap sw,nofail 0 0'):
         assert cmd in r.stdout, cmd
     assert not (tmp_path / 'sf').exists()
 

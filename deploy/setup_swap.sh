@@ -83,8 +83,8 @@ if [ -f "$fstab" ] && awk -v f="$FILE" '$1 == f && $3 == "swap"' "$fstab" | grep
   echo "swap: $FILE already in $fstab"
 else
   echo "swap: adding $FILE to $fstab (active at every boot)"
-  if [ "$DRY" = 1 ]; then echo "  + echo '$FILE none swap sw 0 0' >> $fstab"
-  else mkdir -p "$(dirname "$fstab")"; echo "$FILE none swap sw 0 0" >> "$fstab"; fi
+  if [ "$DRY" = 1 ]; then echo "  + echo '$FILE none swap sw,nofail 0 0' >> $fstab"
+  else mkdir -p "$(dirname "$fstab")"; echo "$FILE none swap sw,nofail 0 0" >> "$fstab"; fi
 fi
 
 if [ -n "$R" ]; then
