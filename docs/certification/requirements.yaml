@@ -937,6 +937,7 @@ requirements:
     - navera_estimator/navera_estimator/nodes/estimator_node.py::EstimatorNode._measured_at
   match:
     - 'test_estimator\.py::<script>'
+    - 'test_estimator_rules\.py::test_(node_freshness_defaults_are_the_deployed_ones|a_day_fix_stays_usable_5_s)'
   evidence:
     - {level: SIM, value: 'day window 3 s → 5 s (e1d0674): under load NAVERA alternated FIX / NO_FIX on 20–60 % of samples and the autopilot landed in a 6.7–9.2 s gap', ref: 'VALIDATION_STATUS.md, Vision positions carried to the present'}
     - {level: UT, value: 'C4 resolved: the node default was 3.0 while the deployed yaml and the docs said 5 s — default now 5.0, a test keeps the node defaults equal to the yaml'}

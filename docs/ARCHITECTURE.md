@@ -84,8 +84,8 @@ Every source publishes the same message on `/navera/estimate/<source>`:
   non-negative variances, symmetric, horizontal block positive semi-definite (a covariance
   that is not would break a consumer's filter: the estimate is not used at all).
 - Freshness windows (production config `navera_estimator/config/estimator_params.yaml`):
-  GPS 3 s, day vision 5 s (frames come every 1–4 s under load; the node's own default is
-  3 s), night 5 s, celestial 45 s.
+  GPS 3 s, day vision 5 s (frames come every 1–4 s under load: 3 s made NAVERA flicker
+  NO_FIX, e1d0674; the node's own default is the same 5 s — C4), night 5 s, celestial 45 s.
 - **Stated accuracy.** An accuracy counts only with a defined bounded covariance type
   (approximated, diagonal known, known) and a horizontal sigma of at least 1 cm. Otherwise
   (type unknown or undefined, all-zero covariance) the position is DEGRADED "uncertainty
