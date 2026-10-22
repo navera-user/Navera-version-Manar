@@ -54,6 +54,8 @@ from navera_msgs.msg import NavStatus, PositionEstimate
 # DayLocalizer().predict(bgr_array, threshold=...) -> dict
 from day_pkg.nodes.day_localizer import IMAGES_DIR, DayLocalizer, haversine_m
 from day_pkg.fix_sigma import SigmaCalibration, day_fix_sigma_m
+from day_pkg.fix_consistency import FixConsistency
+from day_pkg.frame_gate import FrameGate, focal_px
 from day_pkg.frame_odometry import FrameOdometry
 from day_pkg.gyro_heading import CourseReset, GyroHeading, heading_rate_dps
 from day_pkg.map_levels import area_zooms, choose_zoom
@@ -171,8 +173,30 @@ class DaySubscriber(Node):
         declare_float(self, "search_k_sigma", 3.0)
         declare_float(self, "gate_k_sigma", 3.0)
         self.declare_parameter("strong_inliers", 100)
-        declare_float(self, "strong_gate_k_sigma", 6.0)
+        # 3 since 2026-10-22 (was 6: a confident wrong fix 3-6 sigma off was believed at once, F16): replay of
+        # the recorded bench runs with 100-650 m wrong matches injected: believed 16 -> 5 of 579 (flights),
+        # 20 -> 9 of 548 (missions), fewer right fixes refused (navera_tools/bench/replay_day_guards.py)
+        declare_float(self, "strong_gate_k_sigma", 3.0)
         declare_float(self, "min_inlier_spread", 0.25)
+        # day_pkg.fix_consistency (F16 / D17): while the carried position is lost (sigma > 50 m) a fix
+        # further from it than 3 x its own sigma waits for a second agreeing fix (reacquire_confirm). Off:
+        # on the recorded missions it refused 2.6x more right fixes (availability 94 -> 90 %) for 7 fewer
+        # injected wrong fixes believed. A doubted fix is confirmed within 6 s, 20 s when lost.
+        self.declare_parameter("reacquire_confirm", False)
+        # a fix is averaged with the carried position, each weighted by its sigma (a Kalman update), when
+        # the carry turns with a heading (frame attitude or gyro) and the fix is not a re-acquisition
+        # (F20 / F23 / D17). Replay of the 2026-10-19/20 real-camera runs with the gyro-carried heading
+        # (3 seeds): measured outputs > 50 m wind 51 -> 16, other conditions 57 -> 13, missions 6 -> 6; without
+        # a heading it lagged in turns (other conditions 63 -> 75, F23), so it is not applied then.
+        self.declare_parameter("blend_fixes", True)
+        # day_pkg.frame_gate (F20): a frame smeared beyond frame_max_blur_px by the camera's rotation during
+        # the exposure (gyro |w| at the frame time x frame_exposure_s x the focal length), or less sharp than
+        # frame_sharp_rel x the flight's running median, is not matched. 0 = off (the default: on the
+        # recorded shake runs neither removed wrong fixes beyond what blending does, and both refused
+        # right ones — to be tried on a real vehicle).
+        declare_float(self, "frame_max_blur_px", 0.0)
+        declare_float(self, "frame_exposure_s", 1.0 / 60.0)
+        declare_float(self, "frame_sharp_rel", 0.0)
         self.declare_parameter("height_retry_after", 3)
         declare_float(self, "camera_hfov_deg", float("nan"))   # day camera horizontal field of view
         # With camera_hfov_deg the position is the point under the camera from the matched pose
@@ -197,6 +221,10 @@ class DaySubscriber(Node):
         # matcher searches the heading (every 30 deg) when the IMU's fails — simulation
         # 2026-10-19, 300 m: heading 45 deg wrong 0/30 -> 30/30 located, 0 wrong
         self.declare_parameter("local_heading_search", False)
+        # D18: the search is otherwise switched on frame by frame when the heading is uncertain — no frame
+        # attitude heading and no gyro-carried one, or local_heading_search_after frames in a row without
+        # a match while a heading was given (it may be wrong: the IRIS kit has no magnetometer). 0: never.
+        self.declare_parameter("local_heading_search_after", 3)
         # frames without a heading in their meta (no attitude at the exposure): the carry between
         # fixes turns with the heading the vision measured on the last good fix (the matcher's
         # rotation, >= gyro_heading_min_inliers) carried on by the gyro's rate about the vertical
@@ -327,7 +355,11 @@ class DaySubscriber(Node):
         self._gps_vo_t = None                   # stamp of the last frame given to it
         self._gps_vo_h = None                   # (smoothed height m, t)
         self._vo_step = None
-        self._doubted = None                    # (t, lat, lon, sigma): a fix a gate doubted
+        self.consistency = FixConsistency(self.gate_k, self.strong_inliers, self.strong_gate_k,
+                                          reacquire_check=bool(p_("reacquire_confirm")))
+        self.blend_fixes = bool(p_("blend_fixes"))
+        self.frame_gate = FrameGate(float(p_("frame_max_blur_px")), float(p_("frame_exposure_s")),
+                                    sharp_rel=float(p_("frame_sharp_rel")))
         # the position carried frame by frame since the last fix (lat, lon, t, heading,
         # ve, vn, sigma): one turn from the fix's heading to the present folded a 180 deg
         # turn or a lap into a small one (bench campaign 4: 3-3.8 km off on the coast)
@@ -397,6 +429,7 @@ class DaySubscriber(Node):
         self.local_scale_tol_max = float(self.get_parameter("local_scale_tol_max").value)
         self.local_heading_tol_deg = float(self.get_parameter("local_heading_tol_deg").value)
         self.heading_search = bool(self.get_parameter("local_heading_search").value)
+        self.heading_search_after = int(self.get_parameter("local_heading_search_after").value)
         self.alt_min_inliers = int(self.get_parameter("altitude_min_inliers").value)
         self._alt_candidate = None             # (height, time) of the last strong match
         self._check_fix = None                 # (lat, lon, time) of the last GPS-check match
@@ -581,6 +614,7 @@ class DaySubscriber(Node):
         w, q = msg.angular_velocity, msg.orientation
         att = None if msg.orientation_covariance[0] == -1.0 else (q.x, q.y, q.z, q.w)
         self.gyro.add_rate(t, heading_rate_dps((w.x, w.y, w.z), att))
+        self.frame_gate.add_rate(t, (math.degrees(w.x), math.degrees(w.y), math.degrees(w.z)))
 
     def on_nav_status(self, msg: NavStatus):
         self._gps_prior.arbiter(msg.active_source == NavStatus.SOURCE_GPS
@@ -744,6 +778,8 @@ class DaySubscriber(Node):
                 return
             else:
                 self.get_logger().info(f"[day] 🔎 localizing frame={seq_id}… (pas d'anchor → recherche globale)")
+            if self._frame_refused(seq_id, img, meta):
+                return
             mpp, why_not = self._frame_m_per_px(img, meta)
             self._vo_step = None
             if mpp is not None:
@@ -814,6 +850,41 @@ class DaySubscriber(Node):
                 f"dino={c['dino']:.3f} "
                 f"lat={c['lat']:+.5f} lon={c['lon']:+.5f}"
             )
+
+    # ── frame quality and fix blending (F20, F23, D17) ──────────────────
+    def _frame_refused(self, seq_id, img, meta) -> bool:
+        """A frame day_pkg.frame_gate refuses (turning fast at the exposure, or blurred): not matched, the
+        position carried (or 'no position') with the reason. False when the frame is to be matched."""
+        g = self.frame_gate
+        if g.max_blur_px <= 0 and g.sharp_rel <= 0:
+            return False
+        ns = meta.get("image_stamp_ns")
+        q = g.check(int(ns) / 1e9 if ns else None, img if g.sharp_rel > 0 else None,
+                    focal_px(img.shape[1], self._hfov(meta) or 0.0))
+        if q["refuse"] is None:
+            return False
+        if not self._dead_reckon(self.get_clock().now().to_msg(), seq_id, meta, dict(frame_quality=q), 0.0,
+                                 q["refuse"]):
+            self._publish_no_fix(self.get_clock().now().to_msg(), seq_id, meta, {"frame_id": seq_id}, 0.0,
+                                 q["refuse"] + "; " + self._dr_why)
+        return True
+
+    def _blend_fix(self, lat, lon, result, meta, status):
+        """(lat, lon, sigma) of a local fix averaged with the carried position by their sigmas, or None
+        (blend_fixes off, a re-acquisition, no carried position, or a carry without a heading: it lags in
+        turns, F23). A fix with few inliers is noisy, not biased: averaged, its error is shared with the
+        carry's; a confident wrong one that passed the gate pulls the output part of the way only."""
+        if not self.blend_fixes or status.get("reacquired") or self._carry_heading(meta)[0] is None:
+            return None
+        pred = self._predicted(meta)
+        if pred is None:
+            return None
+        sig = self._fix_sigma(result, meta)
+        k = pred[2] ** 2 / (pred[2] ** 2 + sig ** 2)
+        de, dn = _en((lat, lon), pred[:2])
+        p = _move(pred[:2], k * de, k * dn)
+        status["blend"] = {"weight": round(k, 3), "fix_sigma_m": round(sig, 1), "carry_sigma_m": round(pred[2], 1)}
+        return p[0], p[1], math.sqrt(k) * sig
 
     def _publish_done(self, seq_id):
         try:
@@ -1079,9 +1150,22 @@ class DaySubscriber(Node):
         margin = 0.5 * math.hypot(*img.shape[:2]) * mpp
         self.local.tiles.prefetch(self._anchor_lat, self._anchor_lon, R + margin)
 
-    def _heading_search_kw(self) -> dict:
-        """locate() keywords: the heading search when enabled and the matcher has it."""
-        if self.heading_search and hasattr(self.local, "heading_search_deg"):
+    def _heading_search_kw(self, meta=None) -> dict:
+        """locate() keywords: the heading search when the matcher has it and it is enabled, or when this
+        frame's heading is uncertain (D18, local_heading_search_after): none known (no frame attitude
+        heading, no gyro-carried one), or that many frames in a row without a match. meta: the frame's
+        (default: the frame being processed)."""
+        if not hasattr(self.local, "heading_search_deg"):
+            return {}
+        if self.heading_search:
+            return {"heading_search": True}
+        n = getattr(self, "heading_search_after", 0)
+        if n <= 0:
+            return {}
+        if meta is None:
+            last = getattr(self, "_last_frame", None)
+            meta = last[1] if last else {}
+        if self._match_heading_kw(meta)["heading_deg"] is None or self._rejects_in_row >= n:
             return {"heading_search": True}
         return {}
 
@@ -1676,33 +1760,19 @@ class DaySubscriber(Node):
                               "poorly conditioned — match rejected")
         pred = self._predicted(meta)
         sig = self._fix_sigma(result, meta)
-        doubt = None
-        if pred is not None and inl >= self.strong_inliers:
-            d = math.hypot(*_en((lat, lon), pred[:2]))
-            lim = self.strong_gate_k * math.hypot(pred[2], sig)
-            if d > lim:
-                doubt = f"strong fix ({inl} inliers) {d:.0f} m from the carried position (> {lim:.0f} m)"
-        elif pred is not None:
-            d = math.hypot(*_en((lat, lon), pred[:2]))
-            lim = self.gate_k * math.hypot(pred[2], sig)
-            if d > lim:
-                doubt = f"{d:.0f} m from the carried position (> {lim:.0f} m, {inl} inliers)"
-            elif pred[2] > 50.0 and inl < 40:
-                doubt = f"weak fix ({inl} inliers) while the position is uncertain (±{pred[2]:.0f} m)"
+        # the gate against the carried position and the confirmation of a doubted fix: day_pkg.fix_consistency
+        doubt = None if pred is None else \
+            self.consistency.doubt(math.hypot(*_en((lat, lon), pred[:2])), pred[2], sig, inl)
         if doubt is None:
-            self._doubted = None
+            self.consistency.clear()
             return lat, lon, None
-        # two doubted fixes in a row agreeing with each other: the prediction is what is wrong
-        now, prev, self._doubted = time.time(), self._doubted, (time.time(), lat, lon, sig)
-        if prev is not None and 0 < now - prev[0] <= 6.0:
-            v = self.track.velocity(now)
-            ve, vn = (v[0], v[1]) if v is not None else (0.0, 0.0)
-            carried = _move(prev[1:3], ve * (now - prev[0]), vn * (now - prev[0]))
-            gap = math.hypot(*_en((lat, lon), carried))
-            if gap <= max(3.0 * math.hypot(sig, prev[3]), 15.0) + 0.3 * math.hypot(ve, vn) * (now - prev[0]):
-                self._doubted = None
-                status["reacquired"] = doubt
-                return lat, lon, None
+        # two doubted fixes agreeing with each other: the prediction is what is wrong
+        now = time.time()
+        v = self.track.velocity(now)
+        if self.consistency.confirm(now, lat, lon, sig, (v[0], v[1]) if v is not None else None,
+                                    pred[2] > self.consistency.lost_sigma_m):
+            status["reacquired"] = doubt
+            return lat, lon, None
         return lat, lon, doubt + " — match rejected (a second agreeing fix would confirm it)"
 
     def _publish_result(self, seq_id, meta, result):
@@ -1790,6 +1860,10 @@ class DaySubscriber(Node):
             # Accepted match: in spatial mode it lies within R of the anchor by
             # construction; in global mode (no anchor) it passed conf_threshold.
             out_lat, out_lon = float(raw_lat), float(raw_lon)
+            blended = self._blend_fix(out_lat, out_lon, result, meta, status) \
+                if result.get("matcher") == "local" else None
+            if blended is not None:
+                out_lat, out_lon = blended[0], blended[1]
             jump_m = (haversine_m(self._anchor_lat, self._anchor_lon, out_lat, out_lon)
                       if self._anchor_lat is not None else None)
             src = ("local_match" if result.get("matcher") == "local" else
@@ -1802,6 +1876,8 @@ class DaySubscriber(Node):
             self._anchor_lat, self._anchor_lon, self._anchor_time = out_lat, out_lon, t_now
             self._last_measured_time = t_now
             fix_sigma = self._fix_sigma(result, meta) if src == "local_match" else self.local_sigma_m
+            if blended is not None:
+                fix_sigma = blended[2]
             self._dr_sigma = self._anchor_sigma = fix_sigma
             self._last_fix_sigma = fix_sigma
             self._rejects_in_row = 0
