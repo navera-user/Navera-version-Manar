@@ -255,7 +255,7 @@ def test_staged_apply_reduces_the_delay_error(delay, seed):
 
 def test_a_set_delay_gets_no_staged_correction():
     cal = fly(LatencyCalibrator(nominal_s=0.4), leg_turn_leg(), 1.3, 70.0, noise=4.0)
-    assert cal.prior is None and not cal.stable and cal.applied is None and cal.delay_sigma() == 0.0
+    assert cal.prior is None and not cal.stable and cal.applied is None and cal.delay_sigma() == 0.1
 
 
 def test_spoof_drift_in_the_rollback_window_is_undone():
@@ -336,3 +336,18 @@ def test_store_key_from_the_calibration_file(monkeypatch):
     assert store_key("") == "hik_visible_lens_2026-10-20.yaml" and store_key(" cam2 ") == "cam2"
     monkeypatch.delenv("NAVERA_CAMERA_CALIBRATION")
     assert store_key("") == "camera"
+
+
+def test_set_nominal_from_the_camera_replaces_the_unknown_prior_and_a_stored_start():
+    cal = LatencyCalibrator()
+    cal.store_key = "lens.yaml"
+    cal.set_prior(1.1, 0.2, "stored")
+    assert cal.set_nominal(1.3, "camera")
+    assert cal.nominal == 1.3 and cal.applied is None and cal.prior is None and cal.store_key is None
+    assert cal.delay() == 1.3 and cal.correction() == 0.0 and cal.delay_sigma() == 0.1
+    assert not cal.set_nominal(1.3) and not cal.set_nominal(9.0)
+
+
+def test_set_nominal_refused_once_samples_exist():
+    cal = fly(LatencyCalibrator(), leg_turn_leg(), 1.3, 30.0, noise=4.0)
+    assert cal.samples and not cal.set_nominal(1.3) and cal.nominal == 0.0

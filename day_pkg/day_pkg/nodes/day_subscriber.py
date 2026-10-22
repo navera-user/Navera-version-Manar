@@ -670,6 +670,7 @@ class DaySubscriber(Node):
                 f"[day] frame={seq_id}: image missing or undecodable — acked, not localized")
             self._publish_done(seq_id)
             return
+        self._camera_set_delay(meta)
         # camera delay hook: date the frame by the estimated delay (raw stamp kept in the meta)
         latency_cal.shift_meta(meta, self.latency_cal.correction() if self.auto_latency else 0.0)
         self._frame_count += 1
@@ -1002,6 +1003,23 @@ class DaySubscriber(Node):
             if res.get("accepted"):
                 break
         return res
+
+    def _camera_set_delay(self, meta):
+        """The delay live_camera already subtracted (capture_latency_s: bench-measured, from the
+        calibration file or NAVERA_CAMERA_LATENCY_S) is the set delay: the frames' raw stamps are
+        arrival minus it. Without this the day node took a measured delay for an unknown one."""
+        cl = meta.get("capture_latency_s")
+        try:
+            cl = float(cl)
+        except (TypeError, ValueError):
+            return
+        lc = self.latency_cal
+        if cl != lc.nominal:
+            if lc.set_nominal(cl, "the camera's capture_latency_s"):
+                self.get_logger().info(f"[day] camera delay {cl:.3f} s set by the camera (bench-measured)")
+            else:
+                self.get_logger().warn(f"[day] the camera subtracts {cl:.3f} s, the delay estimate is relative to "
+                                       f"{lc.nominal:.3f} s", throttle_duration_sec=60.0)
 
     def _latency_sample(self, meta):
         """A GPS-check match is a camera-delay sample (its arrival = raw stamp + the camera's delay)."""
@@ -1599,7 +1617,8 @@ class DaySubscriber(Node):
         lc = getattr(self, "latency_cal", None)
         if lc is None:
             return 0.0
-        sd = lc.delay_sigma() if getattr(self, "auto_latency", False) else (0.0 if lc.nominal != 0.0 else None)
+        sd = lc.delay_sigma() if getattr(self, "auto_latency", False) else \
+            (lc.nominal_sigma if lc.nominal != 0.0 else None)
         return float(getattr(self, "unknown_delay_sigma_s", 0.0)) if sd is None else float(sd)
 
     def _model_sigma(self, result, meta) -> float:

@@ -63,7 +63,8 @@ class LatencyCalibrator:
                  min_samples: int = 20, min_speed_mps: float = 5.0, max_turn_dps: float = 8.0,
                  max_sigma_s: float = 0.1, stable_count: int = 3, max_samples: int = 300,
                  gps_max_gap_s: float = 1.5, nominal_s: float = 0.0, change_sigmas: float = 3.0,
-                 prior_sigma_s: float = 1.0, partial_max_sigma_s: float = 0.5, partial_min_samples: int = 10):
+                 prior_sigma_s: float = 1.0, partial_max_sigma_s: float = 0.5, partial_min_samples: int = 10,
+                 nominal_sigma_s: float = 0.1):
         if max_s <= min_s:
             raise ValueError("latency bounds: max_s must exceed min_s")
         self.grid = np.arange(min_s, max_s + 1e-9, step_s)
@@ -73,6 +74,7 @@ class LatencyCalibrator:
         self.max_sigma, self.gps_max_gap = float(max_sigma_s), float(gps_max_gap_s)
         self.nominal, self.change_sigmas = float(nominal_s), float(change_sigmas)
         self.partial_max_sigma, self.partial_min_samples = float(partial_max_sigma_s), int(partial_min_samples)
+        self.nominal_sigma, self.prior_sigma = float(nominal_sigma_s), float(prior_sigma_s)
         # the prior of a delay nobody set: N(0, prior_sigma_s) (no prior, no staged apply: a set delay)
         self._unknown_prior = (0.0, float(prior_sigma_s)) if self.nominal == 0.0 and prior_sigma_s > 0 else None
         self.prior: Optional[Tuple[float, float]] = self._unknown_prior
@@ -170,13 +172,34 @@ class LatencyCalibrator:
             self.reason = f"started from the {source} delay {delay_s:.2f} +- {sigma_s:.2f} s"
             return True
 
+    def set_nominal(self, nominal_s: float, why: str = "camera") -> bool:
+        """The delay the camera already subtracted (measured on the bench: the calibration file's
+        latency_s, NAVERA_CAMERA_LATENCY_S), learned from the frames: it replaces a stored or
+        staged value and the unknown prior. Only before the first sample (a change of the
+        reference under samples would mix two datings); True when taken.
+        """
+        with self._lock:
+            nominal_s = float(nominal_s)
+            if nominal_s == self.nominal or self._res or not (self.min_s <= nominal_s <= self.max_s):
+                return False
+            self.nominal = nominal_s
+            self._unknown_prior = None if nominal_s != 0.0 else (0.0, self.prior_sigma)
+            self.prior = self._unknown_prior
+            self.prior_source = None if self.prior is None else "unknown delay"
+            self.applied = self.applied_sigma = None
+            self._start, self.store_key = (None, None), (self.store_key if nominal_s == 0.0 else None)
+            self._applied_at.clear()
+            self._hist.clear()
+            self.reason = f"set delay {nominal_s:.3f} s ({why})"
+            return True
+
     def delay_sigma(self) -> Optional[float]:
-        """1-sigma (s) of delay() when known: the applied posterior's, 0 for a set delay (its error
-        is not known here), None while unknown (nominal 0 and nothing applied).
+        """1-sigma (s) of delay() when known: the applied posterior's, nominal_sigma_s for a set
+        delay (bench-measured), None while unknown (nominal 0 and nothing applied).
         """
         if self.applied is not None:
-            return self.applied_sigma if self.applied_sigma is not None else 0.0
-        return 0.0 if self.nominal != 0.0 else None
+            return self.applied_sigma if self.applied_sigma is not None else self.nominal_sigma
+        return self.nominal_sigma if self.nominal != 0.0 else None
 
     # ── the fit ─────────────────────────────────────────────────────────
     def _count(self, why: str) -> None:
@@ -423,6 +446,8 @@ def from_node(node) -> Tuple[LatencyCalibrator, bool, float]:
                   "the estimate replaces camera_latency_s only when this many sigmas away from it")
     declare_float(node, "latency_min_speed_mps", 5.0, "no delay sample below this ground speed")
     declare_float(node, "latency_max_turn_dps", 8.0, "no delay sample in a turn faster than this")
+    declare_float(node, "camera_latency_sigma_s", 0.1,
+                  "1-sigma of a set (bench-measured) camera delay, added as speed x sigma to stated fixes")
     declare_float(node, "latency_rollback_s", 20.0,
                   "at a GPS loss/refusal, drop this many seconds of the last delay samples")
     declare_float(node, "latency_partial_max_sigma_s", 0.5,
@@ -440,7 +465,8 @@ def from_node(node) -> Tuple[LatencyCalibrator, bool, float]:
                             max_turn_dps=float(p("latency_max_turn_dps")), max_sigma_s=float(p("latency_max_sigma_s")),
                             nominal_s=float(p("camera_latency_s")), change_sigmas=float(p("latency_change_sigmas")),
                             prior_sigma_s=prior_sigma, partial_max_sigma_s=float(p("latency_partial_max_sigma_s")),
-                            partial_min_samples=int(p("latency_partial_min_samples")))
+                            partial_min_samples=int(p("latency_partial_min_samples")),
+                            nominal_sigma_s=float(p("camera_latency_sigma_s")))
     auto = bool(p("auto_latency"))
     if auto and bool(p("latency_store")) and cal.prior is not None:
         cal.store_key = store_key(str(p("latency_store_key")))
