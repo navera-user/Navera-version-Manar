@@ -37,12 +37,15 @@ D=/mnt/d/navera_isaac; DW='D:\navera_isaac'
 res=$HOME/navera_results/$name; mkdir -p "$res/sitl" "$HOME/.navera_hil_ws"/{build,install,log}
 VENV=$HOME/.venv-navera-sitl; AP=$HOME/ardupilot; TOOLS=$HOME/navera_hil_tools
 p0=$((5760 + 10 * inst)); gcs_port=$((14550 + 10 * inst)); pose_port=$((15500 + 20 * inst)); link_port=$((pose_port + 1))
-cp "$here"/isaac_flight.py "$here"/flight_profile.py "$D"/
+# Isaac Sim reads its script from the shared D:\navera_isaac: put this copy's there for the
+# flight, the previous one back afterwards (other runs use that directory too)
+for f in isaac_flight.py flight_profile.py; do cp -p "$D/$f" "$res/orig_$f" 2>/dev/null; cp "$here/$f" "$D/"; done
 log() { echo "[$(date +%H:%M:%S)] $*" | tee -a "$res/run.log"; }
 export DISPLAY=:0 WAYLAND_DISPLAY=wayland-0 XDG_RUNTIME_DIR=/mnt/wslg/runtime-dir
 pids=()
 cleanup() {
   touch "$D/runs/stop_$name" 2>/dev/null
+  for f in isaac_flight.py flight_profile.py; do [ -f "$res/orig_$f" ] && cp -p "$res/orig_$f" "$D/$f"; done
   kill "${pids[@]}" 2>/dev/null
   docker stop navera_hil > /dev/null 2>&1
   sleep 1; kill -9 "${pids[@]}" 2>/dev/null
