@@ -480,6 +480,7 @@ class DaySubscriber(Node):
             self.get_logger().info(f"[day] camera delay: {self.latency_cal.reason}")
         self._learned_delay = self.latency_cal.correction() if self.auto_latency else 0.0
         self._latency_applied = None
+        self._init_camera_delay_pub()
         self._last_calib = 0.0
         self.local = None
         # the map's zooms (area.json; an area without it: 17), coarsest first: the matcher of the
@@ -737,6 +738,7 @@ class DaySubscriber(Node):
             self._publish_done(seq_id)
             return
         self._camera_set_delay(meta)
+        self._check_mount_id(meta)
         # camera delay hook: date the frame by the estimated delay (raw stamp kept in the meta)
         latency_cal.shift_meta(meta, self.latency_cal.correction() if self.auto_latency else 0.0)
         self._frame_count += 1
@@ -915,6 +917,7 @@ class DaySubscriber(Node):
         return p[0], p[1], math.sqrt(k) * sig
 
     def _publish_done(self, seq_id):
+        self._publish_camera_delay()            # before the ack: the next frame is straightened with it
         try:
             fid = int(seq_id)
         except (TypeError, ValueError):
@@ -1843,6 +1846,7 @@ class DaySubscriber(Node):
                 self.get_logger().error(f"[day] mount_cal_file {path} unreadable ({e}): no persisted mount calibration")
         else:
             data, where = state_store.load(self.MOUNT_STATE, float("inf")), "the last flight's (state day_mount)"
+        self._mount_loaded_id = (data or {}).get("mount_id") if isinstance(data, dict) else None
         n = self.mount_cal.load(data, min_sigma_deg) if data else 0
         if n:
             self.get_logger().info(f"[day] camera mount calibration from {where}: "
@@ -1859,11 +1863,60 @@ class DaySubscriber(Node):
         if not ex:
             return
         old = state_store.load(self.MOUNT_STATE, float("inf")) or {}
-        data = {k: v for k, v in old.items() if k in ("frame centre", "camera pose")}
+        mid = getattr(self, "_mount_id", None)
+        same = old.get("mount_id") == mid or old.get("mount_id") is None   # an older mount's kinds are not carried
+        data = {k: v for k, v in old.items() if k in ("frame centre", "camera pose") and same}
         data.update(ex)
+        if mid:
+            data["mount_id"] = mid
         data["source"] = "in-flight GPS checks " + time.strftime("%Y-%m-%d %H:%M")
         if state_store.save(self.MOUNT_STATE, data):
             self.get_logger().info(f"[day] camera mount calibration saved: {json.dumps(ex)}")
+
+    def _check_mount_id(self, meta) -> None:
+        """The frames' camera mount settings (live_camera mount_id: mount angles, lens file, crop): a mount
+        calibration learned or stored with other settings is dropped, and the stored one with it (F33
+        open item 4: a re-fitted or re-calibrated camera has another boresight error)."""
+        from day_pkg.mount_cal import stale_reason
+        mid = meta.get("mount_id")
+        mc = getattr(self, "mount_cal", None)
+        prev = getattr(self, "_mount_id", None)
+        if not mid or mc is None or mid == prev:
+            return
+        self._mount_id = mid
+        why = stale_reason(prev or getattr(self, "_mount_loaded_id", None), mid)
+        if why is None:
+            return
+        mc.reset()
+        self._mount_loaded_id = None
+        if getattr(self, "mount_cal_persist", False) and \
+                (state_store.load(self.MOUNT_STATE, float("inf")) or {}).get("mount_id") not in (None, mid):
+            state_store.save(self.MOUNT_STATE, {"mount_id": mid, "source": "dropped: " + why})
+        self.get_logger().error(f"[day] camera mount calibration dropped ({why}): every fix states height x "
+                                f"tan({self.mount_sigma_deg:g} deg) more until GPS checks measure it again")
+
+    def _init_camera_delay_pub(self) -> None:
+        """camera_delay_topic: the camera-delay estimate for live_camera, which takes the attitude it
+        straightens a frame with at the same instant the frame is dated (latency_cal.delay_message):
+        a body-fixed camera on a banked plane straightened with the attitude 1.3 s stale put the frame
+        centre 50-272 m off (Isaac Sim F35)."""
+        topic = str(self.declare_parameter("camera_delay_topic", "/day/camera_delay").value)
+        self.pub_cam_delay = self.create_publisher(String, topic, QoSProfile(
+            depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL, reliability=ReliabilityPolicy.RELIABLE,
+            history=HistoryPolicy.KEEP_LAST))
+        self._cam_delay_sent = None
+        self._publish_camera_delay()
+
+    def _publish_camera_delay(self) -> None:
+        """Publish the delay estimate when its correction changed (latched)."""
+        pub, lc = getattr(self, "pub_cam_delay", None), getattr(self, "latency_cal", None)
+        if pub is None or lc is None:
+            return
+        d = latency_cal.delay_message(lc, bool(getattr(self, "auto_latency", False)))
+        key = (d["correction_s"], d["auto"])
+        if key != self._cam_delay_sent:
+            self._cam_delay_sent = key
+            pub.publish(String(data=json.dumps(d)))
 
     def _delay_known_sigma_s(self) -> float:
         """The frame time's uncertainty for the mount fit's residual-delay term: the frame-time sigma

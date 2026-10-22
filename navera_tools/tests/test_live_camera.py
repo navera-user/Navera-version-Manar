@@ -5,7 +5,9 @@ A level straight-down scene is warped into what a camera tilted 10 deg nose-up a
 6 deg right-wing-down sees; live_camera (input=ros) must publish it straightened —
 the point under the vehicle back at the image centre — with the height above ground
 from the GPS, corrected by an image-measured height, the attitude used, and the
-exposure stamp; and wait for the localizer's ack before the next frame.
+exposure stamp; and wait for the localizer's ack before the next frame. Once the day node
+says the camera delay is 1 s (camera_delay topic), a frame is straightened with the attitude of
+1 s before its stamp (a banked plane's attitude at the exposure, F35), its stamp unchanged.
 """
 import json
 import math
@@ -54,7 +56,7 @@ def main():
          "-p", "camera_hfov_deg:=84.0", "-p", "fps:=5.0", "-p", "wait_for_ready:=true",
          "-p", "ready_topic:=/livetest_ready", "-p", "ack_timeout_s:=3.0",
          "-p", "imu_topic:=/livetest/imu", "-p", "gps_topic:=/livetest/gps",
-         "-p", "vision_altitude_topic:=/livetest/vision_alt"],
+         "-p", "vision_altitude_topic:=/livetest/vision_alt", "-p", "delay_topic:=/livetest/camera_delay"],
         stdout=open(os.environ.get('NAVERA_TEST_LOG', os.devnull), 'w'), stderr=subprocess.STDOUT, start_new_session=True)
     try:
         return _run(proc)
@@ -79,6 +81,7 @@ def _run(proc):
     pub_valt = node.create_publisher(Range, "/livetest/vision_alt", 10)
     pub_ready = node.create_publisher(Bool, "/livetest_ready", latched)
     pub_ack = node.create_publisher(Int32, f"{NS}/frame_done", 10)
+    pub_delay = node.create_publisher(String, "/livetest/camera_delay", latched)
     got_meta, got_img = [], []
     node.create_subscription(String, f"{NS}/frame_meta", lambda m: got_meta.append(json.loads(m.data)), 10)
     node.create_subscription(Image, f"{NS}/image_raw", got_img.append, 10)
@@ -92,7 +95,7 @@ def _run(proc):
     def now():
         return node.get_clock().now().to_msg()
 
-    state = {"gps_alt": 52.0, "run": True}
+    state = {"gps_alt": 52.0, "run": True, "q": q}
 
     def sensors():                                     # IMU 50 Hz, GPS 5 Hz, as real sensors
         k = 0
@@ -100,7 +103,8 @@ def _run(proc):
             st = now()
             imu = Imu(); imu.header.stamp = st
             e = 1e-6 * (k % 7)                          # sensor noise: a real attitude never repeats exactly
-            imu.orientation.x, imu.orientation.y, imu.orientation.z, imu.orientation.w = q[0] + e, q[1], q[2], q[3]
+            qq = state["q"]
+            imu.orientation.x, imu.orientation.y, imu.orientation.z, imu.orientation.w = qq[0] + e, qq[1], qq[2], qq[3]
             pub_imu.publish(imu)
             if k % 10 == 0:
                 fx = NavSatFix(); fx.header.stamp = st; fx.status.status = NavSatStatus.STATUS_FIX
@@ -170,6 +174,29 @@ def _run(proc):
     elif got_meta[-1].get("altitude_source") != "image + GPS" or abs(got_meta[-1]["altitude_m"] - 137.0) > 1.0:
         failures.append(f"image-measured height not used: {got_meta[-1].get('altitude_m')} "
                         f"({got_meta[-1].get('altitude_source')})")
+    elif got_meta[-1].get("attitude_delay_s") != 0.0 or not got_meta[-1].get("mount_id"):
+        failures.append(f"meta without attitude_delay_s 0 / mount_id: {got_meta[-1]}")
+
+    # the day node learned a 1 s camera delay; the vehicle then rolls the other way: the next frame's
+    # exposure (1 s before its stamp) still had the old attitude
+    pub_delay.publish(String(data=json.dumps({"correction_s": 1.0, "delay_s": 1.0, "sigma_s": 0.1,
+                                              "nominal_s": 0.0, "auto": True, "stable": True})))
+    state["q"] = q_body(-6.0, 10.0, 40.0)
+    feed(0.5, 202.0)
+    n2 = len(got_meta)
+    pub_ack.publish(Int32(data=got_meta[-1]["frame_id"] if got_meta else 0))
+    feed(0, 202.0, until=lambda: len(got_meta) > n2)
+    if len(got_meta) <= n2:
+        failures.append("no frame after the delay message")
+    else:
+        m3, im3 = got_meta[-1], got_img[-1]
+        if os.environ.get("NAVERA_TEST_VERBOSE"):
+            print("meta after the delay:", m3)
+        if m3.get("attitude_delay_s") != 1.0 or abs(m3.get("roll_deg", 0) - 6.0) > 0.1:
+            failures.append(f"attitude not taken 1 s before the stamp: shift {m3.get('attitude_delay_s')}, "
+                            f"roll {m3.get('roll_deg')} (6 = at the exposure, -6 = at the arrival)")
+        if m3["image_stamp_ns"] != im3.header.stamp.sec * 10**9 + im3.header.stamp.nanosec:
+            failures.append("the stamp moved with the attitude (the day node dates it)")
 
     state["run"] = False
     os.killpg(proc.pid, signal.SIGINT)

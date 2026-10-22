@@ -43,6 +43,14 @@ not, and the stated uncertainty says so (the estimate is then never applied).
   1.34 +- 0.43 s, never applied (49 m median error at the stated time against 14 m at the
   exposure); applied as 1.13 +- 0.39 s it is 18 m. A stored prior the in-flight estimate
   contradicts (> 2 combined sigma) is dropped: another camera or stream setting.
+  The staged value is applied only while speed x its sigma <= partial_max_error_m (the
+  samples' recent ground speed): a plane at 30 m/s does not date (and straighten) its frames
+  with a delay known to +- 0.44 s (13 m along the track; Isaac Sim 2026-10-22, m1_plane30: a
+  staged 0.58 +- 0.44 s for a true 1.3 s, 6 wrong fixes), a copter at 10 m/s still does.
+* The delay also dates the ATTITUDE the camera straightens a frame with (live_camera): the day
+  node publishes delay_message() on camera_delay_topic, live_camera takes the attitude at
+  stamp - correction_s (attitude_shift_s). A body-fixed camera on a banked plane straightened
+  with the attitude at arrival put the frame centre 50-272 m off (F35).
 """
 import math
 import os
@@ -64,7 +72,7 @@ class LatencyCalibrator:
                  max_sigma_s: float = 0.1, stable_count: int = 3, max_samples: int = 300,
                  gps_max_gap_s: float = 1.5, nominal_s: float = 0.0, change_sigmas: float = 3.0,
                  prior_sigma_s: float = 1.0, partial_max_sigma_s: float = 0.5, partial_min_samples: int = 10,
-                 nominal_sigma_s: float = 0.1):
+                 nominal_sigma_s: float = 0.1, partial_max_error_m: float = 10.0):
         if max_s <= min_s:
             raise ValueError("latency bounds: max_s must exceed min_s")
         self.grid = np.arange(min_s, max_s + 1e-9, step_s)
@@ -75,6 +83,8 @@ class LatencyCalibrator:
         self.nominal, self.change_sigmas = float(nominal_s), float(change_sigmas)
         self.partial_max_sigma, self.partial_min_samples = float(partial_max_sigma_s), int(partial_min_samples)
         self.nominal_sigma, self.prior_sigma = float(nominal_sigma_s), float(prior_sigma_s)
+        self.partial_max_error_m = float(partial_max_error_m)      # <= 0: no speed cap
+        self.speed_mps: Optional[float] = None                      # the samples' recent ground speed
         # the prior of a delay nobody set: N(0, prior_sigma_s) (no prior, no staged apply: a set delay)
         self._unknown_prior = (0.0, float(prior_sigma_s)) if self.nominal == 0.0 and prior_sigma_s > 0 else None
         self.prior: Optional[Tuple[float, float]] = self._unknown_prior
@@ -283,6 +293,7 @@ class LatencyCalibrator:
         e = R[k, keep] - b[k]
         v = V[k, keep]
         m = len(e)
+        self.speed_mps = float(np.median(np.linalg.norm(v[-10:], axis=1)))
         J = np.zeros((2 * m, 3))
         J[0::2, 0] = J[1::2, 1] = -1.0
         J[0::2, 2], J[1::2, 2] = v[:, 0], v[:, 1]
@@ -338,11 +349,13 @@ class LatencyCalibrator:
         if self.prior is not None and m >= self.partial_min_samples and not on_bound and agree \
                 and sig <= self.partial_max_sigma:
             self.reason += f" — partial: {sig:.2f} s <= {self.partial_max_sigma:.2f} s"
-            self._apply_posterior(d, sig, apply)
+            self._apply_posterior(d, sig, apply, staged=True)
 
-    def _apply_posterior(self, d: float, sig: float, apply: bool) -> None:
-        """Apply the inverse-variance combination of the estimate with the prior."""
+    def _apply_posterior(self, d: float, sig: float, apply: bool, staged: bool = False) -> None:
+        """Apply the inverse-variance combination of the estimate with the prior. staged (the
+        estimate not stable yet): only while speed x its sigma <= partial_max_error_m."""
         mu0, s0 = self.prior
+        dropped = False
         # a stored delay the estimate contradicts is dropped at 2 combined sigma: keeping a stale one
         # costs far more than falling back to the unknown prior
         if self.prior is not self._unknown_prior and abs(d - mu0) > 2.0 * math.hypot(sig, s0) \
@@ -350,8 +363,17 @@ class LatencyCalibrator:
             self.reason += f"; the {self.prior_source} delay {mu0:.2f} s contradicted: dropped"
             self.prior, self.prior_source = self._unknown_prior, "unknown delay"
             mu0, s0 = self.prior
+            dropped = True
         w = s0 * s0 / (s0 * s0 + sig * sig)
         post, psig = mu0 + w * (d - mu0), math.sqrt(w) * sig
+        v = self.speed_mps or 0.0
+        if staged and self.partial_max_error_m > 0 and v * psig > self.partial_max_error_m:
+            self.reason += (f"; not applied: {v:.0f} m/s x {psig:.2f} s = {v * psig:.0f} m > "
+                            f"{self.partial_max_error_m:g} m")
+            if dropped and apply:                    # the contradicted stored value is not kept either
+                self.applied = self.applied_sigma = None
+                self._applied_at.append((self._t[-1], None, None))
+            return
         if apply:
             self.applied, self.applied_sigma = post, psig
             self._applied_at.append((self._t[-1], post, psig))
@@ -453,6 +475,8 @@ def from_node(node) -> Tuple[LatencyCalibrator, bool, float]:
     declare_float(node, "latency_partial_max_sigma_s", 0.5,
                   "unknown delay: below this sigma the estimate is applied combined with the prior (staged)")
     node.declare_parameter("latency_partial_min_samples", 10)
+    declare_float(node, "latency_partial_max_error_m", 10.0,
+                  "the staged delay is applied only while ground speed x its sigma is below this (m); 0: no cap")
     node.declare_parameter("latency_store", True)
     node.declare_parameter("latency_store_key", "")
     declare_float(node, "latency_store_max_age_days", 60.0, "a stored camera delay older than this is ignored")
@@ -466,7 +490,8 @@ def from_node(node) -> Tuple[LatencyCalibrator, bool, float]:
                             nominal_s=float(p("camera_latency_s")), change_sigmas=float(p("latency_change_sigmas")),
                             prior_sigma_s=prior_sigma, partial_max_sigma_s=float(p("latency_partial_max_sigma_s")),
                             partial_min_samples=int(p("latency_partial_min_samples")),
-                            nominal_sigma_s=float(p("camera_latency_sigma_s")))
+                            nominal_sigma_s=float(p("camera_latency_sigma_s")),
+                            partial_max_error_m=float(p("latency_partial_max_error_m")))
     auto = bool(p("auto_latency"))
     if auto and bool(p("latency_store")) and cal.prior is not None:
         cal.store_key = store_key(str(p("latency_store_key")))
@@ -487,3 +512,32 @@ def shift_meta(meta: dict, correction_s: float) -> dict:
     raw = int(meta.setdefault("image_stamp_raw_ns", int(ns)))
     meta["image_stamp_ns"] = raw - int(round(correction_s * 1e9))
     return meta
+
+
+def delay_message(cal: LatencyCalibrator, auto: bool) -> dict:
+    """What the day node tells the camera on camera_delay_topic: correction_s = the seconds it
+    subtracts from the frame stamps (already dated arrival - the camera's capture_latency_s), so
+    that live_camera takes the attitude it straightens the next frames with at that same instant
+    (attitude_shift_s). 0 with auto_latency off: the stamps are not moved then.
+    """
+    with cal._lock:
+        sd = cal.delay_sigma()
+        return {"correction_s": round(cal.correction(), 4) if auto else 0.0, "delay_s": round(cal.delay(), 4),
+                "sigma_s": None if sd is None else round(sd, 4), "nominal_s": round(cal.nominal, 4),
+                "auto": bool(auto), "stable": bool(cal.stable)}
+
+
+def attitude_shift_s(msg: Optional[dict], capture_latency_s: float, max_s: float = 3.0) -> float:
+    """Seconds before a frame's stamp (arrival - capture_latency_s) to take its attitude at: the day
+    node's correction_s (delay_message), within [-capture_latency_s, max_s] (the exposure is never
+    after the arrival); 0 without a message, with auto_latency off, or a value that is no number.
+    """
+    if not isinstance(msg, dict) or not msg.get("auto"):
+        return 0.0
+    try:
+        c = float(msg.get("correction_s"))
+    except (TypeError, ValueError):
+        return 0.0
+    if not math.isfinite(c):
+        return 0.0
+    return min(max(c, -max(float(capture_latency_s), 0.0)), float(max_s))

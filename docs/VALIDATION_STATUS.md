@@ -1347,6 +1347,56 @@ over by vision, median 59–129 m, mission continued); (2) a celestial fix (±55
 the autopilot moved its position by 125 km — positions coarser than `max_forward_sigma_m`
 (1 km) are no longer forwarded.
 
+### Isaac Sim closed loop: the camera delay learned in flight dates the attitude too (F35b, 2026-10-22)
+
+**SIMULATION only** (Isaac Sim scene, ArduPilot SITL, NAVERA's real nodes; true camera delay
+1.3 s, unknown to NAVERA unless stated). The F33/F35 runs showed that every wrong plane fix was a
+frame centre: live_camera straightened each frame with the attitude at its **arrival**, 1.3 s
+after the exposure, so on a banked plane the frame centre landed 50–272 m off. Changes
+(branch work/plane-delay-2026-10-22):
+
+- the day node publishes its delay estimate on `/day/camera_delay` (latched, before each ack);
+  live_camera takes the attitude, altitude and rotation rate `correction_s` before the stamp —
+  the same instant the day node dates the frame (the stamp itself is left to the day node, so
+  `capture_latency_s` is never subtracted twice; meta `attitude_delay_s`);
+- a staged (not yet stable) delay is applied only while ground speed × its sigma ≤
+  `latency_partial_max_error_m` (10 m);
+- a mount calibration learned or stored with other camera mount settings (`mount_id`: mount
+  angles, lens file content, crop) is dropped (F33 open item 4).
+
+| run | matched % | fix error at stated time med/p90/max (m) | at exposure | output err | > 3σ | wrong | mission |
+|---|---|---|---|---|---|---|---|
+| n1_plane30 (F33: delay **set by hand** 1.3 s) | 98.1 | 9/16/27 | – | 9/17/60 | 3/214 | 0 | completed |
+| m1_plane30 (F33: in-flight staged delay, arrival attitude) | 83.4 | 33/48/73 | 27/42/68 | 35/54/129 | 0/170 | 6 | completed |
+| **pd_plane30** (in-flight delay only, attitude at exposure) | **98.2** | **13/21/41** | 13/21/43 | 14/22/144 | 0/176 | **0** | completed |
+| c3_base (copter 250 m, before F33) | 98.7 | 13/21/30 | 6.5 median | – | 1/317 | 0 | completed |
+| pd_ref_base (d0ab1c2, **without** these changes) | 96.9 | 19/34/47 | 10/22/38 | 20/35/88 | 146/356 | 0 | completed |
+| pd_base (these changes) | 96.0 | 22/40/55 | 14/29/46 | 22/41/114 | 178/382 | 0 | completed |
+| pd_nomc_base (these changes, mount_cal off) | 98.5 | 36/73/101 | 25/57/79 | 36/75/188 | 182/461 | 90 | completed |
+| c2_h600 (copter 600 m, before F33) | 98.8 | 21/30/36 | 13/19/23 | – | 16/258 | 0 | completed |
+| pd_h600 | 82.1 | 16/20/24 | 11/15/23 | 17/40/164 | 112/217 | 0 | NOT completed (EKF failsafe, LAND) |
+| pd_plane60 (jet 60 m/s, 900 m circuit) | 0.0 | – | – | 131/236/257 | 0/44 | 0 | completed |
+
+- **Plane 30 m/s: 6 → 0 wrong fixes with the delay learned in flight alone**, matched 83 → 98 %,
+  13 m median (the hand-set delay gives 9 m). The staged delay was applied after 12 GPS checks
+  as 1.41 ± 0.17 s and ended 1.47 ± 0.17 s (true 1.3 s; 5 m along the track at 30 m/s): with the
+  attitude at the exposure the GPS-check fixes are better, and the estimate tighter than F33's
+  0.58 ± 0.44 s. The speed cap did not trigger in this run (30 × 0.17 s = 5 m).
+- **Copter base / h600: regression, not caused by these changes.** In pd_base no delay was ever
+  applied (the attitude shift stayed 0: the change is inert there), and the reference run of
+  d0ab1c2 without these changes shows the same degradation (19 m median, 146/356 beyond 3σ, vs
+  c3_base 12.8 m, 1/317). The stated sigma is 5–9 m where it was 11–13 m in c3_base while the
+  unknown 1.3 s delay at 10 m/s leaves ~13 m along the track (pd_h600: error 15–20 m, stated
+  ~5 m, after the blending with the carried track halved the fix sigma) — the stated accuracy
+  after the F33 / day-robustness merges is overconfident on a copter whose delay is not learned
+  (its delay samples are refused as "too slow" / "turning"; in pd_nomc_base a 1.0 ± 0.44 s
+  staged delay was undone by the 20 s rollback at the GPS cut). Open: find which merged change
+  shrank the sigma (blend of correlated fix and carry, mount sigma 0.3 deg) — to fix before
+  claiming the copter numbers again.
+- **Plane 60 m/s: no frame used** (as c2_plane60): live_camera measures 60–190 deg/s rotation
+  at every exposure on the jet model and refuses the frames (max 30 deg/s). Open: an attitude
+  stream / jet model problem in the simulation, not investigated here.
+
 ### Long route (simulator, 2026-10-01)
 
 Paris → Tunisia, 1768 km, mapped as ≤ 10 km great-circle legs: 79 775 tiles generated in
