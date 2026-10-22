@@ -1037,8 +1037,13 @@ check your camera's own URL). Keep the quotes:
 
 ```
 NAVERA_CAMERA_INPUT=gst
-NAVERA_CAMERA_GST_PIPELINE="rtspsrc location=rtsp://<user>:<password>@<camera-ip>:554/Streaming/Channels/201 latency=0 ! decodebin ! videoconvert ! video/x-raw,format=BGR ! appsink name=sink drop=true max-buffers=1 sync=false"
+NAVERA_CAMERA_GST_PIPELINE="rtspsrc location=rtsp://<user>:<password>@<camera-ip>:554/Streaming/Channels/201 latency=0 ! rtph264depay ! video/x-h264,stream-format=byte-stream,alignment=au ! nvv4l2decoder ! nvvidconv ! video/x-raw,format=BGRx ! videoconvert ! video/x-raw,format=BGR ! appsink name=sink drop=true max-buffers=1 sync=false"
 ```
+
+The box decodes H.264 / H.265 in hardware (`nvv4l2decoder`) and has no `h264parse` or software
+decoder, so a pipeline with `decodebin` finds no decoder for an RTSP camera and never delivers a
+frame (measured 2026-10-22 in the hardware-in-the-loop test). Keep the byte-stream caps shown;
+an H.265 camera: `rtph265depay ! video/x-h265,stream-format=byte-stream,alignment=au ! nvv4l2decoder`.
 
 Other camera settings: `NAVERA_CAMERA_SIZE` (default 1920x1080; must be a mode the camera
 delivers), `NAVERA_CAMERA_FPS` (pictures offered per second, default 1).

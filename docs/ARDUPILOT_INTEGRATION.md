@@ -66,6 +66,9 @@ MAVLink addresses use one format everywhere (`navera_output/mavlink_url.py`):
 - **Baud rate:** the same on both ends (`SERIALn_BAUD` and the address). The vehicle link
   requests attitude at 50 Hz (`ATTITUDE` + `ATTITUDE_QUATERNION`), roughly 4–5 kB/s with the
   other messages: use at least 115200 baud (estimate, not measured); the examples use 921600.
+  Measured in the hardware-in-the-loop test (2026-10-22, ArduCopter 4.5.7 SITL over TCP, which
+  still honours `SERIALn_BAUD`): at 57600 every message, `ATTITUDE` included, reached the box at
+  ~11 Hz (the port saturated with the default streams); at `SERIAL1_BAUD 921` `ATTITUDE` came at 44 Hz.
 
 ## 3. Output: NAVERA as a MAVLink GPS (`GPS_INPUT`) — recommended
 
@@ -83,7 +86,7 @@ Autopilot parameters (names as in ArduPilot 4.5: `GPS_TYPE`, `GPS_TYPE2`, `GPS_D
 |---|---|---|---|
 | `GPS_TYPE` (`GPS1_TYPE`) | **14** (MAV) | NAVERA is GPS 1 | SITL |
 | `SERIALn_PROTOCOL` | **2** (MAVLink 2) | on the TELEM port wired to NAVERA (SITL: `SERIAL1_PROTOCOL 2`) | SITL |
-| `SERIALn_BAUD` | the NAVERA baud: 921 = 921600, 115 = 115200, 57 = 57600 | | Not verified (SITL used TCP) |
+| `SERIALn_BAUD` | the NAVERA baud: 921 = 921600, 115 = 115200, 57 = 57600 | 57600 starves the vehicle link (~11 Hz attitude, measured) | SITL (HIL 2026-10-22: 921) |
 | `GPS_AUTO_CONFIG` | 0 | no receiver configuration sent to a "GPS" that is NAVERA | SITL |
 | `EK3_SRC1_POSXY` | 3 (GPS, default) | position from NAVERA | SITL (default) |
 | `EK3_SRC1_VELXY` | **0** | NAVERA's vision velocity is a fit to its own positions (correlated with them, late in a turn): not a measurement to fuse. Before F28 vision fixes carried none and ArduPilot fused the *last* GPS velocity received (glitch, EKF failsafe LAND within 40 s). The message velocity is still used by EKF3 to RESET its own after a timeout (below, "Velocity"). Cost: see below | SITL |
