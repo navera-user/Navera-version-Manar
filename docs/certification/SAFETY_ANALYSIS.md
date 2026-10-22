@@ -133,10 +133,10 @@ H-14 storage full (Low), H-15 integrator settings (Medium), H-16 simulation on a
 | Failure modes | no DS3231 / dead coin cell → Jetson boots at 1970 or the last saved time (16 h off on 2026-10-21), NTP step mid-mission, RTC in local time |
 | Effect | celestial ≈ 28 km per minute of error; GPS_INPUT week time and NMEA date from `datetime.now()` (`vehicle_output_node.py::VehicleOutputNode._tick`) wrong; logs misdated |
 | Detection | `rtc_pkg/rtc_pkg/nodes/rtc_node.py::RTCNode.publish_rtc` (valid only if UTC, power kept, drift explained); future stamps refused and never revived (`EstimatorNode._eval_source`, B6); clock step back resets histories (`sensor_history.py::History`) |
-| Mitigation | celestial solves only on a trusted time (`navera_common/trusted_time.py::TrustedClock`, `cn_subscriber.py::CNSubscriber._utc_for`): DS3231 valid and not lost_power, a GNSS time (`gps_node.py::GPSNode._publish_time`) within 300 s, or NTP — with no wall-clock step since and none in the last 60 s; else no position, reason "no trusted time: …" (both solver modes; same rule as the field tools, db2f95c) |
-| Evidence | HW: DS3231 reboot −0.148 s (2026-07-14); F27 shows a box can lack it; UT `test_trusted_time.py`, `cn_pkg/test/test_cn_gates.py` (no source / lost power / clock step → no solve) |
+| Mitigation | celestial solves only on a trusted time (`navera_common/trusted_time.py::TrustedClock`, `cn_subscriber.py::CNSubscriber._utc_for`, NAV-SAF-20), in this order (decision 2026-10-22, no hardware clock required): the GPS anchor (a vouched-for receiver UTC taken while the estimator trusts the GPS, carried by the monotonic clock: survives GPS loss and wall-clock steps; later jumps ignored and logged), the autopilot's SYSTEM_TIME (cross-check: > 1 s from the anchor → no time), the DS3231 if fitted, NTP; each with a stated 1-sigma growing at 20 ppm; no stamp converted for 60 s after a wall-clock step; else no position, reason "no trusted time: …" (both solver modes and the field server) |
+| Evidence | HW: DS3231 reboot −0.148 s (2026-07-14); F27 shows a box can lack it; UT `test_trusted_time.py`, `cn_pkg/test/test_cn_gates.py`, `test_field_rtc.py`, `test_field_time_feeds.py` (no source / lost power / clock step / untrusted GPS / anchor-SYSTEM_TIME disagreement → no solve; anchor held 3 h and through a step) |
 | Residual | **Medium** (celestial is never forwarded; time to the autopilot unverified) |
-| Open items | O-15 done (UT) — run once on the box with the DS3231 removed and NTP off; O-16 check_box FAIL when no valid RTC; O-17 install procedure requires the coin cell / DS3231 |
+| Open items | O-15 done (UT) — run once on the box with the DS3231 removed and NTP off, with a real GPS and autopilot; O-16 / O-17 superseded 2026-10-22 (DS3231 optional); a Jetson reboot in flight with the GPS denied and no autopilot leaves celestial without time (stated, the anchor is not persisted); vehicle_output still stamps GPS_INPUT / NMEA with the system clock |
 
 ### H-09 IMU bias, wrong heading or mount
 
@@ -223,7 +223,7 @@ simulated data. Residual **Low**.
 | O-25 | read and check the autopilot's EK3 / GPS parameters | H-13 | code |
 | O-13 | inertial dead-reckoning as an independent source (FEAT-2) | H-07 | code |
 | O-7, O-8 | real LWIR data; re-fit night thresholds | H-03 | data |
-| O-15–O-17 | trusted-time gate in product celestial (done, UT); RTC mandatory | H-08 | code / install |
+| O-15–O-17 | trusted-time gate in product celestial (done, UT); GPS-anchored time with SYSTEM_TIME cross-check (done, UT, 2026-10-22: RTC optional); box run with real GPS + autopilot open | H-08 | code / test |
 | O-20, O-21 | swap + OOM / memory limits (done in deploy, UT; root run on a box pending); thermal monitoring (monitor done, UT) | H-11 | deploy |
 | O-23 | reboot validation on a deployed box (commands in DEPLOYMENT_VALIDATION.md) | H-12 | test |
 | O-27 | install from a clean release clone; install.sh no longer copies .git, .claude/worktrees, caches or recordings (B18 fixed, UT) | H-12, deployment | deploy |

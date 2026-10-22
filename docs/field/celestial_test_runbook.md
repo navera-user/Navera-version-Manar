@@ -50,8 +50,25 @@ same hours; scattered cloud is handled, overcast gives no fix.
 A CR2032 in the module's holder keeps the time with the Jetson off. Common ZS-042 boards charge the cell through a
 resistor and diode meant for a rechargeable LIR2032: with a plain CR2032, remove that resistor (or the diode).
 Check: `i2cdetect -y -r 1` shows `68` (and `57`, the module's EEPROM). No root is needed to read it (the user is in
-the `i2c` group). The star time order is then: phone clock > DS3231 > NTP; every frame records `time_source` and
-`rtc_minus_phone_s` (the battery clock's real error against the phone).
+the `i2c` group).
+
+### Star time (2026-10-22: the product's order, `navera_common/trusted_time.py`)
+
+A star fix is ~0.46 km off per second of clock error. The server takes the first of:
+
+1. **NAVERA's GPS anchor** — only if `NAVERA_FIELD_GPS` is set (e.g. `serial:/dev/ttyACM0:38400`; never a port
+   `navera-gps` holds): the receiver's UTC (UBX NAV-PVT valid + fully resolved, RMC status A, ZDA next to a fix),
+   taken only while the fix is within 2 km of the phone's GPS, then carried by the Jetson's monotonic clock
+   (stated 1-sigma 0.5 s + 20 ppm of the time since; survives a clock step; lost at a reboot);
+2. **the autopilot's SYSTEM_TIME** — only if `NAVERA_FIELD_MAVLINK` is set (pymavlink address); it must agree
+   with the GPS anchor within 1 s, else **no star time** ("disagree");
+3. the **DS3231** (if wired, above); 4. the **phone's clock**; 5. the Jetson clock if NTP-synchronised.
+
+Both feeds are off by default (a car test has neither); the field test then runs on DS3231 > phone > NTP. The
+page's "Star time" line shows the source and its 1-sigma (red with the reason when there is none); every frame
+records `time_source`, `time_sigma_s` and `rtc_minus_phone_s` (the battery clock's real error against the
+phone); the session logs `time_anchor` / `time_gnss_jump` / `time_disagree` events. Changing either variable needs
+a restart of `navera-field` (the user).
 
 ## The drive (operator instructions add one thing: stay parked 3 min after START and before END)
 
@@ -95,8 +112,8 @@ anything else.
 | Trusted fixes per stop (20 s stops) | from `stopped`, `solved` and the phone speed | the simulation gave ~3; it decides how long the driver must stop |
 | Solve time on a quiet Jetson, with its load and temperature | `solve_s`, `host` (`load1`, `temp_c`, `mem_avail_mb`) | 6.6-8 s first solve was measured under load; quiet = `load1` < 2 |
 | Image standstill measure (logged only, not used) | `ground_change`, `ground_dt_s` | whether lit ground features can tell a gentle cruise from a stop at night |
-| Time source and the battery clock's error | `time_source`, `rtc_minus_phone_s` | F27 |
-| Camera stream health | `cam_health` (`reconnects`, `imu_restarts`, `imu_age_s`) | F14: how often the IMU feed needs a restart in the car |
+| Time source, its stated 1-sigma and the battery clock's error | `time_source`, `time_sigma_s`, `rtc_minus_phone_s` | F27 |
+| Camera stream health | `cam_health` (`reconnects`, `imu_restarts`, `usb_resets`, `imu_age_s`) | F14: how often the IMU feed needs a restart (every 2 s while silent), a USB reset (after 3 restarts in vain, ~8 s) or a full reopen (10 s) in the car |
 | Mount tilt learned | events `tilt_calibrated` / `tilt_fit_refused` (`residuals_deg`, `rejected`) | D11 |
 
 Live lab rounds load the Jetson: run them while the car drives, not during a stop, so that some stops give a

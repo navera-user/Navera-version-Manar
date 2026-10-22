@@ -8,9 +8,11 @@ autopilot uses), a TCP server or a UDP port, and publishes:
     /navera/sensors/gps_fix    sensor_msgs/NavSatFix       (unchanged, legacy sensor topic)
     /navera/sensors/gps_vel    geometry_msgs/TwistStamped  (ENU: linear.x east, linear.y north, m/s)
     /navera/estimate/gps       navera_msgs/PositionEstimate (NEW: the source contract)
-    /navera/sensors/gnss_time  sensor_msgs/TimeReference   (RMC status A: time_ref = GNSS UTC,
-                               header.stamp = system clock at reception; the trusted-time source
-                               of celestial when no RTC / NTP — navera_common.trusted_time)
+    /navera/sensors/gnss_time  sensor_msgs/TimeReference   (time_ref = GNSS UTC, header.stamp =
+                               system clock at reception; only when the receiver vouches for it:
+                               RMC status A, ZDA within ZDA_FIX_MAX_AGE_S of a valid fix (ZDA has
+                               no status of its own), UBX NAV-PVT validDate+validTime+fullyResolved
+                               with a fix; the GPS time anchor of celestial — navera_common.trusted_time)
 
 The PositionEstimate output is the typed contract consumed by navera_estimator.
 It is strictly additive: gps_fix / gps_vel are untouched. GPS always reports
@@ -56,7 +58,6 @@ from rclpy.node import Node
 from sensor_msgs.msg import NavSatFix, NavSatStatus, TimeReference
 from geometry_msgs.msg import TwistStamped
 from navera_msgs.msg import PositionEstimate
-import datetime
 import json
 import math
 import sys
@@ -67,7 +68,7 @@ import traceback
 import pynmea2
 import serial
 from navera_common.gnss import (NAV, NAV_DOP, NAV_PVT, Stream, StreamDecoder, parse_nav_dop, parse_nav_pvt,
-                                pvt_fix, ubx_enable_pvt_frames)
+                                pvt_fix, rmc_utc_epoch, ubx_enable_pvt_frames, zda_utc_epoch)
 
 from gps_pkg import fix_publish
 
@@ -89,14 +90,7 @@ def _field_float(value):
         return None
 
 
-def rmc_utc_epoch(msg):
-    """UTC epoch seconds of a valid RMC sentence (status A, date and time present), else None."""
-    if getattr(msg, "status", None) != "A":
-        return None
-    d, t = getattr(msg, "datestamp", None), getattr(msg, "timestamp", None)
-    if not isinstance(d, datetime.date) or not isinstance(t, datetime.time):
-        return None
-    return datetime.datetime.combine(d, t.replace(tzinfo=None), tzinfo=datetime.timezone.utc).timestamp()
+ZDA_FIX_MAX_AGE_S = 2.0          # a ZDA counts only this soon after a valid GGA / RMC
 
 
 class GPSNode(Node):
@@ -120,6 +114,7 @@ class GPSNode(Node):
         self.fix_count = 0
         self.failed = False
         self._ubx_t = -1e9                      # last NAV-PVT (monotonic)
+        self._fix_ok_t = -1e9                   # last valid NMEA fix, GGA or RMC A (monotonic)
         self._dop = None
 
         # Raises on failure: main() turns that into exit code 1 → restart.
@@ -190,7 +185,14 @@ class GPSNode(Node):
             self._publish_fix(msg)
         elif isinstance(msg, pynmea2.types.talker.RMC):
             self._publish_vel(msg)
-            self._publish_time(msg)
+            epoch = rmc_utc_epoch(msg)
+            if epoch is not None:
+                self._fix_ok_t = time.monotonic()
+                self._publish_time(epoch)
+        elif isinstance(msg, pynmea2.types.talker.ZDA):
+            epoch = zda_utc_epoch(msg)
+            if epoch is not None and time.monotonic() - self._fix_ok_t <= ZDA_FIX_MAX_AGE_S:
+                self._publish_time(epoch)
 
     def _handle_ubx(self, cls, mid, payload):
         """UBX NAV-PVT (+ NAV-DOP of the same epoch) -> the GPS topics."""
@@ -270,6 +272,7 @@ class GPSNode(Node):
             est_cov = None
         self.pub_fix.publish(fix)
         self.fix_count += 1
+        self._fix_ok_t = time.monotonic()
         try:
             num_sats = int(msg.num_sats) if msg.num_sats else 0
         except (TypeError, ValueError):
@@ -319,11 +322,8 @@ class GPSNode(Node):
         est.details_json = json.dumps(extras)
         self.pub_est.publish(est)
 
-    def _publish_time(self, msg):
-        """RMC (status A) → the receiver's UTC, with the system time it arrived at."""
-        epoch = rmc_utc_epoch(msg)
-        if epoch is None:
-            return
+    def _publish_time(self, epoch):
+        """The receiver's UTC (RMC status A / ZDA next to a fix), with the system time it arrived at."""
         ref = TimeReference()
         ref.header.stamp = self.get_clock().now().to_msg()
         ref.header.frame_id = "gps"

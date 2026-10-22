@@ -38,12 +38,16 @@ Parameters:
     fix_topic      (str,  default "/cn/position_estimate")
     status_topic   (str,  default "/cn/cn_status")
 
-Time (hazard H-08): a star fix is ~28 km off per minute of clock error, so a frame is solved
+Time (hazard H-08): a star fix is ~0.46 km off per second of clock error, so a frame is solved
 only on a trusted time (navera_common.trusted_time.TrustedClock): the utc_time parameter, a
 frame_meta utc_time that is not the camera's system clock, else the exposure's system time
-vouched for by the DS3231 (rtc_time + rtc_status valid, not lost_power), a recent GNSS time
-(gnss_time_topic) or NTP (timedatectl), with no wall-clock step since. Otherwise the frame
-is declared invalid with the reason ("no trusted time: ...") and nothing is solved.
+corrected by, in this order: the GPS anchor (a GNSS UTC taken while the estimator elects the
+GPS — nav_status GPS contributing — held on the monotonic clock for the rest of the flight),
+the autopilot's SYSTEM_TIME (autopilot_time_topic, vehicle_link), the DS3231 (rtc_time +
+rtc_status valid, not lost_power) or NTP (timedatectl). The GPS anchor and SYSTEM_TIME must
+agree within 1 s. Otherwise the frame is declared invalid with the reason ("no trusted
+time: ...") and nothing is solved. The choice and its uncertainty are published at 1 Hz on
+time_status_topic (JSON) and each frame's status carries utc_source and utc_sigma_s.
 
 Concurrency: skip-if-busy. If a new pair arrives while the solver is still
 running, the new pair is DROPPED (logged) — never queued, never parallel.
@@ -72,7 +76,7 @@ from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 
 from sensor_msgs.msg import Image, Imu, NavSatFix, NavSatStatus, TimeReference
-from navera_msgs.msg import PositionEstimate
+from navera_msgs.msg import NavStatus, PositionEstimate, SourceHealth
 import math
 from std_msgs.msg import Int32, String
 from cv_bridge import CvBridge
@@ -127,9 +131,14 @@ class CNSubscriber(Node):
         # RTC (survives an offline boot), else the system clock.
         self.declare_parameter("rtc_topic", "/navera/sensors/rtc_time")
         self.declare_parameter("rtc_status_topic", "/navera/sensors/rtc_status")
-        # a GNSS receiver's UTC (gps_node publishes it from RMC) vouches for the system clock this long
+        # a GNSS receiver's UTC (gps_node: UBX NAV-PVT / RMC / ZDA): anchors the time while the GPS is trusted
         self.declare_parameter("gnss_time_topic", "/navera/sensors/gnss_time")
-        declare_float(self, "gnss_time_max_age_s", 300.0)
+        self.declare_parameter("nav_status_topic", "/navera/nav_status")
+        declare_float(self, "gps_trust_max_age_s", 2.0)          # nav_status saying "GPS contributing" this recent
+        self.declare_parameter("autopilot_time_topic", "/navera/vehicle/system_time")
+        self.declare_parameter("time_status_topic", "/navera/time_status")
+        declare_float(self, "time_drift_ppm", 20.0)              # Jetson crystal: a few ppm, 20 stated until measured
+        declare_float(self, "gnss_time_sigma_s", 0.5)            # time message latency, no PPS
         declare_float(self, "prior_lon", float("nan"))
         # Camera attitude from the IMU (used when frame_meta has no tilt/azimuth):
         # how the star camera is mounted on the vehicle. 90 / 0 = pointing up.
@@ -218,17 +227,26 @@ class CNSubscriber(Node):
         self.create_subscription(PositionEstimate, self.get_parameter("gps_topic").value,
                                  self._on_gps, 10)
         # the time a star frame is solved with: only one something vouches for (H-08)
-        self.clock = TrustedClock(gnss_max_age_s=float(self.get_parameter("gnss_time_max_age_s").value),
+        self.clock = TrustedClock(drift_ppm=float(self.get_parameter("time_drift_ppm").value),
+                                  gnss_sigma_s=float(self.get_parameter("gnss_time_sigma_s").value),
                                   on_step=lambda s: self.get_logger().error(
-                                      f"[cn] system clock stepped {s:+.1f} s: earlier RTC / GNSS time dropped, "
-                                      "no star solve until the time is trusted again"))
+                                      f"[cn] system clock stepped {s:+.1f} s: no star solve for 60 s "
+                                      "(frames stamped before it are on the old clock)"),
+                                  on_event=self._on_time_event)
+        self._utc_sigma = None              # 1-sigma (s) of the last trusted time given
+        self._gps_elected_t = None          # monotonic time of the last nav_status with GPS contributing
+        self.create_subscription(NavStatus, self.get_parameter("nav_status_topic").value,
+                                 self._on_nav_status, 10)
+        self.create_subscription(TimeReference, self.get_parameter("autopilot_time_topic").value,
+                                 self._on_autopilot_time, 10)
+        self.pub_time_status = self.create_publisher(String, self.get_parameter("time_status_topic").value, 10)
         self.create_subscription(TimeReference, self.get_parameter("rtc_topic").value,
                                  self._on_rtc, 10)
         self.create_subscription(String, self.get_parameter("rtc_status_topic").value,
                                  self._on_rtc_status, 10)
         self.create_subscription(TimeReference, self.get_parameter("gnss_time_topic").value,
                                  self._on_gnss_time, 10)
-        self.create_timer(1.0, self.clock.check_step)
+        self.create_timer(1.0, self._time_tick)
 
         # ── State ───────────────────────────────────────────────
         self.bridge = CvBridge()
@@ -346,9 +364,35 @@ class CNSubscriber(Node):
             self.clock.add_rtc_status(d.get("valid") is True, d.get("lost_power") is not False)
 
     def _on_gnss_time(self, msg: TimeReference):
-        """A GNSS receiver's UTC with the system time it arrived at."""
+        """A GNSS receiver's UTC with the system time it arrived at: anchors only while the estimator
+        elects the GPS (not refused, not suspected of spoofing).
+        """
+        lim = float(self.get_parameter("gps_trust_max_age_s").value)
+        trusted = self._gps_elected_t is not None and time.monotonic() - self._gps_elected_t <= lim
         self.clock.add_gnss(msg.time_ref.sec + msg.time_ref.nanosec * 1e-9,
-                            msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9)
+                            msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9, trusted=trusted,
+                            why_untrusted="GPS not elected by the estimator (refused, invalid or no nav_status)")
+
+    def _on_nav_status(self, msg: NavStatus):
+        """The estimator's verdict: the GPS is trusted while it contributes the published position."""
+        if any(h.source == SourceHealth.SOURCE_GPS and h.alive and h.contributing for h in msg.sources):
+            self._gps_elected_t = time.monotonic()
+
+    def _on_autopilot_time(self, msg: TimeReference):
+        """The autopilot's SYSTEM_TIME (vehicle_link), with the system time it arrived at."""
+        self.clock.add_autopilot(msg.time_ref.sec + msg.time_ref.nanosec * 1e-9,
+                                 msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9)
+
+    def _on_time_event(self, kind: str, text: str):
+        if kind in ("gnss_jump", "disagree"):
+            self.get_logger().error(f"[cn] time: {text}")
+        else:
+            self.get_logger().info(f"[cn] time: {text}")
+
+    def _time_tick(self):
+        """1 Hz: wall-clock step check and the time status (source, uncertainty, anchor)."""
+        self.clock.check_step()
+        self.pub_time_status.publish(String(data=json.dumps(self.clock.status())))
 
     def _on_imu(self, msg: Imu):
         q = msg.orientation
@@ -434,13 +478,16 @@ class CNSubscriber(Node):
         return float("nan"), float("nan"), "none"
 
     def _utc_now(self, system_epoch=None):
-        """(UTC "YYYY-MM-DD HH:MM:SS" of a system-clock instant (default now), source "rtc" /
-        "gnss" / "ntp"), or (None, why no time is trusted) — never the bare system clock.
+        """(UTC "YYYY-MM-DD HH:MM:SS.sss" of a system-clock instant (default now), source "gnss" /
+        "autopilot" / "rtc" / "ntp"), or (None, why no time is trusted) — never the bare system clock.
+        Milliseconds kept: a whole-second truncation alone is up to 0.46 km.
         """
-        t, src = self.clock.utc(system_epoch)
-        if t is None:
+        off, src, sigma = self.clock.offset_sigma()
+        self._utc_sigma = sigma
+        if off is None:
             return None, src
-        return datetime.fromtimestamp(t, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S"), src
+        t = (time.time() if system_epoch is None else float(system_epoch)) + off
+        return datetime.fromtimestamp(t, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3], src
 
     def on_meta(self, msg: String):
         try:
@@ -492,12 +539,15 @@ class CNSubscriber(Node):
         simulator), else the utc_time parameter, else the exposure on the trusted clock; (None,
         reason) when no time is trusted.
         """
+        meta["utc_sigma_s"] = None
         if meta.get("utc_time") and meta.get("utc_source") != "system_clock":
             return meta["utc_time"], "frame"
         if self.utc_time:
             return self.utc_time, "parameter"
         exp = meta.get("image_stamp_ns")
-        return self._utc_now(int(exp) / 1e9 if exp is not None else None)
+        got = self._utc_now(int(exp) / 1e9 if exp is not None else None)
+        meta["utc_sigma_s"] = None if self._utc_sigma is None else round(self._utc_sigma, 3)
+        return got
 
     def _solve_allsky(self, img, meta):
         """360 mode: the whole sky above the camera, 'up' from the camera or the vehicle (AllSkyLocator)."""
@@ -645,6 +695,7 @@ class CNSubscriber(Node):
             "fix_method": meta.get("fix_method"), "up_cam": meta.get("up_cam"),
             "prior": meta.get("prior"), "prior_source": meta.get("prior_source"),
             "utc": meta.get("utc_used"), "utc_source": meta.get("utc_source"),
+            "utc_sigma_s": meta.get("utc_sigma_s"),
             "sigma_m": self._sigma_m(),
             "min_log_odds": self.min_log_odds,
         }

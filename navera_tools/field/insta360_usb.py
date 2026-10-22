@@ -40,7 +40,7 @@ if _COMMON not in sys.path:
 from navera_common.insta360_protocol import (  # noqa: E402,F401
     CMD_START_LIVE, CMD_STOP_LIVE, EP_IN, EP_IN2, EP_OUT, FRAME_STAMP_LAG_MS, IMU_CALIBRATION, IMU_HZ, IMU_RECORD,
     KIND_FRAME, KIND_IMU, KIND_VIDEO, PKT_KEEPALIVE, PKT_SYNC, RAW_MAGIC, RAW_RECORD, START_FULL, VENDOR,
-    frame_packet, imu_records, load_imu_calibration, message_payload, read_raw, split_packets)
+    ImuWatchdog, frame_packet, imu_records, load_imu_calibration, message_payload, read_raw, split_packets)
 # stillness: means over 0.2 s blocks. 0.1 s blocks left 4-cylinder idle vibration (0.05 g at 27 Hz) in the means and
 # called a parked car moving in 80% of its frames (simulated, navera_tools/sim/car360_drive.py); 0.5 s blocks average
 # out the 1-2 Hz body bounce too and called gently accelerating cars stopped
@@ -49,6 +49,9 @@ STILL_WINDOW_S = 2.0         # stopped(): the vehicle at rest over this long ...
 STILL_ACC_STD_G = 0.003      # ... with the STILL_BLOCK_S accelerometer means steady within this
 STILL_RATE_DPS = 0.5         # ... and turning slower than this
 IMU_COVERAGE = 0.9           # fraction of the stillness window the IMU rows must cover
+# IMU rows kept: the long-window standstill test (cn_pkg.standstill: 10 s + 5 s back from an exposure that is itself
+# ~1.7 s old, + 0.5 s after it) needs ~17 s; 20 s at 500 Hz is 10 000 rows (~1 MB)
+IMU_HISTORY_S = 20.0
 
 
 def _has_keyframe(p: bytes, start: int) -> bool:
@@ -216,7 +219,7 @@ class Insta360Usb:
         self._seq = 1
         self._lock = threading.Lock()
         self._frame, self._frame_t = None, 0.0
-        self._imu = collections.deque(maxlen=3500)          # 7 s at 500 Hz: the newest frame's exposure is ~1.7 s back
+        self._imu = collections.deque(maxlen=int(IMU_HISTORY_S * IMU_HZ))   # rows (Jetson t, camera ms, a xyz, w xyz)
         # attitude: gyro integrated (bias-corrected), tilt pulled towards gravity; R maps IMU → reference
         # frame (the camera's frame at start). History by camera ms, the clock frames are stamped with.
         self._R = np.eye(3)
@@ -227,6 +230,8 @@ class Insta360Usb:
         # the IMU feed sometimes stops after its first packet while the video goes on (seen 2026-10-19 on the
         # first starts after power-on): the keepalive restarts the stream when the IMU goes quiet
         self._started, self._imu_t, self.imu_restarts = time.time(), 0.0, 0
+        self.usb_resets, self.last_reset_t = 0, 0.0
+        self._watchdog = ImuWatchdog(self._started)
         self._stop = False
         self.recorder = None                                # RawRecorder: every packet to disk (record())
         self.stack_ring = None                              # stack.StackRing: recent key frames while stacking is on
@@ -242,20 +247,55 @@ class Insta360Usb:
         self._send(message_payload(code, seq, body))
 
     def _keepalive(self):
-        last_restart = 0.0
         while not self._stop:
             time.sleep(1.0)
             try:
-                self._send(PKT_KEEPALIVE)
-                now = time.time()
-                if now - self._started > 4.0 and self.imu_age() > 1.5 and now - last_restart > 3.0:
-                    self._message(CMD_START_LIVE, START_FULL)   # asking again brings the IMU back
-                    last_restart, self.imu_restarts = now, self.imu_restarts + 1
-                    self.error = f"camera IMU silent: stream restarted ({self.imu_restarts})"
-                elif self.imu_age() < 1.0 and (self.error or "").startswith("camera IMU silent"):
-                    self.error = None
+                self._keepalive_once(time.time())
             except Exception as e:                       # the reader reports the lost camera
                 self.error = f"keepalive: {e}"
+
+    def _keepalive_once(self, now: float):
+        """The keepalive, and the IMU watchdog (F14): StartLiveStream again when the IMU is silent (it usually
+        comes back), a USB reset after 3 restarts in vain (ImuWatchdog)."""
+        self._send(PKT_KEEPALIVE)
+        action = self._watchdog.step(now, self.imu_age())
+        if action == "restart":
+            self._message(CMD_START_LIVE, START_FULL)
+            self.imu_restarts += 1
+            self.error = f"camera IMU silent: stream restarted ({self.imu_restarts})"
+        elif action == "reset":
+            self.reset_usb(now)
+        elif self.imu_age() < 1.0 and (self.error or "").startswith("camera IMU silent"):
+            self.error = None
+
+    def reset_usb(self, now: float):
+        """Reset the camera's USB device, open it again and restart the live stream (the reader thread goes on
+        with the new handle; a packet cut by the reset is dropped by split_packets)."""
+        self.usb_resets, self.last_reset_t = self.usb_resets + 1, now
+        old = self.dev
+        try:
+            old.reset()
+        except Exception:
+            pass                                          # it may have re-enumerated: found again below
+        for f in (lambda: self._util.release_interface(old, 0), lambda: self._util.dispose_resources(old)):
+            try:
+                f()
+            except Exception:
+                pass
+        dev = None
+        for _ in range(30):                               # re-enumeration takes up to ~2 s
+            dev = self._usb.find(idVendor=VENDOR)
+            if dev is not None:
+                break
+            time.sleep(0.1)
+        if dev is None:
+            self.error = "camera lost: not found after a USB reset"
+            return
+        self._util.claim_interface(dev, 0)
+        self.dev = dev
+        self._send(PKT_SYNC)
+        self._message(CMD_START_LIVE, START_FULL)
+        self.error = f"camera IMU silent: USB device reset ({self.usb_resets})"
 
     def imu_age(self) -> float:
         """Seconds since the last IMU packet (inf before the first)."""
@@ -428,8 +468,10 @@ class Insta360Usb:
         with self._lock:
             return self._frame, self._frame_t
 
-    def _rows(self, window_s, at_ms, after_s=0.0):
-        """IMU rows over window_s ending at camera ms at_ms (+ after_s), or ending now when at_ms is None."""
+    def imu_rows(self, window_s, at_ms=None, after_s=0.0):
+        """IMU rows (Jetson arrival t, camera ms, accelerometer x y z g, gyroscope x y z rad/s; raw, uncalibrated)
+        over window_s ending at camera ms at_ms (+ after_s), or ending now when at_ms is None. The driver keeps
+        IMU_HISTORY_S of them."""
         with self._lock:
             if at_ms is None:
                 return [r for r in self._imu if r[0] >= time.time() - window_s]
@@ -444,7 +486,7 @@ class Insta360Usb:
         followed). The window must be covered (IMU_COVERAGE): after a silence of the IMU feed the stillness of the
         missing part is unknown, so it is not called stopped."""
         window_s = STILL_WINDOW_S if window_s is None else window_s
-        rows = self._rows(window_s, at_ms, 0.5)
+        rows = self.imu_rows(window_s, at_ms, 0.5)
         span = window_s + (0.5 if at_ms is not None else 0.0)
         if len(rows) < IMU_COVERAGE * IMU_HZ * span:
             return {"stopped": False, "why": "no sensor data" if len(rows) < 50 else
@@ -463,7 +505,7 @@ class Insta360Usb:
         """(unit 'up' vector in the IMU frame (the accelerometer at rest reads +1 g upwards), accel norm g, max rotation rad/s) over the last window,
         or (None, ...) when the camera turned faster than max_rate_dps (the accelerometer then sees more than gravity).
         at_ms: the window centred on a frame's exposure (camera ms, latest_stamped()) instead of the last one."""
-        rows = self._rows(window_s / 2, at_ms, window_s / 2) if at_ms is not None else self._rows(window_s, None)
+        rows = self.imu_rows(window_s / 2, at_ms, window_s / 2) if at_ms is not None else self.imu_rows(window_s, None)
         if len(rows) < 50:
             return None, None, None
         a = (np.array([r[2:5] for r in rows]) - self.acc_bias) / self.acc_scale
