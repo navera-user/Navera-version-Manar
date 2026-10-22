@@ -110,6 +110,16 @@ fi
 say "code: $SRC -> $R$WS"
 run install -d "${OWN[@]}" "$R$WS"
 run rsync -a --delete "${CODE_EXCLUDES[@]}" "$SRC/" "$R$WS/"
+# rsync --delete never removes excluded paths: junk shipped by an install older than B18 (git
+# data, worktrees, caches, recordings) is removed here; build/, install/, log/ (built on the
+# box) are kept
+if [ -d "$R$WS" ]; then
+  run rm -rf "$R$WS/.git" "$R$WS/.claude"
+  while IFS= read -r -d '' junk; do
+    run rm -rf "$junk"
+  done < <(find "$R$WS" -mindepth 1 \( -path "$R$WS/build" -o -path "$R$WS/install" -o -path "$R$WS/log" \) -prune \
+             -o \( -name .pytest_cache -o -name 'rosbag2_*' -o -name '*.db3' -o -name '*.mcap' \) -print0 -prune)
+fi
 if [ -n "$R" ]; then skip "chown -R navera:navera $WS"; else run chown -R navera:navera "$WS"; fi
 
 if [ "$PIP" = 1 ]; then
