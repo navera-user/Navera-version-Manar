@@ -316,6 +316,14 @@ def verify_match(query_bgr, query_mask, sat_bgr, corners_rw, resize_width=256, s
 # >= 0.97 removed all 7 wrong retried accepts and kept 314 of 328 right ones (95.7 %). A higher
 # map correlation, a tighter re-check (20 m: 91 %) or a per-try increase cost more right fixes
 # for no extra wrong one removed: they stay available (0 = as a first try).
+# First-try gate (2026-10-22, F12 / D20): the first hypothesis needs the same STHN quad consistency
+# as a retry (>= 0.97). On the 2026-10-21/22 probes (real thermal Bordeaux night / Clermont day, 5
+# cameras, 500-1000 m, heading 15 deg off; synthetic incl. heading / height errors), first-try
+# fixes below 0.97 were 6 of the 9 wrong first-try accepts (53-92 m) and 15 right ones, all poor
+# (12-40 m, median 27 m); a refused weak first try then goes through the retries (as a failed map
+# check), which turned both wrong Bordeaux 15-deg fixes (60, 65 m) into right ones (14, 26 m) and
+# the synthetic 10-deg one (53 m, the last wrong accept of the stress test) into 18 m.
+FIRST_MIN_CONF = 0.97
 RETRY_GATE_DEFAULTS = dict(min_ncc=0.05, ncc_per_try=0.0, recheck_max_m=25.0, min_conf=0.97, both_centres=False)
 
 
@@ -531,6 +539,7 @@ class NightLocalizer:
         recheck_offset_m: float = RECHECK_OFFSET_M,
         recheck_max_m: float = RECHECK_MAX_M,
         retry_gate: dict = None,
+        first_min_conf: float = FIRST_MIN_CONF,
         mixed_precision: bool = False,
         map_offset_deg: tuple = (0.0, 0.0),
         contrast_stretch: bool = True,
@@ -552,6 +561,8 @@ class NightLocalizer:
         self.recheck_max_m = recheck_max_m
         # stronger evidence asked of a retried hypothesis (retry_evidence_ok); None = off
         self.retry_gate = dict(RETRY_GATE_DEFAULTS) if retry_gate is None else retry_gate or None
+        # first-try gate (FIRST_MIN_CONF); None = off
+        self.first_min_conf = first_min_conf
         # shifted-map control distances (satellite px) of the map check (verify_match)
         self.map_check_shifts_px = ()
         self.map_offset_deg = (float(map_offset_deg[0]), float(map_offset_deg[1]))
@@ -890,12 +901,21 @@ class NightLocalizer:
         ~5-10 deg: the frame must be north-up). height_retry (relative, e.g. (0.1, -0.1)):
         then the frame is tried at the height scaled by each (STHN does not absorb a ~10 %
         scale error either: a barometric or terrain height, or the stated field of view).
-        Costs one more inference per retry, only on frames that failed the map check.
+        Costs one more inference per retry, only on frames that failed the map check or whose
+        first match is weak (consistency < first_min_conf: refused, then retried).
         """
         def attempt(heading, alt):
             return self._attempt(query_bgr, prior_lat, prior_lon, alt, hfov_deg, heading, require_scale)
 
         r = attempt(heading_deg, altitude_m)
+        if (r.get("success") and self.first_min_conf is not None
+                and float(r.get("conf") or 0.0) < self.first_min_conf):
+            weak = (f"weak match: consistency {float(r.get('conf') or 0.0):.3f} "
+                    f"(min {self.first_min_conf:.2f})")
+            logger.warning(f"STHN prediction rejected: {weak}")
+            r.update(success=False, lat=prior_lat, lon=prior_lon, reason=weak, map_check_failed=True,
+                     weak_lat=r.get("lat"), weak_lon=r.get("lon"))
+            r.pop("sigma_m", None)
         tries = retry_plan(r, heading_deg, altitude_m, heading_retry_deg, height_retry)
         if not tries:
             return r

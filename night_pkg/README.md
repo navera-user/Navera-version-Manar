@@ -90,6 +90,7 @@ The weights must match the network exactly: loading refuses any missing weight.
 | `heading_retry_deg` | `"-10,10,-20,20"` | `""` = off |
 | `height_retry` | `"0.1,-0.1,0.2"` | `""` = off |
 | `retry_min_conf` | `0.97` | retry gate; ≤ −1 turns it off |
+| `first_min_conf` | `0.97` | first-try gate (F12 / D20, 2026-10-22): a weaker first match is refused and retried; ≤ −1 turns it off |
 | `retry_min_ncc`, `retry_ncc_per_try`, `retry_recheck_max_m` | `0.05`, `0.0`, `25.0` | retry gate |
 
 Retry checks: `heading_retry_deg` (default `"-10,10,-20,20"`, `""` turns it
@@ -104,7 +105,7 @@ retry accepts); this led to the retry gate below.
 
 Retry gate (2026-10-21): a hypothesis found only after a heading / height retry is the best of
 up to 8 tries, so it must carry more evidence than a first try: STHN quad consistency
-≥ `retry_min_conf` (0.97; a first try needs 0.30), map check ≥ `retry_min_ncc` +
+≥ `retry_min_conf` (0.97; a first try needed 0.30 — since 2026-10-22 `first_min_conf` 0.97 too), map check ≥ `retry_min_ncc` +
 `retry_ncc_per_try` × hypotheses tried, re-check ≤ `retry_recheck_max_m`. A refused retry does not
 stop the search (the next hypothesis is tried) and is listed in `retries_refused` / the reason.
 Measured on every hypothesis of 1940 frames (real thermal, 4 cameras, night and day, 500–1000 m,

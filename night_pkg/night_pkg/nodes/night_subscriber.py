@@ -53,8 +53,8 @@ from cv_bridge import CvBridge
 
 # Import the existing STHN wrapper (UNMODIFIED user code).
 # NightLocalizer.localize(query_bgr, prior_lat, prior_lon) -> dict
-from night_pkg.nodes.night_localizer import (MIN_MATCH_NCC, RECHECK_MAX_M, RECHECK_OFFSET_M,
-                                             RETRY_GATE_DEFAULTS, NightLocalizer)
+from night_pkg.nodes.night_localizer import (FIRST_MIN_CONF, MIN_MATCH_NCC, RECHECK_MAX_M,
+                                             RECHECK_OFFSET_M, RETRY_GATE_DEFAULTS, NightLocalizer)
 from night_pkg.nodes.heading_history import HeadingHistory
 from night_pkg.nodes.night_tracker import NightTracker
 from navera_msgs.msg import NavStatus, PositionEstimate
@@ -205,6 +205,10 @@ class NightSubscriber(Node):
         declare_float(self, "retry_min_ncc", RETRY_GATE_DEFAULTS["min_ncc"])
         declare_float(self, "retry_ncc_per_try", RETRY_GATE_DEFAULTS["ncc_per_try"])
         declare_float(self, "retry_recheck_max_m", RETRY_GATE_DEFAULTS["recheck_max_m"])
+        # the first hypothesis needs the same consistency (F12 / D20, 2026-10-22: 6 of the 9 wrong
+        # first-try accepts were below 0.97, the right ones there were 12-40 m); a weak first match
+        # is refused and goes to the retries. <= -1: off
+        declare_float(self, "first_min_conf", FIRST_MIN_CONF)
         self.declare_parameter("height_retry", "0.1,-0.1,0.2")
         self.height_retry = tuple(
             float(x) for x in str(self.get_parameter("height_retry").value).split(",") if x.strip())
@@ -279,6 +283,7 @@ class NightSubscriber(Node):
                 recheck_offset_m=_gate(self.get_parameter("recheck_offset_m").value),
                 recheck_max_m=_gate(self.get_parameter("recheck_max_m").value),
                 retry_gate=self._retry_gate(),
+                first_min_conf=_gate(self.get_parameter("first_min_conf").value),
                 mixed_precision=self.mixed_precision,
                 sthn_backend=str(self.get_parameter("sthn_backend").value),
                 map_offset_deg=(float(self.get_parameter("map_offset_lat_deg").value),
