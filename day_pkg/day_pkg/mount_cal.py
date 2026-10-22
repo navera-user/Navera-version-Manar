@@ -26,6 +26,12 @@ applied from the first frame, refined by whatever GPS checks the flight gives. W
 prior is zero with prior_deg, and that sigma stays in the stated accuracy for the whole flight.
 export() gives what to persist (only samples older than the spoof rollback window).
 
+A calibration belongs to the camera settings it was learned with: live_camera's mount_id (mount
+roll/pitch/yaw, the lens file's content, the crop) is stored with it, and a stored one whose
+mount_id differs from the frames' is dropped (stale_reason / reset): the camera was re-fitted or
+re-calibrated, its old boresight error is not this one's (F33 open item 4). A calibration stored
+without a mount_id (before this rule, or a hand-written mount_cal_file) is kept.
+
 Pure Python + numpy (no ROS): the day node and the bench use the same code.
 """
 import math
@@ -101,6 +107,14 @@ class MountCalibration:
                       "right_deg": round(math.degrees(math.atan(f["m_r"])), 3),
                       "sigma_deg": round(math.degrees(math.atan(f["sigma"])), 3), "samples": f["n"]}
         return out
+
+    def reset(self) -> None:
+        """Forget everything: the persisted priors and the samples (the camera mount changed)."""
+        for d in self._s.values():
+            d.clear()
+        self._prior.clear()
+        self.prior_source = None
+        self._cache.clear()
 
     # ── samples ──────────────────────────────────────────────────────────
     def add(self, kind: str, err_en: Tuple[float, float], heading_deg: Optional[float], height_m: Optional[float],
@@ -220,3 +234,11 @@ class MountCalibration:
                               map_shift_m=[round(v, 1) for v in f["b"]], delay_s=round(f["d"], 2),
                               noise_m=None if f["noise_m"] is None else round(f["noise_m"], 1))
         return out
+
+
+def stale_reason(stored_id: Optional[str], mount_id: Optional[str]) -> Optional[str]:
+    """Why a calibration learned with the camera settings stored_id does not hold for frames taken
+    with mount_id (live_camera's mount_id), None when it holds or either is unknown."""
+    if not stored_id or not mount_id or stored_id == mount_id:
+        return None
+    return f"learned with camera mount settings {stored_id}, the camera now has {mount_id}"
