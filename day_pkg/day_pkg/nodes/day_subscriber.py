@@ -1008,6 +1008,12 @@ class DaySubscriber(Node):
         """The delay live_camera already subtracted (capture_latency_s: bench-measured, from the
         calibration file or NAVERA_CAMERA_LATENCY_S) is the set delay: the frames' raw stamps are
         arrival minus it. Without this the day node took a measured delay for an unknown one."""
+        dm = meta.get("delay_monitor") or {}
+        # live_camera's delay monitor (navera_common.delay_monitor): the delay moved since the start
+        self._delay_change_s = abs(float(dm.get("change_s") or 0.0)) if dm.get("significant") else 0.0
+        if self._delay_change_s:
+            self.get_logger().warn(f"[day] camera delay changed by {dm.get('change_s')} s since the start: "
+                                   "stated accuracy widened by speed x that", throttle_duration_sec=30.0)
         cl = meta.get("capture_latency_s")
         try:
             cl = float(cl)
@@ -1619,7 +1625,9 @@ class DaySubscriber(Node):
             return 0.0
         sd = lc.delay_sigma() if getattr(self, "auto_latency", False) else \
             (lc.nominal_sigma if lc.nominal != 0.0 else None)
-        return float(getattr(self, "unknown_delay_sigma_s", 0.0)) if sd is None else float(sd)
+        sd = float(getattr(self, "unknown_delay_sigma_s", 0.0)) if sd is None else float(sd)
+        # a change of the delay noticed since the start (live_camera's monitor) is not corrected: stated
+        return math.hypot(sd, float(getattr(self, "_delay_change_s", 0.0)))
 
     def _model_sigma(self, result, meta) -> float:
         """The model sigma of a local match, before the in-flight calibration."""

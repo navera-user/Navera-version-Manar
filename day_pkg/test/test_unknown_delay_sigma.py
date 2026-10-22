@@ -42,7 +42,7 @@ def test_the_camera_set_delay_becomes_the_nominal():
     day node's delay is no longer unknown — speed x 0.1 s, not x 1 s, and no staged prior."""
     logs = []
     n = _node()
-    n.get_logger = lambda: SimpleNamespace(info=logs.append, warn=logs.append)
+    n.get_logger = lambda: SimpleNamespace(info=logs.append, warn=lambda *a, **k: logs.append(a))
     DaySubscriber._camera_set_delay(n, {"capture_latency_s": 1.3})
     assert n.latency_cal.nominal == 1.3 and n.latency_cal.prior is None and logs
     assert math.isclose(n._fix_sigma({"sigma_m": 7.8}, {}), math.hypot(7.8, 1.0))
@@ -63,3 +63,15 @@ def test_an_estimate_not_applied_with_auto_latency_off_is_still_unknown():
     n.latency_cal.applied_sigma = 0.4
     n.auto_latency = False
     assert math.isclose(n._fix_sigma({"sigma_m": 7.8}, {}), math.hypot(7.8, 10.0), rel_tol=1e-6)
+
+
+def test_a_delay_change_seen_by_the_camera_widens_the_stated_sigma():
+    """live_camera's monitor saw the delay grow 0.4 s since the start (no GPS): speed x hypot(0.1, 0.4)."""
+    n = _node()
+    n.get_logger = lambda: SimpleNamespace(info=lambda *a, **k: None, warn=lambda *a, **k: None)
+    DaySubscriber._camera_set_delay(n, {"capture_latency_s": 1.3,
+                                        "delay_monitor": {"change_s": 0.4, "significant": True}})
+    assert math.isclose(n._fix_sigma({"sigma_m": 7.8}, {}), math.hypot(7.8, 10 * math.hypot(0.1, 0.4)))
+    DaySubscriber._camera_set_delay(n, {"capture_latency_s": 1.3,
+                                        "delay_monitor": {"change_s": 0.02, "significant": False}})
+    assert math.isclose(n._fix_sigma({"sigma_m": 7.8}, {}), math.hypot(7.8, 1.0))
