@@ -4,6 +4,10 @@
     # live, from the camera itself (e.g. the Insta360 ONE R in webcam mode):
     python3 navera_tools/calibrate_camera.py --device /dev/v4l/by-id/usb-<camera>-video-index0 --size 1920x1080 \\
         --board 9x6 --square-mm 25 --out /var/lib/navera/camera.yaml
+    # live, from a network camera (RTSP / HTTP URL, read by OpenCV's FFmpeg backend), or a
+    # GStreamer pipeline ending in "appsink" (needs OpenCV built with GStreamer):
+    python3 navera_tools/calibrate_camera.py --url "rtsp://<user>:<password>@<camera-ip>:554/Streaming/Channels/201" \
+        --board 9x6 --square-mm 25 --out /var/lib/navera/thermal.yaml
     # or from photos already taken with the camera at that resolution:
     python3 navera_tools/calibrate_camera.py --images ./calib_photos --board 9x6 --square-mm 25 --out camera.yaml
 
@@ -22,6 +26,7 @@ import argparse
 import glob
 import math
 import os
+import re
 import sys
 import time
 
@@ -84,12 +89,38 @@ def far_from(corners, kept, min_px):
     return all(np.linalg.norm(c - k.reshape(-1, 2).mean(axis=0)) > min_px for k in kept)
 
 
+def redact(url: str) -> str:
+    """A camera URL without its password (rtsp://user:secret@host → rtsp://user:***@host)."""
+    return re.sub(r"(://[^:/@\s]+):[^@/\s]*@", r"\1:***@", url)
+
+
+def open_source(device, url, w, h):
+    """(cv2.VideoCapture, printable name) for a V4L2 device or a network URL / GStreamer pipeline."""
+    if device:
+        cap = cv2.VideoCapture(device, cv2.CAP_V4L2)
+        cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, w)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, h)
+        return cap, device
+    if "appsink" in url:                                   # a GStreamer pipeline
+        return cv2.VideoCapture(url, cv2.CAP_GSTREAMER), redact(url)
+    if url.lower().startswith("rtsp"):
+        # TCP: no lost UDP packets (smeared frames find no board); one-frame buffer
+        os.environ.setdefault("OPENCV_FFMPEG_CAPTURE_OPTIONS", "rtsp_transport;tcp")
+    cap = cv2.VideoCapture(url, cv2.CAP_FFMPEG)
+    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+    return cap, redact(url)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     src = ap.add_mutually_exclusive_group(required=True)
     src.add_argument("--device", help="camera device, e.g. /dev/video0")
+    src.add_argument("--url", help="network camera: rtsp:// or http(s):// URL, or a GStreamer pipeline "
+                                   "ending in 'appsink' (live mode)")
     src.add_argument("--images", help="folder of photos taken with the camera")
-    ap.add_argument("--size", default="1920x1080", help="WIDTHxHEIGHT (live mode)")
+    ap.add_argument("--size", default=None, help="WIDTHxHEIGHT (live mode; --device default 1920x1080, "
+                                                  "--url: checked only when given — a stream has its own size)")
     ap.add_argument("--crop", default="", help="the part of the picture NAVERA uses: top, bottom, left, "
                                                 "right or x,y,w,h (as NAVERA_CAMERA_CROP; a 360 camera's "
                                                 "downward lens)")
@@ -132,21 +163,25 @@ def main():
             if c is not None:
                 views.append(c)
     else:
-        w, h = (int(v) for v in a.size.lower().split("x"))
-        cap = cv2.VideoCapture(a.device, cv2.CAP_V4L2)
-        cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH, w)
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, h)
+        want = a.size or ("1920x1080" if a.device else None)
+        w, h = (int(v) for v in want.lower().split("x")) if want else (None, None)
+        cap, name = open_source(a.device, a.url, w, h)
         if not cap.isOpened():
-            sys.exit(f"cannot open {a.device}")
+            sys.exit(f"cannot open {name}")
         size = None
         print(f"show the board to the camera — {a.views} views to collect (Ctrl-C to stop early)")
+        last_frame = time.monotonic()
         try:
             while len(views) < a.views:
                 ok, img = cap.read()
                 if not ok:
+                    if time.monotonic() - last_frame > 10.0:     # stream ended or camera gone
+                        print(f"no frame from {name} for 10 s: stopping with {len(views)} views")
+                        break
+                    time.sleep(0.01)
                     continue
-                if (img.shape[1], img.shape[0]) != (w, h):
+                last_frame = time.monotonic()
+                if w is not None and (img.shape[1], img.shape[0]) != (w, h):
                     sys.exit(f"the camera gives {img.shape[1]}x{img.shape[0]}, not {w}x{h}: check --size")
                 img = cut(img)
                 size = (img.shape[1], img.shape[0])
