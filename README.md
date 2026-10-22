@@ -80,7 +80,7 @@ pip3 install --user --no-deps --index-url https://pypi.jetson-ai-lab.io/jp6/cu12
 pip3 install --user -c ~/navera-constraints.txt \
   "numpy<2" "scipy>=1.11,<1.14" timm kornia safetensors einops huggingface_hub \
   scikit-learn pandas "astropy<7" opencv-python==4.11.0.86 \
-  pyserial pynmea2 pymavlink pygeomag==1.1.0 \
+  pyserial pynmea2 pymavlink pygeomag==1.1.0 dronecan==1.0.27 \
   Jetson.GPIO adafruit-blinka adafruit-circuitpython-bno08x adafruit-circuitpython-ds3231
 ```
 

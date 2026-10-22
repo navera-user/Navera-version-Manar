@@ -119,7 +119,10 @@ searches around (whole-map search is disabled because it is not reliable).
 
 | Cause | Check | Fix |
 |---|---|---|
-| No GPS found at boot — `no GPS found or configured (NAVERA_GPS_SOURCE=none): GPS idle` | `check_box.py` first lines ("GPS: none — NO GPS found …"); `cat /var/lib/navera/discovery.json` | connect / power the receiver, then `sudo systemctl restart navera-discover navera-gps`; or write `NAVERA_GPS_SOURCE` and its port. A port that sends NMEA without satellite data (GSV/GSA) is not taken as a receiver ("an autopilot's NMEA output?") |
+| No GPS found at boot — `no GPS found or configured (NAVERA_GPS_SOURCE=none): GPS idle` | `check_box.py` first lines ("GPS: none — NO GPS found …"); `cat /var/lib/navera/discovery.json` | connect / power the receiver: navera-hotplug fills the idle GPS within seconds (a new port), or within `NAVERA_HOTPLUG_RESCAN_S` (60 s: a port or CAN bus already there) — vehicle **disarmed** when NAVERA has an autopilot link (`journalctl -u navera-hotplug`: "not switched to: the vehicle is armed"); or `sudo systemctl restart navera-discover navera-gps`; or write `NAVERA_GPS_SOURCE` and its port. A port that sends NMEA without satellite data (GSV/GSA) is not taken as a receiver ("an autopilot's NMEA output?") |
+| DroneCAN GPS not found — "can0 is down", "a DroneCAN device asks for a node id and nothing gives one", "pydronecan is not installed" | `ip -details link show can0`; `check_box.py` | bring the bus up (deploy/README.md, CAN bus; needs root); a GPS alone on NAVERA's CAN: `NAVERA_GPS_CAN_ALLOCATE=1`; `pip3 install --user dronecan` |
+| u-blox "UBX without NAV-PVT" (u-blox 6, or NAV-PVT off) | discovery report | use its NMEA output, or `NAVERA_GPS_CONFIGURE=1` on a receiver NAVERA owns (u-blox 7+) |
+| `vehicle_gps1`: `autopilot's first GPS NOT read: GPS1 is fed over MAVLink (type 14)` | `check_box.py`; `GPS_TYPE` on the autopilot | NAVERA feeds GPS 1: use wiring B (`vehicle`, the real GPS as GPS 2) — NAVERA never reads its own output |
 | No GPS at all in the area | — | `/mission` → "Start without GPS" gives day vision a search area (deploy/README.md §8) |
 | `serial`: receiver has no fix yet — `No fix (qual=0)` | `journalctl -u navera-gps -n 20` | clear sky view, wait for the fix |
 | `serial`: wrong port / baud, port missing — `Serial error: … — exiting so the service restarts`, or the unit restarting every 10 s | `ls -l /dev/ttyTHS1`; `NAVERA_GPS_PORT`, `NAVERA_GPS_BAUD` | correct port and baud; the user needs `dialout` |
@@ -127,7 +130,7 @@ searches around (whole-map search is disabled because it is not reliable).
 | `vehicle` not chosen by discovery: "the autopilot's second GPS is fed over MAVLink — NAVERA's own output: never used" or "… types could not be read" | `GPS_TYPE2` / `GPS2_TYPE` on the autopilot | type 14 is NAVERA's own feed (a loop): the second GPS must be a real receiver |
 | `ros`: `NAVERA_GPS_SOURCE=ros needs NAVERA_ROS_GPS_TOPIC` | `journalctl -u navera-gps` | set `NAVERA_ROS_GPS_TOPIC` |
 | `ros`: topic not visible | see "ROS topics invisible" | |
-| `NAVERA_GPS_SOURCE=…: expected serial, vehicle or ros` | spelling | fix the value |
+| `NAVERA_GPS_SOURCE=…: expected serial, network, dronecan, vehicle, vehicle_gps1 or ros` | spelling | fix the value |
 
 ### GPS always DEGRADED ("uncertainty unknown")
 
