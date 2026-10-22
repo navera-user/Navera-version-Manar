@@ -93,7 +93,7 @@ if [ "$inner" = 0 ]; then
   fi
   [ "$prepare_only" = 1 ] && { log "prepared"; exit 0; }
   log "waiting for the PC ($PC_LOCK), the GPU ($GPU_LOCK) and a quiet box ($QUIET_LOCK, max 15 min)"
-  exec flock "$PC_LOCK" flock "$GPU_LOCK" "$0" "${args[@]}" --inner
+  exec flock "$PC_LOCK" flock "$GPU_LOCK" bash "$here/$(basename "$0")" "${args[@]}" --inner
 fi
 
 # ── the flight (locks held) ────────────────────────────────────────────────────────────────
