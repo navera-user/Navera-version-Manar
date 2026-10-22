@@ -26,6 +26,12 @@ ExecStart=/home/navera/navera_boot_web.sh
 # has on_exit=Shutdown), so on-failure would never restart it.
 Restart=always
 RestartSec=10
+# Memory (F5 / H-11): not needed to navigate. The OOM killer takes it (and a map being
+# generated, its child) first; beyond MemoryHigh it is slowed and pushed to swap, beyond
+# MemoryMax its memory goes to swap only: it never takes the pipeline's RAM.
+OOMScoreAdjust=500
+MemoryHigh=1G
+MemoryMax=2G
 
 [Install]
 WantedBy=multi-user.target

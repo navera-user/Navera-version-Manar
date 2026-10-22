@@ -139,8 +139,9 @@ for u in $UNITS; do
     pre="/usr/bin/flock $NAVERA_STAGE_GPU_LOCK "
   fi
   # the product unit, as a user unit of the staged root: no User/Group (the current user),
-  # staged paths, unit names under the prefix, started by default.target, niced
-  sed -e '/^User=/d' -e '/^Group=/d' -e '/^SupplementaryGroups=/d' \
+  # staged paths, unit names under the prefix, started by default.target, niced; a negative
+  # OOMScoreAdjust needs root (a user manager would refuse to start the unit): left out here
+  sed -e '/^User=/d' -e '/^Group=/d' -e '/^SupplementaryGroups=/d' -e '/^OOMScoreAdjust=-/d' \
       -e "s#^Description=#Description=[STAGED TEST] #" \
       -e "s#EnvironmentFile=-/#EnvironmentFile=-$STAGE/#" \
       -e "s#^WorkingDirectory=.*#WorkingDirectory=$STAGE$WS#" \
