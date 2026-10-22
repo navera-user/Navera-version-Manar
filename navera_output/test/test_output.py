@@ -373,6 +373,9 @@ def test_a_bridge_ends_at_its_time_or_when_the_accuracy_is_too_coarse():
 def test_nothing_is_bridged_unless_forwarding_a_vision_estimate():
     gps = decide(Config(), STATE_FIX, 0.1, pos(), 0.1, GPS)
     assert hold(gps, 100.0, (10.0, 0.0, 1.0)) is None                # a GPS fix is never bridged
+    vis = decide(VISION, STATE_FIX, 0.1, pos(source=DAY, details={}, var=(40.0, 40.0, 0)), 0.1, DAY)
+    assert vis.kind == KIND_FIX and not vis.gnss
+    assert hold(vis, 100.0, None) is not None                        # a vision FIX is (endur2)
     assert hold(Output(KIND_NONE, "no fix"), 100.0, None) is None
     _, held = _held_east()
     assert bridge(Config(), held, 101.0).kind == KIND_NONE           # forward_degraded off
