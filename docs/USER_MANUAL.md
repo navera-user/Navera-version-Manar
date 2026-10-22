@@ -1192,7 +1192,12 @@ or tablet on the vehicle's network. It shows:
 - the position (latitude, longitude) and its trace on the map, coloured by source;
 - a detail line: how the position was obtained, its age ("photo 1.4 s old, carried to now"),
   the reason when there is no position, and camera warnings (e.g. "% of the last minute's frames
-  unusable: the vehicle turns too fast for a fixed camera").
+  unusable: the vehicle turns too fast for a fixed camera");
+- a **map warning** when the vehicle nears or leaves the edge of the mission's map (day vision
+  has nothing to match past it): "320 m from the edge of the map: day vision stops past it",
+  "450 m OUTSIDE the map: no day-vision fix possible". The autopilot gets the same as a
+  STATUSTEXT ("NAVERA: map edge in 320 m"), shown by Mission Planner / QGroundControl. NAVERA only
+  reports it: turning back is the pilot's or the autopilot's decision (geofence, section 5.2).
 
 The dashboard is at `http://<box-ip>:8181/`. Keep port 8181 inside the vehicle's own network.
 

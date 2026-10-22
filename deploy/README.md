@@ -924,6 +924,8 @@ A service restarted in the air (watchdog, crash, power blip) resumes with what i
 |---|---|---|
 | Ground altitude (taken at the first GPS fix) | 12 h | the vehicle is within 2 km of where it was taken |
 | Day vision's last position | 5 min | always within that age |
+| The camera delay measured in flight (`camera_delay_<camera>`) | 60 days (`latency_store_max_age_days`) | the next flight with the same camera (`latency_store_key`, else the calibration file's name) starts from it |
+| The day sigma calibration measured in flight (`sigma_cal_<camera>`) | 30 days (`sigma_cal_store_max_age_days`) | the next flight with the same camera, until it has its own (×1.3, ≥ 10 m; dropped when its first samples contradict it) |
 
 They are JSON files in `NAVERA_STATE_DIR` (default `/var/lib/navera` when writable by the
 service user, else `/home/navera/.local/state/navera`). `/var/lib/navera` must therefore be

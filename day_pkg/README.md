@@ -207,11 +207,31 @@ frame (its encoder) cannot be seen, and an input without source stamps (`ros`) i
 | `latency_max_sigma_s` | 0.1 | applied only below this σ (statistical + systematic: residual spread / velocity spread) |
 | `latency_change_sigmas` | 3 | a set delay within this many σ of the estimate is kept |
 | `latency_min_speed_mps` / `latency_max_turn_dps` | 5 / 8 | motion gates of a sample |
-| `latency_rollback_s` | 20 | samples dropped at a GPS loss/refusal |
+| `latency_rollback_s` | 20 | samples dropped at a GPS **refusal** (`NavStatus.gps_refused`); a plain loss keeps them (F39) |
 | `camera_latency_sigma_s` | 0.1 | σ of a set (bench-measured) delay in the stated accuracy |
 | `latency_partial_max_sigma_s` / `latency_partial_min_samples` | 0.5 / 10 | staged apply of an unknown delay |
 | `latency_store` / `latency_store_key` | true / "" | keep the measured delay per camera (key: the calibration file name) |
 | `latency_store_max_age_days` / `latency_store_min_sigma_s` | 60 / 0.1 | a stored delay's age limit, and its σ floor |
+
+## Stated accuracy: in-flight sigma calibration, kept per camera (`day_pkg/fix_sigma.py`)
+While GPS is trusted, every GPS-check match measures this flight's real vision error
+(`SigmaCalibration`); after `sigma_cal_min_samples` (15) the stated σ is scaled to it, else it is at
+least `sigma_floor_no_cal_m` (30 m). The samples of the last `calib_rollback_s` (60 s) are forgotten
+when the GPS is **refused** (a slow spoof is trusted until refused); a GPS simply **lost** keeps
+them (F39: in the Isaac endurance flight the GPS was lost 12 s after reaching altitude and the 24
+samples of the climb were all thrown away: 30 m stated for ~14 m errors).
+
+The calibration is kept for the next flight with the same camera (F39), like the camera delay:
+| Parameter | Default | |
+|---|---|---|
+| `sigma_cal_store` / `sigma_cal_store_key` | true / "" | keep it per camera (key: `latency_store_key`, else the calibration file's name) in `NAVERA_STATE_DIR` (`sigma_cal_<key>.json`) |
+| `sigma_cal_store_max_age_days` | 30 | an older one is ignored |
+| `sigma_cal_store_inflation` / `sigma_cal_store_floor_m` | 1.3 / 10 | a kept calibration is used ×1.3 (terrain, light and height change between flights) and never below 10 m |
+
+Written every 60 s from the samples older than `calib_rollback_s` (the newer ones a refusal could
+still roll back) and at the GPS loss. It is used only while this flight has fewer than 15 samples of
+its own, and dropped as soon as 2 of those are beyond 3 of its σ (another camera setting, terrain or
+height): back to the 30 m floor. The status JSON shows it (`sigma_cal.prior`, `prior_dropped`).
 
 Bench replay (`navera_tools/bench/replay_latency.py`, screen-bench logs 2026-10-20, 30 s of good GPS +
 the drift phase until refused): at 60 m/s the GPS phase alone gives 0.97–0.99 s for the Hikvision
