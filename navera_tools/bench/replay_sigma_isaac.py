@@ -231,10 +231,7 @@ def _patched():
 
 def make_node(ds, params=None):
     """A DaySubscriber built by its own __init__ (shipped defaults, + params), inside _patched()."""
-    import rclpy
     from rclpy.parameter import Parameter
-    if not rclpy.ok():
-        rclpy.init(args=["--ros-args", "--log-level", "error"])
     node = ds.DaySubscriber()
     if params:
         # parameters read at __init__ time: re-run the parts that read them
@@ -252,8 +249,16 @@ def make_node(ds, params=None):
 def replay(rec: dict, params=None, setup=None):
     """Run the record's GPS-lost frames through a fresh node. params: ROS parameters (product defaults
     otherwise); setup(node): a last change before the frames (a variant). Returns the outputs."""
-    with _patched() as ds:
-        return _replay(ds, rec, params, setup)
+    import rclpy
+    owned = not rclpy.ok()                  # a context of our own is shut down after: a pytest process
+    if owned:                               # that forks later must not carry DDS threads
+        rclpy.init(args=["--ros-args", "--log-level", "error"])
+    try:
+        with _patched() as ds:
+            return _replay(ds, rec, params, setup)
+    finally:
+        if owned:
+            rclpy.shutdown()
 
 
 def _replay(ds, rec, params, setup):
