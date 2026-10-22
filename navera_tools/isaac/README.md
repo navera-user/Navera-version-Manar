@@ -47,6 +47,19 @@ autopilot's view.
 #   --gate FILE: prepare everything, open no window until FILE exists; --hold S: keep windows S s
 ```
 
+Endurance (GPS only at take-off, then hours without it): `--endurance S` repeats the diamond for S s
+after the cut, then RTL (infinite SITL battery, battery failsafes off); `--isaac-args "--sun-ramp 1"`
+moves the sun in real time; `resource_monitor.sh` writes `resources.csv` (GPU, each node's RSS, WSL,
+Isaac Sim, disk) every 30 s; `endurance_report.py <dir>` gives per-15-min blocks, `error_vs_time.png`,
+`ENDURANCE.md` (with the autopilot EKF velocity error from `sitl/mav.tlog`).
+
+```bash
+run_closed_loop.sh --name endur_2h --endurance 7200 --cut-after 12 --sigma 15 --time 10:00 --isaac-args "--sun-ramp 1"
+```
+2026-10-22 (`endur_2h`): EKF failsafe LAND 60.5 min after the cut — the autopilot's EKF velocity (no
+velocity source) drifted in growing episodes and flew the vehicle off the map; NAVERA's fixes flat
+(~15 m at the stated time, 6 m at exposure, 0 wrong) the whole hour.
+
 ## Results (2026-10-21, simulation only — Isaac Sim scene, not a flight)
 
 After the GPS cut. "vs stamp" = NAVERA's fix against the truth at the time NAVERA states;

@@ -52,7 +52,7 @@ ros2 run camera_pkg live_camera.py --ros-args -r __ns:=/day -p input:=ros \
 pids+=($!)
 trap 'kill ${pids[@]} $link 2>/dev/null; exit 0' INT TERM
 # ready marker for the launcher: day_subscriber has its map and models
-( until grep -q "awaiting frames\|DayLocalizer ready" $L/day.log 2>/dev/null; do sleep 1; done; touch /results/navera_ready ) &
+( until grep -q "awaiting frames\|DayLocalizer ready\|localizer_ready=True" $L/day.log 2>/dev/null; do sleep 1; done; touch /results/navera_ready ) &
 wait $link
 sleep 2
 kill ${pids[@]} 2>/dev/null
