@@ -24,11 +24,15 @@ Parameters:
                    the star match (20.7 ~ odds of 1e9, astrometry's own default).
     camera_fov_deg (float, default NaN) — star camera horizontal field of view;
                    unknown = slower wide search.
-    solver_mode    (str, default "geoloc") — "geoloc": narrow-field astrometry.net with the
-                   boresight from tilt/azimuth; "allsky360": the 360 camera's full dual-fisheye
-                   frame, all-sky star identification + quality gate (cn_pkg.allsky, the same
-                   code as the field tools) with 'up' from the camera or the vehicle IMU through
-                   the camera-to-body mount rotation (allsky_* parameters, see __init__).
+    solver_mode    (str, default "geoloc") — "geoloc": narrow-field astrometry.net; with the camera's
+                   full mounting known (camera_R_cam_body, or camera_mount_roll_deg with the
+                   elevation/azimuth) the fix is compass-free: the plate solve's whole rotation +
+                   'up' from the IMU's roll/pitch (B11); without it, the boresight from tilt and the
+                   compass azimuth (two candidate positions, a prior picks one);
+                   "allsky360": the 360 camera's full dual-fisheye frame, all-sky star
+                   identification + quality gate (cn_pkg.allsky, the same code as the field tools)
+                   with 'up' from the camera or the vehicle IMU through the camera-to-body mount
+                   rotation (allsky_* parameters, see __init__).
     image_topic    (str,  default "/celestial/image_raw")
     meta_topic     (str,  default "/celestial/frame_meta")
     fix_topic      (str,  default "/cn/position_estimate")
@@ -74,7 +78,7 @@ from std_msgs.msg import Int32, String
 from cv_bridge import CvBridge
 
 from cn_pkg.nodes import solver as cn_solver
-from cn_pkg.nodes.celestial_math import boresight_altaz
+from cn_pkg.nodes.celestial_math import boresight_altaz, mount_rotation, up_in_camera
 from cn_pkg import allsky_mount
 
 
@@ -135,6 +139,12 @@ class CNSubscriber(Node):
         declare_float(self, "camera_mount_elevation_deg", 90.0)
         declare_float(self, "camera_mount_azimuth_deg", 0.0)
         declare_float(self, "magnetic_declination_deg", 0.0)
+        # B11: the camera's FULL mounting makes the fix compass-free (the plate solve's whole rotation + 'up' from
+        # the IMU's roll/pitch). Either the 9 values of R_cam_body (optical-frame vector = R @ body FLU vector,
+        # row-major; NaN = unknown) or the roll of the image about its axis with the elevation/azimuth above
+        # (celestial_math.mount_rotation; NaN = unknown). Unknown: the compass method, stated in the status.
+        self.declare_parameter("camera_R_cam_body", [float("nan")] * 9)
+        declare_float(self, "camera_mount_roll_deg", float("nan"))
         self.declare_parameter("imu_topic", "/navera/sensors/imu")
         declare_float(self, "imu_timeout_s", 1.0)
         # 1-sigma attitude accuracy of the IMU (deg). Each degree of attitude
@@ -181,6 +191,11 @@ class CNSubscriber(Node):
         self.mount_el = float(self.get_parameter("camera_mount_elevation_deg").value)
         self.mount_az = float(self.get_parameter("camera_mount_azimuth_deg").value)
         self.declination = float(self.get_parameter("magnetic_declination_deg").value)
+        self.R_cam_body = self._narrow_mount()
+        # the tilt of 'up' in the narrow camera (mount angles as measured vs as installed), learned on fixes with a
+        # fresh GPS reference as in the 360 mode (allsky_mount.TiltCalibration, robust)
+        self.geoloc_cal = allsky_mount.TiltCalibration(int(self.get_parameter("allsky_cal_min_samples").value),
+                                                       int(self.get_parameter("allsky_cal_samples").value))
         self.imu_timeout = float(self.get_parameter("imu_timeout_s").value)
         self.max_rot_dps = float(self.get_parameter("max_rotation_dps").value)
         self.imu_max_gap = float(self.get_parameter("imu_max_gap_s").value)
@@ -270,6 +285,10 @@ class CNSubscriber(Node):
             self.get_logger().info(
                 f"  tilt/azimuth    : {self.tilt}° / {self.azimuth}°  utc={self.utc_time}"
             )
+            self.get_logger().info(
+                "  geoloc method   : " + ("zenith (camera rotation + IMU up, no compass)" if self.R_cam_body is not None
+                                          else "boresight + COMPASS (camera mount roll unknown: set camera_R_cam_body"
+                                               " or camera_mount_roll_deg for the compass-free fix)"))
         self.get_logger().info("  policy          : skip-if-busy, latest-pair")
         self.get_logger().info("=" * 60)
 
@@ -291,6 +310,16 @@ class CNSubscriber(Node):
         self.get_logger().info(f"  allsky360       : {len(loc.cat.vec)} stars, up from {loc.up_source}, "
                                f"R_cam_body {np.round(loc.R_cam_body, 4).tolist()}")
         return loc
+
+    def _narrow_mount(self):
+        """R_cam_body of the narrow star camera (B11), or None when its full mounting is not known."""
+        vals = [float(v) for v in self.get_parameter("camera_R_cam_body").value]
+        if len(vals) == 9 and all(math.isfinite(v) for v in vals):
+            return allsky_mount.rotation_matrix(vals)
+        roll = float(self.get_parameter("camera_mount_roll_deg").value)
+        if math.isfinite(roll):
+            return mount_rotation(self.mount_el, self.mount_az, roll)
+        return None
 
     def on_image(self, msg: Image):
         try:
@@ -373,19 +402,28 @@ class CNSubscriber(Node):
             self._gps_t = time.monotonic()
 
     def _attitude(self, meta):
-        """(tilt, azimuth, source): frame_meta, else a fresh IMU, else parameters."""
+        """(tilt, azimuth, source, up_cam): frame_meta, else a fresh IMU, else parameters. up_cam ('up' in the
+        camera's optical frame, B11) comes with it when the camera's full mounting is known (or frame_meta gives
+        it), else None: the compass method is then the only one."""
+        up_cam = None
+        if meta.get("up_cam") is not None:
+            v = np.asarray(meta["up_cam"], float).ravel()
+            if v.shape == (3,) and np.all(np.isfinite(v)) and np.linalg.norm(v) > 0:
+                up_cam = v / np.linalg.norm(v)
         if meta.get("tilt") is not None and meta.get("azimuth") is not None:
-            return float(meta["tilt"]), float(meta["azimuth"]), "frame"
+            return float(meta["tilt"]), float(meta["azimuth"]), "frame", up_cam
         exp = meta.get("image_stamp_ns")
         got = self._imu_at(int(exp) if exp is not None else self.get_clock().now().nanoseconds)
         if got is not None:
             q, self._rate_dps = got
             if self._rate_dps > self.max_rot_dps:
                 return (float("nan"), float("nan"),
-                        f"imu: rotating {self._rate_dps:.1f} deg/s (max {self.max_rot_dps:.0f})")
+                        f"imu: rotating {self._rate_dps:.1f} deg/s (max {self.max_rot_dps:.0f})", None)
             alt, az = boresight_altaz(q, self.mount_el, self.mount_az, self.declination)
-            return alt, az, "imu (at exposure)" if exp is not None else "imu (latest)"
-        return self.tilt, self.azimuth, "parameter"
+            if up_cam is None and self.R_cam_body is not None:
+                up_cam = up_in_camera(q, self.R_cam_body)
+            return alt, az, "imu (at exposure)" if exp is not None else "imu (latest)", up_cam
+        return self.tilt, self.azimuth, "parameter", up_cam
 
     def _prior(self):
         if math.isfinite(self.prior_lat):
@@ -486,6 +524,30 @@ class CNSubscriber(Node):
             self.get_logger().info(f"[cn] allsky360 tilt of 'up' learned: {result['tilt_calibrated']}")
         return result
 
+    def _geoloc_tilt(self, result, up_cam, utc):
+        """Zenith method: remove the learned tilt of 'up' (as the 360 mode) and, with a fresh GPS reference while
+        still, take this fix as a calibration sample."""
+        R = result.get("R_icrs_cam")
+        if not result.get("success") or R is None or len(R) != 9:
+            return
+        R = np.asarray(R, float).reshape(3, 3)
+        result["raw_lat"], result["raw_lon"] = result["predicted_lat"], result["predicted_lon"]
+        got = self.geoloc_cal.corrected(R, up_cam, utc)
+        if got is not None:
+            result["predicted_lat"], result["predicted_lon"] = got
+            fit = self.geoloc_cal.fit
+            result["tilt_cal"] = {"n": fit["n"], "sigma_deg": round(fit["sigma_deg"], 4),
+                                  "frozen": self.geoloc_cal.frozen}
+        fresh = self._gps_prior and self._gps_t is not None and \
+            time.monotonic() - self._gps_t <= float(self.get_parameter("allsky_cal_gps_max_age_s").value)
+        if fresh and self._rate_dps <= float(self.get_parameter("allsky_cal_still_dps").value) \
+                and not self.geoloc_cal.frozen:
+            fit = self.geoloc_cal.add(R, up_cam, allsky_mount.zenith_icrs(self._gps_prior[0], self._gps_prior[1], utc))
+            result["cal_sample"] = len(self.geoloc_cal.samples)
+            if fit is not None:
+                result["tilt_calibrated"] = {"samples": fit["n"], "samples_total": fit["n_total"], "ok": fit["ok"],
+                                             "rejected": fit["rejected"], "residual_deg": round(fit["rms_deg"], 3)}
+
     def _process_frame(self, seq_id, img, meta):
         try:
             if meta.get("usable") is False:
@@ -508,10 +570,15 @@ class CNSubscriber(Node):
                 f"[cn] 🛰  solving frame={seq_id} (mode={self.solver_mode}, 10-60s)…"
             )
             if self.solver_mode == "geoloc":
-                tilt, azimuth, att_src = self._attitude(meta)
+                tilt, azimuth, att_src, up_cam = self._attitude(meta)
                 prior_lat, prior_lon, prior_src = self._prior()
                 meta.update(attitude_source=att_src, tilt_used=tilt, azimuth_used=azimuth,
-                            prior=[prior_lat, prior_lon], prior_source=prior_src)
+                            prior=[prior_lat, prior_lon], prior_source=prior_src,
+                            fix_method="zenith (camera rotation + IMU up, no compass)" if up_cam is not None else
+                            "boresight (tilt + compass azimuth: camera mount roll unknown, set camera_R_cam_body)")
+                if up_cam is not None:
+                    meta.update(up_cam=[round(float(v), 7) for v in up_cam], prior=None,
+                                prior_source="none (zenith method: one answer)")
                 utc, utc_src = self._utc_for(meta)
                 meta["utc_source"] = utc_src
                 meta["utc_used"] = utc
@@ -519,7 +586,7 @@ class CNSubscriber(Node):
                     result = {"success": False, "error": f"frame not solved: {utc_src}"}
                 elif att_src.startswith("imu: rotating"):
                     result = {"success": False, "error": f"frame not solved: {att_src}"}
-                elif not (math.isfinite(tilt) and math.isfinite(azimuth)):
+                elif up_cam is None and not (math.isfinite(tilt) and math.isfinite(azimuth)):
                     exp = meta.get("image_stamp_ns")
                     hist = list(self._imu_hist)
                     near = None
@@ -534,9 +601,13 @@ class CNSubscriber(Node):
                                        + ")"}
                 else:
                     t0 = time.monotonic()
-                    result = cn_solver.solve_image_b64_geoloc(
-                        b64, tilt, azimuth, utc, prior_lat, prior_lon,
-                        self.camera_fov_deg)
+                    if up_cam is not None:
+                        result = cn_solver.solve_image_b64_geoloc(
+                            b64, tilt, azimuth, utc, float("nan"), float("nan"), self.camera_fov_deg, up_cam=up_cam)
+                        self._geoloc_tilt(result, up_cam, utc)
+                    else:
+                        result = cn_solver.solve_image_b64_geoloc(
+                            b64, tilt, azimuth, utc, prior_lat, prior_lon, self.camera_fov_deg)
                     result["solve_s"] = round(time.monotonic() - t0, 1)
             else:
                 result = cn_solver.solve_image_b64(b64)
@@ -569,6 +640,7 @@ class CNSubscriber(Node):
             "solve_s": result.get("solve_s"),
             "tilt":   meta.get("tilt_used"), "azimuth": meta.get("azimuth_used"),
             "attitude_source": meta.get("attitude_source"),
+            "fix_method": meta.get("fix_method"), "up_cam": meta.get("up_cam"),
             "prior": meta.get("prior"), "prior_source": meta.get("prior_source"),
             "utc": meta.get("utc_used"), "utc_source": meta.get("utc_source"),
             "sigma_m": self._sigma_m(),
@@ -582,6 +654,9 @@ class CNSubscriber(Node):
                 "up_source", "up_cam", "moving", "spots", "matched", "used", "rms_deg", "p_chance",
                 "lens_disagree_deg", "sigma_fit_deg", "f_scale", "f_scale_found", "matched_per_lens", "raw_lat",
                 "raw_lon", "tilt_cal", "cal_sample", "tilt_calibrated", "retried_with") if k in result})
+        else:
+            status.update({k: result[k] for k in ("method", "raw_lat", "raw_lon", "tilt_cal", "cal_sample",
+                                                  "tilt_calibrated") if k in result})
 
         log_odds = result.get("log_odds")
         if result.get("success") and not allsky and (log_odds is None or log_odds < self.min_log_odds):

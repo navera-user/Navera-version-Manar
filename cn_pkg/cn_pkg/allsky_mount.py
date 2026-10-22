@@ -65,11 +65,8 @@ def zenith_icrs(lat: float, lon: float, utc: str) -> np.ndarray:
 
 def position(z_icrs, utc: str) -> Tuple[float, float]:
     """(lat, lon) of the observer whose zenith is z_icrs (ICRS unit vector) at utc."""
-    from cn_pkg.nodes.celestial_math import apparent_radec, gast_deg
-    z = np.asarray(z_icrs, float) / np.linalg.norm(z_icrs)
-    ra, dec = math.degrees(math.atan2(z[1], z[0])) % 360.0, math.degrees(math.asin(max(-1.0, min(1.0, z[2]))))
-    ra_a, dec_a = apparent_radec(ra, dec, utc)
-    return dec_a, (ra_a - gast_deg(utc) + 540.0) % 360.0 - 180.0
+    from cn_pkg.nodes.celestial_math import zenith_position
+    return zenith_position(z_icrs, utc)
 
 
 def fit_mount(samples, loss: str = "linear", f_scale: float = 1.0) -> np.ndarray:
