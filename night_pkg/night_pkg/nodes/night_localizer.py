@@ -245,15 +245,22 @@ VERIFY_SIZE = 256           # the map check runs at STHN's input scale (~2 m/px)
 MIN_MATCH_NCC = 0.05
 RECHECK_OFFSET_M = 150.0
 RECHECK_MAX_M = 25.0
-# Stated 1-sigma (per axis, metres) of a confirmed STHN fix (D3), fitted on 1389 accepted
-# synthetic fixes (navera_tools/bench/night_conditions.py, 78 conditions x 30 frames,
-# 2026-10-19): sigma = hypot(8 m + 1 % of the height above 400 m, 0.8 x the disagreement
-# between the two search centres). 99.4 % of the fixes within 3 sigma (random half held
-# out: 99.6 %); fitted on the city alone, it covered farmland only 96.4 %: terrain matters,
-# and real thermal imagery is not measured.
-SIGMA_BASE_M = 8.0
+# Stated 1-sigma (per axis, metres) of a confirmed STHN fix (D3 / D22):
+# sigma = hypot(10 m + 1 % of the height above 400 m, the disagreement between the two search
+# centres). Refitted 2026-10-22 on REAL aerial thermal (night_retry_probe records of every
+# hypothesis, replayed through the product gates: Bordeaux night LWIR and Clermont day MWIR,
+# Boson 640 / Hikvision 160 x 120, 500-1000 m, black-hot, 15 deg heading error; 444 accepted
+# fixes) and synthetic night_conditions frames (493): 100 % within 3 sigma in every camera /
+# height (largest ratio 2.47 sigma nominal, 2.98 with a 15 deg heading error); on the
+# 2026-10-21 runs (other cameras: InfiRay 640, Boson 95 deg, Lepton 160; no first-try gate)
+# 100 % nominal, 99.7 % with the heading-error runs. The former synthetic fit
+# (hypot(8 m + 1 %, 0.8 x disagreement), 2026-10-19) covered real thermal 100 % nominal but
+# only 97 % with a heading error, up to 2.9 sigma: the 10 m floor and the full disagreement
+# give the margin. The errors include the thermal products' own registration to the map
+# (Bordeaux ~12 m north).
+SIGMA_BASE_M = 10.0
 SIGMA_PER_M_ABOVE_400 = 0.01
-SIGMA_RECHECK_K = 0.8
+SIGMA_RECHECK_K = 1.0
 
 
 def fix_sigma_m(altitude_m, recheck_m):

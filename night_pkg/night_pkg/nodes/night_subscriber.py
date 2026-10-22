@@ -118,11 +118,15 @@ class NightSubscriber(Node):
                            "/home/navera/isaac_ros_common/vision_pkg/vision_pkg/dataset/sousse_satellite.mbtiles"))
         self.declare_parameter("zoom",            17)
         declare_float(self, "conf_threshold",  0.30)
-        # night fixes state an accuracy (covariance) only when this is true. The sigma is
-        # always computed and given in details_json; it is fitted on SYNTHETIC frames
-        # (2026-10-19, 1389 fixes, 99.4 % within 3 sigma, night_localizer.fix_sigma_m) — not
-        # measured on a real thermal camera: stating it makes night a bounded FIX in the
-        # arbiter and a GPS cross-check reference, so it stays an explicit choice
+        # D3 / D22: a night fix confirmed from two search centres states its sigma
+        # (night_localizer.fix_sigma_m) as covariance: night is then a bounded FIX in the
+        # arbiter and a GPS cross-check reference. Validated 2026-10-22 on REAL aerial thermal
+        # (Bordeaux night LWIR, Clermont day MWIR, 5 cameras, 500-1000 m) and synthetic frames
+        # (docs/VALIDATION_STATUS.md, night section): >= 99 % within 3 sigma in every camera /
+        # height. The sigma is always computed and given in details_json.
+        self.declare_parameter("state_fix_sigma", True)
+        # also state the simulator-calibrated fallback (a fix without the two-centre re-check:
+        # recheck_offset_m 0): never measured on real thermal, an explicit choice
         self.declare_parameter("state_sim_calibrated_sigma", False)
         self.declare_parameter("image_topic",     "/thermal/image_raw")
         self.declare_parameter("meta_topic",      "/thermal/frame_meta")
@@ -159,8 +163,10 @@ class NightSubscriber(Node):
         # stated uncertainty exceeds this fraction of it (a held height, no barometer)
         declare_float(self, "max_altitude_rel_sigma", 0.15)
         self.max_alt_rel_sigma = float(self.get_parameter("max_altitude_rel_sigma").value)
-        self.state_sigma = bool(self.get_parameter("state_sim_calibrated_sigma").value)
+        self.state_fix_sigma = bool(self.get_parameter("state_fix_sigma").value)
+        self.state_sim_sigma = bool(self.get_parameter("state_sim_calibrated_sigma").value)
         self._fix_sigma = None                # the sigma of the night fix being published
+        self._fix_sigma_fitted = False        # ... from fix_sigma_m (two centres), not the fallback
         self.declare_parameter("imu_topic", "/navera/sensors/imu")
         declare_float(self, "imu_heading_timeout_s", 1.0)
         # Motion gate: a fix farther from the last one than the vehicle can travel
@@ -571,11 +577,12 @@ class NightSubscriber(Node):
                     out_lon = float(result["lon"])
             if (gated is None and result.get("success") and conf >= self.conf_threshold
                     and is_finite_latlon(result.get("lat"), result.get("lon"))):
-                # sigma (D3): the localizer's, fitted on synthetic fixes from the agreement of
-                # the two search centres and the height (night_localizer.fix_sigma_m); without
+                # sigma (D3): the localizer's, from the agreement of the two search centres and
+                # the height, fitted on real thermal (night_localizer.fix_sigma_m); without
                 # the re-check (disabled), the former simulator calibration: 2.5 % of the
                 # height (8 m min), x2.5 for a weak match or the first 10 s after GPS loss
                 sig = result.get("sigma_m")
+                self._fix_sigma_fitted = sig is not None
                 if sig is None:
                     h = float(alt) if alt is not None else 400.0
                     sig = max(8.0, 0.025 * h)
@@ -694,9 +701,10 @@ class NightSubscriber(Node):
     def _publish_estimate(self, now, seq_id, src, lat, lon, meta, details):
         """Additive: emit the typed source contract on /navera/estimate/night.
 
-        Covariance is UNKNOWN and confidence 0.0: STHN has no validated sigma on
-        real thermal imagery yet (same honesty stance as day_pkg — never emit a
-        number that looks measured but is not). Raw score/conf live in
+        Covariance: a night fix confirmed from two search centres states its fitted sigma
+        (state_fix_sigma, D3: validated on real aerial thermal, 2026-10-22); the simulator
+        fallback sigma only with state_sim_calibrated_sigma; else UNKNOWN (never a number
+        that looks measured but is not). Confidence 0.0; raw score/conf live in
         details_json, diagnostic only.
         """
         est = PositionEstimate()
@@ -710,7 +718,8 @@ class NightSubscriber(Node):
         est.altitude = float(_alt) if _alt is not None else math.nan
         est.position_covariance = [0.0] * 9
         est.position_covariance_type = PositionEstimate.COVARIANCE_TYPE_UNKNOWN
-        if self.state_sigma and src == "night_sthn" and self._fix_sigma:
+        stated = self.state_fix_sigma if self._fix_sigma_fitted else self.state_sim_sigma
+        if stated and src == "night_sthn" and self._fix_sigma:
             v = self._fix_sigma ** 2
             est.position_covariance = [v, 0.0, 0.0, 0.0, v, 0.0, 0.0, 0.0, 0.0]
             est.position_covariance_type = PositionEstimate.COVARIANCE_TYPE_APPROXIMATED
