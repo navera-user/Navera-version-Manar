@@ -415,6 +415,18 @@ PX4_PARAMS = {
                                                         "position has no satellites, a 10-30 m accuracy, "
                                                         "no vertical velocity"),
     "SYS_HAS_GPS": (lambda v: v == 1, "1 (the GPS PX4 fuses is NAVERA's HIL_GPS)"),
+    "EKF2_GPS_V_GATE": (lambda v: v >= 50,
+                        ">= 50: the HIL_GPS velocity is not fused, but its innovation (0 vertical speed in a "
+                        "climb) trips PX4's post-takeoff navigation test (Navigation failure, DESCEND — PX4 SITL)"),
+}
+# only with vision positions forwarded (NAVERA_FORWARD_DEGRADED): PX4's defaults declare a 10-30 m
+# position invalid or trust it more than stated
+PX4_FORWARD_PARAMS = {
+    "COM_POS_FS_EPH": (lambda v: v < 0 or v >= 20,
+                       ">= 20 m: the default 5 m declares the position invalid at 12.5 m and starts the failsafe "
+                       "right after the GPS loss"),
+    "EKF2_NOAID_NOISE": (lambda v: v >= 30, ">= NAVERA_DEGRADED_SIGMA_M: EKF2 caps the GPS noise at this value "
+                                            "while the GPS is its only aiding (default 10 m)"),
 }
 
 
@@ -444,13 +456,13 @@ def autopilot_streams(url: str, wait_s: float = 4.0) -> dict:
         px4 = hb.autopilot == MAV_AUTOPILOT_PX4
         if px4:
             seen["px4_params"] = {}
-        for p in (PX4_PARAMS if px4 else GPS_TYPE_PARAMS):
+        for p in (list(PX4_PARAMS) + list(PX4_FORWARD_PARAMS) if px4 else GPS_TYPE_PARAMS):
             m.mav.param_request_read_send(m.target_system, m.target_component, p.encode(), -1)
         end = time.time() + wait_s
 
         def params_done():
             if px4:
-                return len(seen["px4_params"]) == len(PX4_PARAMS)
+                return len(seen["px4_params"]) == len(PX4_PARAMS) + len(PX4_FORWARD_PARAMS)
             return seen["gps1_type"] is not None and seen["gps2_type"] is not None
         while time.time() < end and not (all(seen[k] for k in want) and params_done()):
             msg = m.recv_match(blocking=True, timeout=0.5)
@@ -461,7 +473,7 @@ def autopilot_streams(url: str, wait_s: float = 4.0) -> dict:
                 seen[t] = True
             elif t == "PARAM_VALUE":
                 pid = msg.param_id.rstrip("\x00") if isinstance(msg.param_id, str) else msg.param_id
-                if px4 and pid in PX4_PARAMS:
+                if px4 and (pid in PX4_PARAMS or pid in PX4_FORWARD_PARAMS):
                     seen["px4_params"][pid] = px4_param_int(msg.param_value, msg.param_type)
                 elif pid in ("GPS_TYPE", "GPS1_TYPE"):
                     seen["gps1_type"] = int(msg.param_value)
@@ -482,10 +494,12 @@ def px4_param_int(value: float, param_type: int) -> int:
     return int(round(value))
 
 
-def px4_param_checks(params: dict) -> List[str]:
-    """CHECK lines for the PX4 parameters read that NAVERA's HIL_GPS output cannot work with."""
+def px4_param_checks(params: dict, forward: bool = False) -> List[str]:
+    """CHECK lines for the PX4 parameters read that NAVERA's HIL_GPS output cannot work with
+    (forward: vision positions are forwarded, NAVERA_FORWARD_DEGRADED — their parameters too).
+    """
     rep = []
-    for name, (ok, want) in PX4_PARAMS.items():
+    for name, (ok, want) in list(PX4_PARAMS.items()) + (list(PX4_FORWARD_PARAMS.items()) if forward else []):
         if name in params and not ok(params[name]):
             rep.append(f"CHECK PX4 {name} = {params[name]}: must be {want} — docs/PX4_INTEGRATION.md")
     return rep
@@ -853,10 +867,11 @@ def decide(found: dict, env) -> dict:
                     rep.append("CHECK output: NAVERA_MAVLINK_MESSAGE=gps_input, but PX4 ignores GPS_INPUT — "
                                "use hil_gps or auto (docs/PX4_INTEGRATION.md)")
                 params = streams.get("px4_params")
-                if params is None or len(params) < len(PX4_PARAMS):
+                if params is None or any(k not in params for k in PX4_PARAMS):
                     rep.append("CHECK PX4 parameters not all read: set MAV_USEHILGPS 1, EKF2_GPS_CTRL 1, "
-                               "EKF2_HGT_REF 0, EKF2_GPS_CHECK 240 (docs/PX4_INTEGRATION.md)")
-                rep.extend(px4_param_checks(params or {}))
+                               "EKF2_HGT_REF 0, EKF2_GPS_CHECK 240, EKF2_GPS_V_GATE 100 (docs/PX4_INTEGRATION.md)")
+                fwd = get("NAVERA_FORWARD_DEGRADED").lower() in ("1", "true", "yes", "on")
+                rep.extend(px4_param_checks(params or {}, fwd))
             else:
                 rep.append(f"output: NAVERA's position to the autopilot over MAVLink ({ap['url']}, "
                            f"system {ap['sysid']})")
