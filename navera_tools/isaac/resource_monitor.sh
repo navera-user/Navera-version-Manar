@@ -14,7 +14,7 @@ ps1=/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe
 rss_day_mib,rss_estimator_mib,rss_camera_mib,rss_link_mib,rss_gps_mib,rss_output_mib,wsl_used_mib,wsl_avail_mib,\
 isaac_ws_mib,isaac_private_mib,results_mib,logs_mib,isaac_frames,d_free_gb" > "$out"
 t0=$(date +%s)
-mib() { awk -v p="$1" 'index($0, p) && $1 ~ /^[0-9]+$/ {s += $1} END {printf "%.0f", s / 1024}' <<< "$top"; }
+mib() { awk -v p="$1" 'index($0, p) && $2 ~ /^[0-9]+$/ {s += $2} END {printf "%.0f", s / 1024}' <<< "$top"; }
 while sleep "$period"; do
   docker ps -q -f name=navera_isaac | grep -q . || break
   g=$($smi --query-gpu=memory.used,utilization.gpu,temperature.gpu,power.draw --format=csv,noheader,nounits \
@@ -24,7 +24,7 @@ while sleep "$period"; do
   cpu=$(awk '{gsub("%", "", $1); print $1}' <<< "$st")
   mem=$(awk '{v = $2; u = v; gsub(/[0-9.]/, "", u); gsub(/[A-Za-z]/, "", v);
               f = (u == "GiB") ? 1024 : (u == "KiB") ? 1 / 1024 : 1; printf "%.0f", v * f}' <<< "$st")
-  top=$(docker top navera_isaac -eo rss,args 2>/dev/null)
+  top=$(docker top navera_isaac -eo pid,rss,args 2>/dev/null)
   # the node processes (not their "ros2 run" wrappers)
   rss="$(mib lib/day_pkg/day_subscriber),$(mib lib/navera_estimator/estimator_node),$(mib lib/camera_pkg/live_camera),\
 $(mib isaac/isaac_link.py),$(mib lib/gps_pkg/gps_node),$(mib lib/navera_output/vehicle_output_node)"
@@ -34,7 +34,7 @@ $(mib isaac/isaac_link.py),$(mib lib/gps_pkg/gps_node),$(mib lib/navera_output/v
       2>/dev/null | tr -d '\r' | tail -1)
   [ -n "$win" ] || win=","
   rmib=$(du -sm "$res" 2>/dev/null | cut -f1); lmib=$(du -sm "$res/logs" 2>/dev/null | cut -f1)
-  nfr=$(wc -l < "$run/frames.jsonl" 2>/dev/null || echo "")
+  nfr=$( [ -f "$run/frames.jsonl" ] && wc -l < "$run/frames.jsonl")
   dfree=$(df -BG --output=avail /mnt/d 2>/dev/null | tail -1 | tr -dc 0-9)
   echo "$(date +%T),$(date +%s),$(( $(date +%s) - t0 )),$g,$cpu,$mem,$rss,$wsl,$win,$rmib,$lmib,$nfr,$dfree" >> "$out"
 done
