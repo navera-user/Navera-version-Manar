@@ -32,7 +32,7 @@ import time
 import cv2
 
 import rclpy
-from navera_common import latency_cal, state_store
+from navera_common import latency_cal, memory_trim, state_store
 from navera_common.compute_health import watch_degraded
 from navera_common.geo import is_finite_latlon
 from navera_common.track import TrackVelocity
@@ -351,6 +351,7 @@ class DaySubscriber(Node):
         # carried on (1 Hz) — the case dead-reckoning matters most for
         self._last_frame = (time.time(), {})
         self.create_timer(1.0, self._dead_reckon_without_frames)
+        self._memory_trim_init()
         self._pairer       = FramePairer()   # image/meta matched on the image stamp
         self._frame_count   = 0
         self._success_count = 0
@@ -916,6 +917,22 @@ class DaySubscriber(Node):
         if not refused and self.sigma_cal.samples:
             self.get_logger().info(f"[day] GPS lost (not refused): the sigma calibration keeps its "
                                    f"{self.sigma_cal.samples} samples")
+
+    # ── memory: the heap pages freed by the frames go back to the system (F40) ──
+    def _memory_trim_init(self):
+        """A timer (in the node's serial callback group: never during a frame) that calls glibc
+        malloc_trim every memory_trim_period_s (navera_common.memory_trim)."""
+        declare_float(self, "memory_trim_period_s", 60.0,
+                      "give freed heap memory back to the system this often (s); 0 = never")
+        self._trimmer = memory_trim.Trimmer(float(self.get_parameter("memory_trim_period_s").value))
+        if self._trimmer.period_s > 0:
+            self.create_timer(min(self._trimmer.period_s, 30.0), self._memory_trim)
+
+    def _memory_trim(self):
+        if self._trimmer.maybe_trim():
+            self.get_logger().info(f"[day] memory: RSS {memory_trim.rss_mib() or 0:.0f} MiB after malloc_trim "
+                                   f"(gave back {self._trimmer.last_freed_mib or 0:.0f} MiB in "
+                                   f"{self._trimmer.last_ms or 0:.0f} ms)", throttle_duration_sec=600.0)
 
     # ── the sigma calibration kept per camera across flights (F39) ──
     def _sigma_store_init(self):
