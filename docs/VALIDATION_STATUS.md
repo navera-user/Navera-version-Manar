@@ -19,8 +19,10 @@ been measured. Open engineering items are tracked in
 | Day vision — DISK + LightGlue matcher, navigation between matches (2026-10-06/07) | **Screen bench with the Insta360 (other-date imagery) and simulator; not flown** | below: "Day vision with NAVERA's camera — screen bench" |
 | Day vision — stated sigma on real drone flights (UAV-VisLoc, 8 flights, 2026-10-20) | **Model alone unsafe (65 % within 3σ); self-calibration + 30 m floor safe with the pose–attitude guard, in the product since 2026-10-20 (VL-1, `pose_tilt_guard_deg`): median 16 m, p90 34 m, 1 of 2599 fixes > 100 m, 0.999 (floor) / 0.993 (self-cal) within 3σ. Without the guard (code before VL-1): 70 fixes 100–325 m off** | below: "Day: real drone flights" |
 | Day vision — a real flight replayed through the whole chain: IMU straightening, tracking, estimator (MARS-LVIG, 2026-10-21) | **Real drone camera and IMU replayed (not NAVERA's camera, 80–130 m, one valley flight + 55 s of another):** GPS cut after 120 s, 310 s without: fixes 6–7 m median, never over 17 m, 100 % within 3σ, 0 over 50 m in 1 493; 36 % of frames matched at z17 (54 % at z18); dead-reckoning alone 4 / 12 m (median / max) over 70 s after two fixes of this branch | below: "Day: a real flight replayed" |
+| Day vision — real drone imagery against NAVERA's map source (Esri World Imagery, as a mission prepares it; UAV-VisLoc 10 flights + AerialVL 4 sequences, 2026-10-22) | **Other vehicles' cameras, single frames, not flown; map 1–9 years newer than the photos** | UAV-VisLoc 1461/4251 frames located (34 %; 54 % → 33 % on the same photos vs the dataset's own map), median 19 m, p90 38 m, 3 fixes > 100 m; AerialVL (Qingdao, March, 210–250 m, incl. sunset) 561/1152 (49 %), 18 m raw / 3–8 m after the labels' 2–2.75 s lag; within 3σ (floor / self-cal) 0.997–1.000; below: "Day: more public flights" |
 | Day vision — DINOv2 tile retrieval (former method, fallback) | **Not accurate enough to replace GPS** | Median 442 m on labelled replay frames |
 | Night vision (STHN homography) | Frames scaled and turned north-up from altitude, camera field of view and heading; motion gate; **not flown. Real aerial thermal (2026-10-21, orthomosaic frames, below): night LWIR 28–38 % of frames give a position at 700–1000 m, 10–12 m median, 0 wrong accept with a 640 px camera; a 160 px camera made wrong accepts through the retries** | 8–13 m median on synthetic frames (250–600 m, any heading); simulated night mission, GPS jammed, vehicle barometer (2026-10-07): 10 m median, 21 m max, stated accuracy (simulator-calibrated) 100 % within 3 sigma; **needs an independent height (barometer) after GPS loss** |
+| Night vision on real recorded night thermal frames (Thermal-UAV, DJI M4T 35.5°, ~300 m, 2026-10-22) | **Outside the envelope: footprint 5–12 % of the reference** | 0/262 positions, 0 wrong (all refused "fly higher"; with coverage gates off still 0 accepted, 0 wrong; raw STHN 140/146 wrong): needs ≥ ~900 m or a wider lens; below: "Night vision on REAL recorded night thermal frames" |
 | Celestial 360 all-sky solver (`cn_pkg.allsky`) on **real night skies** (public ESO all-sky cameras, 2026-10-21) | **Real sky, but single up-looking fisheye cameras, not NAVERA's Insta360; mount 'up' known (fixed camera / truth fit)** | 559 real frames: 0 wrong positions accepted (61 wrong identifications all refused); clear moonless nights 100 % solved, 2.9 km median; below: "Celestial 360 on real night skies" |
 | Celestial (astrometry.net) | Run end to end on simulated star fields; **coarse: bounded by the IMU attitude (~111 km per degree); simulator only — not run on a real sky** | 5.5–6.5 km with a perfect attitude; 24–119 km with a BNO085-class IMU; simulated night mission without barometer (2026-10-07): 29 km median, 40 km max, 100 % within its stated sigma |
 | Day vision dead-reckoning along the measured track (no match: sea, uniform ground, frame unusable) | Implemented 2026-10-02; **simulator only** | Land route: no failsafe, error median 10 m, max 33 m; across the bay: carried 90 s over the sea stating ±300 m, true error at most 146 m |
@@ -483,6 +485,114 @@ check yet** — the tool had been crashing since the camera-delay estimation was
 it now runs but publishes no output in either version (tiles of its default area missing,
 e.g. `tile_17_69415_51534.jpg`): identical 0 / 0, no evidence either way.
 
+### Day: more public flights, on NAVERA's own map source (UAV-VisLoc 02 / 09, Esri re-run, AerialVL; 2026-10-22)
+
+NAVERA has not flown. Two gaps of the runs above: they used **each dataset's own satellite map**
+(UAV-VisLoc's), not the map a mission would carry, and they covered one camera type at 300–780 m.
+Here the product matcher (`LearnedMatcher`, DISK + LightGlue, VL-1 guard 4°, exactly as
+`uavvisloc_eval.py` runs it) is measured against **Esri World Imagery z17 tiles prepared with
+`prepare_area.py --source esri_world_imagery`** as for a mission (evaluation only: Esri's terms do
+not allow storing it on a sold device, DEP-11), on two more UAV-VisLoc flights, the eight earlier
+ones again, and a second dataset (AerialVL: another vehicle, camera, region, season, 210–250 m).
+Same protocol as above: each frame alone, prior 250 m off in a random direction, search 350 m,
+no tracking; "wrong" here = **> 50 m**. Map dates from the Esri metadata layer
+(`esri_imagery_dates.py`). Results in `~/.navera_sim/pubdata/` (`uavvisloc/f*_esri.json`,
+`aerialvl/s*.json`, `tables_2026-10-22.txt`).
+
+**Data and licences.**
+- **UAV-VisLoc** flights 02 (Jiujiang / Yangtze, flat river plain, Sep 2018, 389 m above ground,
+  1071 photos) and 09 (Huzhou, flat, Jun 2019, 542 m, 766 photos), from the Hugging Face mirror
+  `mvidem/UAV-VisLoc` (labelled MIT there; the official repository states no licence — ask the
+  authors before quoting it commercially), on the ADATA disk `NAVERA_TESTDATA/uavvisloc/full/`.
+  Flight 07 (30 photos) was not run: its CSV has no attitude / heading columns and its map's
+  extent in the dataset is 50 m tall (broken). Flight 09's map comes in four tiles (not
+  converted): flight 09 is on Esri only.
+- **AerialVL** (Hugging Face `hmf21/AerialVL`, **CC BY 4.0**; code MIT): Qingdao (China), coastal
+  farmland, villages, suburbs and ponds, 11–18 March 2023 (early spring, bare fields), multirotor
+  with a gimballed nadir RGB camera (FLIR BFS-U3-31S4C, 2048 × 1536), NovAtel GNSS (1.5 m RMS
+  single point), frames at 2 Hz turned east-up by the authors. 4 of the 11 sequences, every 4th
+  frame (6th for the longest; 2–3 s apart): 1152 frames, ~4.5 GB, read member by member from the
+  56 GB split zip (`NAVERA_TESTDATA/aerialvl/`). One sequence ends at sunset (16 Mar, 18:04–18:15
+  local, "nightfall" in the paper). **The dataset gives no height and no lens:** the frame scale is
+  fitted per sequence on 12 frames (210–250 m at a nominal 60°, `aerialvl_eval.py`) and then held
+  fixed, like a barometer height; the paper says 120–200 m. The gimbal keeps the camera nadir: the
+  position is the frame centre (no pose). Esri imagery there: Feb / Apr 2025 (2 years newer).
+
+**1. UAV-VisLoc on the Esri map.** Esri imagery under the flights is 2021–2025: 1–9 years newer
+than the photos (03 / 04: 2018 → 2025; 05: 2016 → 2023; 11: 2023 → 2024). Eight earlier flights at
+every 2nd photo (same field of view as before, flight 06's mislabelled 06_0099–0180 excluded),
+02 and 09 at every photo:
+
+| Flight | Ground, photo → map date | Accepted | Median / p90 / max (m) | > 50 m | > 100 m | Floor 30 m | Self-cal | > 50 m beyond 3σ (self-cal) |
+|---|---|---|---|---|---|---|---|---|
+| 03 | flat, 2018 → 2025 | 187/384 (49 %) | 15.9 / 31 / 54 | 2 | 0 | 1.000 | 1.000 | 0 |
+| 04 | flat, 2018 → 2025 | 140/369 (38 %) | 25.1 / 51 / 130 | 17 | 2 | 0.986 | 0.980 | 2 |
+| 01 | flat, 2018 → 2025 | 81/409 (20 %) | 20.7 / 50 / 94 | 9 | 0 | 0.988 | 0.982 (not cal.) | 1 |
+| 05 | hills, 2016 → 2023 | 8/237 (3 %) | 27.8 / 45 / 148 | 1 | 1 | 0.875 | 0.833 (not cal.) | 1 |
+| 06 | valley, 2022 → 2024 | 47/131 (36 %) | 17.0 / 28 / 66 | 1 | 0 | 1.000 | 1.000 (not cal.) | 0 |
+| 08 | flat, 2019 → 2023–25 | 47/517 (9 %) | 21.5 / 44 / 65 | 3 | 0 | 1.000 | 1.000 (not cal.) | 0 |
+| 10 | 473–490 m, 2018 → 2025 | 1/72 (1 %) | 54.7 | 1 | 0 | 1.000 | (not cal.) | 0 |
+| 11 | 1713–2013 m, 2023 → 2024 | 293/295 (99 %) | 20.8 / 35 / 74 | 7 | 0 | 1.000 | 0.995 | 1 |
+| **02 (new)** | flat, 2018 → 2021 | 296/1071 (28 %) | 16.4 / 34 / 84 | 5 | 0 | 1.000 | 1.000 | 0 |
+| **09 (new)** | flat, 2019 → 2025 | 361/766 (47 %) | 19.4 / 38 / 84 | 13 | 0 | 1.000 | 1.000 | 0 |
+| **All** | | **1461/4251 (34 %)** | **18.9 / 38 / 148** | **59 (4.0 %)** | **3** | **0.997** | **0.995** | **5** |
+
+Flight 02 on its own dataset map, for comparison: 272/1071, 14.8 / 32 / 104 m, 3 > 50 m, 1 > 100 m
+(02_0935, the frame centre with the photo tilted 12.6°: the bench artefact of 04_0420 above).
+
+- **The map source matters more than the matcher: on the same 2414 photos of the 8 earlier
+  flights, the dataset's map gives a position for 54 %, Esri for 33 %.** The loss follows the
+  map's age: flights 03 / 04 (7 years) 90 % → 38–49 %, 06 81 → 36 %, 08 27 → 9 %; flight 11, the
+  only one whose Esri image is 1 year from the flight, gains (89 → 99 %). Accuracy of what is
+  accepted is close (median 19 vs 16 m).
+- **Wrong fixes:** 3 accepted fixes > 100 m on the Esri map (04_0663 130 m, 04_0439 109 m,
+  05_0149 148 m) where the dataset map had none on these photos. 04_0439 and 05_0149 are poses from
+  12–14 inliers whose tilt (6.1° / 12.7°) agrees within 4° with the photo's own tilt (3.1° / 8.5°):
+  the VL-1 guard lets them through because the bench photos are not straightened; in the product
+  the IMU straightens the frame first (expected tilt 0) and these poses would be refused, leaving
+  the frame centre (48 m / 57 m off). 04_0663 (58 inliers, pose 13°, photo 7–10° tilted) is the
+  same case. With the 30 m floor / self-calibration, 0.997 / 0.995 of the fixes are within 3σ;
+  5 fixes > 50 m (2 > 100 m) are beyond the self-calibrated 3σ. Flights that match rarely on
+  this map (01, 05, 06, 08, 10) never calibrate and publish the 30 m floor.
+
+**2. AerialVL (Esri map, the dataset's GNSS labels as they are):**
+
+| Sequence | Scene, light | Fitted height | Accepted | Median / p90 / max (m) | > 50 m | Floor 30 m / self-cal within 3σ |
+|---|---|---|---|---|---|---|
+| 2023-03-11 11:48 | farmland, villages, noon | 250 m | 114/231 (49 %) | 22.3 / 46 / 73 | 6 | 1.000 / 1.000 |
+| 2023-03-16 18:04 | town, suburbs, **sunset** | 211 m | 169/331 (51 %) | 25.2 / 30 / 37 | 0 | 1.000 / 1.000 |
+| 2023-03-18 14:38 | long loop, afternoon | 215 m | 183/352 (52 %) | 14.8 / 28 / 38 | 0 | 1.000 / 1.000 |
+| 2023-03-18 16:30 | short loop, late afternoon | 225 m | 95/238 (40 %) | 15.9 / 20 / 31 | 0 | 1.000 / 1.000 (not cal.) |
+| **All** | | | **561/1152 (49 %)** | **18.1 / 33 / 73** | **6** | **1.000 / 1.000** |
+
+- **The labels lag the frames.** The errors point backwards along the track whatever the
+  direction (flying east: 35 m west; south: 9 m north…). `truth_lag.py` fits a label time offset
+  and a constant shift to the accepted fixes: **−2.0 to −2.75 s on all four sequences** plus
+  8–25 m of constant shift; corrected, the errors are **median 3.2–7.6 m, p90 13–16 m, max
+  25–47 m, 0 > 50 m** (the 6 "wrong" fixes of 11 March are this: 50–73 m while flying east at
+  the start). The same frames against the dataset's own Google Earth map give the same offset
+  (−2.75 s, shift −16 / −20 m), so it is in the labels, not in Esri's registration. On UAV-VisLoc
+  the same fit finds +0.25 / +0.5 / −0.25 s and < 4 m shift (flights 03, 04, 02, 09): no lag there.
+- The sunset sequence is located as well as by day (51 %, 3.2 m corrected).
+- Refusals: too few inliers on bare March fields and new buildings (2–11 of 12 needed) and, on
+  two sequences, "fitted scale 0.78–0.84 ≠ 1" with 15–48 inliers at the right place: the drone
+  changed height within the sequence (the paper flies 120 / 150 / 200 m) while the eval holds one
+  height — with a barometer this is an eval artefact, not a product refusal.
+
+**Verdict (2026-10-22: 2989 frames not used before + 2414 re-scored, two datasets, NAVERA's map provider):**
+- Day vision on real drone imagery against the map a mission would carry: **median 18–19 m,
+  p90 33–38 m; 34 % (UAV-VisLoc) and 49 % (AerialVL) of single frames give a position**; 3 of
+  2022 accepted fixes > 100 m (0.15 %), all three pose solutions on tilted, unstraightened photos.
+- **Map age is the first-order risk:** the same photos lose 40 % of their fixes when the map is
+  newer than the flight by 5–7 years; it is the reverse of a mission (a map older than the
+  flight) but the same mismatch. A mission area whose imagery is old or seasonal will give
+  fewer fixes; the wrong fixes did not grow in proportion (3 > 100 m in 2022).
+- The stated sigma holds with the 30 m floor and self-calibration (0.995–1.000 within 3σ);
+  the model alone still does not (0.70–0.73).
+- Limits: still another vehicle's camera and not a NAVERA flight; frames one by one from a
+  perturbed prior (no tracking, no IMU straightening); AerialVL's height and lens fitted;
+  public labels with their own errors (AerialVL lag, UAV-VisLoc 06).
+
 ### Night vision (`night_pkg`, STHN one-stage)
 
 - Before 2026-09-28 the model ran with **random weights**: the checkpoint keys never
@@ -731,6 +841,43 @@ the earlier set incl. `terrain_coast_flat_sea`, the 72-pose A/B set, heading 10/
 - **Night availability, not accuracy, is the limit:** ~1 frame in 3 over a European city
   at night against a summer day map (no wrong accept with the 640 px camera). A real night
   flight with the product camera remains the blocker for any accuracy claim.
+
+### Night vision on REAL recorded night thermal frames — Thermal-UAV, Changsha (2026-10-22)
+
+`navera_tools/bench/night_real_frames.py`. Unlike the section above (frames cut from an
+orthomosaic), these are **a drone thermal camera's own night frames**: real geometry (relief,
+building lean, street lights, cars), real radiometry and AGC. Still not NAVERA's camera.
+
+**Data.** Thermal-UAV (Hugging Face `FloralHercules/Thermal-UAV`, **Apache-2.0**, the card adds
+"intended for academic research"; SCC-Loc paper, arXiv 2604.03120): DJI Matrice 4T, gimballed
+**nadir** thermal camera (640 × 512 sensor delivered as 1280 × 1024, 12 mm lens on a 7.68 mm-wide
+sensor: **35.5° horizontal**), per frame GNSS lat/lon, height above take-off, gimbal pitch (−90°)
+and yaw. Changsha (China), **night** sequences: city1 (21 Dec 2025, 21:54–23:01), village1
+(17 Dec 2025, 18:14), city7 and village5 (22 Mar 2026, 19:08–20:17); 205–329 m above take-off
+(median ~300–315 m). 262 frames (every 3rd–10th; read member by member from the 20 GB zip,
+`NAVERA_TESTDATA/thermal_uav_changsha/`). Map: Esri World Imagery z17 (Apr / Aug 2025 there),
+fetched for the frames. Each frame goes `NightLocalizer.localize` as `night_subscriber` calls it
+(map check, re-check, heading and height retries), height = the recorded height above take-off,
+heading = recorded yaw + N(0, 2°), prior 100–250 m off.
+
+**Result: 0 of 262 frames give a position, 0 wrong.** Every frame is refused before matching:
+"camera footprint too small for night matching (≈ 200 m wide at 300 m, covers 5–12 % of the
+539 m reference) — fly higher" (also after the +10/+20 % height retries). With this 35.5° camera
+NAVERA night needs ≥ ~900 m above ground (a 5:4 frame must cover 85 % of the reference, ~570 ×
+460 m; the reference is 539 m wide at 28° N, 433 m at Bordeaux); the dataset never flies there.
+
+**Diagnostic — not the product** (`--min-coverage 0`: the frame filled into the reference with
+the mean, both coverage gates off): still 0/262 accepted, 0 wrong — "map check failed" 189,
+"not confirmed from a second search centre" 73. With every gate off and no retries
+(`--min-ncc -1 --recheck-max -1 --no-retry`, city1 + village5, 146 frames) STHN returns a
+position for all and **140 of 146 are wrong (median 232–241 m, p90 371–391 m)**, with 82–87 %
+"within 3 sigma" of its own sigma: STHN cannot locate a 200 m patch in a 539 m window, and the
+map check / re-check are what keep that from being published.
+
+**Verdict:** on real night thermal frames from a narrow (35°) camera at 300 m, NAVERA night
+gives nothing — by design, and safely (0 wrong accepts in 262 frames, gates on or coverage gates
+off). It confirms the camera requirement above as a hard limit: a wide lens or ≥ ~900 m with
+this one. Thermal-UAV has no frame inside NAVERA's envelope, so it says nothing about accuracy.
 
 ### Celestial (`cn_pkg`)
 

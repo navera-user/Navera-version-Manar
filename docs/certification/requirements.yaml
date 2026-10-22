@@ -166,6 +166,7 @@ requirements:
     - 'test_pose_tilt_guard\.py::'
   evidence:
     - {level: PUB, value: 'UAV-VisLoc 8 flights, 2599 fixes: > 100 m 70 → 1 (bench artefact); within 3σ 0.999 (30 m floor) / 0.993 (self-cal)', ref: 'VALIDATION_STATUS.md, Day: real drone flights'}
+    - {level: PUB, against: true, value: 'Esri map, 2026-10-22: 3 fixes > 100 m (04_0439, 04_0663, 05_0149) are poses whose tilt agrees within 4° with the tilted, unstraightened bench photo; in the product the IMU-straightened frame (expected tilt 0) would refuse these poses', ref: 'VALIDATION_STATUS.md, Day: more public flights, on NAVERA''s own map source'}
   status: verified-PUB
 
 - id: NAV-FUN-09
@@ -181,6 +182,7 @@ requirements:
     - 'test_contrast\.py::'
     - 'test_sthn_geometry\.py::'
   evidence:
+    - {level: PUB, value: 'real night thermal frames (Thermal-UAV, 35.5° at ~300 m): 262/262 refused "footprint too small … fly higher", 0 wrong (2026-10-22)', ref: 'VALIDATION_STATUS.md, Night vision on REAL recorded night thermal frames'}
     - {level: SIM, value: 'synthetic frames 250–600 m: 8–13 m median (unscaled: 11–263 m)', ref: 'VALIDATION_STATUS.md, Night vision'}
   status: verified-SIM
   note: 'no real thermal imagery (B4, B14, D23)'
@@ -387,6 +389,7 @@ requirements:
     - day_pkg/test/test_pose_tilt_guard.py::test_pose_tilt_far_from_the_attitude_keeps_the_frame_centre
   evidence:
     - {level: PUB, value: 'median 16.0 / p90 34 / max 119 m; acceptance 6–92 % per flight', ref: 'VALIDATION_STATUS.md, Day: real drone flights'}
+    - {level: PUB, value: 'NAVERA''s map source (Esri z17 via prepare_area, 2026-10-22): UAV-VisLoc 10 flights (02, 09 new) 1461/4251 frames, median 18.9 / p90 38 / max 148 m, 59 > 50 m, 3 > 100 m (tilted unstraightened photos); AerialVL 4 sequences (Qingdao, Mar 2023, 210–250 m, incl. sunset) 561/1152, median 18.1 / p90 33 / max 73 m raw, 3.2–7.6 m median after the dataset labels'' 2–2.75 s lag', ref: 'VALIDATION_STATUS.md, Day: more public flights, on NAVERA''s own map source'}
   status: verified-PUB
   note: 'not NAVERA''s camera; maps newer than the photos by up to 7 years'
 
@@ -420,6 +423,7 @@ requirements:
     - {level: SIM, value: '8–13 m median; 6/11/37 m in mission', ref: 'VALIDATION_STATUS.md, Night vision'}
     - {level: SIM, value: 'regression benchmark 2026-10-22: nominal 400 m 24/24 10.8/16.2/23.4 m, 600 m 24/24 10.5 m, farmland 22/24 10.8 m, open sea / uniform 0/24 accepted', ref: 'VALIDATION_STATUS.md, Night vision — offline regression benchmark'}
     - {level: PUB, value: 'real Bordeaux night LWIR 1000 m: Boson 640 23/60, 10.3/20.3/31.5 m, Hikvision 160 17/60, 10.7/26.0/49.7 m, 0 wrong, 100 % within 3σ (= the 2026-10-21 retry-gate runs)', ref: 'VALIDATION_STATUS.md, Night vision on REAL aerial thermal imagery'}
+    - {level: PUB, against: true, value: 'real recorded night thermal frames (Thermal-UAV, DJI M4T 35.5°, ~300 m, Changsha, 2026-10-22): 0/262 positions, 0 wrong — all outside the footprint envelope (5–12 % of the reference; needs ≥ ~900 m with this lens); gates off: raw STHN 140/146 wrong', ref: 'VALIDATION_STATUS.md, Night vision on REAL recorded night thermal frames'}
     - {level: BENCH, against: true, value: 'real Insta360 night screen bench: every frame failed the map check (F24)', ref: 'problems doc F24'}
   status: verified-PUB
   note: 'text before 2026-10-22: "synthetic grey renders: 8–13 m median at 250–600 m (84° camera, 2026-09-30); mission simulator 400 m: median 6 m, p90 11 m, max 37 m" — with today''s 75° camera 250 m is refused and 350 m mostly (5/24, footprint); the mission-simulator figure was not re-run. Real thermal is an orthomosaic (no relief, nadir), not a NAVERA flight'
@@ -486,6 +490,7 @@ requirements:
     - 'test_evaluate_session\.py'
   evidence:
     - {level: PUB, value: 'model alone 0.65–0.71 (unsafe); self-cal + floor + guard 0.993 / 0.999', ref: 'VALIDATION_STATUS.md, verdict on the stated sigma'}
+    - {level: PUB, value: 'Esri map, 2026-10-22: UAV-VisLoc 10 flights 0.997 (30 m floor) / 0.995 (self-cal), 5 fixes > 50 m beyond 3σ; AerialVL 1.000 / 1.000; model alone 0.70–0.73', ref: 'VALIDATION_STATUS.md, Day: more public flights, on NAVERA''s own map source'}
   status: verified-PUB
   note: 'VL-2 — flights that match rarely never self-calibrate (30 m floor)'
 
@@ -502,6 +507,17 @@ requirements:
     - {level: BENCH, value: 'replay of 108 real-camera runs: 0 false refusals; 3 m/s refused ~72 m (30 m σ floor)', ref: 'VALIDATION_STATUS.md, Robustness'}
   status: verified-BENCH
   note: 'needs an independent source with a stated sigma (D1: none over sea / desert)'
+
+- id: NAV-PERF-09
+  category: PERF
+  title: 'Day vision availability against the mission map (map source and age)'
+  text: 'Measured on real drone imagery, single frames from a 250 m-off prior, against Esri World Imagery z17 prepared as for a mission: 34 % of UAV-VisLoc frames (10 flights, map 1–9 years newer) and 49 % of AerialVL frames located. On the same 2414 photos the dataset''s own (period) map gives 54 % and Esri 33 %: availability falls with the map''s age (90 % → 38–49 % at 7 years), accuracy does not (median 16 vs 19 m). Target: to be set per mission from the map''s age and the first recorded flight.'
+  code:
+    - day_pkg/day_pkg/prepare_area.py::prepare
+  evidence:
+    - {level: PUB, value: 'UAV-VisLoc Esri 1461/4251 (34 %), dataset map 54 % vs Esri 33 % on the same photos; flight 11 (map 1 year newer) 99 %; AerialVL 561/1152 (49 %)', ref: 'VALIDATION_STATUS.md, Day: more public flights, on NAVERA''s own map source'}
+  status: verified-PUB
+  note: 'imagery dates from Esri''s metadata layer (navera_tools/bench/esri_imagery_dates.py); a mission map older than the flight is the reverse case, not measured; Esri tiles are evaluation-only (DEP-11)'
 
 # ───────────────────────────── Safety ─────────────────────────────
 - id: NAV-SAF-01

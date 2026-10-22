@@ -25,7 +25,8 @@ lat0, lon0, lat1, lon1 = (float(rng[k]) for k in ("LT_lat_map", "LT_lon_map", "R
 im = Image.open(os.path.join(flight, f"satellite{idx}.tif")).convert("RGB")
 W, H = im.size
 print("tif", W, H, "corners", lat0, lon0, lat1, lon1, flush=True)
-sc = 0.25
+mpp = (lon1 - lon0) * 111320.0 * math.cos(math.radians(lat0)) / W
+sc = 0.25 if mpp < 0.5 else 1.0     # UAV-VisLoc maps ~0.25 m/px -> ~1 m/px; a ~1 m/px map (AerialVL) as it is
 small = np.asarray(im.resize((int(W * sc), int(H * sc)), Image.LANCZOS))     # 0.25 -> ~1 m/px
 del im
 h, w = small.shape[:2]
