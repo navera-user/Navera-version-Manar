@@ -312,6 +312,13 @@ class DaySubscriber(Node):
         self.declare_parameter("mount_cal", True)
         declare_float(self, "mount_sigma_deg", 2.0)
         self.declare_parameter("mount_cal_min_samples", 12)
+        # F38: a GPS check is a mount sample only while its dating error (ground speed x the camera delay's
+        # sigma) is at most mount_cal_max_dating_m and the delay is known (set by the camera or estimated
+        # and applied): with the delay unknown its offset along the track was learned as a mount pitch
+        # (Isaac Sim 2026-10-22). An in-flight fit is used once its samples span mount_cal_min_heading_span_deg
+        # of frame headings: on one heading the mount offset is a map shift (600 m climb: 10 -> 16 m).
+        declare_float(self, "mount_cal_max_dating_m", 2.0)
+        declare_float(self, "mount_cal_min_heading_span_deg", 90.0)
         # GPS may be good for the take-off only: the main source of the mount error is a PERSISTED
         # calibration — mount_cal_file (a ground/bench measurement or a chosen flight's: JSON {"frame
         # centre": {top_deg, right_deg, sigma_deg}, "camera pose": {...}}), else the last one learned in
@@ -1155,8 +1162,10 @@ class DaySubscriber(Node):
             return
         self._learned_delay = d
         n_sig, n_bias = self.sigma_cal.rollback(float("-inf")), self.map_bias.rollback_bias(float("-inf"))
-        self.get_logger().info(f"[day] camera delay moved {d - ref:+.2f} s: forgot {n_bias} map-bias and {n_sig} "
-                               "sigma-calibration samples dated by the old delay")
+        mc = getattr(self, "mount_cal", None)
+        n_mount = mc.rollback(float("-inf")) if mc is not None else 0
+        self.get_logger().info(f"[day] camera delay moved {d - ref:+.2f} s: forgot {n_bias} map-bias, {n_sig} "
+                               f"sigma-calibration and {n_mount} camera-mount samples dated by the old delay")
 
     def _latency_sample(self, meta):
         """A GPS-check match is a camera-delay sample (its arrival = raw stamp + the camera's delay)."""
@@ -1823,8 +1832,10 @@ class DaySubscriber(Node):
         p_ = lambda n: self.get_parameter(n).value               # noqa: E731
         self.mount_sigma_deg = float(p_("mount_sigma_deg"))
         self.mount_cal = (MountCalibration(prior_deg=self.mount_sigma_deg,
-                                           min_samples=int(p_("mount_cal_min_samples")))
+                                           min_samples=int(p_("mount_cal_min_samples")),
+                                           min_heading_span_deg=float(p_("mount_cal_min_heading_span_deg")))
                           if bool(p_("mount_cal")) else None)
+        self.mount_cal_max_dating_m = float(p_("mount_cal_max_dating_m"))
         self.pose_guard_choose = bool(p_("pose_guard_choose"))
         self.pose_guard_refuse_deg = float(p_("pose_guard_refuse_deg"))
         self.mount_cal_persist = bool(p_("mount_cal_persist"))
@@ -2013,10 +2024,11 @@ class DaySubscriber(Node):
         Returns (lat, lon) placed, or None when refused."""
         mc = getattr(self, "mount_cal", None)
         ns = meta.get("image_stamp_ns")
+        vel = None
         if mc is not None and g is not None and ns is not None:
-            t = int(ns) / 1e9
-            g0 = self._gps_hist.at(t - 1.0)
+            g0 = self._gps_hist.at(int(ns) / 1e9 - 1.0)
             vel = _en(g, g0) if g0 is not None else None
+        if mc is not None and g is not None and ns is not None and self._mount_sample_refused(vel) is None:
             hd, h = self._fix_heading(res, meta), self._fix_height(meta)
             seen = set()
             for kind, la, lo in (("frame centre", res.get("centre_lat"), res.get("centre_lon")),
@@ -2035,16 +2047,37 @@ class DaySubscriber(Node):
         lat, lon, why = self._place_fix(res, meta, {}, pred=pred)
         return None if why else (lat, lon)
 
+    def _mount_sample_refused(self, vel):
+        """Why a GPS check now gives no mount sample (None: it does): the camera delay unknown, or the
+        frame's dating error (ground speed x the delay's sigma) above mount_cal_max_dating_m (F38)."""
+        lc = getattr(self, "latency_cal", None)
+        if lc is None:
+            return None
+        sd = lc.delay_sigma() if getattr(self, "auto_latency", False) else \
+            (lc.nominal_sigma if lc.nominal != 0.0 else None)
+        if sd is None:
+            return "camera delay unknown"
+        if vel is None:
+            return "ground speed unknown"
+        err = math.hypot(vel[0], vel[1]) * math.hypot(float(sd), float(getattr(self, "_delay_change_s", 0.0)))
+        lim = float(getattr(self, "mount_cal_max_dating_m", 2.0))
+        return None if err <= lim else f"frame dating error {err:.1f} m > {lim:g} m"
+
     def _mount_sigma(self, s: float, result, meta) -> float:
         """The model sigma s with the camera mount's uncertainty (height x tan(its sigma: the prior until
         learned)) and the guard's (_guard_sigma_m) added in quadrature."""
+        s = math.hypot(s, self._mount_term_m(result, meta))
+        return math.hypot(s, float(result.get("_guard_sigma_m") or 0.0))
+
+    def _mount_term_m(self, result, meta) -> float:
+        """height x tan(the camera mount's sigma) of a fix of this kind (0 without a height)."""
         mc = getattr(self, "mount_cal", None)
         h = self._fix_height(meta)
-        if h is not None:
-            sd = (mc.sigma_deg(self._fix_kind(result), self._delay_known_sigma_s()) if mc is not None
-                  else float(getattr(self, "mount_sigma_deg", 0.0)))
-            s = math.hypot(s, h * math.tan(math.radians(sd)))
-        return math.hypot(s, float(result.get("_guard_sigma_m") or 0.0))
+        if h is None:
+            return 0.0
+        sd = (mc.sigma_deg(self._fix_kind(result), self._delay_known_sigma_s()) if mc is not None
+              else float(getattr(self, "mount_sigma_deg", 0.0)))
+        return h * math.tan(math.radians(sd))
 
     def _publish_result(self, seq_id, meta, result):
         now      = self.get_clock().now().to_msg()
