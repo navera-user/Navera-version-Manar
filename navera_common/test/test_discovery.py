@@ -238,7 +238,8 @@ def test_discovery_runs_with_ros_domain_auto(monkeypatch):
     dsc.discover({"ROS_DOMAIN_ID": "42", "NAVERA_DISCOVER_ROS_DOMAINS": "7"}, ros_wait_s=0.1)
 
 
-PX4_OK = {"MAV_USEHILGPS": 1, "EKF2_GPS_CTRL": 1, "EKF2_HGT_REF": 0, "EKF2_GPS_CHECK": 240, "SYS_HAS_GPS": 1}
+PX4_OK = {"MAV_USEHILGPS": 1, "EKF2_GPS_CTRL": 1, "EKF2_HGT_REF": 0, "EKF2_GPS_CHECK": 240, "SYS_HAS_GPS": 1,
+          "EKF2_GPS_V_GATE": 100, "COM_POS_FS_EPH": 5, "EKF2_NOAID_NOISE": 10}
 
 
 def test_px4_gets_hil_gps_through_the_relay_and_the_imu_address_is_kept():
@@ -266,10 +267,16 @@ def test_px4_gets_hil_gps_through_the_relay_and_the_imu_address_is_kept():
 def test_px4_parameters_that_break_the_hil_gps_output_are_reported():
     from navera_common.discovery import px4_param_int
     px4 = dict(AP, autopilot=12)
-    bad = dict(PX4_OK, MAV_USEHILGPS=0, EKF2_GPS_CTRL=7, EKF2_HGT_REF=1, EKF2_GPS_CHECK=245)
+    bad = dict(PX4_OK, MAV_USEHILGPS=0, EKF2_GPS_CTRL=7, EKF2_HGT_REF=1, EKF2_GPS_CHECK=245, EKF2_GPS_V_GATE=5)
     rep = decide({"serial": [px4], "autopilot_streams": dict(STREAMS, px4_params=bad)}, {})["report"]
-    for name in ("MAV_USEHILGPS", "EKF2_GPS_CTRL", "EKF2_HGT_REF", "EKF2_GPS_CHECK"):
+    for name in ("MAV_USEHILGPS", "EKF2_GPS_CTRL", "EKF2_HGT_REF", "EKF2_GPS_CHECK", "EKF2_GPS_V_GATE"):
         assert any(r.startswith(f"CHECK PX4 {name} ") for r in rep), (name, rep)
+    # PX4's defaults that only matter with vision forwarded
+    ok = decide({"serial": [px4], "autopilot_streams": dict(STREAMS, px4_params=PX4_OK)}, {})["report"]
+    assert not any(r.startswith("CHECK") for r in ok)
+    fwd = decide({"serial": [px4], "autopilot_streams": dict(STREAMS, px4_params=PX4_OK)},
+                 {"NAVERA_FORWARD_DEGRADED": "true"})["report"]
+    assert [r.split()[2] for r in fwd if r.startswith("CHECK PX4 ")] == ["COM_POS_FS_EPH", "EKF2_NOAID_NOISE"]
     rep = decide({"serial": [px4], "autopilot_streams": STREAMS}, {})["report"]      # not read
     assert any("PX4 parameters not all read" in r for r in rep)
     # PX4 sends INT32 parameters bytewise in PARAM_VALUE's float
