@@ -676,6 +676,30 @@ receives "no fix" and its own failsafe acts — unless forwarding is enabled exp
 | `NAVERA_MAX_MEASUREMENT_AGE_S` | 5.0 | a position measured longer ago is not sent (also: a position older than 5 s is no longer current) |
 | `NAVERA_BRIDGE_MAX_S` | 10 | a gap in the forwarded vision positions is bridged this long at most (0 = never; 0 recommended on a fixed-wing with an airspeed sensor, docs/ARDUPILOT_INTEGRATION.md §3) |
 
+**GPS lost, default settings — what happens.** NAVERA keeps computing vision positions: they
+are on the operator view and, by default, on ROS `/navera/fix` (`status.service` = 0, with
+their accuracy), but the **autopilot** (MAVLink `GPS_INPUT` and NMEA) receives **"no fix"**.
+Its own GPS-loss / EKF failsafe then acts as configured in the autopilot — in ArduPilot SITL
+Copter LANDs and Rover/boat HOLDs — and it does not resume its mission by itself when NAVERA
+has positions again ([ARDUPILOT_INTEGRATION.md](../docs/ARDUPILOT_INTEGRATION.md)). Set the
+autopilot's failsafe to the action you want on a GPS loss: with the defaults, NAVERA never
+prevents it. PX4 receives nothing over MAVLink anyway (§5).
+
+**When to enable forwarding (`NAVERA_FORWARD_DEGRADED=true`)** — only when all of these hold:
+
+1. the autopilot is ArduPilot, connected over MAVLink and configured as in
+   [ARDUPILOT_INTEGRATION.md](../docs/ARDUPILOT_INTEGRATION.md) (`GPS_TYPE = 14`,
+   `EK3_SRC1_VELXY = 0`, `EK3_SRC1_VELZ = 0`, arming checks adapted to 0 satellites);
+2. NAVERA's day-vision accuracy has been **measured on this vehicle, camera and terrain** —
+   flights with GPS in shadow mode (`NAVERA_SHADOW_MODE=true`,
+   [FIELD_TEST_PROCEDURE.md](../docs/FIELD_TEST_PROCEDURE.md)) — and `NAVERA_DEGRADED_SIGMA_M`
+   is set from that measurement (at most 100 m with ArduPilot);
+3. the route is over ground vision can match (the `/mission` terrain warning, §8), and the
+   first GPS-denied flights have a safety pilot able to take over.
+
+Otherwise keep the default: a GPS loss ends in the autopilot's failsafe, which is the
+behaviour you configured and tested, rather than in positions whose accuracy is unknown.
+
 **Vision positions are carried to the present.** A vision position describes where its
 photo was taken, 1–2.5 s before it reaches the output. The output learns the ground
 velocity from the recent positions (any source, weighted fit over 20 s) and carries a
