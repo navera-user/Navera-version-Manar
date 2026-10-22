@@ -514,10 +514,13 @@ requirements:
   text: 'Measured on real drone imagery, single frames from a 250 m-off prior, against Esri World Imagery z17 prepared as for a mission: 34 % of UAV-VisLoc frames (10 flights, map 1–9 years newer) and 49 % of AerialVL frames located. On the same 2414 photos the dataset''s own (period) map gives 54 % and Esri 33 %: availability falls with the map''s age (90 % → 38–49 % at 7 years), accuracy does not (median 16 vs 19 m). Target: to be set per mission from the map''s age and the first recorded flight.'
   code:
     - day_pkg/day_pkg/prepare_area.py::prepare
+    - navera_tools/mission_bundle.py::imagery_age_warning
+  tests:
+    - navera_tools/tests/test_mission_bundle.py::test_old_or_undated_imagery_is_warned
   evidence:
     - {level: PUB, value: 'UAV-VisLoc Esri 1461/4251 (34 %), dataset map 54 % vs Esri 33 % on the same photos; flight 11 (map 1 year newer) 99 %; AerialVL 561/1152 (49 %)', ref: 'VALIDATION_STATUS.md, Day: more public flights, on NAVERA''s own map source'}
   status: verified-PUB
-  note: 'imagery dates from Esri''s metadata layer (navera_tools/bench/esri_imagery_dates.py); a mission map older than the flight is the reverse case, not measured; Esri tiles are evaluation-only (DEP-11)'
+  note: 'imagery dates from Esri''s metadata layer (navera_tools/bench/esri_imagery_dates.py); a mission map older than the flight is the reverse case, not measured; Esri tiles are evaluation-only (DEP-11); the mission tools warn on imagery older than 5 years or undated (test linked)'
 
 # ───────────────────────────── Safety ─────────────────────────────
 - id: NAV-SAF-01
