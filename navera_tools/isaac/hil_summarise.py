@@ -239,6 +239,27 @@ def restarts(res, offset):
     return out
 
 
+def window(res, t_from, t_to):
+    """The accuracy numbers between two flight times (e.g. the GPS cut and the first node killed:
+    the part comparable with a run without kills)."""
+    import summarise as S
+    ev = [json.loads(x) for x in open(os.path.join(res, "events.jsonl"))] \
+        if os.path.exists(os.path.join(res, "events.jsonl")) else []
+    st = [e["day_status"] for e in ev if t_from <= e["t"] <= t_to and "frame_id" in e.get("day_status", {})
+          and e["day_status"].get("source") not in ("gps", "gps_active")]
+    acc = [x for x in st if x.get("success") and x.get("source") not in S.NOT_A_MATCH]
+    inw = lambda name: [r for r in rows(os.path.join(res, name)) if t_from <= fv(r, "t") <= t_to]  # noqa: E731
+    day = [r for r in inw("day.csv") if r["mode"] == "measured" and r["valid"] == "1"]
+    return dict(t_from=round(t_from, 1), t_to=round(t_to, 1), frames=len(st),
+                accepted_pct=round(100.0 * len(acc) / len(st), 1) if st else None,
+                fix_err_stamp_m=stats([fv(r, "err_m") for r in day]),
+                fix_err_exposure_m=stats([fv(r, "err_frame_m") for r in day]),
+                wrong_fixes=sum(1 for r in day if fv(r, "err_frame_m") > S.WRONG_M),
+                output_err_m=stats([fv(r, "err_m") for r in inw("position.csv") if r["valid"] == "1"]),
+                autopilot_ekf_err_m=stats([fv(r, "err_m") for r in inw("ekf.csv")]),
+                ms_per_frame=stats([fv(r, "proc_ms") for r in inw("proc.csv")]))
+
+
 def report(s, base):
     a = s["after_cut"]
     f3 = lambda d: "/".join("-" if not d or d.get(k) is None else f"{d[k]:.1f}" for k in ("median", "p90", "max"))  # noqa: E731
@@ -280,6 +301,8 @@ def main():
     s["hil"] = dict(pc_offset_s=offset, latency=latency(res, frames, offset, t0, cut),
                     system=system(res, flight), jitter=jitter(res, flight, t0 + cut - offset),
                     restarts=restarts(res, offset), frames_joined=len(frames))
+    if s["hil"]["restarts"]:
+        s["hil"]["before_first_kill"] = window(res, cut, min(k["t_flight"] for k in s["hil"]["restarts"]))
     base = None
     for n in ("summary_flight.json", "summary.json"):
         p = os.path.join(a.baseline, n)

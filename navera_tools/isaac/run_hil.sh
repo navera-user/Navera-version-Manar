@@ -36,7 +36,9 @@ done
 [ -n "$box" ] || { echo "--box BOX_IP is required" >&2; exit 2; }
 here=$(cd "$(dirname "$0")" && pwd); repo=$(cd "$here/../.." && pwd)
 D=/mnt/d/navera_isaac; DW='D:\navera_isaac'
-res=$HOME/navera_results/$name; mkdir -p "$res/sitl" "$HOME/.navera_hil_ws"/{build,install,log}
+res=$HOME/navera_results/$name
+[ -n "$name" ] && rm -rf "${res:?}"        # a re-used name: no stale gate files (streaming, jetson_ready)
+mkdir -p "$res/sitl" "$HOME/.navera_hil_ws"/{build,install,log}
 VENV=$HOME/.venv-navera-sitl; AP=$HOME/ardupilot; TOOLS=$HOME/navera_hil_tools
 p0=$((5760 + 10 * inst)); gcs_port=$((14550 + 10 * inst)); pose_port=$((15500 + 20 * inst)); link_port=$((pose_port + 1))
 # Isaac Sim reads its script from the shared D:\navera_isaac: put this copy's there for the

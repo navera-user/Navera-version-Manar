@@ -148,7 +148,7 @@ pids+=($pc_pid)
 ( set +u; source /opt/ros/humble/setup.bash; source "$STAGE/home/navera/isaac_ros_common/install/setup.bash"
   export ROS_DOMAIN_ID=$DOMAIN ROS_LOCALHOST_ONLY=1
   exec python3 "$here/hil_record.py" --ros-args -p results:="$res" -p pc_offset_s:="$offset" -p truth_port:=$truth_port \
-    -p lat0:=35.8685 -p lon0:=10.5352 -p z_ref:="$zref" -p pc_host:="$pc_ip" ) > "$res/logs/hil_record.log" 2>&1 &
+    -p lat0:=35.8685 -p lon0:=10.5352 -p z_ref:="$zref" -p pc_host:="$pc_ip" -p rtt_port:=$nmea_port ) > "$res/logs/hil_record.log" 2>&1 &
 rec=$!
 
 # 4. NAVERA starts once the camera stream is up (a live camera that cannot open exits and restarts)

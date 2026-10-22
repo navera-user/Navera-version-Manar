@@ -22,7 +22,7 @@ and what only the box can tell (hil_*.csv):
   hil_truth_rx.csv  per truth packet: PC send time - box receipt (network delay + clock offset)
   hil_sys.csv     tegrastats each second: RAM, swap, CPU per core, GPU, temperatures, power
   hil_units.csv   every 2 s per staged unit: memory, CPU time, restarts, main PID, state
-  hil_ping.csv    ICMP round trip to the PC each second
+  hil_ping.csv    round trip to the PC each second (TCP connect to rtt_port: no ICMP through its firewall)
   truth.csv       the truth as received (t, lat, lon, alt, height above home)
 
 Times: the box's clock; truth times are the PC's (t = PC wall - t0). pc_offset_s = PC clock -
@@ -32,6 +32,7 @@ import json
 import math
 import os
 import re
+import socket
 import subprocess
 import sys
 import threading
@@ -110,6 +111,7 @@ class HilRecord(Node):
         self.results = os.path.expanduser(str(p("results", "/tmp/hil")))
         self.offset = float(p("pc_offset_s", 0.0))
         self.pc_host = str(p("pc_host", ""))
+        self.rtt_port = int(p("rtt_port", 10117))
         self.unit_prefix = str(p("unit_prefix", "navera-stage-"))
         self.geo = GeoRef(float(p("lat0", 35.8685)), float(p("lon0", 10.5352)))
         os.makedirs(self.results, exist_ok=True)
@@ -313,13 +315,19 @@ class HilRecord(Node):
             time.sleep(2.0)
 
     def _ping_loop(self):
+        """Round trip to the PC each second: a TCP connect to its NMEA port (the PC's firewall
+        drops ICMP echo), i.e. SYN -> SYN-ACK through the same network path as the sensors."""
         if not self.pc_host:
             return
-        proc = subprocess.Popen(["ping", "-i", "1", "-W", "2", self.pc_host], stdout=subprocess.PIPE, text=True)
-        for line in proc.stdout:
-            m = re.search(r"time=([\d.]+) ms", line)
-            if m:
-                self._w(self.ping_f, f"{time.time():.1f},{m.group(1)}")
+        while rclpy.ok():
+            t = time.time()
+            try:
+                with socket.create_connection((self.pc_host, self.rtt_port), timeout=2.0):
+                    rtt = time.time() - t
+                self._w(self.ping_f, f"{t:.1f},{1000 * rtt:.2f}")
+            except OSError:
+                self._w(self.ping_f, f"{t:.1f},nan")
+            time.sleep(max(0.0, 1.0 - (time.time() - t)))
 
 
 def main():
