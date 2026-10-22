@@ -54,7 +54,8 @@ def record(a, d, f):
     rc = a.get("recheck") or {}
     rv = rc.get("verify") or {}
     rot, aspect = quad_rotation_deg(a.get("footprint_quad"))
-    return dict(rot_deg=rot, side_ratio=aspect, d=d, f=f, success=bool(a.get("success")), reason=str(a.get("reason") or "")[:90],
+    return dict(rot_deg=rot, side_ratio=aspect,
+                d=d, f=f, success=bool(a.get("success")), reason=str(a.get("reason") or "")[:90],
                 conf=a.get("conf"), ncc=v.get("ncc"), ncc_ctrl=v.get("ncc_ctrl"), ncc_margin=v.get("ncc_margin"),
                 recheck_m=a.get("recheck_m"), ncc2=rv.get("ncc"), ncc2_ctrl=rv.get("ncc_ctrl"),
                 c1=[a.get("first_lat", a.get("pred_lat")), a.get("first_lon", a.get("pred_lon"))],
