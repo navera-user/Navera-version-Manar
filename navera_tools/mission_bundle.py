@@ -554,6 +554,17 @@ def plan_bundle(spec: MissionSpec, sources: Sequence[TileSource], out_dir: Optio
                         f"with this camera (~{ms:.0f} m)")
     if any(isinstance(s, XYZSource) and "esri" in s.url for s in sources):
         warnings.append("Esri World Imagery: offline storage needs an Esri licence (evaluation only)")
+    sharp = None
+    for src in sources:                      # real ground detail of the local tiles (nothing downloaded)
+        if isinstance(src, MBTilesSource):
+            have = src.has(spec.zoom, tiles)
+            if have:
+                pick = _even_sample(have, SHARP_SAMPLE)
+                sharp = dict(map_sharpness((v for _, _, v in src._rows(spec.zoom, pick, True)),
+                                           map_mpp(spec.lat_c, spec.zoom)), source=src.name)
+                if sharp["warning"]:
+                    warnings.append(f"{src.name}: {sharp['warning']}")
+                break
     for src in sources:
         w = imagery_age_warning(getattr(src, "imagery_date", None))
         if w and getattr(src, "imagery_date", "unknown") != "unknown":
@@ -569,7 +580,7 @@ def plan_bundle(spec: MissionSpec, sources: Sequence[TileSource], out_dir: Optio
         total_mb=round(total / 2 ** 20, 1), free_mb=None if free is None else round(free / 2 ** 20),
         time_s=dict(download=round(t_dl), copy=round(t_copy), dinov2=round(t_desc), learned=round(t_learn),
                     total=round(t_dl + t_copy + t_desc + t_learn + 10)),
-        warnings=warnings, _tiles=tiles)
+        map_sharpness=sharp, warnings=warnings, _tiles=tiles)
 
 
 def format_estimate(p: dict) -> str:
@@ -729,6 +740,86 @@ def imagery_age_warning(imagery_date, today: Optional[dt.date] = None) -> Option
         return (f"map imagery from {min(years)} ({age} years old): day vision may fail where the ground "
                 f"changed (keep it under {IMAGERY_MAX_AGE_Y:.0f} years)")
     return None
+
+
+# Map sharpness (C13): a tile stored at zoom 17 (~1.2 m/px) may hold coarser imagery resampled
+# up (Sentinel-2 10 m, an upscaled basemap). Day matching needs real detail: ~2 m works, 5 m is
+# marginal, 10 m gives nothing (docs/research/map_licensing_2026-10-21.md). The tile's energy
+# lost by a down/up-sample round trip at factor k, relative to that at k = 16, collapses below
+# SHARP_T for every k up to the factor the tile was upscaled by (calibrated on z17 Esri tiles
+# upscaled 1.5-8x + JPEG, and on real Sentinel-2 z17 tiles: native >= 0.05 at k = 2,
+# 2x-upscaled ~0.01, Sentinel-2 ~0.005).
+SHARP_KS = (1.5, 2.0, 3.0, 4.0, 6.0, 8.0)
+SHARP_REF_K, SHARP_T = 16.0, 0.03
+SHARP_WARN_FACTOR = 2.0         # warn from a 2x upscale
+SHARP_FAIL_MPP = 3.0            # real detail coarser than this: day matching mostly fails
+SHARP_SAMPLE = 40               # tiles measured per map
+
+
+def _roundtrip_energy(g, k: float) -> float:
+    import cv2
+    import numpy as np
+    h, w = g.shape
+    d = cv2.resize(g, (max(1, int(round(w / k))), max(1, int(round(h / k)))), interpolation=cv2.INTER_AREA)
+    u = cv2.resize(d, (w, h), interpolation=cv2.INTER_CUBIC)
+    return float(np.mean((g - u) ** 2))
+
+
+def tile_upscale_factor(img) -> Optional[float]:
+    """How many times this tile looks upscaled (1 = native detail; 2 = its real detail is 2 pixels
+    wide; ...; at most SHARP_KS[-1], read "at least"), or None for a uniform tile (sea, sand:
+    nothing to measure). img: a decoded tile (BGR or grey) or its encoded bytes."""
+    import cv2
+    import numpy as np
+    if isinstance(img, (bytes, bytearray, memoryview)):
+        img = cv2.imdecode(np.frombuffer(bytes(img), np.uint8), cv2.IMREAD_GRAYSCALE)
+    if img is None:
+        return None
+    if img.ndim == 3:
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    g = img.astype(np.float32)
+    if g.std() < 8.0 or min(g.shape) < 64:
+        return None
+    ref = _roundtrip_energy(g, SHARP_REF_K)
+    if ref <= 1e-6:
+        return None
+    f = 1.0
+    for k in SHARP_KS:
+        if _roundtrip_energy(g, k) / ref >= SHARP_T:
+            break
+        f = k
+    return f
+
+
+def _even_sample(items: Sequence, n: int) -> list:
+    items = sorted(items)
+    if len(items) <= n:
+        return list(items)
+    return [items[int(i * len(items) / n)] for i in range(n)]
+
+
+def map_sharpness(tile_data: Iterable, mpp: float) -> dict:
+    """The real ground detail of a map from a sample of its tiles (encoded bytes or images):
+    median upscale factor, effective metres per pixel (a lower bound: a 10 m Sentinel-2 map at zoom 17
+    reads ~6 m), and a warning when it looks upscaled 2x or more."""
+    factors = [f for f in (tile_upscale_factor(t) for t in tile_data) if f is not None]
+    out = dict(tiles_measured=len(factors), map_mpp=round(mpp, 2), upscale=None, effective_mpp=None,
+               upscaled_share=None, warning=None)
+    if not factors:
+        return out
+    factors.sort()
+    med = factors[len(factors) // 2]
+    eff = med * mpp
+    out.update(upscale=med, effective_mpp=round(eff, 2),
+               upscaled_share=round(sum(f >= SHARP_WARN_FACTOR for f in factors) / len(factors), 2))
+    if med >= SHARP_WARN_FACTOR:
+        # a lower bound: Sentinel-2 10 m at zoom 17 (1.0 m/px) reads 6x
+        out["warning"] = (f"map imagery looks upscaled (>= {med:g}x, median of {len(factors)} tiles measured): "
+                          f"real ground detail {eff:.1f} m/px or coarser, not the {mpp:.1f} m/px the tiles are "
+                          f"stored at"
+                          + (" — day vision will mostly fail (needs about 2 m or finer)" if eff > SHARP_FAIL_MPP
+                             else " — day vision may match less"))
+    return out
 
 
 def iers_coverage(path: str) -> dict:
@@ -1286,6 +1377,14 @@ def check_bundle(bundle: str, replay: Optional[str] = None, deep: bool = False, 
                         licence=meta.get("licence"), imagery_date=meta.get("imagery_date"),
                         downloaded=meta.get("downloaded"), bounds=meta.get("bounds"),
                         imagery_warning=imagery_age_warning(meta.get("imagery_date")))
+        # real ground detail of the corridor's tiles (a warning, never a failure)
+        con = sqlite3.connect(f"file:{mb}?mode=ro", uri=True)
+        pick = _even_sample([t for t in need if t in have], SHARP_SAMPLE)
+        data = [r[0] for x, y in pick for r in con.execute(
+            "SELECT tile_data FROM tiles WHERE zoom_level=? AND tile_column=? AND tile_row=?", (z, x, 2 ** z - 1 - y))]
+        con.close()
+        lat_c = sum(p[0] for p in m["legs"]) / max(1, len(m["legs"]))
+        C["map_sharpness"] = dict(ok=True, **map_sharpness(data, map_mpp(lat_c, z)))
 
         # day: DINOv2 cache, synthetic frames, learned features, replay
         if manifest["day"].get("dinov2_descriptors"):

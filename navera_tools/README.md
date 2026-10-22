@@ -101,6 +101,16 @@ and chooses the learned matcher's coarse map levels (`learned_matcher.map_level`
 frame of the 1200 px / 100 deg camera is matched on level 2, 4x coarser); `plan` warns when
 the height is beyond what zoom 17 serves with that camera.
 
+**Real ground detail of the map** (`plan` on the local sources' corridor tiles, `check` on the
+bundle's; 40 tiles sampled evenly, uniform ones skipped): a tile stored at zoom 17 (~1 m/px) may
+hold coarser imagery resampled up. For each tile, the energy a down/up-sample round trip at
+factor k removes, relative to k = 16, collapses for every k up to the upscale factor
+(`mission_bundle.tile_upscale_factor`). The median factor × the tile's m/px is the effective
+resolution (a lower bound: real Sentinel-2 10 m at zoom 17 reads ~6 m/px; the Sousse and Tunisia
+Esri maps read 1.0, i.e. native). From 2x upscaled, `plan` adds a warning and `check` reports it
+in `map_sharpness` (a warning, never a FAIL); above 3 m/px day vision will mostly fail (2 m works,
+5 m is marginal, 10 m gives nothing: docs/research/map_licensing_2026-10-21.md).
+
 Tile sources (`--source`, in priority order; each tile is taken from the first that has it):
 `onboard` (the onboard MBTiles, `--mbtiles` / `NAVERA_MBTILES`), `esri` (Esri World Imagery,
 8 tiles/s, polite to HTTP 429 — **offline storage needs an Esri licence: evaluation only**),
