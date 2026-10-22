@@ -55,6 +55,7 @@ from cv_bridge import CvBridge
 # NightLocalizer.localize(query_bgr, prior_lat, prior_lon) -> dict
 from night_pkg.nodes.night_localizer import (MIN_MATCH_NCC, RECHECK_MAX_M, RECHECK_OFFSET_M,
                                              RETRY_GATE_DEFAULTS, NightLocalizer)
+from night_pkg.nodes.heading_history import HeadingHistory
 from night_pkg.nodes.night_tracker import NightTracker
 from navera_msgs.msg import NavStatus, PositionEstimate
 
@@ -228,6 +229,7 @@ class NightSubscriber(Node):
         self.max_speed_mps = float(self.get_parameter("max_speed_mps").value)
         self.gate_margin_m = float(self.get_parameter("gate_margin_m").value)
         self._imu_heading = None          # (heading_deg, monotonic time)
+        self._imu_history = HeadingHistory()   # IMU headings on their stamps: heading at exposure (D20)
         self._imu_timeout = float(self.get_parameter("imu_heading_timeout_s").value)
 
         # ── State ───────────────────────────────────────────────
@@ -385,17 +387,29 @@ class NightSubscriber(Node):
             return
         yaw_enu = math.atan2(2.0 * (q.w * q.z + q.x * q.y), 1.0 - 2.0 * (q.y * q.y + q.z * q.z))
         self._imu_heading = ((90.0 - math.degrees(yaw_enu)) % 360.0, time.monotonic())
+        st = msg.header.stamp
+        stamp = st.sec + st.nanosec * 1e-9 if (st.sec or st.nanosec) else time.time()
+        self._imu_history.add(stamp, self._imu_heading[0])
 
     def _heading(self, meta):
-        """(heading_deg, source) for this frame: frame_meta, else a fresh IMU."""
+        """(heading_deg, source) for this frame: frame_meta (the attitude at the exposure), else
+        the IMU heading interpolated at the exposure stamp (D20), else the latest fresh IMU.
+        """
         h = meta.get("heading_deg")
         if h is not None:
             try:
                 return float(h), "frame"
             except (TypeError, ValueError):
                 pass
+        ns = meta.get("image_stamp_ns")
+        try:
+            at = self._imu_history.at(int(ns) / 1e9) if ns else None
+        except (TypeError, ValueError):
+            at = None
+        if at is not None:
+            return at[0], "imu at exposure"
         if self._imu_heading and time.monotonic() - self._imu_heading[1] <= self._imu_timeout:
-            return self._imu_heading[0], "imu"
+            return self._imu_heading[0], "imu (latest: exposure not in the IMU history)"
         return None, "none (assumed north-up)"
 
     def on_start_cmd(self, msg: Bool):
