@@ -44,8 +44,13 @@ run_limited() {   # run_limited <seconds> <command...>  → the command's exit c
   wait "$pid"
 }
 
+# The nodes remember facts across a restart (navera_common.state_store: the day anchor, the
+# output's held position, the GPS gate): the tests get their own state directory, never the
+# box's /var/lib/navera nor what an earlier test left behind.
+STATE_TMP=$(mktemp -d -t navera_test_state.XXXXXX)
+trap 'rm -rf "$STATE_TMP"' EXIT
 echo "== unit tests (${#UNIT[@]} files)"
-run_limited "$UNIT_LIMIT_S" python3 -m pytest -q -p no:cacheprovider "${UNIT[@]}"
+NAVERA_STATE_DIR="$STATE_TMP/unit" run_limited "$UNIT_LIMIT_S" python3 -m pytest -q -p no:cacheprovider "${UNIT[@]}"
 rc=$?
 [ "$rc" -eq 0 ] || echo "FAILED STEP: unit tests (exit $rc)"
 
@@ -54,7 +59,7 @@ if [ "${1:-}" = "--integration" ]; then
   export ROS_LOCALHOST_ONLY=1
   for t in navera_tools/tests/test_*.py; do
     echo "== integration: $t"
-    run_limited "$INTEGRATION_LIMIT_S" python3 "$t"
+    NAVERA_STATE_DIR="$STATE_TMP/$(basename "$t" .py)" run_limited "$INTEGRATION_LIMIT_S" python3 "$t"
     code=$?
     if [ "$code" -ne 0 ]; then echo "FAILED STEP: $t (exit $code)"; rc=1; fi
   done
