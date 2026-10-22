@@ -15,6 +15,8 @@ Bounds from the measured numbers (VALIDATION_STATUS.md, night sections) with mar
 Baseline 2026-10-22: synthetic nominal 24/24, 10.8 / 16.2 / 23.4 m (median / p90 / max), 600 m 24/24 10.5 m,
 farmland 22/24 10.8 m, sea 0/24, uniform 0/24; Boson 1000 m 23/60, 10.3 / 20.3 / 31.5 m; Hikvision 1000 m
 17/60, 10.7 / 26.0 / 49.7 m; 0 wrong; 100 % within 3 stated sigma.
+2026-10-22 (first-try gate 0.97, sigma refitted on real thermal): synthetic unchanged; Boson 22/60,
+10.0 / 18.3 / 31.5 m; Hikvision 17/60, 10.7 / 26.0 / 49.7 m; 0 wrong; 100 % within 3 sigma.
 Run: NAVERA_PERF=1 flock /tmp/claude-1000/navera_gpu.lock \
     python3 -m pytest -q navera_tools/tests/test_perf_night_vision.py
 """
@@ -76,19 +78,21 @@ def test_perf_night_synthetic_no_information_refused(synthetic):
 
 def test_perf_night_real_thermal_boson_accuracy(thermal):
     """NAV-PERF-03 real aerial night LWIR (Bordeaux), Boson 640 50 deg at 1000 m: >= 25 % of frames
-    give a position, median <= 14 m, p90 <= 30 m, no wrong fix (> 50 m)."""
+    give a position, median <= 14 m, p90 <= 30 m, no wrong fix (> 50 m), >= 99 % within 3 stated
+    sigma (the sigma is published as covariance by default since 2026-10-22, D3)."""
     s = thermal["boson640_50:1000"]
     assert s["availability"] >= 0.25, s
     assert s["median"] <= 14.0 and s["p90"] <= 30.0, s
     assert s["wrong"] == 0, s
+    assert s["within_3sigma"] >= 0.99, s
 
 
 def test_perf_night_real_thermal_160px_retry_gate(thermal):
     """NAV-PERF-03 real aerial night LWIR, Hikvision 160 x 120 at 1000 m (where retried hypotheses
     gave 2 wrong fixes before the retry gate): >= 18 % of frames, median <= 16 m, no wrong fix,
-    >= 95 % within 3 stated sigma."""
+    >= 99 % within 3 stated sigma."""
     s = thermal["hik160_50:1000"]
     assert s["availability"] >= 0.18, s
     assert s["median"] <= 16.0, s
     assert s["wrong"] == 0, s
-    assert s["within_3sigma"] >= 0.95, s
+    assert s["within_3sigma"] >= 0.99, s

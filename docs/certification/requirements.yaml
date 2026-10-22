@@ -181,11 +181,14 @@ requirements:
     - 'test_thermal_input\.py::'
     - 'test_contrast\.py::'
     - 'test_sthn_geometry\.py::'
+    - 'test_heading_history\.py::'
+    - 'test_replay_labels\.py::'
   evidence:
     - {level: PUB, value: 'real night thermal frames (Thermal-UAV, 35.5° at ~300 m): 262/262 refused "footprint too small … fly higher", 0 wrong (2026-10-22)', ref: 'VALIDATION_STATUS.md, Night vision on REAL recorded night thermal frames'}
     - {level: SIM, value: 'synthetic frames 250–600 m: 8–13 m median (unscaled: 11–263 m)', ref: 'VALIDATION_STATUS.md, Night vision'}
-  status: verified-SIM
-  note: 'no real thermal imagery (B4, B14, D23)'
+    - {level: PUB, value: 'real aerial thermal orthomosaics (Bordeaux night LWIR, Clermont day MWIR): 940 frames, 500–1000 m, two cameras, black-hot, 15° heading error (2026-10-22)', ref: 'VALIDATION_STATUS.md, Night vision — fixes of 2026-10-22'}
+  status: verified-PUB
+  note: 'IMU heading taken at the frame exposure (D20, 2026-10-22). The camera_pkg night replay set is a day-derived stand-in, labels fixed in bb8f916 (B4 / B14) and kept by a regression test. No NAVERA thermal flight yet (D23).'
 
 - id: NAV-FUN-10
   category: FUN
@@ -195,6 +198,7 @@ requirements:
     - night_pkg/night_pkg/nodes/night_localizer.py::NightLocalizer._recheck
     - night_pkg/night_pkg/nodes/night_localizer.py::verify_match
     - night_pkg/night_pkg/nodes/night_localizer.py::featureless_mask
+    - night_pkg/night_pkg/nodes/night_localizer.py::NightLocalizer.localize
   match:
     - 'test_map_check\.py::'
     - 'test_featureless\.py::'
@@ -202,8 +206,9 @@ requirements:
     - 'test_fix_sigma\.py::test_(floor_at_400|grows_with_height)'
   evidence:
     - {level: SIM, value: 'conditions stress test: wrong accepts 228/1272 → 0 (1 at 55 m with 10° heading error); stated sigma 100 % within 3σ', ref: 'VALIDATION_STATUS.md, conditions stress test'}
-  status: verified-SIM
-  note: 'thresholds set on synthetic frames only'
+    - {level: PUB, value: 'real aerial thermal, 940 frames (2026-10-22): 0 wrong accepts with the first-try gate (2 before, 15° heading error); synthetic 684 frames 3 → 1 wrong (the 10° heading case of F12 now right)', ref: 'VALIDATION_STATUS.md, Night vision — fixes of 2026-10-22'}
+  status: verified-PUB
+  note: 'gates (map check 0.05, re-check 25 m, consistency ≥ 0.97 for every hypothesis) hold on real thermal orthomosaics; one synthetic wrong accept left (flat-sea coast, 60 m, consistency 0.986). Featureless mask tried on real thermal (D21): no gain, stays off.'
 
 - id: NAV-FUN-11
   category: FUN
@@ -216,6 +221,7 @@ requirements:
     - 'test_night_tracker\.py::'
   evidence:
     - {level: SIM, value: 'track bench: long GPS loss, clouds, injected wrong fixes (B16 fix 133fdb2)', ref: 'docs/test_reports/night_2026-10-19.md'}
+    - {level: SIM, value: 'gate reach from the last MEASURED fix (2026-10-22): wrong burst then sparse fixes re-acquired at the 2nd correct fix (was ~35 s); mock track bench 3 / 5 wrong in a row: 5 → 3 / 8 → 5 frames > 100 m', ref: 'VALIDATION_STATUS.md, Night vision — fixes of 2026-10-22'}
   status: verified-SIM
 
 - id: NAV-FUN-12
@@ -456,6 +462,7 @@ requirements:
     - {level: SIM, value: 'regression benchmark 2026-10-22: nominal 400 m 24/24 10.8/16.2/23.4 m, 600 m 24/24 10.5 m, farmland 22/24 10.8 m, open sea / uniform 0/24 accepted', ref: 'VALIDATION_STATUS.md, Night vision — offline regression benchmark'}
     - {level: PUB, value: 'real Bordeaux night LWIR 1000 m: Boson 640 23/60, 10.3/20.3/31.5 m, Hikvision 160 17/60, 10.7/26.0/49.7 m, 0 wrong, 100 % within 3σ (= the 2026-10-21 retry-gate runs)', ref: 'VALIDATION_STATUS.md, Night vision on REAL aerial thermal imagery'}
     - {level: PUB, against: true, value: 'real recorded night thermal frames (Thermal-UAV, DJI M4T 35.5°, ~300 m, Changsha, 2026-10-22): 0/262 positions, 0 wrong — all outside the footprint envelope (5–12 % of the reference; needs ≥ ~900 m with this lens); gates off: raw STHN 140/146 wrong', ref: 'VALIDATION_STATUS.md, Night vision on REAL recorded night thermal frames'}
+    - {level: PUB, value: 're-run 2026-10-22 (first-try gate, sigma refitted): Boson 640 22/60, 10.0/18.3/31.5 m, Hikvision 160 17/60, 10.7/26.0/49.7 m, 0 wrong, 100 % within 3σ; 940 real-thermal frames replayed: 47 % accepted, 9.0/19.3 m, 0 wrong (2 before)', ref: 'VALIDATION_STATUS.md, Night vision — fixes of 2026-10-22'}
     - {level: BENCH, against: true, value: 'real Insta360 night screen bench: every frame failed the map check (F24)', ref: 'problems doc F24'}
   status: verified-PUB
   note: 'text before 2026-10-22: "synthetic grey renders: 8–13 m median at 250–600 m (84° camera, 2026-09-30); mission simulator 400 m: median 6 m, p90 11 m, max 37 m" — with today''s 75° camera 250 m is refused and 350 m mostly (5/24, footprint); the mission-simulator figure was not re-run. Real thermal is an orthomosaic (no relief, nadir), not a NAVERA flight'
@@ -511,7 +518,7 @@ requirements:
 - id: NAV-PERF-07
   category: PERF
   title: 'Honest stated accuracy'
-  text: 'The sigma published with every non-GPS position shall cover its true error — target ≥ 99 % of accepted fixes within 3 σ. Measured — day (self-calibrated / 30 m floor) 0.993 / 0.999 on 8 real flights; night 100 % (synthetic); celestial 100 % (simulation).'
+  text: 'The sigma published with every non-GPS position shall cover its true error — target ≥ 99 % of accepted fixes within 3 σ. Measured — day (self-calibrated / 30 m floor) 0.993 / 0.999 on 8 real flights; night 100 % on real aerial thermal (444 fixes, 2 cameras, 500–1000 m, sigma refitted 2026-10-22) and synthetic (493); celestial 100 % (simulation).'
   code:
     - day_pkg/day_pkg/fix_sigma.py::SigmaCalibration
     - day_pkg/day_pkg/fix_sigma.py::day_fix_sigma_m
@@ -520,9 +527,12 @@ requirements:
     - 'test_day_fix_sigma\.py::'
     - 'test_fix_sigma_rollback\.py::'
     - 'test_evaluate_session\.py'
+    - 'test_fix_sigma\.py::'
+    - 'test_stated_sigma\.py::'
   evidence:
     - {level: PUB, value: 'model alone 0.65–0.71 (unsafe); self-cal + floor + guard 0.993 / 0.999', ref: 'VALIDATION_STATUS.md, verdict on the stated sigma'}
     - {level: PUB, value: 'Esri map, 2026-10-22: UAV-VisLoc 10 flights 0.997 (30 m floor) / 0.995 (self-cal), 5 fixes > 50 m beyond 3σ; AerialVL 1.000 / 1.000; model alone 0.70–0.73', ref: 'VALIDATION_STATUS.md, Day: more public flights, on NAVERA''s own map source'}
+    - {level: PUB, value: 'night (D3 / D22): hypot(10 m + 1 % above 400 m, two-centre gap) 100 % of 444 real-thermal fixes within 3σ in every camera / height (max 2.47σ nominal, 2.98σ with a 15° heading error), 493 synthetic 100 %; stated as covariance by default (state_fix_sigma)', ref: 'VALIDATION_STATUS.md, Night vision — fixes of 2026-10-22'}
   status: verified-PUB
   note: 'VL-2 — flights that match rarely never self-calibrate (30 m floor)'
 

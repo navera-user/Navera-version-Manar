@@ -3,7 +3,7 @@ footprint too small for the stated height is only retried higher.
 """
 import types
 
-from night_pkg.nodes.night_localizer import NightLocalizer, RETRY_GATE_DEFAULTS, retry_evidence_ok
+from night_pkg.nodes.night_localizer import FIRST_MIN_CONF, NightLocalizer, RETRY_GATE_DEFAULTS, retry_evidence_ok
 
 
 def _stub(good_heading=None, good_alt=None, small_below=None):
@@ -16,7 +16,7 @@ def _stub(good_heading=None, good_alt=None, small_below=None):
         ok = (good_heading is None or heading == good_heading) and (good_alt is None or abs(alt - good_alt) < 1e-6)
         return {"success": ok, "map_check_failed": not ok, "reason": "" if ok else "map check failed", "dt_ms": 1.0}
     ns = types.SimpleNamespace(_localize_once=types.MethodType(once, object()), recheck_offset_m=0,
-                               retry_gate=None)
+                               retry_gate=None, first_min_conf=None)
     ns._attempt = types.MethodType(NightLocalizer._attempt, ns)
     return ns, calls
 
@@ -44,7 +44,7 @@ def test_no_retry_lists_no_retry():
     assert not r["success"] and len(calls) == 1
 
 
-def _scripted(results, gate):
+def _scripted(results, gate, first_min_conf=None):
     """A localizer whose hypotheses return `results` in order (dicts merged into a success)."""
     calls = []
 
@@ -58,14 +58,14 @@ def _scripted(results, gate):
             base.update(map_check_failed=True, reason="map check failed")
         base.update(x)
         return base
-    ns = types.SimpleNamespace(retry_gate=gate)
+    ns = types.SimpleNamespace(retry_gate=gate, first_min_conf=first_min_conf)
     ns._attempt = types.MethodType(attempt, ns)
     return ns, calls
 
 
 def test_a_retry_needs_more_evidence_than_a_first_try():
     gate = dict(RETRY_GATE_DEFAULTS)
-    # first try: a weak-looking quad is still accepted (the retry gate is for retries only)
+    # first-try gate off: a weak-looking quad is still accepted (the retry gate is for retries)
     s, _ = _scripted([dict(conf=0.90)], gate)
     assert _run(s, heading_retry_deg=(-10, 10))["success"]
     # retried: the weak hypothesis is refused, the next, stronger one kept
@@ -101,3 +101,23 @@ def test_node_parameters_build_the_retry_gate():
     assert _retry_gate_from(-1.0, 0.05, 0.0, 25.0) == {}
     assert _retry_gate_from(0.97, 0.05, 0.0, -1.0)["recheck_max_m"] is None
     assert RETRY_GATE_DEFAULTS["min_conf"] == 0.97
+
+
+def test_a_weak_first_try_is_refused_and_retried():
+    """F12 / D20: the first hypothesis needs consistency >= first_min_conf (0.97, as a retry); a
+    weak first match (often a frame turned by a wrong heading, half absorbed) goes to the retries.
+    """
+    gate = dict(RETRY_GATE_DEFAULTS)
+    assert FIRST_MIN_CONF == RETRY_GATE_DEFAULTS["min_conf"] == 0.97
+    s, calls = _scripted([dict(conf=0.9698, lat=9.0), dict(ok=False), dict(conf=0.995, lat=3.0)],
+                         gate, first_min_conf=FIRST_MIN_CONF)
+    r = _run(s, heading_retry_deg=(-10, 10))
+    assert r["success"] and r["lat"] == 3.0 and r["heading_correction_deg"] == 10 and len(calls) == 3
+    # nothing better: no position, the weak first match is not published
+    s, _ = _scripted([dict(conf=0.95, lat=9.0), dict(ok=False), dict(ok=False)], gate,
+                     first_min_conf=FIRST_MIN_CONF)
+    r = _run(s, heading_retry_deg=(-10, 10))
+    assert not r["success"] and r["lat"] == 0.0 and "weak match" in r["reason"] and "sigma_m" not in r
+    # a strong first match is kept at once
+    s, calls = _scripted([dict(conf=0.99, lat=9.0)], gate, first_min_conf=FIRST_MIN_CONF)
+    assert _run(s, heading_retry_deg=(-10, 10))["lat"] == 9.0 and len(calls) == 1
