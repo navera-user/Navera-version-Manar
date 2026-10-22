@@ -33,6 +33,12 @@ and `celestial` namespaces (launch files `day.launch.py`, `thermal.launch.py`,
   `frozen`, `reason`, `frozen_frames`, `frozen_s`); a camera device frozen longer than
   `frozen_restart_s` (20 s) exits so systemd reopens it. Parameters `frozen_still_diff`,
   `frozen_motion_deg`, `frozen_motion_m`, `frozen_restart_s`.
+- A camera device (usb / csi / gst) that gives no frame for `camera_stall_restart_s` (10 s:
+  unplugged, USB reset, stuck driver, stalled stream, or a grab that never returns) is reported on
+  `camera_health` (`stalled: true`, `reason`) and `live_camera` exits, so systemd restarts the
+  pipeline and reopens it (`camera_pkg/grab_watchdog.py`). Before, it waited for 50 failed grabs,
+  which with V4L2's 10 s grab timeout took minutes. Use the stable `/dev/v4l/by-id/...` name: a
+  replugged camera may get another `/dev/videoN`.
 
 ## `insta360_imu` — the Insta360 One R's own IMU as `sensor_msgs/Imu`
 
