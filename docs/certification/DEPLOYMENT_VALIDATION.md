@@ -116,3 +116,33 @@ power cut, `check_boot.py` reports `reboot check: PASS` (every enabled unit acti
 node in the graph), the clock line shows `valid: true` and `lost_power: false`, each killed node
 is back with `NRestarts` + 1, and the sudoers restart works. Attach the saved reports to the
 release record and add the result to docs/VALIDATION_STATUS.md.
+
+## 3. Root steps left by the 2026-10-22 hardening (swap, OOM order, journal cap)
+
+Everything below was tested without root (staged install, dry-run, unit checks, user units);
+these commands are what only an administrator can run on the box. From the release checkout:
+
+```bash
+# all at once: the normal update (code, units, swap file if missing, journal cap)
+sudo deploy/install.sh --no-apt --no-pip
+
+# or one by one
+sudo deploy/setup_swap.sh                      # /swapfile 8 GB + fstab line if < 4 GB disk swap active
+sudo install -D -m 0644 deploy/journald/navera.conf /etc/systemd/journald.conf.d/navera.conf
+sudo systemctl restart systemd-journald
+sudo install -m 0644 deploy/systemd/navera-*.service /etc/systemd/system/
+sudo install -o navera -g navera -m 0755 deploy/systemd/navera_boot_*.sh /home/navera/
+sudo systemctl daemon-reload
+sudo systemctl restart navera-estimator navera-gps navera-imu navera-rtc navera-vehicle-link \
+    navera-pipeline-day navera-output navera-web
+
+# check (no root)
+deploy/setup_swap.sh --check                   # swap: ... OK
+python3 deploy/verify_units.py --root /        # memory classes PASS
+for u in navera-estimator navera-output navera-pipeline-day navera-web; do
+  p=$(systemctl show -p MainPID --value $u); echo "$u oom_score_adj=$(cat /proc/$p/oom_score_adj)"; done
+                                               # -900 -900 -300 500
+cat /sys/fs/cgroup/system.slice/navera-web.service/memory.max          # 2147483648
+journalctl -u navera-pipeline-day -b | grep -i swap                    # no "WARNING: only ... swap"
+sudo reboot                                    # then deploy/check_boot.sh: the swap line says OK
+```
