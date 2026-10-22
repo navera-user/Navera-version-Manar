@@ -116,11 +116,11 @@ NAVERA's own sensors, fitted to the box:
 
 | Sensor | Model the code supports | Connection | Required? |
 |---|---|---|---|
-| Day camera | **Insta360 ONE R** in USB webcam mode (4K wide-angle module or 360 module); or any USB (UVC) camera, a Jetson CSI camera, a network (RTSP) camera, or the vehicle's ROS camera | USB / CSI / Ethernet / ROS | **Required** (vision does not work without it) |
+| Day camera | **Insta360 ONE R 360 module in USB "Android" mode** (the IRIS kit: a straight-down view cut from its 360 picture, section 3.1); or any USB (UVC) camera, a Jetson CSI camera, a network (RTSP) camera, or the vehicle's ROS camera | USB / CSI / Ethernet / ROS | **Required** (vision does not work without it) |
 | GPS receiver | NMEA serial receiver; **u-blox NEO-M8N** gave a valid fix on the box | UART `/dev/ttyTHS1`, 9600 baud | **Required: one GPS** — the box's own, or the autopilot's second GPS, or the vehicle's ROS GPS |
-| IMU (IRIS kit) | the **Insta360 ONE R's own IMU** (gyroscope + accelerometer, ~500 Hz, measured gyro noise 0.003 °/s/√Hz), read over the camera's USB link | USB (camera in "Android" USB mode) | The IRIS kit's IMU. **No magnetometer and no attitude quaternion**: see 3.1 "Heading without a magnetometer" and its integration status |
+| IMU (IRIS kit) | the **Insta360 ONE R's own IMU** (gyroscope + accelerometer, ~500 Hz, measured gyro noise 0.003 °/s/√Hz), read over the camera's USB link by the same program as its picture (`navera-insta360`) | USB (camera in "Android" USB mode) | The IRIS kit's IMU: gives the **attitude** (roll / pitch from gyro + accelerometer; heading from the gyro, set by the GPS course and vision — **no magnetometer**), section 3.1 |
 | IMU (optional / legacy) | **Bosch BNO085** (I²C, address 0x4A or 0x4B) | I²C bus 1 (pins 27/28) or bus 7 (pins 3/5), 3.3 V | Optional. Still supported and still detected automatically; no longer part of the IRIS kit |
-| Attitude for the vision | one source giving roll, pitch and heading: the autopilot (MAVLink), the vehicle's ROS IMU, or a BNO085 | — | **Required for a fixed camera** (see 3.1); with a gimbal, a gyro is enough |
+| Attitude for the vision | one source giving roll, pitch and heading: the Insta360 kit's own IMU, the autopilot (MAVLink), the vehicle's ROS IMU, or a BNO085 | — | **Required for a fixed camera** (see 3.1); with a gimbal, a gyro is enough |
 | Clock | **Maxim DS3231** real-time clock **with its coin cell fitted** | I²C, address 0x68 | **Required on the IRIS kit** (keeps the time with no network; the star navigation refuses to work on a wrong clock) |
 | Thermal camera | any LWIR camera NAVERA can read (USB, RTSP) | USB / Ethernet | Optional — needed only for night |
 | Star camera | a USB camera pointing up | USB | Optional — experimental |
@@ -137,7 +137,7 @@ platform** must provide so that the box can be plugged in for a test.
 |---|---|---|
 | An **autopilot** with a free telemetry port | **ArduPilot** (Copter, Plane, Rover 4.5 verified in SITL), MAVLink 2 (`SERIALn_PROTOCOL = 2`), 3.3 V TTL TELEM port; or MAVLink on the network (UDP 14550 / 14551) | NAVERA's position goes to it as GPS 1 (`GPS_TYPE = 14`); its attitude, barometric height and armed state come back. PX4: GPS pass-through over NMEA only (section 5.6) |
 | A **TELEM cable** to the Jetson: a **3.3 V USB-to-serial adapter** (FTDI-type, appears as `/dev/ttyUSB*` with a `/dev/serial/by-id/` name) and a cable to the TELEM connector (e.g. JST-GH on Pixhawk-class boards) | The adapter is detected automatically; never RS-232 or 5 V logic |
-| **Attitude** for the camera | the autopilot's attitude over MAVLink (detected automatically), or the vehicle's ROS 2 IMU (ENU, yaw from true north, ≥ 25 Hz) | A **fixed** camera needs roll, pitch and heading at each picture; the Insta360's own IMU gives rates only (3.1) |
+| **Attitude** for the camera (recommended) | the autopilot's attitude over MAVLink (detected automatically, preferred when present), or the vehicle's ROS 2 IMU (ENU, yaw from true north, ≥ 25 Hz) | A **fixed** camera needs roll and pitch at each picture. The IRIS kit computes them from the Insta360's own IMU (3.1); the autopilot's filter (GPS, compass, vehicle dynamics) is better during long accelerations |
 | A **GPS fix at take-off** | IRIS's receiver on the box, or the autopilot's **second** GPS (a real receiver, `GPS_TYPE2` ≠ 14), or a ROS `NavSatFix` with covariance | NAVERA starts from it; the autopilot needs it to set its origin |
 | A **camera mount** looking straight down, top of the image to the nose | on a multirotor: a **gimbal** holding the camera level (any model; NAVERA does not control it, it is only told `NAVERA_CAMERA_GIMBAL=true`) | Pictures tilted more than 45° are not used; a multirotor leans 30–45° at speed |
 | **Power** for the box | the supply the Jetson carrier board specifies, from the vehicle | NAVERA's power draw and brown-out behaviour are not measured yet: use a supply with margin |
@@ -183,7 +183,7 @@ Nano 8 GB; NAVERA controlling a gimbal.
   GND      ------------------------------------------- GPS  GND
   (power the GPS as its board requires; 3.3 V logic only)
 
-  USB port  <=========================================  Day camera (Insta360 ONE R: picture + its own IMU)
+  USB port  <=========================================  Insta360 ONE R, USB mode "Android" (360 picture + its own IMU)
   USB port  <=========================================  USB-serial adapter --> autopilot TELEM (section 5)
   NVMe / USB <========================================  Data disk (/data)
 ```
@@ -191,7 +191,7 @@ Nano 8 GB; NAVERA controlling a gimbal.
 - Which header pins carry `/dev/ttyTHS1` depends on the carrier board: **check its pinout**.
 - The Jetson header is **3.3 V logic**. Never connect it to RS-232 levels, or to 5 V logic
   without a level shifter.
-- Mount the camera **rigidly**: its IMU measures the camera's own rotation. Keep the GPS antenna
+- Mount the camera **rigidly, lying, one lens straight down** (3.1): its IMU measures the camera's own rotation. Keep the GPS antenna
   away from the Jetson, with a clear view of the sky.
 - A BNO085, if you fit one, is also found on bus 7 (pins 3/5).
 
@@ -228,8 +228,8 @@ The software is installed by one command on the Jetson. Your IRIS contact provid
    - `NAVERA_CAMERA=live` — the default `replay` plays recorded pictures (demonstration only).
 5. Apply the settings (this one command restarts everything, detection first):
    ```bash
-   sudo systemctl restart navera-discover navera-estimator navera-gps navera-imu navera-rtc \
-       navera-vehicle-link navera-pipeline-day navera-output navera-web
+   sudo systemctl restart navera-discover navera-estimator navera-gps navera-imu navera-insta360 \
+       navera-rtc navera-vehicle-link navera-pipeline-day navera-output navera-web
    ```
 6. Check the box (section 7.6).
 7. Once, do the reboot test: `sudo reboot`, wait 2 minutes, then
@@ -240,72 +240,137 @@ The software is installed by one command on the Jetson. Your IRIS contact provid
 
 After any change to `navera.env`, run the restart command of step 5 again.
 
-### 3.1 Way A — with IRIS's own sensors (full kit)
+### 3.1 Way A — with IRIS's own sensors (the Insta360 kit)
 
-The box carries its own camera (Insta360 ONE R, with its built-in IMU), GPS receiver and clock.
-The kit has **no BNO085**.
+The box carries its own camera, GPS receiver and clock. The camera is an **Insta360 ONE R (360
+module)** read in its USB **"Android" mode**: it is **both the day camera and the IMU** (its
+built-in gyroscope and accelerometer). The kit has **no BNO085** and needs **no autopilot
+attitude**. One program owns the camera — the `navera-insta360` service — and gives the rest of
+NAVERA a straight-down picture cut out of the 360 picture and the vehicle's attitude computed from
+the camera's own IMU.
 
-1. Wire the kit as in section 2.3. Mount the camera looking **straight down**, top of the image
-   towards the vehicle's nose (section 6.1).
-2. Leave the sources on `auto` (the default). At boot NAVERA finds the DS3231, the GPS receiver
-   and the USB camera by itself.
-3. Give NAVERA an **attitude** (roll, pitch, heading) for the camera — see "Attitude and heading
-   on the IRIS kit" below. In practice: the autopilot's attitude over MAVLink (found by itself
-   when an autopilot is connected), or a gimbal.
-4. Calibrate the camera (section 6.2) and set `NAVERA_CAMERA_CALIBRATION`.
-5. Connect the autopilot (section 5). NAVERA finds an ArduPilot autopilot by itself and sends
-   it its position over the same link.
-6. Run the checks (section 7.6).
+1. **Camera USB mode: Android.** On the camera: *Settings → USB mode → Android*. Plug it into
+   the Jetson. Check it with `lsusb`: it must show `2e1a:0002 … Insta360 ONERS`. In **webcam**
+   mode it gives only two cropped strips and no IMU: not usable for the kit (the box check says so).
+2. **Mount it lying, one lens straight down.** Default (`NAVERA_INSTA360_MOUNT_AXES=+x,+z,-y`):
+   the camera lies on its side with its **left lens** (the left circle of the 360 picture) looking
+   straight down and its **top** (the side that is up when the camera stands) towards the
+   vehicle's **nose**. Straight down is then the centre of that lens (its best resolution, about
+   10 pixels per degree); the other lens sees the sky. Fix it **rigidly**: the IMU is inside the
+   camera, so any play between camera and vehicle is an attitude error. Another orientation:
+   write its axes in `NAVERA_INSTA360_MOUNT_AXES` (see `deploy/navera.env.example`). A camera
+   **standing** (lenses horizontal) has straight down on the seam between the lenses: the box check
+   warns, and day vision there is poor.
+3. **Install** (section 3.0). The installer adds the camera's USB permission
+   (`/etc/udev/rules.d/99-insta360.rules`), the Python modules it needs (pyusb, PyAV) and the
+   `navera-insta360` service. **Unplug and replug the camera** after the install.
+4. **Copy its calibrations** (made by IRIS on the bench: lenses on a screen dot grid, IMU in 6
+   positions) to the box:
+   ```bash
+   sudo install -o navera -g navera -m 0644 insta360_usb_lens.json /var/lib/navera/insta360_lens.json
+   sudo install -o navera -g navera -m 0644 insta360_usb_imu.json  /var/lib/navera/insta360_imu.json
+   ```
+   No `NAVERA_CAMERA_CALIBRATION` is needed: the straight-down picture is computed from the lens
+   calibration (an ideal lens of `NAVERA_INSTA360_VIEW_HFOV_DEG`, 100° by default).
+5. Leave the sources on `auto` (the default). At boot NAVERA finds the DS3231, the GPS receiver
+   and the One R in Android mode, and chooses `NAVERA_CAMERA_INPUT=insta360` and — when no BNO085,
+   no autopilot and no ROS IMU is found — `NAVERA_SENSOR_SOURCE=insta360`. When an autopilot is
+   connected, **its** attitude is used and the camera stays the kit's (decision: the autopilot's
+   filter has the GPS, a compass and the vehicle's dynamics; the camera's filter has only gravity
+   and the gyro — see the limits below).
+6. Apply the settings with the restart command of section 3.0 step 5 (it includes
+   `navera-insta360`).
+7. Connect the autopilot if there is one (section 5), then run the checks (section 7.6). The
+   kit's lines: `Insta360 kit settings`, `Insta360 camera` (Android mode, USB permission),
+   `Python module usb / av`, `Insta360 lens calibration`, `Insta360 day view` (straight down
+   through which lens), `Insta360 IMU calibration`, and with the services running
+   `attitude` (100 Hz on `/navera/sensors/insta360/imu`) and `Insta360 kit` (frames, tilt
+   uncertainty, heading and its source).
+
+> **One program per camera.** IRIS's field-test server (`navera-field`, a bench tool, not part of
+> the product) also opens the camera in Android mode. On a flight box: `sudo systemctl disable --now navera-field`.
 
 Reference settings for Way A (written instead of `auto`, if you prefer fixed choices):
 
 ```
-NAVERA_SENSOR_SOURCE=vehicle         # attitude from the autopilot (no BNO085 in the kit)
+NAVERA_SENSOR_SOURCE=insta360        # attitude from the Insta360's own IMU (vehicle: the autopilot's)
 NAVERA_GPS_SOURCE=serial
 NAVERA_GPS_PORT=/dev/ttyTHS1
 NAVERA_GPS_BAUD=9600
 NAVERA_CAMERA=live
-NAVERA_CAMERA_INPUT=usb
-NAVERA_CAMERA_DEVICE=/dev/v4l/by-id/usb-<maker>_<model>_<serial>-video-index0
-NAVERA_CAMERA_SIZE=1920x1080
-NAVERA_CAMERA_CALIBRATION=/etc/navera/camera.yaml
-NAVERA_CAMERA_GIMBAL=true            # multirotor with a gimbal
+NAVERA_CAMERA_INPUT=insta360         # the kit's straight-down view (navera-insta360)
+NAVERA_INSTA360_MOUNT_AXES=+x,+z,-y  # lying, left lens down, camera top to the nose
+#NAVERA_INSTA360_MOUNT_RPY=0,0,0     # small trim, if measured
+#NAVERA_INSTA360_VIEW_SIZE=1200x900
+#NAVERA_INSTA360_VIEW_HFOV_DEG=100
 ```
+
+`NAVERA_CAMERA_CALIBRATION`, `NAVERA_CAMERA_CROP`, `NAVERA_CAMERA_SIZE` and a non-zero
+`NAVERA_CAMERA_MOUNT_RPY` do not apply to the kit (the live camera refuses a mount or a crop
+written for it).
 
 #### Attitude and heading on the IRIS kit (Insta360 IMU, no magnetometer)
 
-The Insta360 ONE R's IMU gives **rotation rates and accelerations only** — no orientation and no
-magnetometer, so no compass heading. NAVERA obtains the picture's heading this way (day vision,
-`day_pkg/gyro_heading.py`):
+`navera-insta360` publishes the vehicle's attitude on `/navera/sensors/insta360/imu`
+(`sensor_msgs/Imu`, 100 Hz, **with an orientation** and its uncertainty), computed from the
+camera's gyroscope and accelerometer (`camera_pkg/insta360_attitude.py`):
 
-| Step | How the heading is obtained | When |
+| Part | How | Its uncertainty (published) |
+|---|---|---|
+| **Roll and pitch** (the tilt) | the gyro, integrated, pulled slowly (20 s) towards the accelerometer's "down" — **only when the vehicle is not accelerating**: the pull is off when the measured acceleration differs from 1 g by more than 3 %, when the vehicle turns about the vertical faster than 1 °/s (a curve: the centripetal acceleration tilts "down"), or rotates faster than 20 °/s. While the GPS is trusted, the turn and speed-change accelerations are computed from the GPS track and removed, and the turn rule is not needed. Stopped (2 s still), the pull is fast (2 s). The gyro's bias is re-measured at every stop | 0.5° while the accelerometer is used with the GPS speed known (or stopped); 1.0° without it (GPS lost); growing while it is off |
+| **Heading** | the gyro, integrated about the vertical. It is **not** a heading until a source sets it: (1) the **GPS course** while the GPS is trusted, above 5 m/s on a straight leg (±10°: the nose may not point along the track — wind, sideslip); (2) **vision**: each good day match (≥ 20 matched points) measures the picture's rotation (±2°). Then carried by the gyro, its uncertainty growing with the gyro bias left (0.05 °/s assumed; up to 0.047 °/s creep measured at rest) | "unknown" (published variance π²) until set; a source that disagrees with a still-valid heading by more than 3 σ is refused |
+
+The live camera straightens each picture with the roll and pitch at its exposure. It writes the
+picture's heading only when the heading's uncertainty is **5° or less**; otherwise the day
+pipeline uses its own gyro-carried vision heading (`day_pkg/gyro_heading.py`, fed by the same
+camera gyro), as before:
+
+| Step | How the day pipeline's heading is obtained | When |
 |---|---|---|
 | 1. From the GPS course | while GPS is trusted, above 5 m/s on a steady course, the heading of the picture = the GPS course + the camera's offset from it (learned from vision, else the camera's mounting yaw; ±5° assumed for crab) | before GPS is lost |
 | 2. From vision | each good map match measures the picture's rotation, i.e. its heading | every good match (at least 20 matched points) |
 | 3. Carried by the gyro | between matches the heading is carried by integrating the gyro's rate about the vertical; its uncertainty grows with the gyro bias (0.1 °/s assumed) and noise (0.004 °/s/√Hz assumed; 0.0025–0.0033 measured at rest) | until its uncertainty passes 10°: then no heading, the position is carried straight on |
 
-A vision heading that disagrees with a still-valid carried heading by more than 3 σ is not taken.
-Measured on replays (not flights): with the gyro carry, a 60 m/s circuit in heavy rain fell from
-210 m to 54 m maximum error; a real flight replayed without attitude went from 0 fixes in 310 s to
-fixes, thanks to the GPS-course step.
+Pictures are stamped at their **exposure** on the IMU's clock. Each key frame (2 per second) is
+decoded on its own as soon as it arrives; the 1.5 s offset measured on the bench (F15) was the
+decoder holding three key frames, so the kit stamps a picture with its own packet time (0 s lag).
 
-What the gyro alone **cannot** give is the camera's **tilt** (roll and pitch). Consequences:
+**Measured (`navera_tools/bench/insta360_attitude_eval.py`, `navera_tools/bench/insta360_kit_replay.py`):**
 
-- **Gimbal (`NAVERA_CAMERA_GIMBAL=true`):** the picture is taken as straight down; a heading from
-  the steps above is enough. This is the configuration meant for the Insta360 IMU alone (once its
-  IMU is wired into the boot services — see the status below).
-- **Fixed camera:** each picture needs an attitude quaternion at its exposure, otherwise it is
-  marked "no attitude … the camera's tilt is unknown" and not used. Take the attitude from the
-  autopilot (`NAVERA_SENSOR_SOURCE=vehicle`) or the vehicle's ROS IMU — or fit a BNO085.
+| What | Data | Result |
+|---|---|---|
+| Tilt (roll / pitch) error vs truth, GPS speed known | **simulated** motion (fixed wing survey and steep turns, multirotor, car) carrying the **real** camera's noise (residuals of 3 recordings at rest) and a gyro bias left of 0.02–0.04 °/s | median 0.20–0.33°, 95 % under 0.51–0.65°, max 0.71°; 100 % inside 3 stated σ |
+| The same, GPS lost (speed unknown) | same | median 0.43–0.76°, 95 % under 1.23–2.07°, max 2.21° (steep turns); 99.9–100 % inside 3 σ |
+| The accelerometer trusted blindly in a coordinated turn (the D8 trap) | simulated steep turns | > 5° (unit test); with the gates < 2.5° |
+| Real camera at rest | 3 recordings of the user's One R standing on a table (37–45 s) | roll / pitch steady within 0.006–0.10° (std); heading drift 0.02–0.08 °/min (gyro bias re-measured at rest) |
+| End to end: kit → day pipeline | **synthetic** recording (`navera_tools/sim/insta360_raw_sim.py`: the camera's packets and timing, its dual fisheye drawn over the bench map at 400 m, 30 m/s with turns; the matcher compares with the **same** imagery — a plumbing proof, not an accuracy figure), GPS lost after 40 s, SIFT matcher | 166/166 frames with the kit's attitude, 0 refused; 139 fixes in 140 frames after the GPS loss (error 0.5 m median, 1.0 m max on this same-imagery data); tilt error at the frames 0.91° median, 1.46° max; heading in 137 frames' meta, error 0.6° median, 1.3° max |
+| The same before this change (the Insta360 IMU without orientation) | same recording | 295/295 frames refused "no attitude at the frame's exposure", 0 fixes after the GPS loss (only dead-reckoning, then nothing) |
 
-> **Integration status (this release).** The Insta360 IMU node exists (`camera_pkg`,
-> `ros2 launch camera_pkg insta360_imu.launch.py source:=live`, topic
-> `/navera/sensors/insta360/imu`), but it is **not yet started by the boot services**, it is
-> **not a `NAVERA_SENSOR_SOURCE` choice**, and auto-detection does not look for it. It needs the
-> camera in USB **"Android" mode**, while the boot day camera reads it in **webcam mode** — one
-> program per camera. The gyro carry in day vision reads the gyro of `NAVERA_SENSOR_SOURCE` (the
-> autopilot's, on a vehicle). So today, on the IRIS kit: use the autopilot's attitude, or a gimbal.
-> Running the full IRIS kit (Insta360 picture + its IMU) from the boot services is **not supported yet**.
+Not yet measured: the tilt on the **real** camera **moving** against truth, and anything on a
+vehicle. On the bench (camera facing the screen dot grid of `navera_tools/bench/lens_calib_screen.py`,
+turned by hand during the run; nothing else may hold the camera):
+
+```bash
+sudo systemctl stop navera-field navera-insta360        # one program per camera
+python3 navera_tools/bench/attitude_check.py --kit --seconds 120 --out /tmp/attitude_kit.csv
+#   tilt error median / max (sharp frames), and the best stamp offset (expected near 0 ms)
+python3 navera_tools/bench/insta360_kit_replay.py <recording> --area <map images> --verbose
+#   any raw recording (field START/END, or insta360_raw_sim.py) through the kit + day chain
+```
+
+**Limits of the kit (this release):**
+
+- **No real motion with truth yet.** The tilt accuracy above is from simulated motion carrying the
+  camera's real noise, and from the real camera at rest. Before a flight, run the dot-grid bench
+  with the camera turned by hand (`navera_tools/bench/attitude_check.py`) and, in flight, compare
+  with the autopilot's attitude in shadow mode.
+- **Long accelerations without GPS.** After the GPS loss, a steady acceleration under 3 % of g,
+  or a turn slower than 1 °/s, still pulls the tilt slowly (simulated: up to ~2°).
+- **No heading before a source sets it.** With no GPS course yet (stopped, slow, turning) and no
+  vision match, pictures carry no heading: the day matcher searches without one.
+- **Lens-to-IMU mount angle** is not measured on a vehicle: measure it and write
+  `NAVERA_INSTA360_MOUNT_RPY` (1° of tilt error = about 17 m of position error at 1,000 m).
+- The celestial 360 mode still uses IRIS's field tools; the kit gives the day pipeline its frames.
 
 ### 3.2 Way B — with the client's own equipment ("auto-plug")
 
@@ -323,7 +388,7 @@ others). It looks for:
 | GPS receiver | serial ports `/dev/ttyTHS*`, `/dev/ttyUSB*`, `/dev/ttyACM*`, at 9600 to 921600 baud | valid NMEA **with satellite data** (GSV/GSA). An autopilot's NMEA output has none, so it is not mistaken for a receiver |
 | Autopilot (MAVLink) | the same serial ports, and the network on UDP 14550 and 14551 | a heartbeat **from an autopilot** (ground stations, cameras and other computers are ignored). NAVERA then asks it for attitude, rangefinder, height and its GPS types |
 | ROS 2 vehicle | ROS domain 0 and NAVERA's own domain | IMU, GPS, camera and rangefinder topics (section 3.3) |
-| Cameras | USB (`/dev/v4l/by-id/…`) and CSI (Jetson camera inputs) | — |
+| Cameras | USB (`/dev/v4l/by-id/…`), CSI (Jetson camera inputs), and an Insta360 ONE R in USB "Android" mode (USB id `2e1a:0002`, read from the system's USB list: the camera is not opened) | an Insta360 in **webcam** mode is reported "CHECK … set its USB mode to Android" |
 
 It never opens a port another program holds, a system console port, or a login port. It only
 writes to a port once it has identified an autopilot there.
@@ -332,9 +397,9 @@ writes to a port once it has identified an autopilot there.
 
 | Need | First choice | Second | Third | None found |
 |---|---|---|---|---|
-| **Attitude** (`NAVERA_SENSOR_SOURCE`) | box IMU (BNO085, if fitted) | autopilot | ROS IMU topic | warning: pictures unusable |
+| **Attitude** (`NAVERA_SENSOR_SOURCE`) | box IMU (BNO085, if fitted) | autopilot | ROS IMU topic, then the Insta360 kit's own IMU | warning: pictures unusable |
 | **GPS** (`NAVERA_GPS_SOURCE`) | box GPS receiver | the autopilot's **second** GPS, only if it is a real receiver | ROS GPS topic | GPS service idle; NAVERA needs a GPS fix at start |
-| **Camera** (`NAVERA_CAMERA_INPUT`) | USB | CSI | ROS image topic | warning |
+| **Camera** (`NAVERA_CAMERA_INPUT`) | the Insta360 kit (One R in Android mode) | USB, then CSI | ROS image topic | warning |
 | **Output** | an autopilot found → NAVERA's position over MAVLink on the same link (not for PX4) | a ROS vehicle found → `/navera/fix` | — | message: set `NAVERA_NMEA_PORT` for an NMEA GPS input |
 
 More rules:
@@ -373,9 +438,9 @@ Any value you **write** in `navera.env` instead of `auto` is always kept; detect
 the settings left on `auto` or empty. Examples:
 
 ```
-NAVERA_SENSOR_SOURCE=vehicle      # attitude from the autopilot (box | vehicle | ros)
+NAVERA_SENSOR_SOURCE=vehicle      # attitude from the autopilot (box | vehicle | ros | insta360)
 NAVERA_GPS_SOURCE=vehicle         # the autopilot's second GPS (serial | vehicle | ros)
-NAVERA_CAMERA_INPUT=csi           # usb | csi | gst | ros
+NAVERA_CAMERA_INPUT=csi           # usb | csi | gst | ros | insta360
 NAVERA_VEHICLE_MAVLINK_URL=serial:/dev/serial/by-id/usb-FTDI_<serial>-if00-port0:921600
 ```
 
@@ -647,9 +712,13 @@ Details: `docs/ARDUPILOT_INTEGRATION.md`, `docs/PX4_INTEGRATION.md`.
   `NAVERA_CAMERA_MAX_TILT_DEG` (45°) are not used.
 - **Plane, boat, robot:** a fixed camera is fine. Pictures taken while the vehicle turns faster
   than 30°/s (`NAVERA_CAMERA_MAX_RATE_DPS`) are not used: fly smooth turns.
-- Insta360 ONE R **360 module**: both lenses arrive in one 1920 × 1080 picture (top and bottom
-  halves). Point one lens straight down and set `NAVERA_CAMERA_CROP=top` or `bottom` for it.
-  Its straightened view is 111° × ~37°: at 100 m height it sees about 290 × 80 m.
+- Insta360 ONE R **360 module, IRIS kit** (`NAVERA_CAMERA_INPUT=insta360`, section 3.1): lying,
+  one lens straight down; the kit cuts a 1200 × 900, 100° straight-down view from it (at 100 m
+  height about 240 × 180 m). No crop, no `NAVERA_CAMERA_MOUNT_RPY` (its mount is
+  `NAVERA_INSTA360_MOUNT_AXES`).
+- Insta360 ONE R in **webcam** mode (`usb`, not the kit): both lenses arrive in one 1920 × 1080
+  picture (top and bottom halves). Point one lens straight down and set `NAVERA_CAMERA_CROP=top`
+  or `bottom` for it. Its straightened view is 111° × ~37°: at 100 m height it sees about 290 × 80 m.
 - Address a USB camera by its **stable name**, not `/dev/videoN` (that number changes with the
   plug order):
   ```bash
@@ -659,7 +728,9 @@ Details: `docs/ARDUPILOT_INTEGRATION.md`, `docs/PX4_INTEGRATION.md`.
 
 ### 6.2 Lens calibration (once per camera and resolution) — required
 
-Without a calibration NAVERA assumes a perfect lens. Before a real test, calibrate.
+Without a calibration NAVERA assumes a perfect lens. Before a real test, calibrate. (The Insta360
+kit is calibrated differently — its two fisheye lenses on a screen dot grid by IRIS, files copied
+in 3.1 step 4; this section is for the other cameras.)
 
 1. Print a **9 × 6** (inner corners) checkerboard. Measure one square in mm. Stick it flat on a
    rigid board.
@@ -707,7 +778,9 @@ along the track: **60 m per second of error at 60 m/s**. Measure it once per cam
 | On the vehicle | film a phone stopwatch while recording. With `NAVERA_CAMERA_LATENCY_S=0`, the difference "picture stamp − time shown" is the delay (`docs/FIELD_TEST_PROCEDURE.md` §6) |
 | Set by hand | `NAVERA_CAMERA_LATENCY_S=<seconds>` — a value written here wins over the calibration file |
 
-Measured values: Insta360 ONE R 360 module, USB webcam mode **0.14 s**; Hikvision over RTSP
+Measured values: Insta360 ONE R 360 module, USB webcam mode **0.14 s**; the Insta360 kit
+stamps each picture at its exposure on the camera's IMU clock (`NAVERA_CAMERA_LATENCY_S` stays 0);
+Hikvision over RTSP
 about 1.0 s (bench). While GPS is trusted, day vision also estimates the delay itself and
 corrects it only when its estimate is stable and clearly different.
 
@@ -719,6 +792,7 @@ corrects it only when its estimate is stable and clearly different.
 | `csi` | a Jetson CSI camera (through GStreamer `nvarguscamerasrc`); `NAVERA_CAMERA_DEVICE` = sensor id (0) | detected automatically; supported in code, not tested with a real CSI camera |
 | `gst` | any GStreamer source: a network (RTSP) camera, a gimbal's video stream | **not detected automatically**; the pipeline must end in `appsink name=sink` with BGR |
 | `ros` | a `sensor_msgs/Image` topic of the vehicle | must look down (section 3.3) |
+| `insta360` | the IRIS kit: Insta360 ONE R in USB "Android" mode, read by `navera-insta360` (straight-down view + IMU) | detected automatically (USB id `2e1a:0002`); section 3.1 |
 
 RTSP example (Hikvision URL format; thermal channel 201 on the DS-2TD2617B-3/PA bench unit —
 check your camera's own URL). Keep the quotes:
@@ -731,9 +805,9 @@ NAVERA_CAMERA_GST_PIPELINE="rtspsrc location=rtsp://<user>:<password>@<camera-ip
 Other camera settings: `NAVERA_CAMERA_SIZE` (default 1920x1080; must be a mode the camera
 delivers), `NAVERA_CAMERA_FPS` (pictures offered per second, default 1).
 
-The Insta360's full-360 "Android" USB stream (both lenses and the camera's own IMU) is used by
-IRIS's field test tools and the Insta360 IMU node; the boot services read the camera in
-**webcam mode** (picture only). See the integration status in 3.1.
+The Insta360's full-360 "Android" USB stream (both lenses and the camera's own IMU) is read at
+boot by `navera-insta360` (`NAVERA_CAMERA_INPUT=insta360`, section 3.1). Only one program can
+hold the camera: not with IRIS's field tools, and not in webcam mode.
 
 ### 6.5 Night: thermal camera
 
@@ -982,7 +1056,9 @@ First run `python3 navera_tools/check_box.py` (NAVERA shell). Then look at the s
 | "calibration is for 1280x720, the camera is set to 1920x1080" | resolution changed | calibrate at `NAVERA_CAMERA_SIZE` |
 | "camera tilted 52 deg from vertical (max 45)" | fixed camera on a multirotor at speed; gimbal not declared; wrong mounting angles | fit a gimbal + `NAVERA_CAMERA_GIMBAL=true`; fly slower; set `NAVERA_CAMERA_MOUNT_RPY` / `NAVERA_IMU_MOUNT_RPY` |
 | "vehicle turning 45 deg/s at the exposure (max 30)" | fixed camera, sharp turns | smoother turns, or a gimbal |
-| "no attitude at the frame's exposure" | no attitude source for a fixed camera (the Insta360 IMU gives none) | `NAVERA_SENSOR_SOURCE=vehicle` and a working vehicle link; or a gimbal; a BNO085 if fitted: wiring (pins 27/28, 3.3 V) |
+| "no attitude at the frame's exposure" | no attitude source for a fixed camera; the kit: `navera-insta360` down, the camera unplugged / not in Android mode | the kit: `journalctl -u navera-insta360 -n 50`, `lsusb` must show `2e1a:0002`; else `NAVERA_SENSOR_SOURCE=vehicle` and a working vehicle link; or a gimbal; a BNO085 if fitted: wiring (pins 27/28, 3.3 V) |
+| `navera-insta360`: "Insta360 not found in USB mode 'Android'" / "Access denied" | the camera in webcam mode, unplugged, or the udev rule missing | camera menu: USB mode Android; `sudo install -m 0644 deploy/udev/99-insta360.rules /etc/udev/rules.d/`, replug |
+| `navera-insta360`: "Resource busy" | another program holds the camera (IRIS's field server `navera-field`) | `sudo systemctl disable --now navera-field` |
 | Wrong heading | a ROS IMU with magnetic yaw; a BNO085 with no position yet and no declination; gyro-carried heading expired (no match for long) | the ROS IMU must give true north; set `NAVERA_DECLINATION_DEG`; route over textured ground |
 | "no position prior (waiting for a GPS fix)" | no GPS fix at start | get a fix (clear sky); or "Start without GPS" (7.5) |
 | "no GPS found … GPS idle" | no receiver detected at boot | connect it, `sudo systemctl restart navera-discover navera-gps`; or write `NAVERA_GPS_SOURCE` and its port |
@@ -1042,7 +1118,7 @@ A commented-out line (`#`) means "use the default". The `/mission` page writes a
 
 | Setting | Default | Meaning |
 |---|---|---|
-| `NAVERA_SENSOR_SOURCE` | auto | attitude: box, vehicle, ros |
+| `NAVERA_SENSOR_SOURCE` | auto | attitude: box, vehicle, ros, insta360 (the kit's own IMU, 3.1) |
 | `NAVERA_GPS_SOURCE` | auto | GPS: serial, vehicle, ros (none = found nothing) |
 | `NAVERA_GPS_PORT` / `NAVERA_GPS_BAUD` | found by auto (serial: /dev/ttyTHS1, 9600) | box receiver port and speed |
 | `NAVERA_VEHICLE_MAVLINK_URL` | found by auto | autopilot address for the vehicle link |
@@ -1064,7 +1140,7 @@ A commented-out line (`#`) means "use the default". The `/mission` page writes a
 | Setting | Default | Meaning |
 |---|---|---|
 | `NAVERA_CAMERA` | replay | **live** for the real camera |
-| `NAVERA_CAMERA_INPUT` | auto | usb, csi, gst, ros |
+| `NAVERA_CAMERA_INPUT` | auto | usb, csi, gst, ros, insta360 (the kit, 3.1) |
 | `NAVERA_CAMERA_DEVICE` | found by auto (/dev/video0) | the `/dev/v4l/by-id/…` name; CSI: sensor id |
 | `NAVERA_CAMERA_GST_PIPELINE` | — | GStreamer source for gst (in quotes) |
 | `NAVERA_CAMERA_TOPIC` | /vehicle/camera/image_raw | image topic for ros |
@@ -1078,6 +1154,17 @@ A commented-out line (`#`) means "use the default". The `/mission` page writes a
 | `NAVERA_CAMERA_MAX_TILT_DEG` | 45 | pictures tilted more are not used (5–80) |
 | `NAVERA_CAMERA_MAX_RATE_DPS` | 30 | fixed camera: pictures taken while turning faster are not used (1–360) |
 | `NAVERA_CAMERA_LATENCY_S` | 0 (= value in the calibration file) | camera delay, seconds (0–2) |
+
+**Insta360 kit** (section 3.1; `navera-insta360`)
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `NAVERA_INSTA360_MOUNT_AXES` | +x,+z,-y | the camera's IMU axes along the vehicle's x (forward), y (left), z (up); default: lying, left lens down, camera top to the nose |
+| `NAVERA_INSTA360_MOUNT_RPY` | 0,0,0 | small trim after the axes, roll,pitch,yaw degrees (±30) |
+| `NAVERA_INSTA360_VIEW_SIZE` | 1200x900 | the straight-down view's size |
+| `NAVERA_INSTA360_VIEW_HFOV_DEG` | 100 | its width, degrees (30–140) |
+| `NAVERA_INSTA360_LENS` | /var/lib/navera/insta360_lens.json | the 360 lenses' calibration |
+| `NAVERA_INSTA360_IMU` | /var/lib/navera/insta360_imu.json | the IMU's 6-position calibration |
 
 **Vision pipelines**
 
@@ -1163,7 +1250,7 @@ Commands with `sudo` run from your administrator account (the `navera` user has 
 | Cut / restore NAVERA's GPS (ground test) | `sudo systemctl stop navera-gps` / `sudo systemctl start navera-gps` |
 
 Services: `navera-discover` (detection), `navera-estimator` (arbiter), `navera-gps`,
-`navera-imu`, `navera-rtc` (clock), `navera-pipeline-day` / `-night` / `-cn` (vision),
+`navera-imu`, `navera-insta360` (the Insta360 kit), `navera-rtc` (clock), `navera-pipeline-day` / `-night` / `-cn` (vision),
 `navera-vehicle-link`, `navera-output`, `navera-web`.
 
 ---

@@ -33,12 +33,13 @@ discovery-based, and the camera ↔ localizer handshake uses latched topics).
 | `navera-pipeline-night` | `navera_boot_pipeline_night.sh` | Thermal camera + STHN night vision (GPU) | Night operation, **instead of** day |
 | `navera-pipeline-cn` | `navera_boot_pipeline_cn.sh` | Celestial pipeline (astrometry.net, CPU) | See §10 — as shipped it replays a bundled sky image |
 | `navera-imu` | `navera_boot_imu.sh` | Box IMU (BNO085, I²C bus 1 @ 0x4A) → `/navera/sensors/imu`; idle when navera-discover found no BNO085 (`NAVERA_BOX_IMU=0`) | `NAVERA_SENSOR_SOURCE=box` and a BNO085 fitted (enabling it elsewhere is harmless) |
+| `navera-insta360` | `navera_boot_insta360.sh` | The Insta360 kit: the One R in USB "Android" mode (one process owns it) → straight-down day view `/navera/sensors/insta360/nadir/image_raw` (stamped at exposure) and attitude `/navera/sensors/insta360/imu` (sensor_msgs/Imu with orientation, 100 Hz), status `/navera/sensors/insta360/status`; exits when the camera is lost (restart 5 s); idle unless `NAVERA_SENSOR_SOURCE` or `NAVERA_CAMERA_INPUT` is `insta360` | The IRIS kit (Insta360 as camera and IMU; enabling it elsewhere is harmless) |
 | `navera-rtc` | `navera_boot_rtc.sh` | Real-time clock (DS3231, I²C bus 1 @ 0x68) → `/navera/sensors/rtc_time`; idle when no DS3231 was found (`NAVERA_BOX_RTC=0`) | A DS3231 is fitted (the reference box has one) |
 | `navera-vehicle-link` | `navera_boot_vehicle_link.sh` | Reads the autopilot over MAVLink → `/navera/vehicle/*` (attitude, rangefinder, barometric height, 2nd GPS, armed state), and relays NAVERA's MAVLink output to it (local UDP 14650); idle when no autopilot is found or configured | `NAVERA_SENSOR_SOURCE=vehicle`, `NAVERA_GPS_SOURCE=vehicle`, or a MAVLink output through its relay; also recommended with any MAVLink autopilot, so that `/mission` knows when the vehicle is armed |
 | `navera-output` | `navera_boot_output.sh` | Output to the vehicle: NMEA, MAVLink `GPS_INPUT`, ROS `NavSatFix` on `/navera/fix` | NAVERA feeds the autopilot or a ROS consumer |
 | `navera-web` | `navera_boot_web.sh` | Web bridge on port 8181: operator view `/operator`, dashboard `/`, mission preparation `/mission` | Always |
 
-All eleven units run as user `navera`, from the workspace `/home/navera/isaac_ros_common`
+All twelve units run as user `navera`, from the workspace `/home/navera/isaac_ros_common`
 (`WorkingDirectory=` of every unit, and `NAVERA_WS` in `navera_boot_lib.sh`), and execute
 the wrapper scripts installed in `/home/navera/` (`ExecStart=/home/navera/navera_boot_*.sh`).
 
@@ -147,7 +148,7 @@ they would be hidden under the mount point.
 
 It never overwrites an existing `/etc/navera/navera.env`, and switches the Jetson to a
 headless boot only with `--headless` (that ends the desktop session). It enables
-`navera-discover navera-estimator navera-gps navera-imu navera-rtc navera-vehicle-link
+`navera-discover navera-estimator navera-gps navera-imu navera-insta360 navera-rtc navera-vehicle-link
 navera-pipeline-day navera-output navera-web` unless `--units` says otherwise. The steps
 it runs are detailed below, for a manual installation or a review.
 
@@ -325,7 +326,7 @@ accuracy gates: `docs/test_reports/perf_2026-10-21.md`.
 Pick from the table in §1. A typical box with its own sensors, feeding an autopilot over MAVLink:
 
 ```bash
-sudo systemctl enable navera-discover navera-estimator navera-gps navera-imu navera-rtc \
+sudo systemctl enable navera-discover navera-estimator navera-gps navera-imu navera-insta360 navera-rtc \
     navera-pipeline-day navera-output navera-web
 # The vehicle's sensors / 2nd GPS over MAVLink, the MAVLink output relay, or the armed
 # lock on /mission:
@@ -335,7 +336,7 @@ sudo systemctl enable navera-vehicle-link
 sudo systemctl set-default multi-user.target
 
 # Start now without rebooting (one command: systemd runs navera-discover first)
-sudo systemctl restart navera-discover navera-estimator navera-gps navera-imu navera-rtc \
+sudo systemctl restart navera-discover navera-estimator navera-gps navera-imu navera-insta360 navera-rtc \
     navera-vehicle-link navera-pipeline-day navera-output navera-web
 ```
 
@@ -388,7 +389,7 @@ Recordings (`navera_tools/record_session.sh`) also go on this disk (§11, and
 ## 4. Camera
 
 Settings (`/etc/navera/navera.env`): `NAVERA_CAMERA=live` (the default `replay` plays recorded
-frames, for demonstration), `NAVERA_CAMERA_INPUT=usb|csi|gst|ros` (or `auto`, §5),
+frames, for demonstration), `NAVERA_CAMERA_INPUT=usb|csi|gst|ros|insta360` (or `auto`, §5; `insta360` = the kit, §5.1),
 `NAVERA_CAMERA_DEVICE`, `NAVERA_CAMERA_SIZE`, `NAVERA_CAMERA_CALIBRATION`, mounting and
 gimbal — all described in `navera.env.example`.
 
@@ -455,9 +456,13 @@ units) for:
 | An autopilot (any MAVLink) | an autopilot heartbeat (ground stations, cameras, companions ignored) on those serial ports, on UDP 14550/14551, or on `NAVERA_DISCOVER_MAVLINK`; it is then asked for attitude, rangefinder, height above home and its GPS receiver types (`GPS_TYPE`/`GPS_TYPE2`). Several: its wired TELEM port first, and a warning when they are different autopilots |
 | A ROS vehicle | `sensor_msgs` Imu / NavSatFix / Image / Range topics on ROS domain 0, `ROS_DOMAIN_ID` and `NAVERA_DISCOVER_ROS_DOMAINS` (8 s of DDS discovery) |
 | Cameras | USB (`/dev/v4l/by-id/*-video-index0`, except the star camera `NAVERA_STAR_CAMERA_DEVICE`), CSI (Jetson video inputs); a written `NAVERA_CAMERA_DEVICE` is always kept; several USB cameras: the first, with a warning — set `NAVERA_CAMERA_DEVICE` |
+| The Insta360 kit | an Insta360 One R in USB "Android" mode: USB id `2e1a:0002` read from `/sys/bus/usb/devices` (the camera is **not opened**: one wrong probe has wedged it until replugged, D10); an Insta360 in webcam mode is a CHECK line ("set its USB mode to Android") |
 
-and chooses: **attitude** box IMU > autopilot > ROS; **GPS** box receiver > autopilot's 2nd GPS
-> ROS; **camera** USB > CSI > ROS (depth images excluded; a ROS camera is flagged "check it
+and chooses: **attitude** box IMU > autopilot > ROS > the Insta360's own IMU (the kit: chosen
+only when nothing better exists — the autopilot's EKF has the GPS, a compass and the vehicle's
+dynamics, the camera's filter only gravity and the gyro); **GPS** box receiver > autopilot's
+2nd GPS > ROS; **camera** the Insta360 kit (One R in Android mode: no webcam then, only the
+kit can read it) > USB > CSI > ROS (depth images excluded; a ROS camera is flagged "check it
 looks at the ground"). The autopilot's second GPS is used only when `GPS_TYPE2` says it is
 a real receiver (fix or not yet) — never type 14, the MAVLink-fed GPS that NAVERA itself
 feeds (a loop), and not when the types cannot be read. **No GPS found: the GPS service
@@ -497,6 +502,7 @@ celestial pipelines and the estimator's IMU liveness check; `navera_common/vehic
 | `box` (auto finds nothing) | `/navera/sensors/imu` (BNO085) | from the GPS altitude and the image | `navera-imu` |
 | `vehicle` | `/navera/vehicle/imu` (autopilot attitude) | `/navera/vehicle/altitude_agl` (downward rangefinder), `/navera/vehicle/relative_alt` (barometric height above home) | `navera-vehicle-link`, `NAVERA_VEHICLE_MAVLINK_URL` |
 | `ros` | `NAVERA_ROS_IMU_TOPIC` (sensor_msgs/Imu, contract in §6) — required | `NAVERA_ROS_ALTITUDE_TOPIC` (sensor_msgs/Range), optional | the vehicle's ROS graph (§6) |
+| `insta360` | `/navera/sensors/insta360/imu`: the Insta360 One R's own IMU, roll / pitch from its gyro + accelerometer (acceleration rejection), yaw from its gyro set by the GPS course and day-vision headings (variance π² until then: the live camera then gives frames no heading) — `camera_pkg/insta360_attitude.py` | from the GPS altitude and the image (no rangefinder, no barometer) | `navera-insta360` (§5.1) |
 
 **GPS — `NAVERA_GPS_SOURCE`** (`navera_boot_gps.sh`; every mode publishes
 `/navera/sensors/gps_fix` and `/navera/estimate/gps` the same way):
@@ -532,6 +538,35 @@ flight, day vision can resume from its last position if it is less than 5 minute
 Box IMU settings (used by `navera-imu`): `NAVERA_IMU_MOUNT_RPY` (mounting angles) and
 `NAVERA_DECLINATION_DEG` (declination used until a position is known; the IMU node then
 switches to the World Magnetic Model). See [imu_pkg/README.md](../imu_pkg/README.md).
+
+### 5.1 The Insta360 kit (`navera-insta360`)
+
+IRIS's own kit uses the Insta360 One R (360 module) as the day camera **and** the IMU. In USB
+"Android" mode (camera menu) it sends its full 3840x1920 dual fisheye (H.264, 2 key frames/s
+used) and its 500 Hz IMU over one vendor USB interface (reverse-engineered protocol,
+`navera_common/insta360_protocol.py`). Only one process can hold it: `navera-insta360`
+(`camera_pkg` `insta360_node.py`, `insta360.launch.py`), which publishes the attitude and a
+body-fixed straight-down view; the day pipeline's live camera reads that view with
+`NAVERA_CAMERA_INPUT=insta360` (an ideal lens of `NAVERA_INSTA360_VIEW_HFOV_DEG`, the mount
+already applied) and the attitude with `NAVERA_SENSOR_SOURCE=insta360` (also the day node's
+gyro heading carry, night and celestial).
+
+Install-time pieces (`install.sh`): `deploy/udev/99-insta360.rules` → `/etc/udev/rules.d/`
+(vendor 2e1a / 4255, mode 0666; **replug the camera** after it), `libusb-1.0-0`,
+pyusb 1.2.1 and PyAV 12.3.0 for user `navera`, the unit (memory class: pipeline). Calibration
+files to copy once: `/var/lib/navera/insta360_lens.json` (the two lenses, from the screen
+dot-grid bench) and `/var/lib/navera/insta360_imu.json` (6-position IMU calibration); without
+them the box check WARNs (rough lens guess; neutral accelerometer, the gyro bias is still
+measured at every stop). Mount: `NAVERA_INSTA360_MOUNT_AXES` (default `+x,+z,-y`: lying, the
+left lens straight down, the camera's top to the nose), trim `NAVERA_INSTA360_MOUNT_RPY`.
+Picture stamps: each key frame is decoded alone and stamped with its own packet's camera time
+(the 1.5 s F15 offset was the field decoder holding three key frames, 3 x 500 ms) mapped to
+the host clock by the IMU packets.
+
+Check: `navera_tools/check_box.py` (lines `Insta360 …`, `attitude`), `journalctl -u
+navera-insta360`. A bench / replay without the camera:
+`ros2 launch camera_pkg insta360.launch.py source:=replay replay_path:=<raw folder>`.
+IRIS's field server (`navera-field`, a bench tool) also opens the camera: never both.
 
 ## 6. ROS vehicles: joining the vehicle's ROS graph
 
@@ -725,7 +760,7 @@ would take the processor vision needs`). The armed state comes from `navera-vehi
 two commands:
 
 - `systemctl restart navera-pipeline-day.service` — "Activate" a route map;
-- `systemctl try-restart navera-estimator.service navera-imu.service navera-pipeline-day.service navera-pipeline-night.service navera-pipeline-cn.service`
+- `systemctl try-restart navera-estimator.service navera-imu.service navera-insta360.service navera-pipeline-day.service navera-pipeline-night.service navera-pipeline-cn.service`
   — "Apply settings" (`NAVERA_UNITS` in `navera_web_bridge.py`); `try-restart` restarts only
   the units that are running.
 
@@ -820,7 +855,7 @@ sudo rm /etc/systemd/system/navera-pipeline-day.service
 sudo systemctl daemon-reload
 
 # Everything
-sudo systemctl disable --now navera-discover navera-estimator navera-gps navera-imu navera-rtc \
+sudo systemctl disable --now navera-discover navera-estimator navera-gps navera-imu navera-insta360 navera-rtc \
     navera-pipeline-day navera-pipeline-night navera-pipeline-cn \
     navera-output navera-vehicle-link navera-web
 sudo rm /etc/systemd/system/navera-*.service /etc/sudoers.d/navera-web

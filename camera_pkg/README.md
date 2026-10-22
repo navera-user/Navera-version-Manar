@@ -40,7 +40,39 @@ and `celestial` namespaces (launch files `day.launch.py`, `thermal.launch.py`,
   which with V4L2's 10 s grab timeout took minutes. Use the stable `/dev/v4l/by-id/...` name: a
   replugged camera may get another `/dev/videoN`.
 
+## `insta360` — the Insta360 kit: the One R as the day camera AND the IMU (boot service)
+
+`insta360_node.py` (`insta360.launch.py`, unit `navera-insta360`) is the ONE process that owns the
+Insta360 One R in USB "Android" mode (`2e1a:0002`). From every packet (live over pyusb, or replayed
+from a field raw recording: `source:=replay replay_path:=<raw folder>`):
+
+| Output | Content |
+|---|---|
+| `/navera/sensors/insta360/imu` | sensor_msgs/Imu 100 Hz, body frame (mount applied), **with orientation** body→ENU (`insta360_attitude.py`): roll / pitch from a Mahony filter (gyro + accelerometer pulled with τ = 20 s, the accelerometer ignored when \|a\| is 3 % off 1 g, turning > 1 °/s about the vertical without the GPS speed, or rotating > 20 °/s; with the trusted GPS track the turn / along-track accelerations are removed; τ = 2 s when stopped), yaw from the gyro set by the GPS course (σ 10°) and by day-vision headings (σ 2°, refused beyond 3 σ). `orientation_covariance` = diag(tilt σ², tilt σ², yaw σ²), yaw π² until a heading source set it |
+| `/navera/sensors/insta360/nadir/image_raw` | sensor_msgs/Image bgr8, a body-fixed straight-down pinhole view (`insta360_view.py`, default 1200x900, 100°) cut from the dual fisheye with the calibrated lens model; each pixel from the lens that sees it furthest from its edge. `header.stamp` = the exposure: each key frame decoded alone (fresh decoder, flushed) and stamped with its own packet's camera ms − `exposure_lag_ms` (0: see `insta360_kit.py`), mapped to the host clock by the IMU packets |
+| `/navera/sensors/insta360/status` | JSON every 2 s: IMU / frames counts, clock, gyro bias, tilt σ, heading and its source, view geometry, errors |
+
+Inputs: `/navera/position` (the arbiter's GPS fixes: course + speed), `/day/day_status` +
+`/day/frame_meta` (a good fix's fitted rotation at its frame's exposure). The live camera reads the
+view with `NAVERA_CAMERA_INPUT=insta360` (`input: insta360`: an ideal lens, no mount offset) and the
+attitude with `NAVERA_SENSOR_SOURCE=insta360`; it drops a frame's `heading_deg` when the attitude's
+yaw σ exceeds `max_heading_sigma_deg` (5°), so the day node uses its own gyro-carried vision heading.
+Mount: `mount_axes` (kit default `+x,+z,-y`: lying, LEFT lens straight down, camera top to the nose),
+from `NAVERA_INSTA360_MOUNT_AXES` / `_MOUNT_RPY`; a standing camera puts straight down on the seam
+(warned). The node exits when the camera is lost for `camera_lost_exit_s` (systemd reopens it).
+
+Tests: `test/test_insta360_kit.py` (synthetic motion with truth, the coordinated-turn trap, the
+heading sources, the view geometry, a real H.264 key frame, the real recording at rest, settings,
+the live camera's heading gate); `navera_tools/tests/test_insta360_kit_ros.py` (the node and the
+live camera through ROS on a synthetic recording); evaluation tools
+`navera_tools/bench/insta360_attitude_eval.py` and `navera_tools/bench/insta360_kit_replay.py`
+(the kit + the day chain on a recording); a synthetic recording: `navera_tools/sim/insta360_raw_sim.py`.
+
 ## `insta360_imu` — the Insta360 One R's own IMU as `sensor_msgs/Imu`
+
+(IMU only, without orientation: for replays and noise analysis. At boot the kit node above owns
+the camera and publishes the IMU with its orientation.)
+
 
 The product camera (Insta360 One R, USB "Android" mode, reverse-engineered protocol) streams its
 gyro + accelerometer (~500 Hz) with the video. `insta360_imu.py` publishes it for the ROS
