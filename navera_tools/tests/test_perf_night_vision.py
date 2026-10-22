@@ -15,6 +15,8 @@ Bounds from the measured numbers (VALIDATION_STATUS.md, night sections) with mar
 Baseline 2026-10-22: synthetic nominal 24/24, 10.8 / 16.2 / 23.4 m (median / p90 / max), 600 m 24/24 10.5 m,
 farmland 22/24 10.8 m, sea 0/24, uniform 0/24; Boson 1000 m 23/60, 10.3 / 20.3 / 31.5 m; Hikvision 1000 m
 17/60, 10.7 / 26.0 / 49.7 m; 0 wrong; 100 % within 3 stated sigma.
+2026-10-22 (first-try gate 0.97, sigma refitted on real thermal): synthetic unchanged; Boson 22/60,
+10.0 / 18.3 / 31.5 m; Hikvision 17/60, 10.7 / 26.0 / 49.7 m; 0 wrong; 100 % within 3 sigma.
 Run: NAVERA_PERF=1 flock /tmp/claude-1000/navera_gpu.lock \
     python3 -m pytest -q navera_tools/tests/test_perf_night_vision.py
 """
