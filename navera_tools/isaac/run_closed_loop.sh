@@ -14,6 +14,7 @@
 #                  infinite SITL battery, no battery failsafe; resources.csv every 30 s)
 #   --isaac-args "..." (isaac_flight.py conditions) --link-args "-p k:=v ..." (isaac_link.py conditions)
 #   --day-args / --cam-args "-p k:=v ..." (day_subscriber / live_camera parameters)
+#   NAVERA_ISAAC_WS (env): the colcon build directory (default ~/.navera_isaac_ws; one per checkout)
 #
 #   windows: "NAVERA - Isaac Sim flight" (the scene, chase view), MAVProxy map + console,
 #            "NAVERA - live error" (truth / NAVERA / autopilot EKF, map, camera, status)
@@ -37,7 +38,8 @@ while [ $# -gt 0 ]; do
 done
 here=$(cd "$(dirname "$0")" && pwd); repo=$(cd "$here/../.." && pwd)
 D=/mnt/d/navera_isaac; DW='D:\navera_isaac'
-res=$HOME/navera_results/$name; mkdir -p "$res/sitl" "$HOME/.navera_isaac_ws"/{build,install,log}
+ws=${NAVERA_ISAAC_WS:-$HOME/.navera_isaac_ws}
+res=$HOME/navera_results/$name; mkdir -p "$res/sitl" "$ws"/{build,install,log}
 VENV=$HOME/.venv-navera-sitl; AP=$HOME/ardupilot
 cp "$here"/isaac_flight.py "$here"/flight_profile.py "$D"/
 log() { echo "[$(date +%H:%M:%S)] $*" | tee -a "$res/run.log"; }
@@ -66,8 +68,8 @@ docker run -d --rm --name navera_isaac --gpus all --network host --user "$(id -u
   -e RUN="$name" -e MATCHER=auto -e MAX_SPEED=$([ "$vehicle" = plane ] && echo 75 || echo 30) -e GROUND_ALT="$zref" -e VEHICLE_OUT=tcp:127.0.0.1:5762 \
   -e DEGRADED_SIGMA="$sigma" -e GIMBAL=$gimbal -e DAY_ARGS="$day_extra" -e CAM_ARGS="$cam_extra" \
   -e LINK_ARGS="-p truth_udp_port:=15501 -p delay_s:=1.3 -p scene_dir:=/isaac/scenes/$scene $link_extra" \
-  -v "$repo":/ws/src/navera -v "$HOME/.navera_isaac_ws/build":/ws/build \
-  -v "$HOME/.navera_isaac_ws/install":/ws/install -v "$HOME/.navera_isaac_ws/log":/ws/log \
+  -v "$repo":/ws/src/navera -v "$ws/build":/ws/build \
+  -v "$ws/install":/ws/install -v "$ws/log":/ws/log \
   -v "$D":/isaac -v "$HOME/navera_data/isaac_${scene}_area":/data/area -v "$HOME/navera_data/lens":/data/lens \
   -v "$HOME/navera_data/torch_home":/torch_home -v "$res":/results \
   navera-humble bash /ws/src/navera/navera_tools/isaac/run_navera_nodes.sh > /dev/null || exit 1

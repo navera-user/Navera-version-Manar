@@ -146,8 +146,12 @@ def refine_with_pose(res: dict, fit_pts: Tuple[np.ndarray, np.ndarray], near_pts
     with the IMU) by more than tilt_guard_deg is not used — the frame centre is kept (the
     match is not refused) and res["pose_guard"] says why. On real drone photos (UAV-VisLoc,
     8 flights) the pose found 9-26 deg of tilt on a level drone: 70 of 2600 fixes 100-325 m
-    off with a 5-25 m sigma; with a 4 deg guard 2 (docs/VALIDATION_STATUS.md)."""
+    off with a 5-25 m sigma; with a 4 deg guard 2 (docs/VALIDATION_STATUS.md).
+    Both candidates are kept for the day node: centre_lat/centre_lon (the frame centre, always)
+    and pose_lat/pose_lon (the point under the camera, whenever the pose is consistent — also
+    when the guard keeps the centre)."""
     res["position_from"] = "frame centre"
+    res["centre_lat"], res["centre_lon"] = res.get("predicted_lat"), res.get("predicted_lon")
     if hfov_deg is None or not (1.0 < float(hfov_deg) < 179.0):
         return None
     f = (frame_size[0] / 2.0) / math.tan(math.radians(float(hfov_deg)) / 2.0)
@@ -174,11 +178,12 @@ def refine_with_pose(res: dict, fit_pts: Tuple[np.ndarray, np.ndarray], near_pts
     shift_m = math.hypot(pose["x"] - centre_px[0], pose["y"] - centre_px[1]) * map_mpp
     if shift_m > pose["height_m"] * math.tan(math.radians(pose["tilt_deg"] + 3.0)) + 5.0:
         return tilted if pose["tilt_deg"] > NOT_STRAIGHT_DEG else None
+    res["pose_lat"], res["pose_lon"] = tile_px_to_latlon(pose["x"], pose["y"], z)
     if tilt_guard_deg > 0 and abs(pose["tilt_deg"] - float(expected_tilt_deg)) > tilt_guard_deg:
         res["pose_guard"] = (f"pose tilt {pose['tilt_deg']:.1f} deg, attitude {float(expected_tilt_deg):.1f} deg "
                              f"(> {tilt_guard_deg:g} deg apart): frame centre kept")
         return None
-    res["predicted_lat"], res["predicted_lon"] = tile_px_to_latlon(pose["x"], pose["y"], z)
+    res["predicted_lat"], res["predicted_lon"] = res["pose_lat"], res["pose_lon"]
     res["position_from"] = "camera pose"
     return None
 

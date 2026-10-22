@@ -83,3 +83,13 @@ def test_expected_tilt_of_a_frame():
     assert DaySubscriber._expected_tilt(dict(straightened=False, attitude_source="none")) == 0.0
     assert DaySubscriber._expected_tilt(dict(straightened=False, attitude_source="imu", tilt_deg=7.5)) == 7.5
     assert DaySubscriber._expected_tilt({}) == 0.0
+
+
+def test_both_candidates_are_kept_for_the_day_node():
+    under = tile_px_to_latlon(*CAM_PX, Z)
+    res, _, centre = _refine(10.0, expected_tilt_deg=0.0, tilt_guard_deg=4.0)    # guarded: centre published
+    assert (res["centre_lat"], res["centre_lon"]) == centre
+    assert _off_m(dict(predicted_lat=res["pose_lat"], predicted_lon=res["pose_lon"]), under) < 2.0
+    res, _, centre = _refine(1.0, expected_tilt_deg=0.0, tilt_guard_deg=4.0)     # pose used
+    assert (res["pose_lat"], res["pose_lon"]) == (res["predicted_lat"], res["predicted_lon"])
+    assert (res["centre_lat"], res["centre_lon"]) == centre

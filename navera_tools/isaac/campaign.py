@@ -74,8 +74,9 @@ CONDITIONS = {
     "plane30": ("plane 30 m/s, 400 m, body-fixed camera", PLANE + " --speed 30 --model plane"),
     "plane30_nostaged": ("plane 30 m/s, staged delay apply off (as before F31)",
                          PLANE + " --speed 30 --model plane --day-args '-p latency_partial_max_sigma_s:=0.0'"),
+    # radius 900: with 1500 the jet's turns (r ~ 450 m at 40 deg bank) left the 4 km scene (2026-10-21)
     "plane60": ("plane 60 m/s (jet model), 500 m", PLANE.replace("--alt 400", "--alt 500")
-                + " --speed 60 --model plane-jet --radius 1500"),
+                + " --speed 60 --model plane-jet --radius 900"),
     "worst_copter": ("dusk + dust 3 km + rain + wind 10 + outage 30 (full mission)",
                      FULL + " --time 17:15 --wind 10 --turb 3 --link-args '-p haze_visibility_m:=3000 "
                      "-p haze_rgb:=0.8/0.62/0.4 -p rain:=0.5 -p outages:=60/30'"),
@@ -100,6 +101,8 @@ def main():
     ap.add_argument("--copy-to", default="")
     ap.add_argument("--out", default=os.path.expanduser("~/.navera_sim/isaac/campaign"))
     ap.add_argument("--list", action="store_true")
+    ap.add_argument("--ws", default="", help="its colcon build directory on the PC (default ~/.navera_isaac_ws)")
+    ap.add_argument("--extra", default="", help="launcher arguments appended to every condition's")
     a = ap.parse_args()
     if a.list:
         for k, (what, args) in CONDITIONS.items():
@@ -115,7 +118,9 @@ def main():
                 f.write(f"{time.strftime('%F %T')} NOTICE: campaign run '{run}' ({what}) starts now: MAVProxy map+console, "
                         f"'NAVERA - live error' and ~1.5 min later 'NAVERA - Isaac Sim flight' open, ~9 min.\n")
         t0 = time.time()
-        cmd = (f"rm -rf ~/navera_results/{run}; bash {a.repo}/navera_tools/isaac/run_closed_loop.sh --name {run} "
+        args = f"{args} {a.extra}".strip()
+        env = f"NAVERA_ISAAC_WS={a.ws} " if a.ws else ""
+        cmd = (f"rm -rf ~/navera_results/{run}; {env}bash {a.repo}/navera_tools/isaac/run_closed_loop.sh --name {run} "
                f"--hold 5 {args} > ~/navera_{run}.out 2>&1")
         r = sh(cmd, a.ssh)
         rec = dict(run=run, condition=n, what=what, args=args, minutes=round((time.time() - t0) / 60, 1), rc=r.returncode)

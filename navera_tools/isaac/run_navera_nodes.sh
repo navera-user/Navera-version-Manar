@@ -48,7 +48,7 @@ ros2 run camera_pkg live_camera.py --ros-args -r __ns:=/day -p input:=ros \
   -p input_topic:=/isaac/camera/image_raw -p width:=${CAM_W:-1344} -p height:=${CAM_H:-760} \
   -p calibration_file:=/results/lens.yaml -p fps:=${CAM_FPS:-3.0} -p wait_for_ready:=true \
   -p ready_topic:=/day/localizer_ready -p ground_altitude_m:=${GROUND_ALT:-nan} \
-  -p gimbal:=${GIMBAL:-false} $CAM_ARGS > $L/camera.log 2>&1 &
+  -p gimbal:=${GIMBAL:-false} ${CAM_ARGS:-} > $L/camera.log 2>&1 &
 pids+=($!)
 trap 'kill ${pids[@]} $link 2>/dev/null; exit 0' INT TERM
 # ready marker for the launcher: day_subscriber has its map and models
