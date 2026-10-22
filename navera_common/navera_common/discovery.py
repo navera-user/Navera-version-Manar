@@ -339,6 +339,8 @@ def probe_dronecan(iface: str, listen_s: float = 3.0) -> dict:
     except ImportError:
         r["error"] = "pydronecan is not installed (pip install dronecan)"
         return r
+    import multiprocessing
+    before = set(multiprocessing.active_children())
     try:
         node = dronecan.make_node(iface, bitrate=1000000)          # node_id None: passive
     except Exception as e:                                       # noqa: BLE001 — interface down / absent
@@ -383,6 +385,8 @@ def probe_dronecan(iface: str, listen_s: float = 3.0) -> dict:
             node.close()
         except Exception:                                        # noqa: BLE001
             pass
+        for p in set(multiprocessing.active_children()) - before:   # SLCAN / mcast I/O process
+            p.kill()
     r["gnss"] = [gnss[k] for k in sorted(gnss)]
     r["nodes"], r["controllers"] = sorted(nodes), sorted(ctrl)
     return r
