@@ -110,7 +110,7 @@ vision > celestial**. A good GPS always wins. When GPS is lost or refused, visio
 | Computer | **NVIDIA Jetson Orin Nano 8 GB**, JetPack 6.2.1, Ubuntu 22.04, ROS 2 Humble | **Required** — the only platform NAVERA is built and tested on |
 | Data disk | a disk mounted at `/data` (NVMe SSD or USB disk) for maps, models and recordings | **Required** |
 | Swap | an 8 GB swap file on disk (the installer makes it) | **Required** — the day vision was killed for lack of memory without it |
-| Power | the Jetson's own supply, as the carrier board specifies | **Required** — NAVERA's power draw and brown-out behaviour are not measured yet |
+| Power | the Jetson's own supply, as the carrier board specifies | **Required** — module draw measured 10.5 W mean, 12.1 W max under a mixed GPU load (on-module monitor, deploy/README.md §3.11); the whole box at the DC jack and brown-out behaviour are not measured yet: size the supply for at least 25 W for the module (MAXN_SUPER is not power-capped) plus the peripherals |
 
 NAVERA's own sensors, fitted to the box:
 
@@ -188,7 +188,10 @@ Nano 8 GB; NAVERA controlling a gimbal.
   NVMe / USB <========================================  Data disk (/data)
 ```
 
-- Which header pins carry `/dev/ttyTHS1` depends on the carrier board: **check its pinout**.
+- On the **Jetson Orin Nano developer kit** `/dev/ttyTHS1` is the 40-pin header's only UART:
+  **pin 8 = TX, pin 10 = RX** (GND e.g. pin 6); `/dev/ttyTHS2` is not on the header — use a
+  USB-serial adapter for the autopilot (deploy/README.md §3.11). On another carrier board, check
+  its pinout.
 - The Jetson header is **3.3 V logic**. Never connect it to RS-232 levels, or to 5 V logic
   without a level shifter.
 - Mount the camera **rigidly**: its IMU measures the camera's own rotation. Keep the GPS antenna

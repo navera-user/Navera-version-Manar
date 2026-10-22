@@ -58,7 +58,9 @@ MAVLink addresses use one format everywhere (`navera_output/mavlink_url.py`):
   to RS-232 levels; never to a 5 V TTL port without a level shifter.
 - **Device names:** on the reference box `/dev/ttyTHS1` is the GPS receiver
   (`NAVERA_GPS_PORT`); the examples use `/dev/ttyTHS2` for the autopilot. Which `ttyTHS*`
-  reaches which header pins depends on the carrier board — check its pinout. A USB-to-serial
+  reaches which header pins depends on the carrier board — check its pinout. On the Jetson
+  Orin Nano developer kit only `/dev/ttyTHS1` is on the 40-pin header (pins 8 TX / 10 RX) and
+  `/dev/ttyTHS2` is not (deploy/README.md §3.11): use a USB-to-serial adapter there. A USB-to-serial
   adapter also works: use its stable name `/dev/serial/by-id/…`. The service user needs the
   `dialout` group (`navera-output` and `navera-vehicle-link` also add it).
 - **Baud rate:** the same on both ends (`SERIALn_BAUD` and the address). The vehicle link

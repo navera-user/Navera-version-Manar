@@ -58,6 +58,51 @@ def render_view(board, px, rvec, tvec):
     return img
 
 
+def url_mode(views_dir):
+    """Live mode from a URL (C14): the same views as a video stream, read through --url
+    (OpenCV's FFmpeg backend, as for an rtsp:// camera) — the lens is recovered too."""
+    board, px = board_image()
+    rng = np.random.default_rng(5)
+    video = os.path.join(views_dir, "stream.avi")
+    first = None
+    wr = None
+    for gx in (-0.9, -0.5, -0.1, 0.3):            # board centres on a grid: live mode keeps
+        for gy in (-0.28, -0.08, 0.12):           # only views far from the ones it has
+            z = rng.uniform(0.4, 0.6)
+            rvec = np.array([rng.uniform(-0.5, 0.5), rng.uniform(-0.5, 0.5), rng.uniform(-0.3, 0.3)])
+            img = cv2.cvtColor(render_view(board, px, rvec, np.array([[gx * z], [gy * z], [z]])),
+                               cv2.COLOR_GRAY2BGR)
+            if wr is None:
+                first = img
+                wr = cv2.VideoWriter(video, cv2.VideoWriter_fourcc(*"MJPG"), 5, (img.shape[1], img.shape[0]))
+            for _ in range(2):
+                wr.write(img)
+    wr.release()
+    out = os.path.join(views_dir, "camera_url.yaml")
+    size = f"{first.shape[1]}x{first.shape[0]}"
+    r = subprocess.run([sys.executable, os.path.join(HERE, "..", "calibrate_camera.py"), "--url", video,
+                        "--size", size, "--views", "8", "--board", f"{COLS}x{ROWS}",
+                        "--square-mm", str(SQ_M * 1000), "--model", "fisheye", "--out", out],
+                       capture_output=True, text=True, timeout=300)
+    if not os.path.exists(out):
+        print(r.stdout[-800:], r.stderr[-800:])
+        return ["--url: no calibration written"]
+    c = yaml.safe_load(open(out))
+    fx_true, fx = SIM_LENS["camera_matrix"][0], c["camera_matrix"][0]
+    print(f"--url: {c['views']} views, RMS {c['rms_px']} px, focal {fx:.1f} px (true {fx_true:.1f})")
+    if abs(fx - fx_true) / fx_true > 0.02 or "camera_id" in c:
+        return [f"--url: focal {fx:.1f} px (true {fx_true:.1f}) or a camera_id written for a URL"]
+    # the password never reaches the output
+    from importlib import util
+    spec = util.spec_from_file_location("calibrate_camera", os.path.join(HERE, "..", "calibrate_camera.py"))
+    mod = util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    if mod.redact("rtsp://admin:s3cret@192.168.1.64:554/Streaming/Channels/201") != \
+            "rtsp://admin:***@192.168.1.64:554/Streaming/Channels/201":
+        return ["--url: password not redacted"]
+    return []
+
+
 def main():
     board, px = board_image()
     rng = np.random.default_rng(3)
@@ -94,6 +139,7 @@ def main():
         failures.append(f"reprojection error {c['rms_px']} px")
     if c["views"] < 12:
         failures.append(f"only {c['views']} views found the board")
+    failures += url_mode(out_dir)
     for f in failures:
         print("FAIL", f)
     print("calibrate_camera:", "PASS" if not failures else f"{len(failures)} failure(s)")

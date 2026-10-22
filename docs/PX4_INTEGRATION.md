@@ -31,10 +31,15 @@ it in v1.15.4, v1.16.0, release/1.18 or main: the message is silently dropped (*
 
 Consequences:
 
-- **Set `NAVERA_MAVLINK_URL=off`** on a PX4 vehicle. When navera-discover finds an
-  autopilot and `NAVERA_MAVLINK_URL` is empty, it turns this output on through the vehicle
-  link's relay whatever the autopilot is: with PX4 those messages reach the autopilot and
-  are ignored, and `check_box.py` cannot tell.
+- **Nothing to set with the default settings.** When navera-discover finds a PX4
+  autopilot (heartbeat `autopilot = MAV_AUTOPILOT_PX4`) and `NAVERA_MAVLINK_URL` is empty,
+  it leaves the MAVLink output **off** and reports
+  "CHECK output: the autopilot is PX4, which ignores MAVLink GPS_INPUT …" (shown as WARN by
+  `check_box.py`; code: `navera_common/discovery.py`). Writing `NAVERA_MAVLINK_URL=off` makes
+  that explicit and silences the CHECK line.
+- **Do not write a `NAVERA_MAVLINK_URL` address on a PX4 vehicle**: a written value is
+  always kept, and the `GPS_INPUT` messages would reach PX4 and be ignored without any error
+  that `check_box.py` could see.
 - The ArduPilot results in VALIDATION_STATUS.md (SITL, autopilot in the loop) say nothing
   about PX4.
 

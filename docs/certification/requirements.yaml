@@ -338,11 +338,35 @@ requirements:
 
 - id: NAV-FUN-20
   category: FUN
-  title: 'Inertial dead-reckoning (FEAT-2)'
-  text: 'NAVERA shall integrate the IMU into a position with a growing sigma to bridge vision gaps (sea, uniform ground, night without thermal).'
+  title: 'Bridging vision gaps: gyro heading carry, track velocity, growing sigma'
+  text: 'When day vision gives no match (sea, uniform ground, an unusable frame), NAVERA shall carry its last measured position along the measured ground track — the velocity fitted to the recent fixes, turned with the heading the gyro carries from the last vision (or GPS-course) heading, and frame-to-frame visual odometry when it is consistent — with a stated sigma that grows with the time since the last fix (unseen acceleration, heading uncertainty), and shall publish no position once that time or sigma exceeds its limit (max_dead_reckon_s, dead_reckon_max_sigma_m). The output shall bridge a short gap in forwarded vision positions the same way (bridge_max_s, growing accuracy) and then send no fix. It shall not integrate the IMU accelerations into a position.'
+  code:
+    - day_pkg/day_pkg/vision_nav.py::VisionNavigator.predict
+    - day_pkg/day_pkg/vision_nav.py::VisionNavigator.output
+    - day_pkg/day_pkg/gyro_heading.py::GyroHeading
+    - day_pkg/day_pkg/gyro_heading.py::CourseReset
+    - day_pkg/day_pkg/nodes/day_subscriber.py::DaySubscriber._dead_reckon
+    - navera_output/navera_output/policy.py::bridge
+  tests:
+    - day_pkg/test/test_vision_nav.py::test_straight_gap_is_carried_with_growing_sigma
+    - day_pkg/test/test_vision_nav.py::test_turn_is_followed_with_the_heading
+    - day_pkg/test/test_vision_nav.py::test_a_turn_grows_the_stated_uncertainty
+    - day_pkg/test/test_vision_nav.py::test_no_velocity_chord_across_a_long_gap
+    - day_pkg/test/test_dead_reckon_sigma.py::test_the_stated_error_covers_a_vehicle_that_keeps_accelerating_unseen
+    - day_pkg/test/test_gyro_heading.py::test_a_gap_on_a_turn_is_carried_along_the_turn
+    - day_pkg/test/test_gyro_heading.py::test_the_carried_heading_ages_out
+    - day_pkg/test/test_gyro_heading.py::test_the_aged_gyro_heading_falls_back_to_straight_on
+    - navera_output/test/test_output.py::test_a_bridged_position_moves_along_the_velocity_with_a_growing_accuracy
+    - navera_output/test/test_output.py::test_a_bridge_ends_at_its_time_or_when_the_accuracy_is_too_coarse
+    - navera_output/test/test_bridge_flow.py::test_the_gap_is_bridged_from_2_5_s_once_a_second_and_ends_at_10_s
+  match:
+    - 'test_dead_reckon_sigma\.py::'
+    - 'test_velocity_heading\.py::'
   evidence:
-    - {level: A, value: 'not implemented: the IMU is used for attitude, heading change and liveness only', ref: 'ENGINEERING_BACKLOG.md FEAT-2; problems doc D5'}
-  status: not-implemented
+    - {level: SIM, value: 'land route: no failsafe, median 10 m / max 33 m; 90 s over the sea stating +-300 m, true error at most 146 m', ref: 'VALIDATION_STATUS.md, summary "Day vision dead-reckoning"'}
+    - {level: PUB, value: 'MARS-LVIG real flight replayed: dead-reckoning alone 4 / 12 m (median / max) over 70 s after two fixes; screen bench turn: 264 m straight on -> 35.7 m with the gyro heading', ref: 'VALIDATION_STATUS.md, "Day: a real flight replayed"; gyro_heading.py docstring'}
+  status: verified-PUB
+  note: 'Replaces the original FEAT-2 text ("integrate the IMU into a position with a growing sigma"), NOT PURSUED: double-integrating a low-cost MEMS IMU (BNO085-class, the Insta360 One R IMU) drifts by hundreds of metres within a minute (an accelerometer bias of ~10 mg alone gives 0.5 x 0.1 m/s^2 x t^2 = 180 m at 60 s), far beyond the vision gaps it was meant to bridge; a tactical-grade IMU is out of the product''s cost and size. The IMU is used for attitude (frame straightening), the gyro heading carried between fixes, and liveness. Limits: the product launch (day_pipeline.launch.py) sets max_dead_reckon_s = 30 s, the node default (and the simulator) 120 s.'
 
 # ───────────────────────────── Performance (measured numbers only) ─────────────────────────────
 - id: NAV-PERF-01
