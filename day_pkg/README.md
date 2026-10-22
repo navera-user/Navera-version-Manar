@@ -175,6 +175,18 @@ loss are dropped (spoof rollback: replays of a 0.5–3 m/s spoof without it appl
 **Runbook:** to calibrate in flight, fly at cruise speed with at least two turns of ≥ 90° more than
 `latency_rollback_s` (20 s) before the GPS may be lost; otherwise measure the delay on the bench.
 
+Isaac Sim closed loop 2026-10-22 (SIMULATION; true delay 1.3 s; copter 10 m/s 250 m; fix error after the GPS
+cut at the stated time, median / p90; outputs beyond 3 σ; wrong fixes > 50 m):
+
+| run | delay used | stamp error | stated σ (median) | > 3 σ | wrong |
+|---|---|---|---|---|---|
+| c3_base (before) | none (unknown) | 12.8 / 20.7 m | — | 1 / 317 | 0 |
+| f31_base | none: staged 1.39–1.54 ± 0.4 s in the last 20 s, rolled back at the cut | 14.7 / 20.9 m | 15 m | 0 / 367 | 0 |
+| f31_base_setdelay | bench value 1.3 s (`capture_latency_s`) | **7.4 / 11.9 m** | 6.7 m | 0 / 396 | 0 |
+| f31_base_shortgps | none, GPS cut 15 s after the climb (no sample) | 13.1 / 22.9 m | 31 m | 0 / 590 | 0 |
+| c2_plane30 (before) | none (1.34 ± 0.43 s never applied) | 50 / 76 m | | 2 / 174 | 8 |
+| f31_plane30 | staged 1.25 ± 0.42 s from 10 samples on | **18 / 67 m** (exposure 16 / 67) | | 9 / 227 | 27 (matching, at the exposure) |
+
 The delay can change in flight (a USB/GStreamer queue, a starved grab thread, an IP camera's network):
 live_camera watches arrival − the source's own stamp (V4L2 buffer timestamp, GStreamer PTS) against
 the first 60 s (`delay_monitor` in the frame meta); a significant change widens the stated accuracy by
