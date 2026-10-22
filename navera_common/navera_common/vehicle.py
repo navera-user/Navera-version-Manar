@@ -82,7 +82,9 @@ SENSOR_SOURCES = ("box", "vehicle", "ros")
 
 def sensor_topics(environ=None) -> dict:
     """Topics the live camera reads, by NAVERA_SENSOR_SOURCE:
-      box      NAVERA's own BNO085 and Neo-M8N (imu_node, gps_node)
+      box      the box's own sensors: /navera/sensors/imu (imu_node: an optional BNO085 — the
+               reference kit's Insta360 One R IMU is being integrated, problem F37) and the
+               box GPS receiver (gps_node, any NMEA serial receiver)
       vehicle  the autopilot's sensors over MAVLink (vehicle_link_node): attitude,
                rangefinder, height above home (the GPS source is NAVERA_GPS_SOURCE)
       ros      the vehicle's ROS topics: NAVERA_ROS_IMU_TOPIC (sensor_msgs/Imu, ENU),

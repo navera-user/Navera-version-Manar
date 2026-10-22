@@ -527,7 +527,7 @@ celestial pipelines and the estimator's IMU liveness check; `navera_common/vehic
 
 | Value | Attitude | Height above ground | Needs |
 |---|---|---|---|
-| `box` (auto finds nothing) | `/navera/sensors/imu` (BNO085) | from the GPS altitude and the image | `navera-imu` |
+| `box` (auto finds nothing) | `/navera/sensors/imu` (an optional BNO085; the reference kit's Insta360 One R IMU is not yet wired into the boot services — problem F37) | from the GPS altitude and the image | `navera-imu` |
 | `vehicle` | `/navera/vehicle/imu` (autopilot attitude) | `/navera/vehicle/altitude_agl` (downward rangefinder), `/navera/vehicle/relative_alt` (barometric height above home) | `navera-vehicle-link`, `NAVERA_VEHICLE_MAVLINK_URL` |
 | `ros` | `NAVERA_ROS_IMU_TOPIC` (sensor_msgs/Imu, contract in §6) — required | `NAVERA_ROS_ALTITUDE_TOPIC` (sensor_msgs/Range), optional | the vehicle's ROS graph (§6) |
 
