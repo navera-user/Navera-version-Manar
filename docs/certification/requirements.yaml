@@ -1199,6 +1199,23 @@ requirements:
     - {level: UT, value: 'stage check: /health answers 200 on the staged bridge', ref: 'docs/certification/DEPLOYMENT_VALIDATION.md'}
   status: verified-UT
 
+- id: NAV-FUN-26
+  category: FUN
+  title: 'Camera mount calibration bound to the camera settings'
+  text: 'A learned or stored day-camera mount (boresight) calibration shall be dropped, and the stored copy overwritten, when the frames carry a different mount_id (live_camera: mount roll/pitch/yaw, lens calibration file content, crop) than the one it was learned with; a calibration without a mount_id is kept.'
+  code:
+    - navera_common/navera_common/camera_model.py::mount_identity
+    - day_pkg/day_pkg/mount_cal.py::stale_reason
+    - day_pkg/day_pkg/mount_cal.py::MountCalibration.reset
+    - day_pkg/day_pkg/nodes/day_subscriber.py::DaySubscriber._check_mount_id
+  match:
+    - 'test_mount_identity\.py::'
+    - 'test_mount_id_and_camera_delay\.py::test_(stale_reason|a_stored|a_changed|a_mount_changed|a_calibration_without)'
+  evidence:
+    - {level: UT, value: 'mount angles, lens file content, crop each change the id; a changed mount drops the stored calibration (sigma back to the 2 deg prior) and it is not reloaded by the next flight'}
+  status: verified-UT
+  note: 'F33 open item 4'
+
 # ───────────────────────────── Timing ─────────────────────────────
 - id: NAV-TIM-01
   category: TIM
@@ -1229,6 +1246,26 @@ requirements:
   evidence:
     - {level: BENCH, value: 'Insta360 USB 360 stream 1.71 s delay: uncompensated 39.8 m at 80 m/s, compensated 3.3 m (F9); webcam 0.14 s', ref: 'problems doc F9'}
   status: verified-BENCH
+
+- id: NAV-TIM-04
+  category: TIM
+  title: 'Attitude at the exposure with an in-flight camera delay'
+  text: 'A frame shall be straightened with the attitude at the instant the day node dates it (arrival minus the set delay minus the in-flight correction, published on /day/camera_delay and applied by live_camera), never twice the set delay; a staged (not yet stable) delay estimate shall be applied only while ground speed x its sigma is at most latency_partial_max_error_m (10 m).'
+  code:
+    - navera_common/navera_common/latency_cal.py::delay_message
+    - navera_common/navera_common/latency_cal.py::attitude_shift_s
+    - navera_common/navera_common/latency_cal.py::LatencyCalibrator._apply_posterior
+    - camera_pkg/camera_pkg/nodes/live_camera.py::LiveCamera._on_delay
+    - day_pkg/day_pkg/nodes/day_subscriber.py::DaySubscriber._publish_camera_delay
+  match:
+    - 'test_latency_cal\.py::test_(the_staged_delay_is_not_applied_when_speed_times_its_sigma_is_too_large|a_stable_delay_is_applied_whatever_the_speed|a_contradicted_stored_delay_is_not_kept_when_the_staged_one_is_capped|the_camera_takes_the_attitude_at_the_day_nodes_dating)'
+    - 'test_mount_id_and_camera_delay\.py::test_the_delay_estimate_is_published_for_the_camera_when_it_changes'
+    - 'test_live_camera\.py::<script>'
+  evidence:
+    - {level: UT, value: 'plane 30 m/s staged 1.11 +- 0.38 s (11 m) not applied, copter 10 m/s applied; live_camera with a 1 s delay message straightens with the attitude of 1 s before the stamp, stamp unchanged'}
+    - {level: SIM, value: 'Isaac Sim plane 30 m/s, delay learned in flight only: wrong fixes 6 -> 0, matched 83 -> 98 %, 13 m median at the stated time (hand-set delay 9 m)', ref: 'VALIDATION_STATUS.md, F35b'}
+  status: verified-SIM
+  note: 'Isaac Sim closed-loop result in VALIDATION_STATUS.md (F35b); not run with a real camera on a plane'
 
 - id: NAV-TIM-03
   category: TIM
