@@ -423,13 +423,22 @@ requirements:
   text: 'One vision pipeline at a time shall fit the 8 GB Jetson with the rest of the stack; measured: learned day matcher RSS 3.7 GB at 1500 m (was 4.5–5.2 GB); a 30 min day run reached 3.5 GB and was OOM-killed without swap, completed with a 16 GB swap file (F5).'
   code:
     - deploy/systemd/navera-pipeline-day.service::Conflicts
+    - deploy/setup_swap.sh
+    - deploy/systemd/navera_boot_lib.sh::navera_check_swap
+    - deploy/verify_units.py::memory_findings
+    - navera_tools/check_box.py::swap_verdict
   tests:
     - deploy/verify_units.py
+  match:
+    - 'test_swap\.py::'
+    - 'test_memory_protection\.py::'
   evidence:
     - {level: BENCH, value: 'D14: learned matcher 3.7 GB RSS at 1500 m', ref: 'problems doc D14'}
     - {level: BENCH, against: true, value: 'F5: OOM kill at 4.6 min without swap (completed with a 16 GB swap file)', ref: 'problems doc F5'}
-  status: open
-  note: 'swap not installed by deploy/install.sh; no OOM protection (OOMScoreAdjust) in the units'
+    - {level: BENCH, value: '2026-10-22 on the Orin Nano: the product day chain (DaySubscriber + EstimatorNode, learned matcher) replaying the real MARS-LVIG AMvalley03 flight (430 s, 104 m above ground, z17 map) peaked at 2.48 GB RSS (system +1.5 GB); the day_perf mission bench (city + coast at ~520 m, bench imagery in the same process) at 5.0 GB RSS (system +4.1 GB, swap +0.26 GB)', ref: 'VALIDATION_STATUS.md, Memory of the day pipeline'}
+    - {level: UT, value: 'install.sh makes an 8 GB /swapfile + fstab line when less than 4 GB of disk swap is active (zram does not count; staged and dry-run tested), pipelines / check_boot.sh / check_box.py warn without it; units: output chain OOMScoreAdjust -900 + oomd omit, pipelines -300, web / discover +500 with MemoryHigh / MemoryMax (verify_units)', ref: 'deploy/test/test_swap.py, deploy/test/test_memory_protection.py'}
+  status: partial
+  note: 'swap creation, OOM scores and memory caps not yet run on a box as root (commands in docs/certification/DEPLOYMENT_VALIDATION.md); peak grows with height (bigger search area): 3.5–5 GB with the learned matcher, so the 8 GB box needs the swap file'
 
 - id: NAV-PERF-07
   category: PERF
@@ -659,12 +668,17 @@ requirements:
   text: 'When the camera cannot be opened or stops delivering frames (> 50 failed grabs), the live camera node shall exit so systemd restarts the pipeline; while no frame is localized the vision source goes stale and the arbiter stops using it.'
   code:
     - camera_pkg/camera_pkg/nodes/live_camera.py::LiveCamera._grab_loop
+    - camera_pkg/camera_pkg/nodes/live_camera.py::LiveCamera._camera_stalled
+    - camera_pkg/camera_pkg/grab_watchdog.py::GrabWatchdog
     - navera_estimator/navera_estimator/nodes/estimator_node.py::EstimatorNode._eval_source
   match:
     - 'test_live_camera\.py'
+    - 'test_live_camera_stall\.py'
+    - 'test_grab_watchdog\.py::'
     - 'test_gst_capture\.py::test_a_bad_pipeline'
   evidence:
     - {level: SIM, value: 'GPS jammed + camera failed → NO FIX → autopilot failsafe (LAND / HOLD)', ref: 'VALIDATION_STATUS.md, Autopilot in the loop'}
+    - {level: UT, value: 'a GStreamer camera that stops sending: camera_health "stalled" and the node exits 2.8 s after its last frames with camera_stall_restart_s 3 s (before: > 50 failed grabs = 100 s here, minutes with V4L2 10 s grab timeouts, never for a blocking grab)', ref: 'navera_tools/tests/test_live_camera_stall.py'}
   status: verified-SIM
 
 - id: NAV-SAF-15
@@ -739,7 +753,9 @@ requirements:
   match:
     - 'test_health\.py::test_(a_camera_delivering|an_identical_picture|a_frame_whose_time|a_nearly_identical)'
     - 'test_cn_gates\.py::test_a_frozen_star_picture'
+    - 'test_frozen_replay\.py::'
   evidence:
+    - {level: PUB, value: 'real flight MARS-LVIG AMvalley03 at 1 Hz (513 frames, 52 with the vehicle still on the ground / in the hover): 0 false freezes; smallest change between real frames while moving 16.2 grey levels (threshold 0.5); an injected driver freeze caught on every frame; a stream re-encoding the stuck picture caught from its 2nd frame (one JPEG re-encode changes it 0.9-3.6 grey levels: the 1st, ~1 s old, passes)', ref: 'navera_common/test/test_frozen_replay.py'}
     - {level: UT, value: 'live_camera on a ROS camera: frozen pictures and an old-stamp frame published unusable with the reason, camera_health frozen, recovery on the first new picture (problems log D24, hazard H-01b)'}
   status: verified-UT
   note: 'not yet seen on a real stuck driver / RTSP stall; the localizers rely on the frame_meta usable flag (day and night already honour it)'

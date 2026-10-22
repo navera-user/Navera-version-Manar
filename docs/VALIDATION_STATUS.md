@@ -894,6 +894,25 @@ answer under cloud or bright moon, not a fault.
 | Output: forwarding switch `enabled` / `on`, sigma above 1000 m | Refused at start with the reason (before: silently false / accepted) |
 | Web: control without token / cross-site request / bad input | Refused (401 / 415 / 400) |
 | Web: 100 wrong control codes in a row | After 5 wrong codes in 60 s the address is refused (429) for 60 s (before: no delay) |
+| Camera stops sending (GStreamer source ends: unplugged, USB reset, stalled stream; `test_live_camera_stall.py`, 2026-10-22) | `camera_health` "stalled", node exits 2.8 s after the last frames (`camera_stall_restart_s` 3 s in the test, 10 s shipped), systemd restarts the pipeline (before: > 50 failed grabs — 100 s with GStreamer's 2 s pull timeout, minutes with V4L2's 10 s, never for a grab that blocks) |
+| Frozen camera picture on a real recorded flight (MARS-LVIG AMvalley03 at 1 Hz, 513 frames incl. 52 still on the ground / in the hover; `test_frozen_replay.py`, 2026-10-22) | 0 false freezes; real frames while moving differ by ≥ 16.2 grey levels (threshold 0.5); a driver re-delivering the last picture: caught on every frame; a stream re-encoding the stuck picture: caught from its 2nd frame — one JPEG re-encode changes it by 0.9 (q95) – 3.6 (q75) grey levels, so the 1st one (~1 s old) passes |
+
+### Memory of the day pipeline (Orin Nano 8 GB, 2026-10-22)
+
+F5: a 30 min day run reached 3.5 GB and was OOM-killed after 4.6 min without swap. Measured
+again on this Jetson (16 GB swap file present, other jobs idle), RSS of the process and the
+system's used memory (MemTotal − MemAvailable) sampled every 0.5 s:
+
+| Run | Peak RSS | System used (from → peak) | Swap used added |
+|---|---|---|---|
+| Product day chain (DaySubscriber + EstimatorNode in one process, learned matcher DISK + LightGlue, every shipped default) replaying the real MARS-LVIG AMvalley03 flight 40–470 s (104 m above ground median, z17 map; `replay_flight_dataset.py --arm imu`); fixes after the loss 6.1 / 8.7 / 12.3 m (median / p90 / max) | **2.48 GB** | 2.99 → 4.50 GB | 0 |
+| `day_perf.py mission` (city + coast at ~520 m equivalent height; the bench's terrain imagery in the same process) | **5.0 GB** | 2.70 → 6.79 GB | +0.26 GB |
+
+The peak grows with the height (a bigger search area and map level): 2.5 GB at 100 m, 3.5–3.7 GB
+at 1500 m (F5, D14), 5 GB in the bench mission with its imagery. On the 8 GB box with the rest of
+the stack this needs swap on disk: `deploy/install.sh` now makes an 8 GB `/swapfile` when less
+than 4 GB is active, every pipeline start and `check_boot.sh` warn without it, and the units set
+the OOM order (output chain last, web page first). Not yet run as root on a box.
 
 ### Autopilot in the loop (ArduPilot SITL — simulation)
 
