@@ -269,3 +269,26 @@ def parse_crop(spec, width: int, height: int):
     if x < 0 or y < 0 or w < 64 or h < 64 or x + w > width or y + h > height:
         raise ValueError(f"crop {spec!r} is not inside the {width}x{height} picture")
     return x, y, w, h
+
+
+def mount_identity(mount_rpy_deg: Sequence[float], calibration_file: str = "", hfov_deg: float = float("nan"),
+                   crop=None) -> dict:
+    """The camera settings a learned mount (boresight) calibration belongs to: the mount angles,
+    the lens (the calibration file's content, else the ideal lens' field of view) and the crop.
+    {"mount_id": 12 hex characters, "mount_rpy_deg": [...], "lens": readable}. A stored mount
+    calibration whose mount_id differs is stale (day_pkg mount_cal: F33 open item 4).
+    """
+    import hashlib
+    import json
+    import os
+    rpy = [round(float(a), 3) for a in mount_rpy_deg]
+    if calibration_file:
+        try:
+            with open(calibration_file, "rb") as f:
+                lens = f"{os.path.basename(calibration_file)} {hashlib.sha1(f.read()).hexdigest()[:12]}"
+        except OSError:
+            lens = os.path.basename(calibration_file)
+    else:
+        lens = f"ideal {round(float(hfov_deg), 3)} deg"
+    key = json.dumps({"mount": rpy, "lens": lens, "crop": list(crop) if crop else None}, sort_keys=True)
+    return {"mount_id": hashlib.sha1(key.encode()).hexdigest()[:12], "mount_rpy_deg": rpy, "lens": lens}
