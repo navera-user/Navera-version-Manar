@@ -243,14 +243,18 @@ requirements:
   text: 'An all-sky solution shall be accepted only with ≥ 7 matched stars, rms ≤ 0.2°, chance probability ≤ 1e-6 and lens agreement within 1° (or the tighter third tier p ≤ 1e-2 and rms ≤ 0.10°).'
   code:
     - cn_pkg/cn_pkg/allsky.py::accept
+    - cn_pkg/cn_pkg/allsky.py::detect_spots_view
     - cn_pkg/cn_pkg/star_detect.py
   match:
     - 'test_allsky_gate\.py::'
     - 'test_allsky360\.py::test_sim_junk_is_refused'
     - 'test_star_detect\.py::'
+    - 'test_detect_view\.py::'
   evidence:
     - {level: SIM, value: 'junk frames: 14/24 accepted before the gate, 0/24 after', ref: 'problems doc F11'}
     - {level: BENCH, value: 'real screen campaign re-judged: right 71 → 80 of 87, wrong 0', ref: 'problems doc F26'}
+    - {level: PUB, value: 'ESO all-sky cameras, 559 real frames (1 118 solves with the shallow copies): 0 wrong accepted, 81 wrong identifications all refused; re-confirmed 2026-10-22 with the shared detector (detect_spots / detect_spots_view)', ref: 'VALIDATION_STATUS.md, Celestial: field-test readiness fixes'}
+    - {level: BENCH, value: 'screen bench now detects with the product detector (F18): offline ideal camera, 135 cases, spurious spots clouds 60 → 6, rain 60 → 13; right accepted 77 → 85, wrong 0', ref: 'VALIDATION_STATUS.md, Celestial: field-test readiness fixes'}
   status: verified-BENCH
 
 - id: NAV-FUN-14
@@ -628,6 +632,7 @@ requirements:
   evidence:
     - {level: HW, value: 'DS3231 power-cycle reboot 2026-07-14: valid, lost_power false, drift −0.148 s vs NTP', ref: 'CLAUDE.md §8'}
     - {level: BENCH, against: true, value: 'F27 (2026-10-21): no DS3231 on bus 1 of the field Jetson — booted 16 h off until NTP', ref: 'problems doc F27'}
+    - {level: UT, value: 'field server (2026-10-22): a wired DS3231 is a trusted star time without phone or internet (rtc_clock.py, raw I2C, tick-synced); lost power / unset / local time / clock step refused (fake RTC)', ref: 'navera_tools/tests/test_field_rtc.py'}
   status: partial
   note: 'a box can still lack the DS3231 (F27): RTC mandatory in the install (O-16/O-17); GPS_INPUT / NMEA time still from the system clock'
 
@@ -849,10 +854,14 @@ requirements:
     - cn_pkg/cn_pkg/nodes/cn_subscriber.py::CNSubscriber._utc_now
     - gps_pkg/gps_pkg/nodes/gps_node.py::rmc_utc_epoch
     - gps_pkg/gps_pkg/nodes/gps_node.py::GPSNode._publish_time
+    - navera_tools/field/rtc_clock.py::RtcClock
+    - navera_tools/field/server.py::Field.star_time
   match:
     - 'test_trusted_time\.py::'
     - 'test_cn_gates\.py::test_(no_star_solve|an_rtc_that_lost|a_valid_rtc|gnss_time_vouches|a_stated_time|allsky360_mode)'
     - 'test_gnss_time\.py::'
+    - 'test_field_rtc\.py::'
+    - 'test_field_clock\.py::'
   evidence:
     - {level: UT, value: 'no RTC / GNSS time / NTP → no solve; RTC lost_power → no solve; RTC 2 h ahead of the system clock → exposure solved on the RTC time; +1 h wall-clock step → no solve (same rule as the field server, db2f95c)'}
     - {level: BENCH, against: true, value: 'F27 (2026-10-21): the field Jetson had no DS3231 and booted 16 h off — the gate now refuses instead of solving thousands of km off', ref: 'problems doc F27'}
@@ -875,6 +884,52 @@ requirements:
     - {level: BENCH, value: 'read on the Orin Nano without root (2026-10-21): 9 thermal zones (3 CV zones unreadable, skipped), GPU load from /sys/devices/platform/17000000.gpu/load, 20 GB swap', ref: 'navera_common/compute_health.py docstring'}
   status: verified-UT
   note: 'thresholds are starting values (Orin throttles near 99 C); not shown on the operator view yet; OOMScoreAdjust / MemoryHigh in the units still open (O-20)'
+
+- id: NAV-SAF-25
+  category: SAF
+  title: "Celestial 'up' trusted only at rest (gyro-propagated vertical)"
+  text: "A celestial fix whose 'up' comes from an accelerometer shall be trusted (stated with the at-rest attitude sigma) only when the vehicle is at rest at the exposure: the exposure window steady (0.2 s means within 0.003 g, rotation < 0.5 deg/s, |a| within 0.004 g of its value at rest) AND, over the last 10 s, the gyro-propagated vertical has not moved by more than 0.3 deg unless |a| shows that the earlier state was the accelerated one (braking to the stop); otherwise the fix is flagged moving (5 deg added to its sigma)."
+  code:
+    - cn_pkg/cn_pkg/standstill.py::judge
+    - navera_tools/field/server.py::Stillness
+  match:
+    - 'test_standstill\.py::'
+    - 'test_field_stillness\.py::test_(gentle|stop_after|long_check|history)'
+  evidence:
+    - {level: SIM, value: "car drive simulation (13 profiles + seeds): glass road, 'stopped' frames with 'up' > 0.3 deg off 106 → 1 (max 7.4 → 0.48 deg), 4 seeds 394 → 2; no at-rest frame lost on any profile; through the field server trusted fixes p90 265 → 9.3 km, max 825 → 22 km, within 3 sigma 56/72 → 30/30", ref: 'VALIDATION_STATUS.md, Celestial: field-test readiness fixes'}
+  status: verified-SIM
+  note: 'a steady gentle acceleration lasting > 10 s is not separable from rest by an IMU (stated); camera_pkg insta360 node to use standstill.judge for frame_meta stopped; real drive 31 Oct'
+
+- id: NAV-SAF-26
+  category: SAF
+  title: "Online tilt-of-'up' calibration robust to bad samples"
+  text: "The tilt of 'up' learned on fixes with a reference position shall leave out samples more than 3.5 robust sigma (at least 0.3 deg, at most 1.0 deg) from the fit, count only agreeing samples towards the 12 it freezes on (or stop after 24), and not be applied without a clear majority (>= 3 agreeing, more than half) or with a tilt over 5 deg."
+  code:
+    - cn_pkg/cn_pkg/allsky_mount.py::fit_tilt
+    - cn_pkg/cn_pkg/allsky_mount.py::TiltCalibration
+    - navera_tools/field/server.py::Field._cal_frozen
+  match:
+    - 'test_tilt_robust\.py::'
+    - 'test_allsky360\.py::test_(fit_tilt|tilt)'
+  evidence:
+    - {level: UT, value: '1 deg tilt, 12 samples with 1-4 bad ones 1.5-8 deg off: plain fit 0.30-0.91 deg (33-101 km), robust 0.007-0.021 deg (0.8-2.4 km); clean samples unchanged'}
+  status: verified-UT
+
+- id: NAV-FUN-25
+  category: FUN
+  title: 'Compass-free celestial fix for a narrow star camera with a known mount'
+  text: "When the narrow star camera's full mounting is known (camera_R_cam_body, or camera_mount_roll_deg with the elevation and azimuth), cn_subscriber (geoloc) shall compute the position as the zenith among the stars from the plate solve's whole camera rotation and 'up' from the IMU's roll and pitch, using no compass, declination or prior; without it, the compass method shall be used and the status shall say so."
+  code:
+    - cn_pkg/cn_pkg/nodes/celestial_math.py::camera_rotation_from_wcs
+    - cn_pkg/cn_pkg/nodes/celestial_math.py::zenith_fix
+    - cn_pkg/cn_pkg/nodes/celestial_math.py::mount_rotation
+    - cn_pkg/cn_pkg/nodes/cn_subscriber.py::CNSubscriber._attitude
+  match:
+    - 'test_zenith_fix\.py::'
+  evidence:
+    - {level: UT, value: 'synthetic plate solution: compass error 1 / 5 / 10 deg → one-direction fix 51 / 256 / 516 km off, zenith fix 0.24 km whatever the heading; mount roll 5 deg wrong costs ~48 km at 5 deg vehicle tilt, 0 level'}
+  status: verified-UT
+  note: 'not run on a real narrow star camera; the mount roll must be measured'
 
 # ───────────────────────────── Offline ─────────────────────────────
 - id: NAV-OFF-01

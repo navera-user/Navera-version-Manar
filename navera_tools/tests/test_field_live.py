@@ -76,7 +76,7 @@ def test_a_bad_file_changes_nothing_and_never_raises(field, tmp_path):
 
 
 def test_calibration_knobs_refused_once_frozen_and_focal_reset_acts_once(field, tmp_path):
-    field.cal_samples = [None] * sv.CAL_SAMPLES
+    field.cal_samples = [None] * (2 * sv.CAL_SAMPLES)     # frozen: twice the samples taken
     _write(tmp_path, {"server.CAL_SAMPLES": 20})
     field.live_params_tick(force=True)
     assert "server.CAL_SAMPLES" in field.state()["live_params"]["refused"]

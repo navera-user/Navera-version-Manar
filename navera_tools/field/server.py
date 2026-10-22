@@ -78,7 +78,9 @@ F_SCALE_SEARCH = (0.96, 1.0, 1.04)
 # 360: the lens-to-IMU mounting angle and the accelerometer's residual tilt are one fixed tilt of 'up' in the camera
 # (1 deg = ~111 km on every fix; nothing in the stars shows it). While a reference position exists (the phone here,
 # NAVERA's GPS before it is lost in the product), stopped fixes measure it; it is learned on the first
-# CAL_SAMPLES of them, then frozen, so every later corrected fix is judged on frames the fit never saw.
+# CAL_SAMPLES of them, then frozen, so every later corrected fix is judged on frames the fit never saw. The fit is
+# robust (allsky_mount.fit_tilt, D11): a sample far from the others (a 'stopped' frame taken while moving, a wrong
+# reference) is left out and does not count towards CAL_SAMPLES; a fit without a clear majority is not applied.
 CAL_MIN_SAMPLES = 4
 CAL_SAMPLES = 12
 CAL_SIGMA_FLOOR_DEG = 0.05
@@ -106,6 +108,10 @@ LIVE_PARAMS = {
     "insta360_usb.STILL_ACC_STD_G": ("float", 0.0005, 0.03, "stopped: accelerometer steadiness (g)"),
     "insta360_usb.STILL_RATE_DPS": ("float", 0.05, 5.0, "stopped: rotation rate (deg/s)"),
     "server.STACK_SECONDS": ("float", 0.0, 8.0, "stopped: solve the mean of the key frames of the last s (0 = off)"),
+    "standstill.LONG_S": ("float", 2.0, 15.0, "stopped: s back a gentle change of 'up' is looked for"),
+    "standstill.DIR_TOL_DEG": ("float", 0.05, 2.0, "stopped: propagated 'up' steady within (deg)"),
+    "standstill.MAG_TOL_G": ("float", 0.001, 0.03, "stopped: |a| within this of its value at rest (g)"),
+    "Stillness.LONG_CHECK": ("int", 0, 1, "stopped: 1 = long-window test on, 0 = the camera driver's test only"),
 }
 
 
@@ -211,6 +217,111 @@ class Camera:
         return self.model.undistort(g), t - self.latency_s
 
 
+def host_stats() -> dict:
+    """The Jetson's 1-minute load, hottest thermal zone and available memory (solve times depend on them)."""
+    out = {}
+    try:
+        out["load1"] = round(os.getloadavg()[0], 2)
+    except OSError:
+        pass
+    temps = []
+    for z in range(12):
+        try:
+            with open(f"/sys/class/thermal/thermal_zone{z}/temp") as fh:
+                temps.append(int(fh.read().strip()) / 1000.0)
+        except (OSError, ValueError):
+            continue
+    if temps:
+        out["temp_c"] = round(max(temps), 1)
+    try:
+        with open("/proc/meminfo") as fh:
+            for line in fh:
+                if line.startswith("MemAvailable:"):
+                    out["mem_avail_mb"] = int(line.split()[1]) // 1024
+                    break
+    except OSError:
+        pass
+    return out
+
+
+_GROUND_MASKS: dict = {}
+
+
+def ground_mask(shape, up, step: int = 8) -> np.ndarray:
+    """Pixels of a frame downsampled by `step` that look below the horizon (both lenses, 'up' in the IMU frame),
+    for the image standstill measure. Cached per 'up' rounded to 1 deg."""
+    from navera_tools.field import allsky, sky360
+    u = np.asarray(up, float) / np.linalg.norm(up)
+    key = (tuple(shape), step, tuple(np.round(u, 2)))
+    if key in _GROUND_MASKS:
+        return _GROUND_MASKS[key]
+    h, w = shape
+    yy, xx = np.mgrid[0:h, 0:w]
+    xs, ys = (xx * step).ravel().astype(float), (yy * step).ravel().astype(float)
+    m = np.zeros(h * w, bool)
+    for L in sky360.default_lenses():
+        inside = np.hypot(xs - L.cx, ys - L.cy) < L.radius - 8
+        if inside.any():
+            alt = np.degrees(np.arcsin(np.clip(allsky.unproject(L, xs[inside], ys[inside]) @ u, -1, 1)))
+            m[np.nonzero(inside)[0][alt < -2.0]] = True
+    m = m.reshape(h, w)
+    if len(_GROUND_MASKS) > 64:
+        _GROUND_MASKS.clear()
+    _GROUND_MASKS[key] = m
+    return m
+
+
+class Stillness:
+    """The vehicle at rest at a frame's exposure: the camera driver's stopped() (exposure window steady) AND the
+    long-window test of cn_pkg.standstill (D8/D12: 'up' must not have moved without the camera turning over the
+    last LONG_S s, |a| at its value at rest). The driver keeps 7 s of IMU, too short for the long window, so the
+    history is extended on each new driver (extend_history). g_ref is |a| at rest, learned from the windows the
+    driver calls still (median of the last 60), 1.0 until then (6-position calibrated accelerometer)."""
+
+    HISTORY_S = 20.0
+    LONG_CHECK = True                     # False: the driver's test alone (the behaviour before 2026-10-22)
+
+    def __init__(self):
+        self.g_ref = 1.0
+        self._mags = collections.deque(maxlen=60)
+
+    @staticmethod
+    def extend_history(drv, seconds: float = HISTORY_S):
+        """Keep `seconds` of the driver's IMU rows (its own deque holds 7 s at 500 Hz)."""
+        n = int(seconds * 500)
+        lock = getattr(drv, "_lock", None)
+        if lock is None or not hasattr(drv, "_imu") or (drv._imu.maxlen or 0) >= n:
+            return
+        with lock:
+            drv._imu = collections.deque(drv._imu, maxlen=n)
+
+    def judge(self, drv, at_ms=None) -> dict:
+        from cn_pkg import standstill
+        st = drv.stopped(at_ms=at_ms)
+        if not self.LONG_CHECK or not st.get("stopped"):
+            return st
+        back = standstill.LONG_S + standstill.RUN_EXTRA_S + 0.5
+        rows = drv._rows(back, at_ms, standstill.AFTER_S) if at_ms is not None \
+            else drv._rows(back + standstill.AFTER_S, None)
+        if not rows:
+            return {**st, "stopped": False, "why": "no sensor data"}
+        arr = np.array([r[1:8] for r in rows], float)
+        acc = (arr[:, 1:4] - drv.acc_bias) / drv.acc_scale
+        gyr = arr[:, 4:7] - drv.gyro_bias
+        exp_ms = at_ms if at_ms is not None else float(arr[-1, 0]) - 1000.0 * standstill.AFTER_S
+        j = standstill.judge(arr[:, 0], acc, gyr, exp_ms, g_ref=self.g_ref)
+        mag = self.g_ref + j.get("mag_excess_g", 0.0)
+        if abs(mag - 1.0) < 0.01:
+            self._mags.append(mag)
+            if len(self._mags) >= 10:
+                self.g_ref = float(np.median(self._mags))
+        out = {**st, **{k: v for k, v in j.items() if k not in ("acc_std_g", "rate_dps")}, "g_ref": round(self.g_ref, 5),
+               "driver_stopped": True}
+        if not j["stopped"]:
+            out["why"] = j.get("why")
+        return out
+
+
 class Camera360:
     """The Insta360's full 360 frame and its own gravity over USB (USB mode "Android"); reconnects if it drops."""
     device = "insta360-usb (Android mode)"
@@ -225,6 +336,9 @@ class Camera360:
         self.error = None
         self.frame_ms = None
         self.raw = None                               # RawRecorder while a test records (kept across reconnects)
+        self.stillness = Stillness()
+        self.reconnects: list = []                    # [{"t", "why"}] of every reconnect (F14)
+        self.imu_restarts_total = 0                   # the driver's IMU stream restarts, summed over reconnects
         self._open()
         threading.Thread(target=self._watch, daemon=True).start()
 
@@ -232,6 +346,7 @@ class Camera360:
         self.opened_at = time.time()
         try:
             self.cam = self._mod.Insta360Usb()
+            Stillness.extend_history(self.cam)
             self.error = None
             if self.raw is not None:
                 self.cam.record(self.raw)
@@ -257,20 +372,53 @@ class Camera360:
     def _watch(self):
         while True:
             time.sleep(3.0)
-            f, t = self.cam.latest() if self.cam else (None, 0.0)
-            if self.cam is not None and time.time() - self.opened_at < 20.0:
-                continue                              # the decoder waits for the stream's next key frame
-            imu_dead = self.cam is not None and self.cam.imu_age() > 10.0   # restarting the stream did not bring it back
-            if f is None or time.time() - t > 8.0 or imu_dead:
-                if self.cam is not None:
-                    self.error = ("camera IMU silent for 10 s: reconnecting" if imu_dead
-                                  else self.cam.error or "no frame for 8 s: reconnecting")
-                    try:
-                        self.cam.close()
-                    except Exception:
-                        pass
-                    time.sleep(2.0)
-                self._open()
+            self._watch_once()
+
+    def _watch_once(self):
+        """One check of the stream (every 3 s): a dead camera, no frame for 8 s or an IMU silent for 10 s (F14: the
+        IMU feed stopped after its first packet on early starts; the driver re-sends StartLiveStream after 1.5 s of
+        silence, and when that does not bring it back, the whole USB connection is reopened here). Returns why it
+        reconnected, else None. Every reconnect is counted and kept (reconnects, imu_restarts_total) so a test
+        records how often the camera needed it (F19)."""
+        f, t = self.cam.latest() if self.cam else (None, 0.0)
+        if self.cam is not None and time.time() - self.opened_at < 20.0:
+            return None                               # the decoder waits for the stream's next key frame
+        imu_dead = self.cam is not None and self.cam.imu_age() > 10.0   # restarting the stream did not bring it back
+        if not (f is None or time.time() - t > 8.0 or imu_dead):
+            return None
+        why = "no camera"
+        if self.cam is not None:
+            why = "camera IMU silent for 10 s" if imu_dead else (self.cam.error or "no frame for 8 s")
+            self.error = f"{why}: reconnecting"
+            self.imu_restarts_total += int(getattr(self.cam, "imu_restarts", 0) or 0)
+            self.reconnects.append({"t": round(time.time(), 1), "why": str(why)[:120]})
+            del self.reconnects[:-50]
+            try:
+                self.cam.close()
+            except Exception:
+                pass
+            time.sleep(2.0)
+        self._open()
+        return why
+
+    def imu_stats(self, at_frame=True) -> Optional[dict]:
+        """Vibration over the frame's exposure window (cn_pkg.standstill.vibration_stats), for the logs (F19)."""
+        from cn_pkg import standstill
+        drv = self.cam
+        if drv is None:
+            return None
+        at = self.frame_ms if at_frame else None
+        rows = drv._rows(2.0, at, 0.5) if at is not None else drv._rows(2.5, None)
+        if not rows:
+            return None
+        arr = np.array([r[2:8] for r in rows], float)
+        return standstill.vibration_stats((arr[:, 0:3] - drv.acc_bias) / drv.acc_scale, arr[:, 3:6] - drv.gyro_bias)
+
+    def health(self) -> dict:
+        """Camera stream health for the frame records (F14/F19): reconnects so far and the IMU stream restarts."""
+        cur = int(getattr(self.cam, "imu_restarts", 0) or 0) if self.cam else 0
+        return {"reconnects": len(self.reconnects), "imu_restarts": self.imu_restarts_total + cur,
+                "imu_age_s": _round(self.cam.imu_age(), 2) if self.cam else None}
 
     def latest(self):
         """(grey full 360 frame, exposure time) or (None, 0)."""
@@ -293,7 +441,7 @@ class Camera360:
     def stopped(self, at_frame=False):
         if not self.cam:
             return {"stopped": False, "why": "no camera"}
-        return self.cam.stopped(at_ms=self.frame_ms) if at_frame and self.frame_ms is not None else self.cam.stopped()
+        return self.stillness.judge(self.cam, self.frame_ms if at_frame and self.frame_ms is not None else None)
 
 
 class Field:
@@ -311,6 +459,11 @@ class Field:
         # jumps when NTP reaches the internet, maybe mid-test. A jump makes the earlier offsets wrong.
         self._wall_minus_mono = time.time() - time.monotonic()
         self._ntp_checked, self._ntp_synced = 0.0, False
+        # the DS3231 battery clock, when one is wired (F27): a trusted time with no phone and no internet
+        self.rtc = None
+        if os.environ.get("NAVERA_FIELD_RTC", "1") not in ("0", "off", "no"):
+            from navera_tools.field.rtc_clock import RtcClock
+            self.rtc = RtcClock(int(os.environ.get("NAVERA_FIELD_RTC_BUS", "1"))).start()
         self.speeds = collections.deque(maxlen=120)       # (server time, phone GPS speed m/s): the stopped flag's referee
         self.live: dict = {}
         self.preview: bytes = b""
@@ -334,6 +487,7 @@ class Field:
         self.cal_samples: list = []                 # 360: (R_icrs_imu, up, true zenith) of stopped fixes with a reference
         self.tilt_cal: Optional[dict] = None        # 360: the fitted tilt of 'up' (see CAL_SAMPLES)
         self.spots: list = []
+        self._small = collections.deque(maxlen=3)   # 360: (exposure time, frame / 8) of the last frames: ground_change
         self.live_params = {"active": {}, "refused": {}, "mtime": None, "error": None}
         self._lp_defaults: dict = {}                # KEY: value at start, for a key taken out of the file
         self._lp_check_t = 0.0
@@ -394,11 +548,34 @@ class Field:
 
     def star_clock_offset_s(self):
         """Offset to subtract from the Jetson time for a star solve, or None when no trusted time exists
-        (no phone clock yet and the Jetson not synchronised): a solve then would be thousands of km off."""
+        (no phone clock, no valid DS3231 and the Jetson not synchronised): a solve then would be thousands of km off."""
+        return self.star_time()[0]
+
+    def star_time(self):
+        """(offset to subtract from the Jetson time, source) for a star solve: the phone's clock (GPS/network time,
+        the test's reference), else the DS3231 battery clock when one is wired and valid (F27: what the product
+        relies on offline), else the Jetson clock when NTP-synchronised; (None, why) when nothing vouches."""
         off = self.clock_offset_s()
         if off is not None:
-            return off
-        return 0.0 if self.ntp_synced() else None
+            return off, "phone"
+        rtc = getattr(self, "rtc", None)
+        why_rtc = "no DS3231"
+        if rtc is not None:
+            r_off, why_rtc = rtc.offset()
+            if r_off is not None:
+                return -r_off, "rtc"
+        if self.ntp_synced():
+            return 0.0, "ntp"
+        return None, f"no trusted time yet (no phone clock; {why_rtc}; Jetson clock not NTP-synchronised)"
+
+    def rtc_minus_phone_s(self):
+        """DS3231 time minus the phone's time (s) when both are known: the battery clock's error in the field."""
+        rtc = getattr(self, "rtc", None)
+        p_off = self.clock_offset_s()
+        if rtc is None or p_off is None:
+            return None
+        r_off, _ = rtc.offset()
+        return None if r_off is None else round(r_off + p_off, 3)
 
     def on_phone(self, d: dict):
         now = time.time()
@@ -483,6 +660,12 @@ class Field:
         else:
             add("clock", "Phone clock matches Jetson", "wait" if off is None else ("ok" if abs(off) <= 1.0 else "bad"),
                 "" if off is None else f"{off:+.2f} s")
+        rtc = getattr(self, "rtc", None)
+        if rtc is not None:
+            st = rtc.last
+            add("rtc", "Battery clock (DS3231)", "ok" if st.get("ok") else "wait",
+                f"{st.get('kind')}: {st.get('offset_s', 0):+.2f} s from the Jetson" if st.get("ok")
+                else (st.get("why") or "")[:80])
         if self.mode == "360":
             up, g, rate = self.camera.gravity()
             if up is not None:
@@ -549,10 +732,14 @@ class Field:
     # ── live settings ───────────────────────────────────────────────────
     def _lp_target(self, key):
         from navera_tools.field import allsky, insta360_usb
+        from cn_pkg import standstill
         scope, _, name = key.partition(".")
         if scope == "field":
             return self, name
-        return {"server": sys.modules[__name__], "allsky": allsky, "insta360_usb": insta360_usb}[scope], name
+        if scope == "Stillness":
+            return Stillness, name
+        return {"server": sys.modules[__name__], "allsky": allsky, "insta360_usb": insta360_usb,
+                "standstill": standstill}[scope], name
 
     def live_params_tick(self, force=False):
         """Apply live_params.json when it changed (at most once a second). Never raises."""
@@ -588,7 +775,7 @@ class Field:
     def _apply_live_params(self, want):
         by = str(want.get("_by") or "file")[:40]
         refused, active = {}, self.live_params["active"]
-        frozen = len(self.cal_samples) >= CAL_SAMPLES
+        frozen = self._cal_frozen()
         for key in list(active):                        # taken out of the file: back to the value at start
             if key not in want and key not in self._lp_defaults:
                 active.pop(key)                         # an action: nothing to undo
@@ -645,6 +832,8 @@ class Field:
                 for k, v in st.items():
                     rejected[k] = rejected.get(k, 0) + v
         self.spots = spots
+        if not self._small or self._small[-1][0] != texp:
+            self._small.append((texp, img[::8, ::8].copy()))          # the image standstill measure (logged only)
         sky = "too bright" if level >= 80 else "clear"
         self.live = {"t": texp, "detected": len(spots), "confirmed": len(spots), "sky": sky,
                      "rejected": {k: v for k, v in rejected.items() if v}, "shift_px": 0.0, "background": round(level, 1), "noise": None}
@@ -732,6 +921,7 @@ class Field:
         st = self.camera.stopped(at_frame=True) if hasattr(self.camera, "stopped") else {"stopped": True}
         rec["stopped"] = bool(st.get("stopped"))          # moving: vehicle acceleration can tilt 'up' (not trusted)
         rec["stillness"] = {k: v for k, v in st.items() if k != "stopped"}
+        self._drive_log(rec, up)
         v = self._phone_speed_at(texp)
         if v is not None:
             # the test's referee only, never used to decide: a stopped flag while the phone's GPS says the car moves
@@ -755,6 +945,26 @@ class Field:
         self.solving, self.solving_since = True, time.time()
         rec["t_exp"] = round(texp, 3)                     # Jetson time of the exposure (the phone track is on this clock)
         threading.Thread(target=self._solve360, args=(s, rec, img, np.array(up), texp, stack), daemon=True).start()
+
+    def _drive_log(self, rec, up):
+        """What the real drive must measure (F19), on every 360 frame record: the camera IMU's vibration over the
+        exposure window, the image standstill measure (ground_change, logged only), the camera stream's health
+        (reconnects, IMU restarts) and the Jetson's load and temperature (the solve time is only meaningful on a
+        quiet Jetson). Never raises: logging must not stop a test."""
+        try:
+            if hasattr(self.camera, "imu_stats"):
+                rec["imu_vib"] = self.camera.imu_stats(at_frame=True)
+            if hasattr(self.camera, "health"):
+                rec["cam_health"] = self.camera.health()
+            rec["host"] = host_stats()
+            if up is not None and len(self._small) >= 2:
+                (t0, a), (t1, b) = self._small[-2], self._small[-1]
+                if 0.2 <= t1 - t0 <= 3.0:
+                    from cn_pkg import standstill
+                    rec["ground_change"] = standstill.ground_change(a, b, ground_mask(b.shape, up, 8), step=1)
+                    rec["ground_dt_s"] = round(t1 - t0, 2)
+        except Exception as e:
+            rec["drive_log_error"] = repr(e)[:120]
 
     def _sync_stack_ring(self):
         """The camera driver keeps the recent key frames only while stacking is on (stack.py)."""
@@ -823,9 +1033,11 @@ class Field:
                     return
             if self.cat is None:
                 self.cat = allsky.Catalogue(limit_mag=4.0)
-            off = self.star_clock_offset_s()
+            off, tsrc = self.star_time()
+            rec["time_source"] = tsrc if off is not None else None
+            rec["rtc_minus_phone_s"] = self.rtc_minus_phone_s()
             if off is None:
-                rec["why"] = "no trusted time yet (Jetson clock not synchronised, phone clock not received)"
+                rec["why"] = tsrc
                 return
             utc = datetime.fromtimestamp(texp - off, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
             t0 = time.time()
@@ -881,27 +1093,36 @@ class Field:
         p = self.phone
         trusted = rec.get("stopped") and not rec.get("stopped_but_phone_moving")
         fresh = p.get("lat") is not None and time.time() - self.phone_recv < 4.0 and (p.get("acc") or 999) <= 30
-        if not trusted or not fresh or len(self.cal_samples) >= CAL_SAMPLES:
+        if not trusted or not fresh or self._cal_frozen():
             return
         self.cal_samples.append((R, np.asarray(up, float), rp.zenith_icrs(p["lat"], p["lon"], utc)))
         rec["cal_sample"] = len(self.cal_samples)
         if len(self.cal_samples) < CAL_MIN_SAMPLES:
             return
         from cn_pkg.allsky_mount import fit_tilt                  # shared with the flight node (cn_subscriber)
-        fit = fit_tilt(self.cal_samples, CAL_SIGMA_FLOOR_DEG)
+        fit = fit_tilt(self.cal_samples, CAL_SIGMA_FLOOR_DEG)     # robust: outlying samples left out (D11)
         w, n, rms = fit["w"], fit["n"], fit["rms_deg"]
-        self.tilt_cal = {"Q": fit["Q"], "n": n, "sigma_deg": fit["sigma_deg"]}
-        s.event("tilt_calibrated", samples=n, tilt_deg=round(math.degrees(float(np.linalg.norm(w))), 3),
+        if fit["ok"]:
+            self.tilt_cal = {"Q": fit["Q"], "n": n, "sigma_deg": fit["sigma_deg"]}
+        s.event("tilt_calibrated" if fit["ok"] else "tilt_fit_refused", samples=n, samples_total=fit["n_total"],
+                rejected=fit["rejected"], why=fit["why"], tilt_deg=round(math.degrees(float(np.linalg.norm(w))), 3),
                 rotvec_deg=[round(math.degrees(float(v)), 3) for v in w], residual_deg=round(rms, 3),
-                frozen=n >= CAL_SAMPLES)
+                residuals_deg=fit["residuals_deg"], frozen=self._cal_frozen())
+
+    def _cal_frozen(self) -> bool:
+        """The tilt calibration stops taking samples once CAL_SAMPLES of them agree with the applied fit (outliers
+        do not count, D11), or after 2 x CAL_SAMPLES samples whatever they say."""
+        agree = self.tilt_cal["n"] if self.tilt_cal else 0
+        return agree >= CAL_SAMPLES or len(self.cal_samples) >= 2 * CAL_SAMPLES
 
     def _solve(self, s, rec, jpg, att, texp, hfov):
         import base64
         try:
             from cn_pkg.nodes.solver import solve_image_b64_geoloc
-            off = self.star_clock_offset_s()
+            off, tsrc = self.star_time()
+            rec["time_source"] = tsrc if off is not None else None
             if off is None:
-                rec["why"] = "no trusted time yet (Jetson clock not synchronised, phone clock not received)"
+                rec["why"] = tsrc
                 return
             utc_epoch = texp - off                    # phone time = Jetson time - offset
             utc = datetime.fromtimestamp(utc_epoch, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
@@ -961,6 +1182,7 @@ class Field:
                                                         "calibration": self.camera.cal_path, "interval_s": self.interval_s,
                                                         "min_stars": MIN_STARS, "attitude_sigma_deg": ATTITUDE_SIGMA_DEG,
                                                         "clock_offset_s": self.clock_offset_s(),
+                                                        "rtc": dict(self.rtc.last) if getattr(self, "rtc", None) else None,
                                                         "mode": self.mode, "operator_note": ""})
                 if self.mode == "360":
                     self.session.update_meta(attitude_sigma_deg=ATTITUDE_SIGMA_360_DEG, imu_calibration=_read_json(self.camera.cal_path),
@@ -1050,6 +1272,7 @@ class Field:
                 "last_fix": self.last_fix, "solving": self.solving, "interval_s": self.interval_s,
                 "done": self.last_done, "disk_error": bool(s and s.io_error), "server_time_ms": int(time.time() * 1000),
                 "raw": self.camera.raw_stats() if hasattr(self.camera, "raw_stats") else None,
+                "rtc": dict(self.rtc.last) if getattr(self, "rtc", None) else None,
                 "live_params": {k: _jsonable(v) if k in ("active", "refused") else v for k, v in self.live_params.items()}}
 
 
