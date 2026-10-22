@@ -96,7 +96,9 @@ vision > celestial**. A good GPS always wins. When GPS is lost or refused, visio
   needs the camera to match; over sea or uniform ground a slow spoof is not caught.
 - **Detects its own sensors at boot** and chooses the sources by itself (section 3.2).
 - **Restarts by itself.** Every part is a separate service. A part that crashes, or loses its
-  camera or GPS, is restarted 10 s later, forever.
+  camera or GPS, is restarted 1 s later, forever (a part that keeps failing is retried less
+  often, at most every 30 s). In flight without GPS, the autopilot keeps being given a position
+  while a part restarts (section 10.1, "a NAVERA service crashed in flight").
 - **Shows its state** on a web page (operator view) on port 8181.
 
 ---
@@ -1322,7 +1324,7 @@ First run `python3 navera_tools/check_box.py` (NAVERA shell). Then look at the s
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| Vision service restarts every 10 s, "cannot open the camera" | wrong device (number changed), camera not in webcam mode, unplugged, or held by another program | use the `/dev/v4l/by-id/` name; set the camera to USB webcam mode; stop the vision service before calibrating |
+| Vision service keeps restarting, "cannot open the camera" | wrong device (number changed), camera not in webcam mode, unplugged, or held by another program | use the `/dev/v4l/by-id/` name; set the camera to USB webcam mode; stop the vision service before calibrating |
 | "set NAVERA_CAMERA_CALIBRATION … or at least NAVERA_CAMERA_HFOV_DEG" | no lens information | calibrate (6.2) |
 | "calibration … was made with camera usb-A…, this one is usb-B…" | another camera plugged in | calibrate this camera |
 | "calibration is for 1280x720, the camera is set to 1920x1080" | resolution changed | calibrate at `NAVERA_CAMERA_SIZE` |
@@ -1346,7 +1348,9 @@ First run `python3 navera_tools/check_box.py` (NAVERA shell). Then look at the s
 | Web page: "control disabled: set NAVERA_WEB_TOKEN" | no access code configured | set it, `sudo systemctl restart navera-web` |
 | "too many wrong codes from this address" | 5 wrong codes in 60 s | wait 60 s |
 | A service "activating (auto-restart)" with "could not convert string to float: ''" | a number setting left empty | give it a value or comment it out |
-| "… does not exist (data disk not mounted?)" | data disk missing | mount `/data`; the service retries every 10 s |
+| "… does not exist (data disk not mounted?)" | data disk missing | mount `/data`; the service retries (every 30 s after a few tries) |
+| "restart loop: N starts in 60 s — waiting …" | a service fails at every start | its journal says why (`journalctl -u <service> -n 100`); it keeps retrying by itself |
+| A NAVERA service crashed in flight (journal: "process has died", "respawning", "restart: …") | a bug or the memory killer | nothing to do: it is back in 1–8 s. Meanwhile the output keeps giving the autopilot the last vision position carried along its velocity, its accuracy growing ("bridging", at most 10 s); a restarted output resumes from what it last sent; a GPS refused for spoofing stays refused. If the restarts repeat, report the journal |
 | ROS topics invisible | the shell is not on NAVERA's domain; `ROS_LOCALHOST_ONLY=1`; different domain or ROS version on the vehicle | open the NAVERA shell; Way C settings (3.3) |
 | A sensor plugged in after boot is not used | detection runs once per boot | `sudo systemctl restart navera-discover`, then the services |
 

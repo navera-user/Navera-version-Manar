@@ -34,7 +34,7 @@ discovery-based, and the camera ↔ localizer handshake uses latched topics).
 | `navera-pipeline-night` | `navera_boot_pipeline_night.sh` | Thermal camera + STHN night vision (GPU) | Night operation, **instead of** day |
 | `navera-pipeline-cn` | `navera_boot_pipeline_cn.sh` | Celestial pipeline (astrometry.net, CPU) | See §10 — as shipped it replays a bundled sky image |
 | `navera-imu` | `navera_boot_imu.sh` | Box IMU (BNO085, I²C bus 1 @ 0x4A) → `/navera/sensors/imu`; idle when navera-discover found no BNO085 (`NAVERA_BOX_IMU=0`) | `NAVERA_SENSOR_SOURCE=box` and a BNO085 fitted (enabling it elsewhere is harmless) |
-| `navera-insta360` | `navera_boot_insta360.sh` | The Insta360 kit: the One R in USB "Android" mode (one process owns it) → straight-down day view `/navera/sensors/insta360/nadir/image_raw` (stamped at exposure) and attitude `/navera/sensors/insta360/imu` (sensor_msgs/Imu with orientation, 100 Hz), status `/navera/sensors/insta360/status`; exits when the camera is lost (restart 5 s); idle unless `NAVERA_SENSOR_SOURCE` or `NAVERA_CAMERA_INPUT` is `insta360` | The IRIS kit (Insta360 as camera and IMU; enabling it elsewhere is harmless) |
+| `navera-insta360` | `navera_boot_insta360.sh` | The Insta360 kit: the One R in USB "Android" mode (one process owns it) → straight-down day view `/navera/sensors/insta360/nadir/image_raw` (stamped at exposure) and attitude `/navera/sensors/insta360/imu` (sensor_msgs/Imu with orientation, 100 Hz), status `/navera/sensors/insta360/status`; exits when the camera is lost (restart 1 s); idle unless `NAVERA_SENSOR_SOURCE` or `NAVERA_CAMERA_INPUT` is `insta360` | The IRIS kit (Insta360 as camera and IMU; enabling it elsewhere is harmless) |
 | `navera-rtc` | `navera_boot_rtc.sh` | Real-time clock (DS3231, I²C bus 1 @ 0x68) → `/navera/sensors/rtc_time`; idle when no DS3231 was found (`NAVERA_BOX_RTC=0`) | Optional: a DS3231 is fitted. Star time comes first from the GPS anchor and the autopilot (§10); the DS3231 helps only after a reboot with the GPS denied and no autopilot |
 | `navera-vehicle-link` | `navera_boot_vehicle_link.sh` | Reads the autopilot over MAVLink → `/navera/vehicle/*` (attitude, rangefinder, barometric height, 2nd GPS, armed state), and relays NAVERA's MAVLink output to it (local UDP 14650); idle when no autopilot is found or configured | `NAVERA_SENSOR_SOURCE=vehicle`, `NAVERA_GPS_SOURCE=vehicle`, or a MAVLink output through its relay; also recommended with any MAVLink autopilot, so that `/mission` knows when the vehicle is armed |
 | `navera-output` | `navera_boot_output.sh` | Output to the vehicle: NMEA, MAVLink `GPS_INPUT`, ROS `NavSatFix` on `/navera/fix` | NAVERA feeds the autopilot or a ROS consumer |
@@ -64,7 +64,8 @@ At power-on systemd starts each enabled unit as user `navera`. Each wrapper:
 4. deletes ROS log folders (`~/.ros/log`) older than 7 days (a restart loop would otherwise fill the disk);
 5. (pipelines) checks its data exists: day `NAVERA_MBTILES` and `DAY_DATASET_DIR`; night
    `NAVERA_MBTILES`, `NAVERA_STHN_DIR`, `NAVERA_STHN_WEIGHTS`. If the data disk is not
-   mounted yet, the wrapper exits and systemd retries 10 s later: a pipeline never runs half-blind;
+   mounted yet, the wrapper exits and systemd retries (after 1 s, backing off to 30 s while it
+   keeps failing): a pipeline never runs half-blind;
 6. `exec`s its `ros2 launch` / `ros2 run` command, which becomes the unit's main process
    (clean stop and restart).
 
@@ -85,9 +86,18 @@ last boot's choices never look written.
 would never restart anything. Instead:
 
 - every node of the boot launch files has `on_exit=Shutdown`: if **one** node dies, the
-  whole launch stops (a camera is never left waiting for a dead localizer);
-- every unit has `Restart=always`, `RestartSec=10` and `StartLimitIntervalSec=0`: systemd
-  restarts it 10 s after any exit, forever. A deliberate `systemctl stop` is not undone;
+  whole launch stops and systemd restarts the unit — except the day pipeline (below);
+- the critical units (estimator, output, vehicle link, GPS, IMU, RTC) and the pipelines
+  (day, night, celestial, Insta360) have `Restart=always`, `RestartSec=1` and
+  `StartLimitIntervalSec=0`: systemd restarts them **1 s** after any exit, forever (the web
+  page and hotplug: 10 s). A deliberate `systemctl stop` is not undone. A unit that fails at
+  every start (data disk missing, bad setting) does not spin: past 5 starts in 60 s its wrapper
+  waits 2, 4, 8… s, at most 30 s, before starting (`navera_restart_backoff`, journal line
+  "restart loop: …");
+- the **day pipeline** restarts a crashed node alone: `day_subscriber` and the live camera are
+  respawned by the launch (after 1 s / 2 s) while the other goes on — the camera keeps its
+  stream open and sends the next frame as soon as the new day node says it is ready, the day
+  node dead-reckons through a camera restart (B23: a whole-pipeline restart took 25 s in flight);
 - nodes that lose their hardware exit on purpose so this cycle retries: `gps_node` when the
   serial port is missing or disconnects, `vehicle_output` when an output cannot be opened or
   written, the live camera when the camera cannot be opened or stops sending frames.
@@ -110,6 +120,21 @@ The journal is capped at 1 GB with 2 GB kept free (`/etc/systemd/journald.conf.d
 
 A restart in flight does not start from scratch: the ground altitude and day vision's last
 position are kept on disk (§9).
+
+**A crash in flight without GPS (B23).** The autopilot takes NAVERA's output as its GPS; with
+no position for ~7 s ArduPilot's EKF failsafe lands (PX4: ~5 s). So no single crash may silence
+it that long:
+
+| what crashes | what the autopilot is given meanwhile | back after (Jetson Orin Nano) |
+|---|---|---|
+| `navera-estimator` | the output bridges its last vision position (carried along the velocity it sent, accuracy growing, at most 10 s) | systemd restart, ~4 s |
+| `navera-output` | nothing until it is back; it then resumes the bridge from its last position (state `output_held`) and its next vision positions are not held back | systemd restart, ~4 s |
+| `day_subscriber` | the output's bridge, then the new day node's first match (search around the saved `day_anchor`) | respawned alone, ~8 s |
+| the day camera | the day node's own dead reckoning (from 2.5 s), forwarded | respawned alone |
+
+The figures measured on the real box with `navera_tools/isaac/hil_flight.sh` are in
+`docs/certification/DEPLOYMENT_VALIDATION.md`. A restarted estimator never publishes a
+saved position: only what its GPS gate knew (a GPS refused for spoofing stays refused).
 
 > **Validation status.** The split into services was validated by a reboot on the Jetson
 > on 2026-07-15 (services up, bridge answering HTTP 200 on `:8181`, nodes running). That
@@ -365,7 +390,7 @@ sudo install -d -o navera -g navera /data/navera /data/navera/areas
 ```
 
 With `nofail` a missing disk does not stop the boot: the day / night pipelines then find
-their files missing, log `… does not exist (data disk not mounted?)` and retry every 10 s
+their files missing, log `… does not exist (data disk not mounted?)` and retry (1 s, backing off to every 30 s)
 (§2); `check_box.py` reports FAIL for each missing file.
 
 **What goes on it** (paths of `navera.env.example`; copy the files delivered by IRIS

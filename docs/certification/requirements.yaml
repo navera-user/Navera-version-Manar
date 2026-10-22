@@ -703,7 +703,7 @@ requirements:
 - id: NAV-SAF-10
   category: SAF
   title: 'Bounded gap bridging'
-  text: 'A gap in forwarded vision positions shall be bridged from 2.5 s, once a second, for at most bridge_max_s (10 s) and only while the grown sigma ≤ max_forward_sigma_m; a GPS fix is never bridged.'
+  text: 'A gap in forwarded vision positions — including a silent or initializing arbiter (a restarting estimator, B23) — shall be bridged from 2.5 s, once a second, for at most bridge_max_s (10 s) and only while the grown sigma ≤ max_forward_sigma_m; a GPS fix is never bridged.'
   code:
     - navera_output/navera_output/policy.py::bridge
     - navera_output/navera_output/policy.py::hold
@@ -1265,19 +1265,49 @@ requirements:
 - id: NAV-DEP-01
   category: DEP
   title: 'Automatic start and restart'
-  text: 'Every NAVERA unit shall start at boot without a login, restart 10 s after any exit (Restart=always, StartLimitIntervalSec=0) because ros2 launch exits 0 when a node dies, and a driver without its device shall idle instead of restart-looping.'
+  text: 'Every NAVERA unit shall start at boot without a login and restart after any exit, forever (Restart=always, StartLimitIntervalSec=0) because ros2 launch exits 0 when a node dies: the critical units (estimator, output, vehicle link, GPS, IMU, RTC) and the pipelines (day, night, celestial, Insta360) after 1 s (RestartSec=1), the others after 10 s; a unit failing at every start shall back off (past 5 starts in 60 s: 2, 4, 8... s, at most 30 s) instead of restart-looping, and a driver without its device shall idle.'
   code:
     - deploy/systemd/navera-estimator.service::Restart
     - deploy/systemd/navera_boot_lib.sh::navera_env
+    - deploy/systemd/navera_boot_lib.sh::navera_restart_backoff
+    - deploy/verify_units.py::restart_findings
     - deploy/systemd/navera_boot_imu.sh
   tests:
     - deploy/verify_units.py
     - deploy/stage_check.sh
+  match:
+    - 'test_fast_restart\.py::'
   evidence:
+    - {level: UT, value: 'B23 2026-10-22: verify_units fast-restart check PASS on all 10 critical / pipeline units; a 10 s RestartSec, a start limit or a library without the backoff FAIL; the 3rd start within the window waits (free 2, cap 1 s in the test), another workspace counts apart, a broken record never blocks', ref: 'deploy/test/test_fast_restart.py'}
     - {level: HW, value: 'reboot validation 2026-07-15 (6 units, previous restart mechanism)', ref: 'CLAUDE.md §8'}
     - {level: UT, value: 'staged user units 2026-10-21: killed estimator and GPS nodes restarted by systemd, check_boot PASS again', ref: 'docs/certification/DEPLOYMENT_VALIDATION.md'}
   status: partial
   note: 'DEP-14 — reboot of a deployed unit with today''s mechanism still to do (commands in DEPLOYMENT_VALIDATION.md)'
+
+- id: NAV-DEP-07
+  category: DEP
+  title: 'A crash in flight does not end the mission'
+  text: 'With GPS lost (for the whole flight if need be), the crash of any one NAVERA service shall not leave the autopilot without a position longer than its failsafe delay: the critical units restart within 1 s; the day pipeline respawns a crashed day node or camera alone (the other goes on, the camera re-sends as soon as the new localizer is ready); the output bridges its last forwarded vision position across a silent or initializing arbiter (bounded by bridge_max_s, accuracy growing) and, restarted itself, resumes that bridge from its persisted last position without holding the next positions back; a restarted estimator restores its GPS-gate state (a refused GPS stays refused) and never a position.'
+  code:
+    - navera_output/navera_output/policy.py::decide
+    - navera_output/navera_output/nodes/vehicle_output_node.py::held_from_state
+    - navera_output/navera_output/nodes/vehicle_output_node.py::VehicleOutputNode._restore_held
+    - navera_estimator/navera_estimator/nodes/estimator_node.py::EstimatorNode._restore_gps_state
+    - camera_pkg/camera_pkg/nodes/live_camera.py::LiveCamera._on_ready
+    - simulation_web/simulation_web/launch/day_pipeline.launch.py
+    - navera_tools/isaac/hil_flight.sh
+  match:
+    - 'test_bridge_flow\.py::test_(a_restarted|no_restore|the_held_position)'
+    - 'test_output\.py::test_the_soft_no_fix'
+    - 'test_estimator_rules\.py::test_(a_restart|an_old_gps_gate)'
+    - 'test_localizer_restart\.py::'
+    - 'test_day_pipeline_respawn\.py::'
+    - 'test_hil\.py::test_restart_gap'
+  evidence:
+    - {level: HW, against: true, value: 'B23 2026-10-22 box in the loop before the fix (RestartSec=10, arbiter silence = no fix, whole-pipeline restart): killed estimator -> /navera/position back after 15.4 s, autopilot GPS lost after 2.3 s, EKF failsafe LAND; killed day camera -> 25.5 s, LAND', ref: '~/.navera_sim/isaac/hil/hil_base1, hil_endur30'}
+    - {level: UT, value: 'arbiter silent / initializing bridged; held position persisted (1/s), restored on a new monotonic clock only within bridge_max_s, cleared by a GPS fix; refused GPS still refused after a restart, nothing published; the camera re-sends on a new ready; the day node and camera respawn alone'}
+  status: partial
+  note: 'box-in-the-loop with the fix: see DEPLOYMENT_VALIDATION.md (B23); not on a real vehicle'
 
 - id: NAV-DEP-02
   category: DEP
