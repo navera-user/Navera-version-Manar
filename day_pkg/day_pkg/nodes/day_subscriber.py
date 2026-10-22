@@ -717,7 +717,9 @@ class DaySubscriber(Node):
             trusted = self._gps_prior.fresh() is not None
             if self._gps_was_trusted and not trusted:
                 self._handover_from_gps()
-                self.latency_cal.freeze("GPS lost or not trusted", self.latency_rollback_s)
+                # the last delay samples are dropped after a refusal only (as the sigma ones, F39)
+                self.latency_cal.freeze("GPS lost or not trusted",
+                                        self.latency_rollback_s if getattr(self, "_gps_refused_flag", True) else 0.0)
                 self.latency_cal.persist()
                 if self.auto_latency:
                     self._relearn_after_delay_change()
