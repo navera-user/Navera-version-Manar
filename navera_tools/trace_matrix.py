@@ -108,7 +108,7 @@ def collect_tests(extra):
             files.add(rel)
     for p in glob.glob(os.path.join(REPO, 'navera_tools', 'tests', '*.py')):
         rel = os.path.relpath(p, REPO)
-        if not os.path.basename(rel).startswith('_'):
+        if not os.path.basename(rel).startswith('_') and os.path.basename(rel) != 'conftest.py':
             files.add(rel)
     files.update(e for e in extra if os.path.isfile(os.path.join(REPO, e)))
     units = []
