@@ -29,6 +29,10 @@ PLANE = "--vehicle plane --gimbal false --legs 4 --radius 1300 --cut-after 75 --
 CONDITIONS = {
     "base": ("clear baseline, 10:30, copter 250 m, gimbal", SHORT),
     "base_nolat": ("baseline, auto_latency OFF", SHORT + " --day-args '-p auto_latency:=false'"),
+    "base_setdelay": ("baseline, camera delay bench-measured (capture_latency_s 1.3)",
+                      SHORT + " --cam-args '-p capture_latency_s:=1.3'"),
+    "base_shortgps": ("baseline, GPS cut 15 s after reaching altitude (no turn on GPS)",
+                      SHORT.replace("--cut-after 75", "--cut-after 15")),
     "dawn": ("low sun 07:00 (long shadows, low contrast)", SHORT + " --time 07:00"),
     "dusk": ("low sun 17:15", SHORT + " --time 17:15"),
     "noon": ("noon harsh shadows 12:30", SHORT + " --time 12:30"),
@@ -89,6 +93,7 @@ def main():
     ap.add_argument("--ssh", default="", help="user@host of the PC (empty: run here)")
     ap.add_argument("--only", default="", help="comma list of conditions (default all, in order)")
     ap.add_argument("--prefix", default="c_")
+    ap.add_argument("--repo", default="~/Navera", help="the NAVERA checkout on the PC to run")
     ap.add_argument("--notice", default="")
     ap.add_argument("--copy-to", default="")
     ap.add_argument("--out", default=os.path.expanduser("~/.navera_sim/isaac/campaign"))
@@ -108,7 +113,7 @@ def main():
                 f.write(f"{time.strftime('%F %T')} NOTICE: campaign run '{run}' ({what}) starts now: MAVProxy map+console, "
                         f"'NAVERA - live error' and ~1.5 min later 'NAVERA - Isaac Sim flight' open, ~9 min.\n")
         t0 = time.time()
-        cmd = (f"rm -rf ~/navera_results/{run}; bash ~/Navera/navera_tools/isaac/run_closed_loop.sh --name {run} "
+        cmd = (f"rm -rf ~/navera_results/{run}; bash {a.repo}/navera_tools/isaac/run_closed_loop.sh --name {run} "
                f"--hold 5 {args} > ~/navera_{run}.out 2>&1")
         r = sh(cmd, a.ssh)
         rec = dict(run=run, condition=n, what=what, args=args, minutes=round((time.time() - t0) / 60, 1), rc=r.returncode)

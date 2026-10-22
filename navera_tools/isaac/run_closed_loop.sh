@@ -11,6 +11,7 @@
 #   --vehicle copter|plane --model quad|plane|plane-jet --scene kalaa|<prepared scene> --legs N
 #   --wind M/S --wind-dir DEG --turb M/S --gimbal true|false (default: copter true, plane false)
 #   --isaac-args "..." (isaac_flight.py conditions) --link-args "-p k:=v ..." (isaac_link.py conditions)
+#   --day-args / --cam-args "-p k:=v ..." (day_subscriber / live_camera parameters)
 #
 #   windows: "NAVERA - Isaac Sim flight" (the scene, chase view), MAVProxy map + console,
 #            "NAVERA - live error" (truth / NAVERA / autopilot EKF, map, camera, status)
@@ -21,14 +22,14 @@
 set -u
 name=closed_loop_$(date +%Y%m%d_%H%M%S); alt=250; radius=500; speed=8; cut_after=15; tod=10:30; sigma=30
 gate=""; hold=30; vehicle=copter; model=quad; scene=kalaa; legs=4; wind=4; wind_dir=290; turb=1.0
-isaac_extra=""; link_extra=""; gimbal=""; day_extra=""
+isaac_extra=""; link_extra=""; gimbal=""; day_extra=""; cam_extra=""
 while [ $# -gt 0 ]; do
   case $1 in
     --name) name=$2;; --alt) alt=$2;; --radius) radius=$2;; --speed) speed=$2;; --cut-after) cut_after=$2;;
     --time) tod=$2;; --sigma) sigma=$2;; --gate) gate=$2;; --hold) hold=$2;;
     --vehicle) vehicle=$2;; --model) model=$2;; --scene) scene=$2;; --legs) legs=$2;; --wind) wind=$2;;
     --wind-dir) wind_dir=$2;; --turb) turb=$2;; --isaac-args) isaac_extra=$2;; --link-args) link_extra=$2;;
-    --gimbal) gimbal=$2;; --day-args) day_extra=$2;;
+    --gimbal) gimbal=$2;; --day-args) day_extra=$2;; --cam-args) cam_extra=$2;;
     *) echo "unknown option $1" >&2; exit 2;;
   esac; shift 2
 done
@@ -61,7 +62,7 @@ docker rm -f navera_isaac >/dev/null 2>&1
 rm -rf "$D/runs/$name"
 docker run -d --rm --name navera_isaac --gpus all --network host --user "$(id -u):$(id -g)" -e HOME=/results \
   -e RUN="$name" -e MATCHER=auto -e MAX_SPEED=$([ "$vehicle" = plane ] && echo 75 || echo 30) -e GROUND_ALT="$zref" -e VEHICLE_OUT=tcp:127.0.0.1:5762 \
-  -e DEGRADED_SIGMA="$sigma" -e GIMBAL=$gimbal -e DAY_ARGS="$day_extra" \
+  -e DEGRADED_SIGMA="$sigma" -e GIMBAL=$gimbal -e DAY_ARGS="$day_extra" -e CAM_ARGS="$cam_extra" \
   -e LINK_ARGS="-p truth_udp_port:=15501 -p delay_s:=1.3 -p scene_dir:=/isaac/scenes/$scene $link_extra" \
   -v "$repo":/ws/src/navera -v "$HOME/.navera_isaac_ws/build":/ws/build \
   -v "$HOME/.navera_isaac_ws/install":/ws/install -v "$HOME/.navera_isaac_ws/log":/ws/log \
