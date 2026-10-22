@@ -54,6 +54,8 @@ def main():
     ap.add_argument("--legs", type=int, default=4, help="diamond legs (4 = the full diamond)")
     ap.add_argument("--hold-home", type=float, default=45.0, help="s over home (RTL) before the demo ends")
     ap.add_argument("--arm-after-file", default="", help="arm only once this file exists (Isaac Sim rendering)")
+    ap.add_argument("--endurance", type=float, default=0.0,
+                    help="s of flight after the GPS cut: the diamond is repeated (DO_JUMP) until then, then RTL")
     a = ap.parse_args()
     os.makedirs(a.results, exist_ok=True)
     geo = GeoRef(a.lat0, a.lon0)
@@ -99,7 +101,10 @@ def main():
             th = math.radians(90 * k)
             wps.append(geo.to_latlon(a.radius * math.cos(th), a.radius * math.sin(th)))
             items.append((mavutil.mavlink.MAV_CMD_NAV_WAYPOINT, wps[-1][0], wps[-1][1], a.alt))
+        if a.endurance > 0:                                 # endurance: the diamond again and again
+            items.append((mavutil.mavlink.MAV_CMD_DO_JUMP, 0, 0, 0))   # -> the second corner, forever
         items.append((mavutil.mavlink.MAV_CMD_NAV_RETURN_TO_LAUNCH, 0, 0, 0))
+        jump_to = 3            # item 3 = the second corner: the diamond's last waypoint is its first corner
         m.mav.mission_count_send(ts, tc, len(items))
         deadline = time.time() + 30
         sent = set()
@@ -108,7 +113,11 @@ def main():
             if r is None:
                 continue
             cmd, lat, lon, alt = items[r.seq]
-            m.mav.mission_item_int_send(ts, tc, r.seq, rel, cmd, 0, 1, 0, 0, 0, 0, int(lat * 1e7), int(lon * 1e7), alt)
+            if cmd == mavutil.mavlink.MAV_CMD_DO_JUMP:      # param1 target item, param2 repeats (-1: forever)
+                m.mav.mission_item_int_send(ts, tc, r.seq, rel, cmd, 0, 1, jump_to, -1, 0, 0, 0, 0, 0)
+            else:
+                m.mav.mission_item_int_send(ts, tc, r.seq, rel, cmd, 0, 1, 0, 0, 0, 0, int(lat * 1e7), int(lon * 1e7),
+                                            alt)
             sent.add(r.seq)
         log("mission", items=len(items), waypoints=[[round(p[0], 6), round(p[1], 6)] for p in wps])
 
@@ -180,6 +189,14 @@ def main():
             state["gps"], flown["cut_at"] = False, t
             state["phase"] = "mission (GPS CUT: NAVERA vision only)"
             log("gps_cut", t_cut=t)
+        if a.endurance > 0 and flown["cut_at"] is not None and flown["rtl_at"] is None \
+                and t > flown["cut_at"] + a.endurance and now - last_try > 3:
+            last_try = now                                  # endurance over: home on vision (RTL)
+            m.set_mode("RTL")
+            if state["mode"] == "RTL":
+                flown["rtl_at"] = t
+                state["phase"] = "RTL on NAVERA vision"
+                log("endurance_rtl", flown_after_cut_s=round(t - flown["cut_at"], 1))
         if flown["rtl_at"] is not None and flown["home_at"] is None and state["ekf"] and state["home"]:
             d = math.hypot((state["ekf"][0] - state["home"][0]) * 111320.0,
                            (state["ekf"][1] - state["home"][1]) * 111320.0 * math.cos(math.radians(state["home"][0])))

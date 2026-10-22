@@ -57,6 +57,8 @@ ap.add_argument("--mount-err", default="1.5,-1.0,2.0", help="camera mount error 
 ap.add_argument("--date", default="2026-10-21")
 ap.add_argument("--time", default="08:30", help="local time (UTC + --utc-offset)")
 ap.add_argument("--utc-offset", type=float, default=1.0)
+ap.add_argument("--sun-ramp", type=float, default=0.0,
+                help="the sun moves: N s of the day per s of flight (1 = real time; 0 = fixed at --time)")
 ap.add_argument("--sun", type=float, default=3000.0, help="sun intensity at zenith (RTX units)")
 ap.add_argument("--sky", type=float, default=300.0)
 ap.add_argument("--clouds", type=float, default=0.25, help="cloud cover fraction 0-1 (shadows)")
@@ -387,17 +389,23 @@ def main():
     # ── sun at its true position, sky ──
     hh, mm = (int(v) for v in args.time.split(":"))
     when = dt.datetime.fromisoformat(args.date).replace(hour=hh, minute=mm) - dt.timedelta(hours=args.utc_offset)
-    sun_el, sun_az = sun_position(scene["lat0"], scene["lon0"], when)
     sun = UsdLux.DistantLight.Define(stage, "/World/sun")
-    # irradiance on the ground follows the sun's elevation (air mass), the sky light less so
-    sun.CreateIntensityAttr(args.sun * max(0.05, math.sin(math.radians(max(sun_el, 1.0)))) ** 0.3)
     sun.CreateAngleAttr(0.53)
-    warm = max(0.0, min(1.0, (25.0 - sun_el) / 25.0))
-    sun.CreateColorAttr(Gf.Vec3f(1.0, 0.95 - 0.12 * warm, 0.88 - 0.25 * warm))
-    el, az = math.radians(sun_el), math.radians(sun_az)
-    to_sun = Gf.Vec3d(math.sin(az) * math.cos(el), math.cos(az) * math.cos(el), math.sin(el))
-    UsdGeom.Xformable(sun).AddOrientOp(UsdGeom.XformOp.PrecisionDouble).Set(
-        Gf.Rotation(Gf.Vec3d(0, 0, 1), to_sun).GetQuat())
+    sun_i, sun_c = sun.CreateIntensityAttr(), sun.CreateColorAttr()
+    sun_op = UsdGeom.Xformable(sun).AddOrientOp(UsdGeom.XformOp.PrecisionDouble)
+
+    def set_sun(when_utc):
+        """The sun at its true position for when_utc; irradiance on the ground follows its
+        elevation (air mass), the sky light less so. Returns (elevation, azimuth) deg."""
+        el_d, az_d = sun_position(scene["lat0"], scene["lon0"], when_utc)
+        sun_i.Set(args.sun * max(0.05, math.sin(math.radians(max(el_d, 1.0)))) ** 0.3)
+        warm = max(0.0, min(1.0, (25.0 - el_d) / 25.0))
+        sun_c.Set(Gf.Vec3f(1.0, 0.95 - 0.12 * warm, 0.88 - 0.25 * warm))
+        el, az = math.radians(el_d), math.radians(az_d)
+        to_sun = Gf.Vec3d(math.sin(az) * math.cos(el), math.cos(az) * math.cos(el), math.sin(el))
+        sun_op.Set(Gf.Rotation(Gf.Vec3d(0, 0, 1), to_sun).GetQuat())
+        return el_d, az_d
+    sun_el, sun_az = set_sun(when)
     sky = UsdLux.DomeLight.Define(stage, "/World/sky")
     sky.CreateIntensityAttr(args.sky)
     sky.CreateColorAttr(Gf.Vec3f(0.72, 0.83, 1.0))
@@ -530,7 +538,7 @@ def main():
                                mount="nadir, image top = nose" + (", 2-axis gimbal (level)" if args.gimbal else ""),
                                gimbal=bool(args.gimbal), mount_err_rpy_deg=[mr, mp, my]),
                    sun=dict(date=args.date, local_time=args.time, utc_offset_h=args.utc_offset,
-                            elev_deg=round(sun_el, 2), az_deg=round(sun_az, 2)),
+                            elev_deg=round(sun_el, 2), az_deg=round(sun_az, 2), ramp=args.sun_ramp),
                    clouds=dict(cover=args.clouds, height_m=args.cloud_height, drift_mps=list(cloud_v),
                                low_cover=args.low_clouds, low_agl_m=args.low_cloud_agl),
                    obstacles=args.obstacles, extra_buildings=args.extra_buildings, shake_deg=args.shake,
@@ -557,6 +565,8 @@ def main():
     next_cap, next_vid = 0.0, 0.0
     prev_t = None
     upd = []
+    sun_track, next_sun = [], 0.0          # --sun-ramp: the sun moves with the flight time
+    sun_f = open(os.path.join(args.out, "sun.csv"), "a")
     while app.is_running():
         if live:
             live.poll()
@@ -567,6 +577,12 @@ def main():
             t = time.time() - t0
         if t > duration:
             break
+        if args.sun_ramp > 0 and t >= next_sun:
+            next_sun = t + 20.0
+            e_, a_ = set_sun(when + dt.timedelta(seconds=args.sun_ramp * max(t, 0.0)))
+            sun_f.write(f"{t:.1f},{e_:.3f},{a_:.3f}\n")
+            sun_f.flush()
+            sun_track = [round(e_, 2), round(a_, 2)]
         pose(t)
         u0 = time.time()
         app.update()
@@ -590,7 +606,7 @@ def main():
         prev_t = t
     writer.shutdown(wait=True)
     upd.sort()
-    json.dump(dict(frames=n_frame, video_frames=n_vid, updates=len(upd),
+    json.dump(dict(frames=n_frame, video_frames=n_vid, updates=len(upd), sun_end_el_az=sun_track or None,
                    update_ms_median=round(1000 * upd[len(upd) // 2], 1) if upd else None,
                    update_ms_p95=round(1000 * upd[int(len(upd) * 0.95)], 1) if upd else None),
               open(os.path.join(args.out, "done.json"), "w"), indent=1)
