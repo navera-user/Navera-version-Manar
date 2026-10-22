@@ -14,8 +14,8 @@ below is marked:
 - **Source** — read in the ArduPilot 4.5.7 source code, not exercised.
 - **Not verified** — recommendation to be confirmed on the real vehicle.
 
-PX4: not tested, and NAVERA's MAVLink output (`GPS_INPUT`) is not a message PX4 handles —
-see [PX4_INTEGRATION.md](PX4_INTEGRATION.md).
+PX4 does not handle `GPS_INPUT`: NAVERA sends it `HIL_GPS` instead (PX4 SITL only) — see
+[PX4_INTEGRATION.md](PX4_INTEGRATION.md).
 
 ## 1. The two connections
 

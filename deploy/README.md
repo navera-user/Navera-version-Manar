@@ -543,10 +543,12 @@ connection and every 30 s, stopping at once if it becomes 14 (`NAVERA_GPS_MONITO
 position over MAVLink, as the autopilot's companion (its system id), on the same link,
 relayed by `navera-vehicle-link` (local UDP 14650), no mavlink-router needed
 (`NAVERA_MAVLINK_URL=off` to never send it). **A PX4 autopilot is recognised** (heartbeat
-`MAV_AUTOPILOT_PX4`): PX4 ignores `GPS_INPUT`, so with `NAVERA_MAVLINK_URL` empty the output
-is left off and the report says "CHECK output: the autopilot is PX4 …" — nothing to set by
-hand; do not write an address there on a PX4 vehicle
-([PX4_INTEGRATION.md](../docs/PX4_INTEGRATION.md)); `NAVERA_MAVLINK_SYSID` is
+`MAV_AUTOPILOT_PX4`): PX4 has no `GPS_INPUT` handler, so NAVERA sends it `HIL_GPS` instead
+(`NAVERA_MAVLINK_MESSAGE=hil_gps`, written by discovery; the output also switches by itself on a
+PX4 heartbeat), through the same relay; discovery reads PX4's `MAV_USEHILGPS`, `EKF2_GPS_CTRL`,
+`EKF2_HGT_REF`, `EKF2_GPS_CHECK` and `SYS_HAS_GPS` and reports a CHECK line for each value that
+would make PX4 ignore or misuse it — set them on the autopilot as in
+[PX4_INTEGRATION.md](../docs/PX4_INTEGRATION.md) §2 (PX4 SITL only so far); `NAVERA_MAVLINK_SYSID` is
 set to the autopilot's system id, used by both MAVLink nodes; a ROS vehicle →
 `/navera/fix`. A ROS vehicle is used only when it is on NAVERA's ROS domain with
 `ROS_LOCALHOST_ONLY` not 1, or with `ROS_DOMAIN_ID=auto` (NAVERA then joins it, §6);
@@ -746,7 +748,7 @@ on `/navera/fix` (`NAVERA_ROS_FIX_TOPIC` sets another name; set but empty turns 
 | Setting | Output |
 |---|---|
 | `NAVERA_NMEA_PORT`, `NAVERA_NMEA_BAUD` | NMEA 0183 GGA + RMC on a serial port |
-| `NAVERA_MAVLINK_URL` | MAVLink `GPS_INPUT` (ArduPilot; **PX4 ignores this message**), e.g. `serial:/dev/ttyTHS2:921600`; `udpout:127.0.0.1:14650` = through `navera-vehicle-link`'s relay on the one autopilot link; `off` = never |
+| `NAVERA_MAVLINK_URL` | MAVLink `GPS_INPUT` (ArduPilot) or `HIL_GPS` (PX4, `NAVERA_MAVLINK_MESSAGE`), e.g. `serial:/dev/ttyTHS2:921600`; `udpout:127.0.0.1:14650` = through `navera-vehicle-link`'s relay on the one autopilot link; `off` = never |
 | `NAVERA_ROS_FIX_TOPIC` | ROS NavSatFix (default `/navera/fix`, §6) |
 
 **Vision positions are DEGRADED, and DEGRADED positions are not sent to the autopilot by
