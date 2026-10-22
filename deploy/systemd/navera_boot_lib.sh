@@ -54,6 +54,21 @@ navera_prune_logs() {
     return 0
 }
 
+# The GPU pipelines need swap on disk (F5: the day pipeline was OOM-killed on the 8 GB Jetson
+# without it; JetPack's zram lives in RAM and does not count). Warns in the journal at every
+# start of a pipeline when the active disk swap is below NAVERA_MIN_SWAP_MB (default 4096);
+# never stops the pipeline (navigating with a risk beats not navigating).
+# Fix: sudo /home/navera/isaac_ros_common/deploy/setup_swap.sh
+navera_check_swap() {
+    local have
+    have=$(awk 'NR > 1 && $1 !~ /^\/dev\/zram/ { kb += $3 } END { print int(kb / 1024) }' \
+           "${NAVERA_SWAPS:-/proc/swaps}" 2>/dev/null)
+    if [ "${have:-0}" -lt "${NAVERA_MIN_SWAP_MB:-4096}" ]; then
+        navera_log "WARNING: only ${have:-0} MB of swap on disk (need ${NAVERA_MIN_SWAP_MB:-4096} MB): the pipeline may be OOM-killed (F5) — sudo $NAVERA_WS/deploy/setup_swap.sh"
+    fi
+    return 0
+}
+
 # navera_require VAR... — each named variable must point to an existing path.
 # If the data disk is not mounted yet, exit 1: systemd retries in 10 s, and the
 # pipeline never starts half-blind.

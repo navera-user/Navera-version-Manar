@@ -7,5 +7,6 @@ source "$(dirname "$(readlink -f "$0")")/navera_boot_lib.sh"
 navera_env
 navera_cuda
 navera_prune_logs
+navera_check_swap
 navera_require NAVERA_MBTILES NAVERA_STHN_DIR NAVERA_STHN_WEIGHTS
 exec ros2 launch simulation_web night_pipeline.launch.py
