@@ -1049,8 +1049,9 @@ holds the only results from the real sensors. No sensor recording (log, bag) was
    self-calibration (30 m floor before it). The former DINOv2 tile retrieval (fallback,
    `NAVERA_DAY_MATCHER=retrieval`) is **not** accurate enough (442 m median) and must not be
    used to replace GPS. See [PRODUCT_READINESS.md](certification/PRODUCT_READINESS.md).
-3. **No inertial navigation.** The IMU gives the camera's attitude and heading changes;
-   it is not integrated into a position. Without vision matches, day vision dead-reckons
+3. **No inertial navigation (not pursued: FEAT-2, NAV-FUN-20).** The IMU gives the camera's
+   attitude and heading changes; it is not integrated into a position — a low-cost MEMS IMU
+   would drift hundreds of metres within a minute. Without vision matches, day vision dead-reckons
    along the track measured before the gap for at most 2 minutes / 500 m (simulator figures
    above), then NAVERA gives no position.
 4. **One pipeline at a time.** Day and night cannot both be loaded within 8 GB.

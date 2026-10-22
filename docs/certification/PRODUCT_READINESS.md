@@ -16,7 +16,7 @@ real data · HW hardware in role · FLT flight.
 | Day dead-reckoning between matches | **4** | SIM | land median 10 m / max 33 m; 90 s over sea ≤ 146 m | real IMU + camera; inertial navigation (not implemented) |
 | Night vision (STHN, thermal) | **3–4** | SIM (synthetic renders) | 8–13 m median synthetic; real camera bench: no fix (F24) | real LWIR recording (Hikvision camera now on the Jetson) |
 | Celestial (all-sky / plate solve) | **4** | BENCH (real camera, screen sky), PUB-like (one real sky photo) | 23/27 right at 0.4–9 km on the screen; 24–119 km with a BNO085-class IMU (SIM) | real night sky with known time/place/attitude |
-| Inertial navigation (FEAT-2) | **2** | — | not implemented (IMU = attitude / heading change / liveness) | implementation |
+| Inertial navigation (FEAT-2) | — | — | **not pursued**: a low-cost MEMS IMU drifts hundreds of metres within a minute when integrated; vision gaps are bridged instead by the track carry with gyro heading and a growing sigma (NAV-FUN-20, the "Day dead-reckoning" row) | — (a tactical-grade IMU would be a different product) |
 | IMU driver (BNO085) | **5** | HW (live on the Jetson, 50 Hz) | heading reference not checked (IMU-3) | known-heading test, noise measurement |
 | Real-time clock (DS3231) | **6** module · **open** on the field box | HW (power-cycle reboot, −0.148 s vs NTP); UT trusted-time gate in product celestial | F27: the field Jetson booted 16 h off (no DS3231 fitted) — celestial now refuses to solve on such a clock | RTC mandatory in the build |
 | Discovery (auto configuration) | **5** | SIM (SITL), UT | own output never read back as a GPS | real autopilot + sensors |
@@ -24,8 +24,9 @@ real data · HW hardware in role · FLT flight.
 | Deployment (systemd units, install, restart) | **5–6** | HW (reboot 2026-07-15, older mechanism), staged validation 2026-10-21 (this branch) | staged: every unit up, killed nodes restarted by systemd ([DEPLOYMENT_VALIDATION.md](DEPLOYMENT_VALIDATION.md)) | reboot test of today's units on a deployed box (DEP-14) |
 | **System as a whole** | **4–5** | SIM end to end; components on BENCH / PUB | — | first instrumented flight in shadow mode, then GPS-denied with a safety pilot |
 
-**Certification readiness** (details: [STANDARDS_MAPPING.md](STANDARDS_MAPPING.md)): 66 system
-requirements, 62 traced to automated tests, 4 without ([TRACEABILITY.md](TRACEABILITY.md));
+**Certification readiness** (details: [STANDARDS_MAPPING.md](STANDARDS_MAPPING.md)): 67 system
+requirements, all traced to automated tests ([TRACEABILITY.md](TRACEABILITY.md), regenerated
+2026-10-22);
 hazard log with 16 hazards, 3 at High residual risk ([SAFETY_ANALYSIS.md](SAFETY_ANALYSIS.md)):
 slow spoof without an independent source, autopilot misconfiguration, unvalidated night vision
 (frozen camera image: detector + tests since 2026-10-21, Medium). No DO-178C plans, no structural coverage, Python/ROS/ML in the
