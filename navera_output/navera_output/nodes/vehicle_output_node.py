@@ -47,6 +47,9 @@ Parameters:
                                  alarm in the log every 5 s: the vehicle is flying on a
                                  position that may be this far off (dead-reckoned, bridged)
     position_timeout_s   (5.0)   an older position is not current
+    (mission-area guard) NavStatus.map_area NEAR_EDGE / OUTSIDE is passed on to the autopilot
+                                 as a MAVLink STATUSTEXT (navera_output.map_guard), when it
+                                 changes and every 30 s while it lasts: reported, never acted on
     max_measurement_age_s (5.0)  a position measured longer ago is not sent; the rest
                                  are sent stamped with their measurement instant
     nav_status_timeout_s (2.0)   a silent arbiter means "no fix"
@@ -85,6 +88,7 @@ from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 
 from navera_output import mavlink_out, mavlink_url, nmea
+from navera_output.map_guard import MapGuard
 from navera_output.policy import (KIND_ESTIMATED, KIND_FIX, KIND_NONE, Config, bridge, decide,
                                   for_nmea, hold, reacquire)
 
@@ -188,6 +192,7 @@ class VehicleOutputNode(Node):
         self._vel = None                  # (north, east) m/s from the GPS receiver
         self._vel_rx = None
         self.failed = False
+        self._map_guard = MapGuard()      # mission-area guard -> STATUSTEXT (report only)
         self.create_subscription(NavStatus, "/navera/nav_status", self._on_status, 10)
         self.create_subscription(PositionEstimate, "/navera/position", self._on_position, 10)
         self.create_subscription(TwistStamped, "/navera/sensors/gps_vel", self._on_gps_vel, 10)
@@ -221,6 +226,14 @@ class VehicleOutputNode(Node):
 
     def _on_status(self, msg: NavStatus) -> None:
         self._status, self._status_rx = msg, time.monotonic()
+        say = self._map_guard.update(msg.map_area, msg.map_edge_m, self._status_rx)
+        if say is not None:
+            self.get_logger().warn(f"mission area: {say[1]}")
+            if self._mav is not None:
+                try:
+                    self._mav.mav.statustext_send(say[0], say[1].encode("ascii")[:50])
+                except Exception as e:     # noqa: BLE001 — the GPS_INPUT path reports link failures
+                    self.get_logger().error(f"STATUSTEXT not sent: {e}", throttle_duration_sec=30.0)
 
     def _on_position(self, msg: PositionEstimate) -> None:
         self._pos, self._pos_rx = msg, time.monotonic()

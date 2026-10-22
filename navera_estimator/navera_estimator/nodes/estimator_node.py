@@ -111,10 +111,18 @@ Parameters:
     gps_motion_enabled (default true), gps_motion_topic (/navera/vision/odometry), gps_motion_h (12),
     gps_motion_k (0.25), gps_motion_min_growth_m (12), gps_motion_bias_mps (0.5),
     gps_motion_eps_floor (0.03) — see navera_common.gps_motion_check.GpsMotionCheck
+    map_images_dir  (default "": $DAY_DATASET_DIR/images) — the mission's map tiles, for the
+                     mission-area guard: NavStatus.map_area / map_edge_m from the published
+                     position (the last one for map_hold_s after it, so NO_FIX past the edge
+                     still says OUTSIDE). Reported only; NAVERA never acts on the vehicle.
+    map_edge_warn_m (default 500.0) — closer to the map's edge than this: MAP_AREA_NEAR_EDGE
+    map_hold_s      (default 60.0)
 """
 import copy
 import json
 import math
+import os
+import time
 from collections import deque
 from typing import Optional
 
@@ -124,6 +132,7 @@ from navera_common.geo import is_finite_latlon
 from navera_common.gps_crosscheck import STREAK_N, GpsCrossCheck, GpsDriftTrend
 from navera_common.gps_motion_check import GpsMotionCheck
 from navera_common.lifecycle import die_with_parent
+from navera_common.map_area import MapArea, classify as map_classify
 from navera_common.params import declare_float
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
@@ -214,6 +223,10 @@ class EstimatorNode(Node):
         declare_float(self, "gps_motion_eps_floor", 0.03, "odometry scale / heading error always allowed")
         # FIX also requires the stated horizontal sigma to be at most this.
         declare_float(self, "fix_max_sigma_m", 25.0)
+        # mission-area guard (report only): how far the position is from the map's edge
+        self.declare_parameter("map_images_dir", "")
+        declare_float(self, "map_edge_warn_m", 500.0, "closer to the map's edge than this: NEAR_EDGE (m)")
+        declare_float(self, "map_hold_s", 60.0, "the last position keeps the map flag this long (s)")
         rate = float(self.get_parameter("publish_rate_hz").value)
         if rate <= 0.0:
             raise ValueError(f"publish_rate_hz must be > 0 (got {rate})")
@@ -237,6 +250,11 @@ class EstimatorNode(Node):
                 min_fixes=int(self.get_parameter("gps_trend_min_fixes").value),
                 confirm_n=int(self.get_parameter("gps_trend_confirm_n").value))
         self._xcheck = GpsCrossCheck(persist_s=self._crosscheck_persist, streak_n=STREAK_N, trend=trend)
+        self._map_warn = float(self.get_parameter("map_edge_warn_m").value)
+        self._map_hold = float(self.get_parameter("map_hold_s").value)
+        self._map = self._load_map(str(self.get_parameter("map_images_dir").value))
+        self._map_last = None                          # (lat, lon, monotonic s) last published position
+        self._map_flag = None                          # last map_area reported (for the log)
         self._motion = None
         if bool(self.get_parameter("gps_motion_enabled").value):
             self._motion = GpsMotionCheck(
@@ -811,6 +829,42 @@ class EstimatorNode(Node):
             out.position_covariance_type = PositionEstimate.COVARIANCE_TYPE_APPROXIMATED
         return out
 
+    def _load_map(self, images_dir: str):
+        """The mission's map coverage (navera_common.map_area), or None (guard off)."""
+        if not images_dir:
+            ds = os.environ.get("DAY_DATASET_DIR", "")
+            images_dir = os.path.join(ds, "images") if ds else ""
+        area = MapArea.from_images_dir(images_dir) if images_dir else None
+        if area is None:
+            self.get_logger().info(f"mission-area guard off: no map tiles in '{images_dir}'")
+        else:
+            self.get_logger().info(
+                f"mission-area guard: {len(area.tiles)} map tiles ({area.area_km2:.1f} km2), "
+                f"NEAR_EDGE within {self._map_warn:.0f} m of the edge")
+        return area
+
+    def _map_status(self, winner) -> tuple:
+        """(NavStatus.map_area, map_edge_m) of the published position (or the last one, for
+        map_hold_s), against the mission's map."""
+        if self._map is None:
+            return NavStatus.MAP_AREA_UNKNOWN, math.nan
+        now = time.monotonic()
+        if winner is not None and is_finite_latlon(winner.latitude, winner.longitude):
+            self._map_last = (winner.latitude, winner.longitude, now)
+        if self._map_last is None or now - self._map_last[2] > self._map_hold:
+            return NavStatus.MAP_AREA_UNKNOWN, math.nan
+        edge = self._map.edge_distance_m(self._map_last[0], self._map_last[1])
+        flag = map_classify(edge, self._map_warn)
+        if flag != self._map_flag:
+            if flag in (NavStatus.MAP_AREA_NEAR_EDGE, NavStatus.MAP_AREA_OUTSIDE):
+                self.get_logger().warn(
+                    f"MISSION AREA: {'beyond' if flag == NavStatus.MAP_AREA_OUTSIDE else 'near'} the edge of "
+                    f"the map ({edge:+.0f} m) — day vision has no map past it")
+            elif self._map_flag is not None:
+                self.get_logger().info(f"mission area: {edge:.0f} m inside the map")
+            self._map_flag = flag
+        return flag, edge
+
     def _no_fix_reason(self, gps_age, day_age, night_age, cn_age) -> str:
         """Why no source is usable — one clause per watched estimate source."""
         parts = [
@@ -891,6 +945,7 @@ class EstimatorNode(Node):
                                   self._cn_timeout, winner),
             self._imu_health(imu_alive),
         ]
+        status.map_area, status.map_edge_m = self._map_status(winner)
         status.reason = reason
         self.pub_status.publish(status)
 

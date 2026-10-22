@@ -175,7 +175,7 @@ function showPosition(d){
   setBadge(cls, `${(d.source_name || d.source || 'UNKNOWN').toUpperCase()} · ${fix ? 'FIX' : 'DEGRADED'}${acc}`);
   const age = Number.isFinite(Number(d.carried_s)) ? `photo ${Number(d.carried_s).toFixed(1)} s old, carried to now`
             : Number.isFinite(Number(d.measured_age_s)) ? `measured ${Number(d.measured_age_s).toFixed(1)} s ago` : '';
-  elDetail.textContent = [MODE_TXT[d.mode] || d.mode, age, d.reason, d.camera_warning ? '⚠ ' + d.camera_warning : '']
+  elDetail.textContent = [MODE_TXT[d.mode] || d.mode, age, d.reason, d.camera_warning ? '⚠ ' + d.camera_warning : '', d.map_warning ? '⚠ ' + d.map_warning : '']
     .filter(Boolean).join(' · ');
   elLat.textContent = Number(d.lat).toFixed(6);
   elLon.textContent = Number(d.lon).toFixed(6);
@@ -266,7 +266,7 @@ async function poll(){
     if(d.valid === true && Number.isFinite(lat) && Number.isFinite(lon)){
       showPosition(d);
     }else{
-      showNoPosition(d.state || 'NO_FIX', d.reason);
+      showNoPosition(d.state || 'NO_FIX', d.map_warning ? d.reason + ' · ⚠ ' + d.map_warning : d.reason);
     }
   }catch(e){
     if(Date.now() - lastAnswer > LINK_LOST_MS){
