@@ -216,3 +216,15 @@ def test_bundle_command_is_validated():
         kw.update(bad)
         with pytest.raises(ValueError):
             mp.bundle_command("plan", **kw)
+
+
+def test_route_plans_kept_are_bounded_newest_first(jobs, monkeypatch):
+    """Hours of use (or a client planning in a loop) never grow the plans kept in memory."""
+    j = jobs[0]
+    monkeypatch.setattr(mp, "plan_tiles", lambda *a, **k: {"missing": [], "needed": [], "in_base": 0, "in_cache": 0})
+    monkeypatch.setattr(mp.AreaJobs, "_quick_terrain", lambda self, legs: None)
+    ids = [j.plan([[35.80 + i * 0.001, 10.60], [35.85, 10.65]])["id"] for i in range(mp.MAX_PLANS + 15)]
+    assert len(j.plans) == mp.MAX_PLANS
+    assert list(j.plans) == ids[-mp.MAX_PLANS:]
+    j.plan([[35.80 + 20 * 0.001, 10.60], [35.85, 10.65]])          # planned again: becomes the newest
+    assert next(reversed(j.plans)) == ids[20] and len(j.plans) == mp.MAX_PLANS

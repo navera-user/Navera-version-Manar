@@ -1025,13 +1025,32 @@ requirements:
   text: 'At every unit start, ROS log folders older than 7 days shall be pruned, then the oldest until the log folder is under NAVERA_LOG_MAX_MB (1024 MB), and a free space below NAVERA_MIN_FREE_MB (2048 MB) on its disk shall be warned without stopping the unit; recordings go to the data disk.'
   code:
     - deploy/systemd/navera_boot_lib.sh::navera_prune_logs
+    - deploy/journald/navera.conf
   match:
     - 'test_boot_logs\.py::'
+    - 'test_swap\.py::test_the_staged_install_makes_the_swap_only_when_asked_and_caps_the_journal'
   evidence:
     - {level: A, value: 'DEP-13 (252fa15)'}
     - {level: UT, value: '9-day-old folder pruned, 1-day-old kept; 10 restarts × 0.4 MB with a 2 MB cap → the newest 5 kept; low free space warned, exit 0'}
+    - {level: A, value: 'within a run the ROS log files grow ~1.5 MB/h for the day node (0.4 kB per frame at 1 frame/s, measured on 29 385 simulator frames), a few MB/h in all; the journal (units stdout) is capped by install.sh: SystemMaxUse 1 GB, SystemKeepFree 2 GB, 64 MB files, rate limit (deploy/journald/navera.conf)'}
   status: verified-UT
-  note: 'journald size (SystemMaxUse) not configured; free space not shown on the operator view / check_box'
+  note: 'the current run''s ROS log files are pruned at the next start only (~15 MB for a 10 h flight); free space shown by check_box, not on the operator view'
+
+- id: NAV-DEP-05
+  category: DEP
+  title: 'Hours-long operation without growing state'
+  text: 'Over a flight of hours (with or without GPS) no runtime state shall grow without bound: every history, queue and per-message table of the nodes is capped by size or time, the web service keeps at most MAX_PLANS (20) route plans and forgets ended lock-outs and old wrong-code addresses.'
+  code:
+    - simulation_web/simulation_web/mission_prep.py::AreaJobs.plan
+    - simulation_web/simulation_web/web_common.py::_CodeGuard._forget_old
+  match:
+    - 'test_mission_prep\.py::test_route_plans_kept_are_bounded'
+    - 'test_web_common\.py::test_the_code_guard_forgets_old_addresses'
+  evidence:
+    - {level: A, value: '2026-10-22 audit of every runtime node (estimator, camera, day / night / celestial, output, GPS / IMU / RTC, web): histories are deque(maxlen) or pruned by time, pairing tables trimmed, per-source tables popped before insert; no node writes its own growing file; only the web plans and wrong-code tables grew (fixed here)'}
+    - {level: UT, value: '35 plans → the newest 20 kept; 500 addresses × 5 wrong codes → nothing kept once the lock-outs and the window have passed'}
+  status: verified-UT
+  note: 'no multi-hour soak run on the box yet (memory measured over 430 s of real flight replay: NAV-PERF-06)'
 
 - id: NAV-DEP-04
   category: DEP
