@@ -57,6 +57,7 @@ from day_pkg.fix_sigma import SigmaCalibration, day_fix_sigma_m
 from day_pkg.frame_odometry import FrameOdometry
 from day_pkg.gyro_heading import CourseReset, GyroHeading, heading_rate_dps
 from day_pkg.map_levels import area_zooms, choose_zoom
+from day_pkg.mount_cal import MountCalibration
 from day_pkg.local_matcher import LocalMatcher
 from day_pkg.vision_nav import VisionNavigator, _en, _move, kinematic_margin_m
 
@@ -273,6 +274,32 @@ class DaySubscriber(Node):
         # when GPS stops being trusted, the sigma calibration and the map bias forget what they
         # learned in the last calib_rollback_s, so the drift is not kept as "vision error" or "map shift"
         declare_float(self, "calib_rollback_s", 60.0)
+        # The camera's boresight (mount roll/pitch) error, learned while GPS is trusted from the GPS-check
+        # matches (day_pkg.mount_cal: per position kind, a map shift and a residual delay fitted beside it)
+        # and removed from the fixes after the loss; forgotten like the map bias (calib_rollback_s). Until
+        # it is learned every fix states height x tan(mount_sigma_deg) more (Isaac Sim 2026-10-21: a 4 deg
+        # mount error 14 m at the exposure instead of 6-7 m at 250 m; 600 m: 16 outputs beyond 3 sigma).
+        self.declare_parameter("mount_cal", True)
+        declare_float(self, "mount_sigma_deg", 2.0)
+        self.declare_parameter("mount_cal_min_samples", 12)
+        # GPS may be good for the take-off only: the main source of the mount error is a PERSISTED
+        # calibration — mount_cal_file (a ground/bench measurement or a chosen flight's: JSON {"frame
+        # centre": {top_deg, right_deg, sigma_deg}, "camera pose": {...}}), else the last one learned in
+        # flight (state file day_mount, written every mount_cal_save_period_s from GPS checks older than
+        # calib_rollback_s, and at a GPS loss). Its sigma is at least mount_cal_persisted_min_sigma_deg
+        # (the camera may have been knocked since). Without any, mount_sigma_deg stays in the stated sigma.
+        self.declare_parameter("mount_cal_file", "")
+        self.declare_parameter("mount_cal_persist", True)
+        declare_float(self, "mount_cal_persisted_min_sigma_deg", 0.5)
+        declare_float(self, "mount_cal_save_period_s", 30.0)
+        # A consistent camera pose whose tilt disagrees with the attitude's (pose_tilt_guard_deg): the
+        # frame centre and the point under the camera are both candidates — the one nearer the carried
+        # position is taken and the fix states half their distance more (or the carried sigma, if less).
+        # Beyond pose_guard_refuse_deg the match is refused: the frame is not where the attitude says (or
+        # the match is wrong). Isaac Sim plane 30 m/s 2026-10-21: guarded frame centres 30-75 m off
+        # (attitude 1.3 s stale in roll changes) and one 258 m (pose 32 deg) — the wrong fixes.
+        self.declare_parameter("pose_guard_choose", True)
+        declare_float(self, "pose_guard_refuse_deg", 15.0)
         # Local matching keeps its last position when frames fail (uniform ground, blur) and
         # widens the search by max_speed_mps x the time since its last match, up to this
         # radius, instead of dropping it after max_consecutive_rejects (a retrieval-era rule).
@@ -390,6 +417,7 @@ class DaySubscriber(Node):
         self.sigma_cal = SigmaCalibration(float(self.get_parameter("sigma_floor_no_cal_m").value),
                                           int(self.get_parameter("sigma_cal_min_samples").value))
         self.calib_rollback_s = float(self.get_parameter("calib_rollback_s").value)
+        self._init_mount_cal()
         self._last_fix_sigma = self.local_sigma_m
         self.local_max_radius_m = float(self.get_parameter("local_max_radius_m").value)
         self.local_scale_tol_max = float(self.get_parameter("local_scale_tol_max").value)
@@ -887,9 +915,12 @@ class DaySubscriber(Node):
             return
         since = time.time() - self.calib_rollback_s
         n_sig, n_bias = self.sigma_cal.rollback(since), self.map_bias.rollback_bias(since)
-        if n_sig or n_bias:
+        n_mount = self.mount_cal.rollback(since) if getattr(self, "mount_cal", None) is not None else 0
+        self._save_mount_cal()
+        if n_sig or n_bias or n_mount:
             self.get_logger().info(f"[day] GPS no longer trusted: forgot the last {self.calib_rollback_s:.0f} s of "
-                                   f"GPS-learned samples (sigma calibration {n_sig}, map bias {n_bias})")
+                                   f"GPS-learned samples (sigma calibration {n_sig}, map bias {n_bias}, "
+                                   f"camera mount {n_mount})")
 
     def _calibrate_altitude(self, seq_id, img, meta):
         """GPS trusted: every gps_check_period_s, match this frame within gps_check_radius_m
@@ -914,6 +945,11 @@ class DaySubscriber(Node):
             ns = meta.get("image_stamp_ns")
             self._gyro_reset(int(ns) / 1e9 if ns else time.time(), res)   # heading known at the GPS loss
             g = self._gps_hist.at(int(ns) / 1e9) if ns else None
+            placed = self._mount_check_fix(res, meta, g)
+            if placed is None:                      # refused (pose far from the attitude): no sample
+                return
+            self._check_fix = (placed[0], placed[1], self._check_fix[2])
+            res["predicted_lat"], res["predicted_lon"] = placed
             if g is not None:                       # no GPS at the frame's instant: no sample
                 self.map_bias.bias_sample(self._check_fix[:2], g, self._heading_for_match(meta), t=self._check_fix[2])
                 # this flight's real vision error, the map bias removed as it will be after a GPS loss
@@ -1599,9 +1635,10 @@ class DaySubscriber(Node):
             return self.local_sigma_m
         v = self.track.velocity(time.time())
         alt = meta.get("altitude_m")
-        return day_fix_sigma_m(result.get("sigma_m"), self.local_sigma_floor_m,
-                               math.hypot(v[0], v[1]) if v else None, self.frame_time_sigma_s,
-                               float(alt) if alt is not None else None, self.attitude_sigma_deg)
+        s = day_fix_sigma_m(result.get("sigma_m"), self.local_sigma_floor_m,
+                            math.hypot(v[0], v[1]) if v else None, self.frame_time_sigma_s,
+                            float(alt) if alt is not None else None, self.attitude_sigma_deg)
+        return self._mount_sigma(s, result, meta)
 
     def _check_local_fix(self, result, meta, lat, lon, status):
         """A local match before it is believed: the map bias removed, then the quality gates.
@@ -1646,6 +1683,187 @@ class DaySubscriber(Node):
                 status["reacquired"] = doubt
                 return lat, lon, None
         return lat, lon, doubt + " — match rejected (a second agreeing fix would confirm it)"
+
+    # ────────────────────────────────────────────────────────────
+    # Camera mount (F33) and the pose-attitude guard's choice (F35)
+    # ────────────────────────────────────────────────────────────
+    def _init_mount_cal(self):
+        """The mount calibration and the guard parameters (mount_cal, pose_guard_*)."""
+        p_ = lambda n: self.get_parameter(n).value               # noqa: E731
+        self.mount_sigma_deg = float(p_("mount_sigma_deg"))
+        self.mount_cal = (MountCalibration(prior_deg=self.mount_sigma_deg,
+                                           min_samples=int(p_("mount_cal_min_samples")))
+                          if bool(p_("mount_cal")) else None)
+        self.pose_guard_choose = bool(p_("pose_guard_choose"))
+        self.pose_guard_refuse_deg = float(p_("pose_guard_refuse_deg"))
+        self.mount_cal_persist = bool(p_("mount_cal_persist"))
+        self.mount_cal_save_period_s = float(p_("mount_cal_save_period_s"))
+        self._mount_saved_at = time.time()
+        if self.mount_cal is not None:
+            self._load_mount_cal(str(p_("mount_cal_file")).strip(), float(p_("mount_cal_persisted_min_sigma_deg")))
+
+    MOUNT_STATE = "day_mount"
+
+    def _load_mount_cal(self, path: str, min_sigma_deg: float) -> None:
+        """The persisted mount calibration: mount_cal_file, else the last one learned in flight."""
+        data, where = None, path
+        if path:
+            try:
+                with open(path) as f:
+                    data = json.load(f)
+            except (OSError, ValueError) as e:
+                self.get_logger().error(f"[day] mount_cal_file {path} unreadable ({e}): no persisted mount calibration")
+        else:
+            data, where = state_store.load(self.MOUNT_STATE, float("inf")), "the last flight's (state day_mount)"
+        n = self.mount_cal.load(data, min_sigma_deg) if data else 0
+        if n:
+            self.get_logger().info(f"[day] camera mount calibration from {where}: "
+                                   f"{json.dumps(self.mount_cal.state())}")
+        else:
+            self.get_logger().warn(f"[day] no camera mount calibration: every fix states height x tan("
+                                   f"{self.mount_sigma_deg:g} deg) more until GPS checks measure it")
+
+    def _save_mount_cal(self, before_t=None) -> None:
+        """Persist the mount calibration learned in flight (samples taken before before_t only)."""
+        if self.mount_cal is None or not getattr(self, "mount_cal_persist", False):
+            return
+        ex = self.mount_cal.export(before_t, self._delay_known_sigma_s())
+        if not ex:
+            return
+        old = state_store.load(self.MOUNT_STATE, float("inf")) or {}
+        data = {k: v for k, v in old.items() if k in ("frame centre", "camera pose")}
+        data.update(ex)
+        data["source"] = "in-flight GPS checks " + time.strftime("%Y-%m-%d %H:%M")
+        if state_store.save(self.MOUNT_STATE, data):
+            self.get_logger().info(f"[day] camera mount calibration saved: {json.dumps(ex)}")
+
+    def _delay_known_sigma_s(self) -> float:
+        """The frame time's uncertainty for the mount fit's residual-delay term: the frame-time sigma
+        when the camera delay is set or estimated, else unknown_delay_sigma_s."""
+        sd = self._unknown_delay_sigma_s()
+        return sd if sd > 0.0 else float(getattr(self, "frame_time_sigma_s", 0.05))
+
+    @staticmethod
+    def _fix_kind(result) -> str:
+        return "camera pose" if result.get("position_from") == "camera pose" else "frame centre"
+
+    @staticmethod
+    def _fix_heading(result, meta):
+        """The azimuth of the frame top: the matcher's fitted rotation (vision), else the frame's."""
+        for v in (result.get("rotation_deg"), meta.get("heading_deg")):
+            try:
+                if v is not None and math.isfinite(float(v)):
+                    return float(v)
+            except (TypeError, ValueError):
+                pass
+        return None
+
+    @staticmethod
+    def _fix_height(meta):
+        try:
+            h = float(meta.get("altitude_m"))
+        except (TypeError, ValueError):
+            return None
+        return h if math.isfinite(h) and h > 5.0 else None
+
+    def _mount_corrected(self, kind, lat, lon, result, meta):
+        """(lat, lon, (east, north) m) of a vision position of this kind with the learned mount error removed."""
+        mc = getattr(self, "mount_cal", None)
+        if mc is None:
+            return lat, lon, (0.0, 0.0)
+        de, dn = mc.correction(kind, self._fix_heading(result, meta), self._fix_height(meta),
+                               self._delay_known_sigma_s())
+        if de or dn:
+            lat, lon = _move((lat, lon), de, dn)
+        return lat, lon, (de, dn)
+
+    def _pose_guard_refusal(self, result, meta):
+        """Why a match whose consistent pose is pose_guard_refuse_deg or more from the attitude's tilt
+        is refused (None: not refused)."""
+        if not result.get("pose_guard") or self.pose_guard_refuse_deg <= 0:
+            return None
+        try:
+            d = abs(float(result.get("pose_tilt_deg")) - self._expected_tilt(meta))
+        except (TypeError, ValueError):
+            return None
+        if d < self.pose_guard_refuse_deg:
+            return None
+        return (f"pose tilt {float(result['pose_tilt_deg']):.0f} deg vs {self._expected_tilt(meta):.0f} deg by the "
+                f"attitude (>= {self.pose_guard_refuse_deg:g}): the frame is not where the attitude says, or the "
+                "match is wrong — match rejected")
+
+    def _place_fix(self, result, meta, status, pred=None):
+        """Where a local match puts the vehicle, before the gates: the pose guard's candidates (the frame
+        centre and the point under the camera) resolved, then the learned camera mount error removed.
+        Sets result predicted_lat/lon, position_from and _guard_sigma_m; returns (lat, lon, why refused)."""
+        lat, lon = float(result["predicted_lat"]), float(result["predicted_lon"])
+        why = self._pose_guard_refusal(result, meta)
+        if why is not None:
+            return lat, lon, why
+        cands = [(self._fix_kind(result), lat, lon)]
+        if result.get("pose_guard") and result.get("pose_lat") is not None and self.pose_guard_choose:
+            cands.append(("camera pose", float(result["pose_lat"]), float(result["pose_lon"])))
+        placed = [(k,) + self._mount_corrected(k, la, lo, result, meta) for k, la, lo in cands]
+        k, lat, lon, corr = placed[0]
+        if len(placed) == 2:
+            sep = math.hypot(*_en(placed[0][1:3], placed[1][1:3]))
+            if pred is None:
+                pred = self._predicted(meta)
+            if pred is not None:
+                d = [math.hypot(*_en(c[1:3], pred[:2])) for c in placed]
+                k, lat, lon, corr = placed[int(d[1] < d[0])]
+                result["_guard_sigma_m"] = min(0.5 * sep, float(pred[2]))
+            else:
+                result["_guard_sigma_m"] = 0.5 * sep
+            status["pose_guard_choice"] = {"took": k, "apart_m": round(sep, 1),
+                                           "guard_sigma_m": round(result["_guard_sigma_m"], 1)}
+            result["position_from"] = k
+        if corr[0] or corr[1]:
+            status["mount_corr_m"] = [round(corr[0], 1), round(corr[1], 1)]
+        if getattr(self, "mount_cal", None) is not None:
+            status["mount_cal"] = self.mount_cal.state(self._delay_known_sigma_s()).get(k)
+        result["predicted_lat"], result["predicted_lon"] = lat, lon
+        status["lat"], status["lon"], status["position_from"] = lat, lon, result.get("position_from")
+        return lat, lon, None
+
+    def _mount_check_fix(self, res, meta, g):
+        """A GPS-check match: its candidates are mount samples against the GPS at the frame's instant g
+        (lat, lon; None: no sample), then it is placed like a fix (the GPS is the carried position).
+        Returns (lat, lon) placed, or None when refused."""
+        mc = getattr(self, "mount_cal", None)
+        ns = meta.get("image_stamp_ns")
+        if mc is not None and g is not None and ns is not None:
+            t = int(ns) / 1e9
+            g0 = self._gps_hist.at(t - 1.0)
+            vel = _en(g, g0) if g0 is not None else None
+            hd, h = self._fix_heading(res, meta), self._fix_height(meta)
+            seen = set()
+            for kind, la, lo in (("frame centre", res.get("centre_lat"), res.get("centre_lon")),
+                                 ("camera pose", res.get("pose_lat"), res.get("pose_lon"))):
+                if la is not None and lo is not None:
+                    mc.add(kind, _en(g, (float(la), float(lo))), hd, h, t=time.time(), vel_en=vel)
+                    seen.add(kind)
+            if not seen:                         # a matcher without the candidates: its own position
+                mc.add(self._fix_kind(res), _en(g, (float(res["predicted_lat"]), float(res["predicted_lon"]))),
+                       hd, h, t=time.time(), vel_en=vel)
+        if mc is not None and time.time() - getattr(self, "_mount_saved_at", 0.0) >= \
+                getattr(self, "mount_cal_save_period_s", 30.0) and hasattr(self, "get_logger"):
+            self._mount_saved_at = time.time()
+            self._save_mount_cal(before_t=time.time() - self.calib_rollback_s)
+        pred = (g[0], g[1], 5.0) if g is not None else None
+        lat, lon, why = self._place_fix(res, meta, {}, pred=pred)
+        return None if why else (lat, lon)
+
+    def _mount_sigma(self, s: float, result, meta) -> float:
+        """The model sigma s with the camera mount's uncertainty (height x tan(its sigma: the prior until
+        learned)) and the guard's (_guard_sigma_m) added in quadrature."""
+        mc = getattr(self, "mount_cal", None)
+        h = self._fix_height(meta)
+        if h is not None:
+            sd = (mc.sigma_deg(self._fix_kind(result), self._delay_known_sigma_s()) if mc is not None
+                  else float(getattr(self, "mount_sigma_deg", 0.0)))
+            s = math.hypot(s, h * math.tan(math.radians(sd)))
+        return math.hypot(s, float(result.get("_guard_sigma_m") or 0.0))
 
     def _publish_result(self, seq_id, meta, result):
         now      = self.get_clock().now().to_msg()
@@ -1711,6 +1929,9 @@ class DaySubscriber(Node):
         spatial_empty = bool(result.get("spatial_empty"))
         measured = (not err) and accepted and not spatial_empty and is_finite_latlon(raw_lat, raw_lon)
         gated = None
+        if measured and result.get("matcher") == "local":
+            raw_lat, raw_lon, gated = self._place_fix(result, meta, status)
+            measured = gated is None
         if measured and result.get("matcher") == "local":
             raw_lat, raw_lon, gated = self._check_local_fix(result, meta, float(raw_lat), float(raw_lon), status)
             measured = gated is None
