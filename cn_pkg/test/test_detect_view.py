@@ -1,5 +1,6 @@
 """F18: the screen bench detects stars with the product's detector (allsky.detect_spots_view), so it judges the
-stars as the field does; the fisheye detector (detect_spots) and the view one share one implementation."""
+stars as the field does; the fisheye detector (detect_spots) and the view one share one implementation.
+"""
 import numpy as np
 
 from cn_pkg import allsky
