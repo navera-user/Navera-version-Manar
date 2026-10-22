@@ -17,6 +17,8 @@ writes the same files as the Isaac container record (isaac_link.py), so summaris
 and what only the box can tell (hil_*.csv):
   hil_meta.csv    per frame: grab stamp, frame_meta receipt (live camera time), usable
   hil_pos.csv     per /navera/position: receipt, header stamp, sensor stamp (all box clock)
+  hil_out.csv     per /navera/fix (what the output gave the autopilot, the same decision as its
+                  GPS_INPUT): receipt, fix (1) / no fix (0), stated sigma — the gaps the autopilot saw
   hil_rx.csv      per second and topic: messages, largest gap (vehicle IMU over MAVLink, GPS over
                   the network, the truth stream, position)
   hil_truth_rx.csv  per truth packet: PC send time - box receipt (network delay + clock offset)
@@ -43,7 +45,7 @@ from navera_msgs.msg import NavStatus, PositionEstimate
 from rcl_interfaces.msg import ParameterDescriptor
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
-from sensor_msgs.msg import Imu
+from sensor_msgs.msg import Imu, NavSatFix
 from std_msgs.msg import Int32, String
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -135,6 +137,7 @@ class HilRecord(Node):
         self.sys_f = f("hil_sys.csv", "box,ram_mb,swap_mb,cpu_avg,cpu_max,gpu,t_cpu,t_gpu,t_tj,vdd_in_mw")
         self.units_f = f("hil_units.csv", "box,unit,state,mem_mb,cpu_s,restarts,pid")
         self.ping_f = f("hil_ping.csv", "box,rtt_ms")
+        self.out_f = f("hil_out.csv", "rx_box,fix,sigma_m")
         self.events = open(os.path.join(self.results, "events.jsonl"), "a")
         self.meta_t = {}       # frame -> box receipt of frame_meta
         self.proc_ms = {}
@@ -142,6 +145,7 @@ class HilRecord(Node):
         self.live = {}
         self.create_subscription(PositionEstimate, "/navera/position", self._on_pos, 50)
         self.create_subscription(PositionEstimate, "/navera/estimate/day", self._on_day, 10)
+        self.create_subscription(NavSatFix, "/navera/fix", self._on_fix, 50)
         self.create_subscription(PositionEstimate, "/navera/estimate/gps", self._on_gps, 10)
         self.create_subscription(NavStatus, "/navera/nav_status", self._on_nav, 10)
         self.create_subscription(String, "/day/day_status", self._on_status, 10)
@@ -152,6 +156,11 @@ class HilRecord(Node):
         for target in (self._truth_loop, self._rx_loop, self._tegra_loop, self._units_loop, self._ping_loop):
             threading.Thread(target=target, daemon=True).start()
         self.get_logger().info(f"HIL record -> {self.results}, PC offset {self.offset * 1000:.1f} ms")
+
+    def _on_fix(self, m):
+        ok = m.status.status >= 0 and math.isfinite(m.latitude)
+        sig = math.sqrt(m.position_covariance[0]) if ok and m.position_covariance[0] > 0 else float("nan")
+        self._w(self.out_f, f"{time.time():.4f},{int(ok)},{sig:.1f}")
 
     def _csv(self, name, header):
         fh = open(os.path.join(self.results, name), "a")

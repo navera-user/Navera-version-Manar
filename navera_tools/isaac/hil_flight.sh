@@ -13,7 +13,11 @@
 #       [--box-ip 192.168.1.118] [--pc-repo Navera_hil] [--kill navera-estimator@60,navera-output@120]
 #       [--stage DIR] [--prepare-only] [--pc-args "--legs 3 --radius 400 --speed 10 --cut-after 75"]
 #
-#   --kill UNIT@S,...  kill that unit's ROS node (SIGKILL, like stage_check.sh) S s after the GPS cut
+#   --kill UNIT[:NODE]@S,...  S s after the GPS cut, SIGKILL (like stage_check.sh) that unit's ROS node:
+#                      the first one (deepest first child of its launch), or the node whose script is
+#                      NODE (e.g. navera-pipeline-day:day_subscriber), or with NODE "unit" the unit's main
+#                      process (its launch: systemd restarts the whole unit). hil_kills.jsonl says when the
+#                      node was back (respawned by its launch, or the unit restarted by systemd)
 #   --prepare-only     sync the PC copy and build the staged install, fly nothing
 # Locks (shared machines): the PC flight under $PC_LOCK (one flight per lock), the box's GPU under
 # $GPU_LOCK, and $QUIET_LOCK exclusively (other CPU-heavy work on the box takes it shared).
@@ -181,27 +185,49 @@ log "GPS cut (t=$(cat "$res/gps_cut" 2>/dev/null) s)"
 IFS=, read -ra KL <<< "$kills"
 for k in "${KL[@]}"; do
   [ -n "$k" ] || continue
-  unit=${k%@*}; at=${k#*@}
+  spec=${k%@*}; at=${k#*@}
+  unit=${spec%%:*}; want=""; [ "$spec" != "$unit" ] && want=${spec#*:}
   su="${PFX}${unit#navera-}.service"
   target=$(( t_cut_ms + at * 1000 ))
   while [ "$(date +%s%3N)" -lt "$target" ]; do
     [ -f "$res/flight_done" ] && break 2; sleep 0.2
   done
   main=$(systemctl --user show -p MainPID --value "$su"); n0=$(systemctl --user show -p NRestarts --value "$su")
+  cg=$(systemctl --user show -p ControlGroup --value "$su")
   victim=$main
-  while child=$(ps -o pid= --ppid "$victim" 2>/dev/null | head -1 | tr -d ' '); [ -n "$child" ]; do victim=$child; done
+  if [ "$want" = unit ]; then
+    :                                                   # the launch itself: the whole unit restarts
+  elif [ -n "$want" ]; then
+    victim=""
+    for p in $(cat "/sys/fs/cgroup$cg/cgroup.procs" 2>/dev/null); do
+      tr '\0' ' ' < "/proc/$p/cmdline" 2>/dev/null | grep -q "/$want\.py " && { victim=$p; break; }
+    done
+    [ -n "$victim" ] || { log "no $want node in $su: kill skipped"; continue; }
+  else
+    while child=$(ps -o pid= --ppid "$victim" 2>/dev/null | head -1 | tr -d ' '); [ -n "$child" ]; do victim=$child; done
+  fi
+  node=$(tr '\0' '\n' < "/proc/$victim/cmdline" 2>/dev/null | grep -m1 -E '\.py$' | xargs -r basename)
+  [ "$want" = unit ] && node=""
   tk=$(date +%s.%N)
   kill -KILL "$victim" 2>/dev/null
-  log "KILLED $su node PID $victim ($(ps -o comm= -p "$main" 2>/dev/null)) at cut+$at s"
-  ( for _ in $(seq 120); do
-      sleep 0.5
+  log "KILLED $su ${node:-main process} PID $victim at cut+$at s"
+  ( for _ in $(seq 240); do
+      sleep 0.25
       n=$(systemctl --user show -p NRestarts --value "$su"); st=$(systemctl --user show -p ActiveState --value "$su")
+      how=""
       if [ "$n" -gt "$n0" ] && [ "$st" = active ]; then
-        echo "{\"unit\": \"$unit\", \"box\": $tk, \"pid\": $victim, \"restarted\": true, \"active_after_s\": $(python3 -c "print(round($(date +%s.%N) - $tk, 1))")}" >> "$res/hil_kills.jsonl"
+        how=systemd
+      elif [ -n "$node" ] && [ "$st" = active ]; then      # respawned alone by its launch (B23)
+        for p in $(cat "/sys/fs/cgroup$cg/cgroup.procs" 2>/dev/null); do
+          [ "$p" != "$victim" ] && tr '\0' ' ' < "/proc/$p/cmdline" 2>/dev/null | grep -q "/$node " && how=respawn
+        done
+      fi
+      if [ -n "$how" ]; then
+        echo "{\"unit\": \"$spec\", \"box\": $tk, \"pid\": $victim, \"node\": \"$node\", \"restarted\": true, \"how\": \"$how\", \"active_after_s\": $(python3 -c "print(round($(date +%s.%N) - $tk, 1))")}" >> "$res/hil_kills.jsonl"
         exit 0
       fi
     done
-    echo "{\"unit\": \"$unit\", \"box\": $tk, \"pid\": $victim, \"restarted\": false}" >> "$res/hil_kills.jsonl" ) &
+    echo "{\"unit\": \"$spec\", \"box\": $tk, \"pid\": $victim, \"node\": \"$node\", \"restarted\": false}" >> "$res/hil_kills.jsonl" ) &
   killw+=($!)
 done
 until [ -f "$res/flight_done" ]; do kill -0 $pc_pid 2>/dev/null || break; sleep 2; done
