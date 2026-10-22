@@ -53,7 +53,7 @@ python3 "$repo/navera_tools/bench/memprofile.py" --out "$out/day_mem.jsonl" $tra
   --ros-args -p matcher:=auto -p max_speed_mps:=30.0 "${day_extra[@]}" > $L/day.log 2>&1 & pids+=($!)
 day_pid=$!
 python3 "$here/isaac_link.py" --ros-args -p run_dir:="$out/run" -p results:="$out" -p lens_file:="$lens" \
-  -p scene_dir:="$scene" -p delay_s:=1.3 -p gps_cut_s:=150.0 > $L/link.log 2>&1 & pids+=($!)
+  -p scene_dir:="$scene" -p delay_s:=1.3 -p gps_cut_s:=150.0 -p camera_fps:=3.0 > $L/link.log 2>&1 & pids+=($!)
 link=$!
 until [ -f "$out/lens.yaml" ] && [ -f "$out/gps_port" ]; do
   kill -0 $link 2>/dev/null || { echo "isaac_link failed: $L/link.log"; exit 1; }; sleep 0.5
@@ -66,10 +66,10 @@ until grep -q "awaiting frames\|DayLocalizer ready\|localizer_ready=True" $L/day
   kill -0 $day_pid 2>/dev/null || { echo "day_subscriber failed: $L/day.log"; exit 1; }; sleep 1
 done
 echo "[$(date +%T)] day_subscriber ready; rendering $minutes min"
-python3 "$here/stand_in_render.py" --scene "$scene" --out "$out/run" --duration $((minutes * 60)) \
+python3 "$here/stand_in_render.py" --scene "$scene" --out "$out/run" --duration $((minutes * 60)) --fps 3 \
   > $L/render.log 2>&1 & pids+=($!)
 render=$!
-echo "t,node,pid,rss_mib" > "$out/rss.csv"
+echo "t,node,pid,rss_mib,swap_mib" > "$out/rss.csv"     # swap: on a loaded box RSS alone hides pages swapped out
 t0=$(date +%s)
 while kill -0 $render 2>/dev/null; do
   for p in "${pids[@]}"; do
@@ -77,7 +77,7 @@ while kill -0 $render 2>/dev/null; do
     # the node behind a "ros2 run" wrapper is its child python process
     for q in $p $(pgrep -P $p); do
       n=$(tr '\0' ' ' < /proc/$q/cmdline | grep -o '[a-z_]*\(node\|subscriber\|camera\|link\|render\)[a-z_]*\.py\|day_pkg.nodes.day_subscriber' | head -1)
-      [ -n "$n" ] && echo "$(( $(date +%s) - t0 )),$n,$q,$(awk '/VmRSS/{printf "%.1f", $2/1024}' /proc/$q/status)" >> "$out/rss.csv"
+      [ -n "$n" ] && echo "$(( $(date +%s) - t0 )),$n,$q,$(awk '/VmRSS/{r=$2} /VmSwap/{w=$2} END{printf "%.1f,%.1f", r/1024, w/1024}' /proc/$q/status)" >> "$out/rss.csv"
     done
   done
   sleep 30

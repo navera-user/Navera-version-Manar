@@ -35,7 +35,8 @@ the learned one, which needs the GPU: the container runs with `--gpus all`, besi
 ## Closed loop: the autopilot flies on NAVERA (`run_closed_loop.sh`)
 
 ArduPilot SITL 4.5.7 (copter, on the PC) with NAVERA's recommended parameters (GPS_TYPE 14,
-SIM_GPS_DISABLE 1, EK3_SRC1_VELXY/VELZ 0, docs/ARDUPILOT_INTEGRATION.md): its only position is
+SIM_GPS_DISABLE 1, EK3_SRC1_VELZ 0, Copter EK3_GLITCH_RAD 100, docs/ARDUPILOT_INTEGRATION.md; `--set
+K=V,...` adds or overrides parameters): its only position is
 NAVERA's `GPS_INPUT` (navera_output `vehicle_output_node`, forward_degraded, `--sigma` stated).
 `sitl_demo.py` streams SITL's truth to Isaac Sim (the vehicle and its gimballed camera) and to
 the link (IMU, baro, NMEA GPS), takes off on GPS, flies a 500 m diamond at 250 m / 8 m/s, cuts
@@ -59,6 +60,18 @@ run_closed_loop.sh --name endur_2h --endurance 7200 --cut-after 12 --sigma 15 --
 2026-10-22 (`endur_2h`): EKF failsafe LAND 60.5 min after the cut — the autopilot's EKF velocity (no
 velocity source) drifted in growing episodes and flew the vehicle off the map; NAVERA's fixes flat
 (~15 m at the stated time, 6 m at exposure, 0 wrong) the whole hour.
+
+### Soak on the Jetson without Isaac Sim (`memory_soak.sh`, F40)
+
+`memory_soak.sh OUT [minutes] [--no-trace] [-- day_subscriber -p k:=v ...]` runs NAVERA's real
+chain on the Jetson for hours without the PC: `stand_in_render.py` writes an Isaac-like run
+directory (frames cut from the scene's orthophoto along a 500 m circle at 250 m, 8 m/s — no relief,
+no 3-D, no light: not an accuracy test), `isaac_link.py` turns it into the real camera, IMU, baro
+and NMEA GPS exactly as in the closed loop (1.3 s camera delay, GPS cut at 150 s), and gps_node,
+estimator, live_camera and day_subscriber run as in `run_navera_nodes.sh`; day_subscriber under
+`navera_tools/bench/memprofile.py` (tracemalloc top growth by source line, torch CUDA memory, gc
+counts, node containers, every 60 s -> `day_mem.jsonl`), every node's RSS -> `rss.csv`. Own ROS
+domain (refused if another process uses it), GPU lock held for the whole run.
 
 ## Results (2026-10-21, simulation only — Isaac Sim scene, not a flight)
 
