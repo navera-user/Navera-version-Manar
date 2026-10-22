@@ -113,7 +113,8 @@ def main():
                         f"'NAVERA - live error' and ~1.5 min later 'NAVERA - Isaac Sim flight' open, ~9 min.\n")
         t0 = time.time()
         args = f"{args} {a.extra}".strip()
-        cmd = (f"rm -rf ~/navera_results/{run}; {'NAVERA_ISAAC_WS=' + a.ws + ' ' if a.ws else ''}bash {a.repo}/navera_tools/isaac/run_closed_loop.sh --name {run} "
+        env = f"NAVERA_ISAAC_WS={a.ws} " if a.ws else ""
+        cmd = (f"rm -rf ~/navera_results/{run}; {env}bash {a.repo}/navera_tools/isaac/run_closed_loop.sh --name {run} "
                f"--hold 5 {args} > ~/navera_{run}.out 2>&1")
         r = sh(cmd, a.ssh)
         rec = dict(run=run, condition=n, what=what, args=args, minutes=round((time.time() - t0) / 60, 1), rc=r.returncode)
