@@ -37,8 +37,11 @@ The vehicle's autopilot treats whatever NAVERA sends as a GPS. The rules:
   acceleration, or max_speed_mps x time without a velocity). An autopilot lands
   on a 5 s silence (simulator, 2026-10-15) although the vehicle has hardly moved
   from where it was last seen. Past the bound, or once the grown accuracy exceeds
-  max_forward_sigma_m, it is "no fix" again. Only a forwarded estimate is bridged
-  (never a GPS fix), only while the arbiter is alive.
+  max_forward_sigma_m, it is "no fix" again. Only a forwarded non-GNSS position is
+  bridged — an estimate, or a vision fix whose accuracy is calibrated (the arbiter
+  says FIX for it) — never a GPS fix, only while the arbiter is alive. A vision FIX
+  left out of the bridge let one 8.7 s pipeline stall reach ArduPilot as "no fix":
+  EKF3 timed its position out after 7 s and the copter landed (Isaac endur2, 2026-10-22).
 """
 import json
 import math
@@ -255,10 +258,17 @@ class Held:
     sent_vel: Optional[tuple] = None
 
 
+def bridgeable(out: Output) -> bool:
+    """A position a later gap may be bridged after: a forwarded non-GNSS one — an estimate, or a
+    vision / celestial FIX (calibrated accuracy). Never a GPS fix, never "no fix".
+    """
+    return out.kind == KIND_ESTIMATED or (out.kind == KIND_FIX and not out.gnss)
+
+
 def hold(out: Output, t: float, ground_vel: Optional[tuple]) -> Optional[Held]:
-    """What to remember of a decision: only a forwarded estimate (not a GPS fix)."""
-    if out.kind != KIND_ESTIMATED or not (math.isfinite(out.lat) and math.isfinite(out.lon)
-                                          and math.isfinite(out.sigma_h_m)):
+    """What to remember of a decision: only a bridgeable one (not a GPS fix)."""
+    if not bridgeable(out) or not (math.isfinite(out.lat) and math.isfinite(out.lon)
+                                   and math.isfinite(out.sigma_h_m)):
         return None
     gv = tuple(float(v) for v in ground_vel) if ground_vel is not None and all(
         math.isfinite(v) for v in ground_vel) else None

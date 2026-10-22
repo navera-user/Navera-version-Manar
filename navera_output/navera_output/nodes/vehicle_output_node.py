@@ -35,6 +35,7 @@ Parameters:
                                  (the last one carried along its velocity, sent about once a
                                  second with an accuracy growing with the gap), then "no fix".
                                  0 = never. Only with forward_degraded; never for a GPS fix
+                                 (a vision FIX is bridged like an estimate)
     bridge_after_s       (2.5)   the bridge starts when nothing was sent for this long
     bridge_period_s      (1.0)   and repeats at this period
     bridge_accel_mps2    (0.5)   unseen acceleration of the vehicle in the accuracy growth
@@ -85,8 +86,8 @@ from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 
 from navera_output import mavlink_out, mavlink_url, nmea
-from navera_output.policy import (KIND_ESTIMATED, KIND_FIX, KIND_NONE, Config, bridge, decide,
-                                  for_nmea, hold, reacquire)
+from navera_output.policy import (KIND_ESTIMATED, KIND_FIX, KIND_NONE, Config, bridge, bridgeable,
+                                  decide, for_nmea, hold, reacquire)
 
 
 class VehicleOutputNode(Node):
@@ -310,11 +311,12 @@ class VehicleOutputNode(Node):
         or None to wait (a bridge is pending: nothing is sent yet, the autopilot is not told "no fix"
         for a gap that may be bridged).
         """
-        if out.kind == KIND_FIX:
+        if out.kind == KIND_FIX and out.gnss:
             self._held = self._last_tx = None
             self._bridging = False
             return out
-        pending = (out.kind == KIND_ESTIMATED and self._pos is self._sent_pos) or (out.kind == KIND_NONE and out.soft)
+        # a vision FIX (calibrated accuracy) is bridged like an estimate: its gaps are the camera's
+        pending = (bridgeable(out) and self._pos is self._sent_pos) or (out.kind == KIND_NONE and out.soft)
         if not pending or self._held is None or self.cfg.bridge_max_s <= 0 or self._last_tx is None:
             if self._bridging and out.kind == KIND_NONE:
                 self._bridging = False
