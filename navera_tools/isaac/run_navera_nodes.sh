@@ -11,11 +11,14 @@
 #
 # Environment: RUN (run name), DAY_ARGS (extra day_subscriber -p ...), CAM_ARGS (extra live_camera -p ...), GIMBAL (true: stabilised camera), VEHICLE_OUT (pymavlink URL of the autopilot), DEGRADED_SIGMA, MAX_SPEED (m/s), GROUND_ALT (site elevation m), LINK_ARGS
 # (extra "-p name:=value" for isaac_link), MATCHER (auto = DISK+LightGlue on the GPU | local = SIFT).
+# HIL=1 (run_hil.sh, hardware in the loop): NAVERA runs on the real box, not here — only the link
+# (the vehicle's camera as an RTSP stream, its GPS as NMEA on TCP: LINK_ARGS) and the record.
 export ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-77} ROS_LOCALHOST_ONLY=1
 source /opt/ros/humble/setup.bash             # (not under set -u: ROS setup reads unset variables)
 set -u
 cd /ws
 pk="navera_msgs navera_common day_pkg camera_pkg navera_estimator gps_pkg navera_output"
+[ "${HIL:-0}" = 1 ] && pk="navera_msgs"
 if ! colcon build --symlink-install --packages-up-to $pk > /results/colcon.log 2>&1; then
   echo "colcon build failed: /results/colcon.log" >&2; exit 1
 fi
@@ -26,6 +29,16 @@ L=/results/logs; mkdir -p $L
 rm -f /results/gps_port /results/lens.yaml /results/navera_ready /results/finished /results/gps_cut   # a re-used run name
 share=$(ros2 pkg prefix navera_estimator)/share/navera_estimator/config/estimator_params.yaml
 pids=()
+if [ "${HIL:-0}" = 1 ]; then
+  python3 /ws/src/navera/navera_tools/isaac/isaac_link.py --ros-args -p run_dir:=/isaac/runs/$RUN \
+    -p results:=/results -p lens_file:=/data/lens/hik_visible_lens.yaml -p ros_camera:=false $LINK_ARGS \
+    > $L/link.log 2>&1 &
+  link=$!
+  trap 'kill $link 2>/dev/null; exit 0' INT TERM
+  touch /results/navera_ready                           # NAVERA itself is the box's business
+  wait $link
+  exit 0
+fi
 ros2 run navera_estimator estimator_node.py --ros-args --params-file "$share" \
   -p max_speed_mps:=${MAX_SPEED:-45.0} > $L/estimator.log 2>&1 & pids+=($!)
 ros2 run day_pkg day_subscriber.py --ros-args -p matcher:=${MATCHER:-auto} \

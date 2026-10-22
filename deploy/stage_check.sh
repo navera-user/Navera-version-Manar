@@ -3,13 +3,18 @@
 # stage_check.sh — validate the NAVERA deployment WITHOUT root and without a deployed box.
 #
 #   deploy/stage_check.sh [--stage DIR] [--reuse] [--keep] [--kill UNIT]... [--no-day]
+#                         [--env-extra FILE] [--nice N]
 #
 #   --stage DIR   where the staged root goes (default ~/.cache/navera-stage)
 #   --reuse       keep an existing staged build (no colcon build; the code is re-synced)
 #   --keep        leave the staged user units running at the end (default: stop and remove)
 #   --kill UNIT   product unit whose ROS node is killed to prove the restart (repeatable;
-#                 default navera-estimator)
+#                 default navera-estimator; "none": no restart test)
 #   --no-day      do not stage the day pipeline (it loads the vision models: GPU and ~2-3 GB)
+#   --env-extra FILE  appended to the staged navera.env after this test's own choices (later
+#                 lines win): another installation to stage — the hardware-in-the-loop test
+#                 (navera_tools/isaac/hil_flight.sh) stages a box fed by a simulator over the network
+#   --nice N      niceness of the staged units (default 19; 0 = as deployed, for timing measurements)
 #
 # Steps, each reported:
 #   1. deploy/install.sh --root DIR      the real installer, staged (no apt/useradd/chown/pip)
@@ -40,7 +45,7 @@ set -uo pipefail
 case "${1:-}" in -h|--help) sed -n '2,/^set -uo/p' "$0" | sed '$d' | sed 's/^# \{0,1\}//'; exit 0 ;; esac
 
 SRC="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
-STAGE="$HOME/.cache/navera-stage"; REUSE=0; KEEP=0; KILLS=(); DAY=1
+STAGE="$HOME/.cache/navera-stage"; REUSE=0; KEEP=0; KILLS=(); DAY=1; ENV_EXTRA=""; NICE=19
 while [ $# -gt 0 ]; do
   case "$1" in
     --stage) shift; STAGE="$1" ;;
@@ -48,11 +53,16 @@ while [ $# -gt 0 ]; do
     --keep) KEEP=1 ;;
     --kill) shift; KILLS+=("$1") ;;
     --no-day) DAY=0 ;;
+    --env-extra) shift; ENV_EXTRA="$1" ;;
+    --nice) shift; NICE="$1" ;;
     *) echo "unknown option: $1 (--help)" >&2; exit 2 ;;
   esac
   shift
 done
 [ ${#KILLS[@]} -eq 0 ] && KILLS=(navera-estimator)
+[ "${KILLS[*]}" = none ] && KILLS=()
+[ -z "$ENV_EXTRA" ] || [ -r "$ENV_EXTRA" ] || { echo "--env-extra $ENV_EXTRA: not readable" >&2; exit 2; }
+case "$NICE" in ''|*[!0-9-]*) echo "--nice $NICE: not a number" >&2; exit 2;; esac
 STAGE="$(realpath -m "$STAGE")"
 DOMAIN="${NAVERA_STAGE_DOMAIN:-87}"; PORT="${NAVERA_STAGE_PORT:-8281}"
 WS=/home/navera/isaac_ros_common
@@ -124,6 +134,9 @@ EOF
 for v in NAVERA_MBTILES DAY_DATASET_DIR TORCH_HOME NAVERA_DAY_CSV NAVERA_DAY_IMAGES_DIR; do
   [ -n "${!v:-}" ] && echo "$v=${!v}" >> "$ENV"
 done
+if [ -n "$ENV_EXTRA" ]; then
+  { echo; echo "# ── --env-extra $ENV_EXTRA ──"; cat "$ENV_EXTRA"; } >> "$ENV"
+fi
 # what navera-discover would write on a box without the I2C IMU / clock (not run: it probes hardware)
 printf 'NAVERA_BOX_IMU=0\nNAVERA_BOX_RTC=0\n' > "$STAGE/var/lib/navera/discovered.env"
 : > "$STAGE/var/lib/navera/settings.env"
@@ -148,7 +161,7 @@ for u in $UNITS; do
       -e "s#^ExecStart=/home/navera/#ExecStart=$pre$STAGE/home/navera/#" \
       -e "s#navera-\([a-z-]*\)\.service#$PFX\1.service#g" \
       -e "s#^WantedBy=multi-user.target#WantedBy=default.target#" \
-      -e "s#^\[Service\]#[Service]\nEnvironment=NAVERA_WS=$STAGE$WS ROS_LOG_DIR=$STAGE/var/log/ros$extra\nNice=19#" \
+      -e "s#^\[Service\]#[Service]\nEnvironment=NAVERA_WS=$STAGE$WS ROS_LOG_DIR=$STAGE/var/log/ros$extra\nNice=$NICE#" \
       "$src" > "$dst"
   staged_units+=("$PFX${u#navera-}.service")
 done
@@ -217,7 +230,7 @@ code=$(curl -s -o /dev/null -w '%{http_code}' -m 3 "http://127.0.0.1:$PORT/healt
 [ "$code" = 200 ] && verdict PASS "web bridge /health on :$PORT answers 200" || verdict FAIL "web bridge /health on :$PORT: HTTP $code"
 
 # ---------------------------------------------------------------- 5. restart test
-for ku in "${KILLS[@]}"; do
+for ku in ${KILLS[@]+"${KILLS[@]}"}; do
   unit="$PFX${ku#navera-}.service"
   step "5. restart test: kill the ROS node of $unit"
   main=$(systemctl --user show -p MainPID --value "$unit")

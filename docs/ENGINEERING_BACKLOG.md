@@ -131,7 +131,7 @@ Status: ✅ done · 🔧 in progress · ⬜ open
 | OUT-1 | C | No velocity sent: ArduPilot fused zero / stale GPS velocity → EKF failsafe (SITL) — GPS velocity now forwarded; ArduPilot must use position only (EK3_SRC1_VELXY 0) | ✅ 2809ea0 |
 | OUT-2 | H | Vision fix sent as 2D: ignored by ArduPilot / PX4 — `fix_type_without_alt` (default 3, altitude flagged ignored) | ✅ 2809ea0 |
 | OUT-3 | H | Same fix re-sent at 5 Hz with fresh timestamps ("stopped, then jumped") — each position now sent once | ✅ 2809ea0 |
-| OUT-4 | M | Validate on PX4 and on a real autopilot | ⬜ |
+| OUT-4 | M | Validate on PX4 and on a real autopilot — PX4 output (`HIL_GPS`) done and flown in PX4 v1.15.4 SITL (PX4_INTEGRATION.md §4); real autopilot / PX4 vehicle open | ⬜ |
 | OUT-6 | M | Forwarded DEGRADED positions stated with the configured accuracy even when the source states a worse one (celestial ~55 km sent as 300 m) — the larger is sent | ✅ 3af4e62 |
 | CN-1 | C | Celestial never run end to end: solver fit anchored off-centre (~1°, 111 km), `--resort` 46′, astrometry Python helpers broken on NumPy 1.26 — fixed, 2.9′ | ✅ 11f5e6e |
 | CN-2 | H | Celestial attitude: IMU wired (mounting, declination), sampled at the frame's exposure (was at processing: degrees off in flight) | ✅ 11f5e6e, 84e9619 |

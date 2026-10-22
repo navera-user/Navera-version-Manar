@@ -403,7 +403,7 @@ writes to a port once it has identified an autopilot there.
 | **Attitude** (`NAVERA_SENSOR_SOURCE`) | box IMU (BNO085, if fitted) | autopilot | ROS IMU topic, then the Insta360 kit's own IMU | warning: pictures unusable |
 | **GPS** (`NAVERA_GPS_SOURCE`) | box GPS receiver | the autopilot's **second** GPS, only if it is a real receiver | ROS GPS topic | GPS service idle; NAVERA needs a GPS fix at start |
 | **Camera** (`NAVERA_CAMERA_INPUT`) | the Insta360 kit (One R in Android mode) | USB, then CSI | ROS image topic | warning |
-| **Output** | an autopilot found → NAVERA's position over MAVLink on the same link (not for PX4) | a ROS vehicle found → `/navera/fix` | — | message: set `NAVERA_NMEA_PORT` for an NMEA GPS input |
+| **Output** | an autopilot found → NAVERA's position over MAVLink on the same link (`HIL_GPS` for PX4) | a ROS vehicle found → `/navera/fix` | — | message: set `NAVERA_NMEA_PORT` for an NMEA GPS input |
 
 More rules:
 
@@ -414,8 +414,9 @@ More rules:
   a camera points.
 - **The autopilot's second GPS** is used only if the autopilot's `GPS_TYPE2` says it is a real
   receiver. It is never type 14 (the MAVLink GPS that NAVERA itself feeds — that would be a loop).
-- **PX4 autopilot found:** NAVERA does not send its position over MAVLink (PX4 ignores that
-  message) and says so in the report.
+- **PX4 autopilot found:** NAVERA sends its position as `HIL_GPS` (PX4 ignores `GPS_INPUT`) and
+  the report checks the PX4 parameters it needs (section 5.6): a "CHECK PX4 …" line names each
+  one to change on the autopilot.
 - **Detection runs once per boot.** A device plugged in later, or a vehicle computer that boots
   after NAVERA, is not seen. Reboot, or:
   ```bash
@@ -908,17 +909,30 @@ With NMEA the port carries no MAVLink: the vehicle link needs its own port.
 
 ### 5.6 PX4
 
-**Not tested with NAVERA.** What is possible today:
+**Tested in PX4 SITL only (v1.15.4).** PX4 does not read `GPS_INPUT`: NAVERA sends it the same
+position as **`HIL_GPS`**. Detection does this by itself when it sees a PX4 autopilot
+(`NAVERA_MAVLINK_MESSAGE=hil_gps`); you set the PX4 side:
 
-| Function | With PX4 |
-|---|---|
-| MAVLink output (`GPS_INPUT`) | **Does not work** — PX4 ignores this message. Detection leaves it off for PX4; if you write `NAVERA_MAVLINK_URL`, write `off` |
-| NMEA output | GPS pass-through only: `GPS_1_CONFIG` = the port, `GPS_1_PROTOCOL = 6` (NMEA), `SER_xxx_BAUD` = `NAVERA_NMEA_BAUD`. Whether PX4's GPS quality checks accept NAVERA's sentences has not been checked: test on the bench first |
-| Vision positions to PX4 | **Not supported yet** (no supported path) |
-| Vehicle link | probably usable, not verified |
-| Operator view, `/navera/fix` | available |
+| PX4 parameter | Value | Why |
+|---|---|---|
+| `MAV_USEHILGPS` | 1 | PX4 reads NAVERA's position only then |
+| `EKF2_GPS_CTRL` | 1 | position only: no velocity, no height from NAVERA |
+| `EKF2_HGT_REF` | 0 | height from the barometer (reboot) |
+| `EKF2_GPS_CHECK` | 240 | a vision position has no satellites and a 10–30 m accuracy |
+| `EKF2_GPS_V_GATE` | 100 | else PX4 may declare "Navigation failure" during the take-off |
+| `COM_POS_FS_EPH` | 25 | else PX4 declares a vision-fed position invalid at 12.5 m |
+| `EKF2_NOAID_NOISE` | ≥ `NAVERA_DEGRADED_SIGMA_M` | else PX4 trusts a vision position more than stated |
+| `NAV_ACC_RAD` (multicopter) | 25 | waypoint radius larger than the vision error |
 
-When NAVERA reports "no fix", PX4 sees its GPS lose the fix and its own failsafe acts.
+The detection report (`check_box.py`) shows a **CHECK PX4 …** line for each wrong value it can
+read. NAVERA uses the autopilot's own system id (written by detection): PX4 ignores `HIL_GPS` from
+any other id.
+
+When NAVERA has no position for about 5 s (GPS lost with vision withheld, a vision gap, the output
+service restarting), PX4 declares its position invalid and starts **its own failsafe** (a
+multicopter in a mission descends without position control): configure it. When NAVERA's
+positions return, PX4 resumes the mission. NMEA output to PX4: GPS pass-through only (its
+sentences carry no accuracy). Details and the simulation results: docs/PX4_INTEGRATION.md.
 
 ### 5.7 Checks after wiring
 
@@ -931,7 +945,7 @@ sudo systemctl start navera-gps     # back to 3D fix
 ```
 
 In the logs (appendix B): `journalctl -u navera-vehicle-link -n 20` shows
-"connected to ArduPilot (system 1)"; `journalctl -u navera-output -n 20 | grep -i nothing` must be
+"connected to ArduPilot (system 1)" (or PX4); `journalctl -u navera-output -n 20 | grep -i nothing` must be
 empty (otherwise the autopilot receives nothing from NAVERA).
 
 Details: `docs/ARDUPILOT_INTEGRATION.md`, `docs/PX4_INTEGRATION.md`.
@@ -1037,8 +1051,13 @@ check your camera's own URL). Keep the quotes:
 
 ```
 NAVERA_CAMERA_INPUT=gst
-NAVERA_CAMERA_GST_PIPELINE="rtspsrc location=rtsp://<user>:<password>@<camera-ip>:554/Streaming/Channels/201 latency=0 ! decodebin ! videoconvert ! video/x-raw,format=BGR ! appsink name=sink drop=true max-buffers=1 sync=false"
+NAVERA_CAMERA_GST_PIPELINE="rtspsrc location=rtsp://<user>:<password>@<camera-ip>:554/Streaming/Channels/201 latency=0 ! rtph264depay ! video/x-h264,stream-format=byte-stream,alignment=au ! nvv4l2decoder ! nvvidconv ! video/x-raw,format=BGRx ! videoconvert ! video/x-raw,format=BGR ! appsink name=sink drop=true max-buffers=1 sync=false"
 ```
+
+The box decodes H.264 / H.265 in hardware (`nvv4l2decoder`) and has no `h264parse` or software
+decoder, so a pipeline with `decodebin` finds no decoder for an RTSP camera and never delivers a
+frame (measured 2026-10-22 in the hardware-in-the-loop test). Keep the byte-stream caps shown;
+an H.265 camera: `rtph265depay ! video/x-h265,stream-format=byte-stream,alignment=au ! nvv4l2decoder`.
 
 Other camera settings: `NAVERA_CAMERA_SIZE` (default 1920x1080; must be a mode the camera
 delivers), `NAVERA_CAMERA_FPS` (pictures offered per second, default 1).

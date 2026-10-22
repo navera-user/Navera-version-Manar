@@ -86,6 +86,75 @@ autopilot fed only by NAVERA never sets its EKF origin — the link therefore dr
 gps_node with NMEA. (5) `hik_visible_lens_2026-10-20.yaml` has no `model: fisheye`: NAVERA would
 read it as pinhole (47 deg instead of 77 deg).
 
+## Hardware in the loop: the real box flies (`hil_flight.sh`, on the Jetson)
+
+NAVERA runs on the Jetson **as deployed** — the product's systemd units, staged as user units by
+`deploy/stage_check.sh --env-extra` (same install, wrappers, launch files, `navera.env`), nice 0 —
+and the PC only simulates the world and the vehicle (`run_hil.sh`, started by the box over ssh):
+
+```
+ PC (WSL)                                              Jetson (staged product units, ROS domain 87)
+ Isaac Sim -> isaac_link camera model -> ffmpeg x264 -> mediamtx RTSP :8564 --LAN--> navera-pipeline-day
+                                                                         (gst: rtspsrc ! nvv4l2decoder)
+ isaac_link NMEA receiver (5 Hz, jammed after the cut) --- TCP :10117 --> navera-gps (network source)
+ ArduPilot SITL -I5 SERIAL1 (921600) ------------------- TCP :5812  <--> navera-vehicle-link (attitude, baro;
+                                                                          relays navera-output's GPS_INPUT)
+ sitl_demo truth (SIM_STATE 50 Hz + EKF) ---------------- UDP :15531 --> hil_record.py (+ tegrastats, units)
+```
+
+```bash
+navera_tools/isaac/hil_flight.sh --name hil_base1 --kill navera-estimator@180          # ~10 min
+navera_tools/isaac/hil_flight.sh --name hil_endur30 --kill navera-pipeline-day@1500 \
+    --pc-args "--legs 32 --radius 400 --speed 10 --cut-after 75 --alt 250 --duration 2700"
+python3 navera_tools/isaac/hil_summarise.py ~/.navera_sim/isaac/hil/<name>      # recompute
+```
+It waits for the PC lock, the box's GPU lock and a quiet box; results in `~/.navera_sim/isaac/hil/<name>`
+(`hil_summary.json`, `hil_report.md`, `hil_*.csv`, `logs/`, `pc/`). Same mission as campaign `c3_base`
+(copter 250 m, gimbal, 3 legs r 400 m at 10 m/s, GPS cut 75 s after altitude, sigma 15 m).
+Differences from the container runs: attitude is the autopilot's (SITL `ATTITUDE`, 50 Hz over MAVLink),
+not isaac_link's IMU model; the camera frames cross a real H.264 encode / RTSP / hardware decode.
+
+### Result hil_base1 (2026-10-22, SIMULATION feeding the real box)
+
+GPS-denied from the cut to the estimator kill (180 s, 344 frames) vs the container baseline c3_base
+(whole denied phase, before F31's staged delay apply, so the "vs stamp" column is not like for like):
+
+| | HIL (real box) | container c3_base |
+|---|---|---|
+| matched after the cut | 95.6 % | 98.7 % |
+| fix error vs stamp med / p90 / max | 6.6 / 10.4 / 13.9 m | 12.8 / 20.7 / 30.0 m |
+| fix error vs true exposure | 8.5 / 12.6 / 16.2 m | 6.5 / 12.2 / 14.8 m |
+| wrong fixes (> 50 m) | 0 | 0 |
+| output error | 6.8 / 10.7 / 22.8 m | 12.8 / 20.7 / 30.0 m |
+| autopilot EKF error | 10.3 / 22.7 / 39.8 m | 14.6 / 28.6 / 40.7 m |
+| day ms/frame (frame_meta -> frame_done) | 344 / 404 / 1277 (Orin Nano, DISK+LightGlue) | 429 / 538 / 1479 (RTX 4060 shared with Isaac) |
+
+Latency per measured fix (median / p90): stream send -> box grab 36 / 74 ms; grab -> frame_meta
+60 / 71 ms; day pipeline 341 / 403 ms; estimator 5 / 9 ms; box position -> autopilot's GPS_RAW_INT
+160 / 262 ms; exposure -> /navera/position 1.8 / 1.9 s, of which 1.3 s is the simulated camera delay
+(auto_latency applied 1.70 s in flight). Box: RAM 5.4 GB median / 6.4 GB max (+1.8 GB swap, other
+jobs included), day pipeline 2.7-3.0 GB, CPU 49 % median, GPU 11 % median / 92 % p90, Tj <= 59.6 C,
+VDD_IN 8.2 W median / 12.7 W max. Network (Wi-Fi box, wired PC): truth UDP one-way jitter
+24 / 31 / 138 ms above its minimum; vehicle IMU 50 Hz, largest gap 348 ms; NMEA 5 Hz, largest gap 450 ms.
+Restart test: the estimator node SIGKILLed at cut+180 s -> systemd restarted it (RestartSec 10),
+/navera/position back after 15.4 s; the autopilot lost its GPS 2.3 s after the kill and ArduPilot's
+EKF failsafe switched to LAND 7.6 s after it; GPS back at 21.5 s but the copter stayed in LAND and
+landed 606 m from home: one crash of a critical node during GPS denial ends the mission.
+
+### Result hil_endur30 (2026-10-22): 25 min GPS-denied on the real box
+
+The same diamond 32 legs (~8 laps); GPS cut at t = 241 s, day pipeline killed at cut+1500 s.
+Over those 1500 s (2838 frames): matched 97.2 %, fix error vs stamp 5.4 / 9.5 / 17.2 m, vs exposure
+6.8 / 11.5 / 18.3 m, 0 wrong, output 5.5 / 9.8 / 28.3 m, autopilot EKF 8.0 / 19.4 / 35.4 m,
+day 342 / 401 / 1385 ms per frame. No restart, no drift of the box over 25 min: RAM 5.67 GB median /
+5.71 GB max (day pipeline 2.93 / 2.96 GB), CPU 47 % median, Tj <= 59.8 C, VDD_IN 8.4 W median.
+Exposure -> /navera/position 1.8 / 2.1 / 3.3 s (1.3 s simulated); stream send -> grab 42 / 296 / 474 ms
+(Wi-Fi: truth UDP one-way jitter 72 / 100 / 392 ms above its minimum, TCP round trip 3.1 / 7.0 / 48.5 ms);
+box position -> autopilot GPS 209 / 276 ms. The delay started from the one learned in hil_base1 and
+stored with the camera (F31: 1.70 s). Day pipeline SIGKILLed: restarted by systemd, /navera/position
+back after 25.5 s; the autopilot lost its GPS after 2.9 s, EKF failsafe LAND after 7.8 s, landed
+627 m from home (as hil_base1: a restart gap longer than ArduPilot's EKF tolerance ends the mission).
+
 ## Run (on the PC, from WSL)
 
 ```bash

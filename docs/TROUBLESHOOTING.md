@@ -215,7 +215,7 @@ enabled. Fix (only with a measured accuracy): `NAVERA_FORWARD_DEGRADED=true` and
 | The autopilot fuses a stale GPS velocity after GPS loss (vision sends none) | `EK3_SRC1_VELXY`, `EK3_SRC1_VELZ` | set both to 0 (ARDUPILOT_INTEGRATION.md §3) |
 | Stated accuracy too optimistic: the EKF rejects positions that jump more than it was told | `NAVERA_DEGRADED_SIGMA_M` vs your measured error | state the measured value (simulation: ±300 m stated for a 351 m median error → EKF failsafe in 45 s). Above 100 m ArduPilot uses 100 m anyway (ARDUPILOT_INTEGRATION.md §3) |
 | Vision forwarded over NMEA (`NAVERA_NMEA_FORWARD_DEGRADED=true`) | navera.env | NMEA has no accuracy: the autopilot trusts it as a ~0.5 m GPS — turn it off, use MAVLink |
-| PX4: nothing arrives over MAVLink | — | PX4 ignores `GPS_INPUT` (PX4_INTEGRATION.md): `NAVERA_MAVLINK_URL=off`, NMEA pass-through |
+| PX4: no GPS on the ground station although NAVERA has a fix | discovery report (`check_box.py`): CHECK PX4 … lines; `journalctl -u navera-output \| grep HIL_GPS` | PX4 reads NAVERA only as `HIL_GPS` with `MAV_USEHILGPS = 1`, from its own system id (`NAVERA_MAVLINK_SYSID`), and needs `EKF2_GPS_CTRL 1`, `EKF2_HGT_REF 0`, `EKF2_GPS_CHECK 240` (PX4_INTEGRATION.md §2); `NAVERA_MAVLINK_MESSAGE=gps_input` is ignored by PX4 |
 | Vision gaps over uniform terrain (no position for seconds) | `/day/day_status` reasons | route over textured ground; this is a known limitation |
 | Latency not compensated | `GPS_DELAY_MS`; `sensor_stamp` vs `header.stamp` in `/navera/position` | ARDUPILOT_INTEGRATION.md §5 |
 | No real GPS fix at power-on (origin not set; arming refused) | GCS messages | power on with GPS, or send `SET_GPS_GLOBAL_ORIGIN` |

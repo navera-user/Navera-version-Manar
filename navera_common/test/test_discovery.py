@@ -238,12 +238,51 @@ def test_discovery_runs_with_ros_domain_auto(monkeypatch):
     dsc.discover({"ROS_DOMAIN_ID": "42", "NAVERA_DISCOVER_ROS_DOMAINS": "7"}, ros_wait_s=0.1)
 
 
-def test_px4_gets_no_mavlink_output_and_the_imu_address_is_kept():
+PX4_OK = {"MAV_USEHILGPS": 1, "EKF2_GPS_CTRL": 1, "EKF2_HGT_REF": 0, "EKF2_GPS_CHECK": 240, "SYS_HAS_GPS": 1,
+          "EKF2_GPS_V_GATE": 100, "COM_POS_FS_EPH": 5, "EKF2_NOAID_NOISE": 10}
+
+
+def test_px4_gets_hil_gps_through_the_relay_and_the_imu_address_is_kept():
+    """PX4 has no GPS_INPUT handler: its output is HIL_GPS (MAV_USEHILGPS), relayed by vehicle_link."""
     px4 = dict(AP, autopilot=12)
     d = decide({"serial": [px4], "i2c": {"imu": {"bus": 1, "address": "0x4b"}},
-                "autopilot_streams": STREAMS}, {})
-    assert "NAVERA_MAVLINK_URL" not in d["settings"] and any("PX4" in r for r in d["report"])
-    assert d["settings"]["NAVERA_BOX_IMU_ADDR"] == "0x4b"
+                "autopilot_streams": dict(STREAMS, px4_params=PX4_OK)}, {})
+    s = d["settings"]
+    assert s["NAVERA_MAVLINK_URL"] == "udpout:127.0.0.1:14650" and s["NAVERA_MAVLINK_MESSAGE"] == "hil_gps"
+    assert s["NAVERA_MAVLINK_SYSID"] == "1"                  # PX4 reads HIL_GPS only from its own id
+    assert any("PX4" in r and "HIL_GPS" in r for r in d["report"])
+    assert not any(r.startswith("CHECK") for r in d["report"]), d["report"]
+    assert s["NAVERA_BOX_IMU_ADDR"] == "0x4b"
+    # off stays off; a written message is kept, gps_input to PX4 is a CHECK
+    d = decide({"serial": [px4], "autopilot_streams": STREAMS}, {"NAVERA_MAVLINK_URL": "off"})
+    assert "NAVERA_MAVLINK_MESSAGE" not in d["settings"]
+    d = decide({"serial": [px4], "autopilot_streams": dict(STREAMS, px4_params=PX4_OK)},
+               {"NAVERA_MAVLINK_MESSAGE": "gps_input"})
+    assert "NAVERA_MAVLINK_MESSAGE" not in d["settings"] and any("ignores GPS_INPUT" in r for r in d["report"])
+    # ArduPilot: unchanged (GPS_INPUT, no message key)
+    d = decide({"serial": [AP], "autopilot_streams": STREAMS}, {})
+    assert "NAVERA_MAVLINK_MESSAGE" not in d["settings"]
+
+
+def test_px4_parameters_that_break_the_hil_gps_output_are_reported():
+    from navera_common.discovery import px4_param_int
+    px4 = dict(AP, autopilot=12)
+    bad = dict(PX4_OK, MAV_USEHILGPS=0, EKF2_GPS_CTRL=7, EKF2_HGT_REF=1, EKF2_GPS_CHECK=245, EKF2_GPS_V_GATE=5)
+    rep = decide({"serial": [px4], "autopilot_streams": dict(STREAMS, px4_params=bad)}, {})["report"]
+    for name in ("MAV_USEHILGPS", "EKF2_GPS_CTRL", "EKF2_HGT_REF", "EKF2_GPS_CHECK", "EKF2_GPS_V_GATE"):
+        assert any(r.startswith(f"CHECK PX4 {name} ") for r in rep), (name, rep)
+    # PX4's defaults that only matter with vision forwarded
+    ok = decide({"serial": [px4], "autopilot_streams": dict(STREAMS, px4_params=PX4_OK)}, {})["report"]
+    assert not any(r.startswith("CHECK") for r in ok)
+    fwd = decide({"serial": [px4], "autopilot_streams": dict(STREAMS, px4_params=PX4_OK)},
+                 {"NAVERA_FORWARD_DEGRADED": "true"})["report"]
+    assert [r.split()[2] for r in fwd if r.startswith("CHECK PX4 ")] == ["COM_POS_FS_EPH", "EKF2_NOAID_NOISE"]
+    rep = decide({"serial": [px4], "autopilot_streams": STREAMS}, {})["report"]      # not read
+    assert any("PX4 parameters not all read" in r for r in rep)
+    # PX4 sends INT32 parameters bytewise in PARAM_VALUE's float
+    import struct
+    assert px4_param_int(struct.unpack("<f", struct.pack("<i", 240))[0], 6) == 240
+    assert px4_param_int(5.0, 9) == 5
 
 
 # ── GPS in every common form (UBX, DroneCAN, network) ──────────────────────
