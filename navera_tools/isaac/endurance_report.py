@@ -64,6 +64,30 @@ def load(res):
     return rd("position.csv"), rd("day.csv"), ev, rd("ekf.csv"), fr, rd("resources.csv")
 
 
+def ekf_velocity_error(res):
+    """(t, |EKF velocity - true velocity| m/s) every ~1 s from MAVProxy's tlog (GLOBAL_POSITION_INT vs
+    SIM_STATE), t on sitl_demo's clock; [] without the tlog or pymavlink."""
+    tl, ss = os.path.join(res, "sitl", "mav.tlog"), os.path.join(res, "sitl_session.json")
+    if not (os.path.exists(tl) and os.path.exists(ss)):
+        return []
+    try:
+        from pymavlink import mavutil
+    except ImportError:
+        return []
+    t0 = json.load(open(ss))["t0_wall"]
+    m = mavutil.mavlink_connection(tl)
+    tv, out, last = None, [], -1e9
+    while True:
+        msg = m.recv_match(type=["GLOBAL_POSITION_INT", "SIM_STATE"])
+        if msg is None:
+            return out
+        if msg.get_type() == "SIM_STATE":
+            tv = (msg.vn, msg.ve)
+        elif tv is not None and msg._timestamp - last >= 1.0:
+            last = msg._timestamp
+            out.append((msg._timestamp - t0, math.hypot(msg.vx / 100.0 - tv[0], msg.vy / 100.0 - tv[1])))
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("results")
@@ -71,6 +95,7 @@ def main():
     a = ap.parse_args()
     res = os.path.expanduser(a.results)
     pos, day, ev, ekf, fr, rsc = load(res)
+    ekv = ekf_velocity_error(res)
     cut = float(open(os.path.join(res, "gps_cut")).read()) if os.path.exists(os.path.join(res, "gps_cut")) else 60.0
     flown = json.load(open(os.path.join(res, "sitl_flown.json"))) if os.path.exists(
         os.path.join(res, "sitl_flown.json")) else {}
@@ -102,7 +127,7 @@ def main():
     def B(k):
         return blocks.setdefault(k, dict(fix_s=[], fix_e=[], frames=0, acc=0, out=[], beyond=0, beyond1=0, ratio=[],
                                          ekf=[], sig_out=[], sigcal=None, lat=None, hdg_off=[], alt_ratio=[],
-                                         sources={}, wrong=0, rtl=False))
+                                         sources={}, wrong=0, rtl=False, ekv=[]))
     for r in day:
         t = fnum(r, "t")
         k = phase_of(t)
@@ -175,6 +200,12 @@ def main():
             sigma_cal=b["sigcal"], latency=({k2: b["lat"].get(k2) for k2 in ("estimate_s", "applied_s", "samples", "stable", "frozen")}
                                             if b["lat"] else None),
             match_heading_offset_deg=dict(mean=hmed, n=len(ho))))
+    for t, v in ekv:
+        k = phase_of(t)
+        if k is not None and t <= t_end and k in blocks:
+            blocks[k]["ekv"].append(v)
+    for r in rows:
+        r["ekf_vel_err_mps"] = st(blocks[r["block"]]["ekv"])
     # resources: first / last / max of every column, and the trend per hour (least squares)
     res_sum = {}
     if rsc:
@@ -205,24 +236,26 @@ def main():
         wrong_fixes=sum(r["wrong_fixes"] for r in rows), beyond_3sigma=sum(r["output_beyond_3sigma"] for r in rows),
         outputs=sum(r["outputs"] for r in rows),
         matched=sum(r["matched"] for r in rows), frames=sum(r["frames"] for r in rows),
-        ekf_err_m=st([fnum(r, "err_m") for r in ekf if cut <= fnum(r, "t") <= t_end]))
+        ekf_err_m=st([fnum(r, "err_m") for r in ekf if cut <= fnum(r, "t") <= t_end]),
+        ekf_vel_err_mps=st([v for t, v in ekv if cut <= t <= t_end]))
     texts = []
     if os.path.exists(os.path.join(res, "sitl_events.jsonl")):
         texts = [json.loads(line) for line in open(os.path.join(res, "sitl_events.jsonl")) if line.strip()]
     summ = json.load(open(os.path.join(res, "summary.json"))) if os.path.exists(os.path.join(res, "summary.json")) else {}
     out = dict(gps_cut_s=cut, flight_end_s=round(t_end, 1) if math.isfinite(t_end) else None,
                gps_denied_min=round((min(t_end, rtl) - cut) / 60.0, 1) if math.isfinite(min(t_end, rtl)) else None,
+               end="RTL" if flown.get("rtl_at") else ("landed (no RTL)" if flown.get("landed_at") else "flight ended"),
                flown={k: v for k, v in flown.items() if k != "wps"}, mission=summ.get("mission"),
                after_cut=after, blocks=rows, resources=res_sum,
                autopilot_failsafes=[e.get("text") for e in texts if "ailsafe" in str(e.get("text", ""))][:20],
                autopilot_modes=[(e["t"], e.get("mode")) for e in texts if e.get("kind") == "mode"][:40])
     json.dump(out, open(os.path.join(res, "endurance.json"), "w"), indent=1)
-    plot(res, cut, t_end, day, pos, ekf, rows, rsc, a.block_min, rtl)
+    plot(res, cut, t_end, day, pos, ekf, rows, rsc, a.block_min, rtl, ekv, flown)
     write_md(res, out, a.block_min)
     print(json.dumps(dict(after_cut=after, gps_denied_min=out["gps_denied_min"]), indent=1))
 
 
-def plot(res, cut, t_end, day, pos, ekf, rows, rsc, block_min, rtl):
+def plot(res, cut, t_end, day, pos, ekf, rows, rsc, block_min, rtl, ekv, flown):
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -233,7 +266,9 @@ def plot(res, cut, t_end, day, pos, ekf, rows, rsc, block_min, rtl):
                          "font.size": 9, "axes.titlesize": 10, "axes.titlecolor": INK,
                          "axes.spines.top": False, "axes.spines.right": False})
     m = lambda t: (t - cut) / 60.0  # noqa: E731
-    fig, ax = plt.subplots(5, 1, figsize=(12, 15), sharex=True, gridspec_kw=dict(height_ratios=[3, 2, 1.4, 1.6, 1.6]))
+    fig, axs = plt.subplots(6, 1, figsize=(12, 17), sharex=True,
+                            gridspec_kw=dict(height_ratios=[3, 2, 1.6, 1.4, 1.6, 1.6]))
+    ax = [axs[0], axs[1], axs[3], axs[4], axs[5]]   # axs[2]: the EKF velocity
     meas = [r for r in day if r["mode"] == "measured" and r["valid"] == "1" and cut <= fnum(r, "t") <= t_end]
 
     def rolling(ts, vs, w=300.0, step=30.0):
@@ -264,7 +299,7 @@ def plot(res, cut, t_end, day, pos, ekf, rows, rsc, block_min, rtl):
     ax[0].plot([m(t) for t in rt], rv, color=MUTED, lw=1.2, ls="--", label="3 x stated sigma (rolling median)")
     ax[0].axhline(WRONG_M, color="#e34948", lw=0.8, ls=":")
     ax[0].text(0, WRONG_M + 2, "wrong-fix threshold 50 m", color=MUTED, fontsize=8)
-    ax[0].set_ylim(0, max(80, min(250, (q([fnum(r, "err_frame_m") for r in meas], 0.99) or 80) * 1.2)))
+    ax[0].set_ylim(0, 100)
     ax[0].set_ylabel("m")
     ax[0].set_title("NAVERA position error vs time after the GPS cut (Isaac Sim closed loop, SIMULATION)")
     ax[0].legend(loc="upper left", fontsize=8, frameon=False, ncol=2)
@@ -272,7 +307,20 @@ def plot(res, cut, t_end, day, pos, ekf, rows, rsc, block_min, rtl):
     ax[1].plot([m(fnum(r, "t")) for r in ek][::5], [fnum(r, "err_m") for r in ek][::5], color=C[4], lw=1)
     ax[1].set_ylabel("m")
     ax[1].set_title("Autopilot EKF position error (flies on NAVERA's GPS_INPUT only)")
-    ax[1].set_ylim(0, max(60, (q([fnum(r, "err_m") for r in ek], 0.995) or 60) * 1.15))
+    top = 250.0
+    ax[1].set_ylim(0, top)
+    big = [r for r in ek if fnum(r, "err_m") > top]
+    if big:
+        ax[1].text(m(fnum(big[0], "t")), top * 0.9, f" off scale from here: max {max(fnum(r, 'err_m') for r in big):.0f} m",
+                   color=INK, fontsize=8)
+    if ekv:
+        ev_ = [(t, v) for t, v in ekv if cut <= t <= t_end]
+        axs[2].plot([m(t) for t, v in ev_], [v for t, v in ev_], color=C[4], lw=0.8)
+        axs[2].set_ylabel("m/s")
+        axs[2].set_ylim(0, 80)
+        axs[2].set_title("Autopilot EKF velocity error vs the truth (no velocity source: EK3_SRC1_VELXY 0)")
+    else:
+        axs[2].set_visible(False)
     mid = [r["block"] * block_min + block_min / 2 for r in rows]
     ax[2].bar(mid, [r["matched_pct"] or 0 for r in rows], width=block_min * 0.9, color=C[0])
     for x, r in zip(mid, rows):
@@ -306,9 +354,10 @@ def plot(res, cut, t_end, day, pos, ekf, rows, rsc, block_min, rtl):
         ax4.set_title(f"Resources (MiB); GPU temperature {q(gt, 0.0)}-{max([x for x in gt if math.isfinite(x)] or [0])} °C")
         ax4.legend(loc="upper left", fontsize=8, frameon=False, ncol=3)
     ax[-1].set_xlabel("minutes after the GPS cut")
-    for x in ax:
+    lab = " RTL" if flown.get("rtl_at") else (" end: landed before any RTL" if flown.get("landed_at") else " end")
+    ax[0].text(m(rtl), ax[0].get_ylim()[1] * 0.92, lab, color=MUTED, fontsize=8)
+    for x in axs:
         x.axvline(m(rtl), color=MUTED, lw=0.8, ls="-.")
-    ax[0].text(m(rtl), ax[0].get_ylim()[1] * 0.92, " RTL", color=MUTED, fontsize=8)
     fig.tight_layout()
     fig.savefig(os.path.join(res, "error_vs_time.png"), dpi=110)
 
@@ -318,7 +367,7 @@ def write_md(res, o, block_min):
     a = o["after_cut"]
     ms = o.get("mission") or {}
     L.append("# NAVERA endurance run — Isaac Sim closed loop (SIMULATION)\n")
-    L.append(f"GPS cut at t = {o['gps_cut_s']:.0f} s; GPS-denied flight before RTL: **{o['gps_denied_min']} min**; "
+    L.append(f"GPS cut at t = {o['gps_cut_s']:.0f} s; GPS-denied flight (to the RTL, or to the end): **{o['gps_denied_min']} min**, end: {o['end']}; "
              f"mission completed (back over home on vision): **{ms.get('completed')}**, "
              f"real distance from home at RTL arrival {ms.get('dist_from_home_at_rtl_arrival_m')} m.\n")
     L.append(f"After the cut: {a['matched']}/{a['frames']} frames matched; fix error at stated time "
@@ -326,17 +375,18 @@ def write_md(res, o, block_min):
              f"(median / p90 / max), at exposure {a['fix_err_exposure_m']['median']} / {a['fix_err_exposure_m']['p90']} / "
              f"{a['fix_err_exposure_m']['max']} m; wrong fixes (> 50 m) {a['wrong_fixes']}; outputs beyond 3 sigma "
              f"{a['beyond_3sigma']}/{a['outputs']}; autopilot EKF error {a['ekf_err_m']['median']} / {a['ekf_err_m']['p90']} / "
-             f"{a['ekf_err_m']['max']} m.\n")
+             f"{a['ekf_err_m']['max']} m; autopilot EKF velocity error {a['ekf_vel_err_mps']['median']} / "
+             f"{a['ekf_vel_err_mps']['p90']} / {a['ekf_vel_err_mps']['max']} m/s.\n")
     L.append(f"\n## Per {block_min:.0f}-minute block after the cut\n")
-    L.append("| block (min) | matched % | fix err stamp med / p90 | at exposure med / p90 | wrong | >3σ / outputs | err/σ med | output err med / p90 | EKF err med / p90 / max | sigma_cal factor | match heading offset |")
-    L.append("|---|---|---|---|---|---|---|---|---|---|---|")
+    L.append("| block (min) | matched % | fix err stamp med / p90 | at exposure med / p90 | wrong | >3σ / outputs | err/σ med | output err med / p90 | EKF err med / p90 / max | EKF vel err med / p90 (m/s) | sigma_cal factor | match heading offset (deg) |")
+    L.append("|---|---|---|---|---|---|---|---|---|---|---|---|")
     for r in o["blocks"]:
         f = lambda d: f"{d['median']} / {d['p90']}"  # noqa: E731
         sc = (r["sigma_cal"] or {}).get("factor")
         L.append(f"| {r['t_from_cut_min'][0]:.0f}-{r['t_from_cut_min'][1]:.0f}{' (RTL)' if r['includes_rtl'] else ''} | "
                  f"{r['matched_pct']} | {f(r['fix_err_stamp_m'])} | {f(r['fix_err_exposure_m'])} | {r['wrong_fixes']} | "
                  f"{r['output_beyond_3sigma']} / {r['outputs']} | {r['output_err_over_sigma']['median']} | {f(r['output_err_m'])} | "
-                 f"{f(r['ekf_err_m'])} / {r['ekf_err_m']['max']} | {sc} | {r['match_heading_offset_deg']['mean']} |")
+                 f"{f(r['ekf_err_m'])} / {r['ekf_err_m']['max']} | {f(r['ekf_vel_err_mps'])} | {sc} | {r['match_heading_offset_deg']['mean']} |")
     L.append("\n## Resources during the GPS-denied flight (first 10 min -> last 10 min, max, linear trend per hour)\n")
     L.append("| quantity | first | last | max | per hour |")
     L.append("|---|---|---|---|---|")
