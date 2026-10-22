@@ -464,8 +464,11 @@ feeds (a loop), and not when the types cannot be read. **No GPS found: the GPS s
 stays idle** — no default port is ever opened. **Outputs:** an autopilot found → NAVERA's
 position over MAVLink, as the autopilot's companion (its system id), on the same link,
 relayed by `navera-vehicle-link` (local UDP 14650), no mavlink-router needed
-(`NAVERA_MAVLINK_URL=off` to never send it — **set it with PX4**, which ignores
-`GPS_INPUT`: [PX4_INTEGRATION.md](../docs/PX4_INTEGRATION.md)); `NAVERA_MAVLINK_SYSID` is
+(`NAVERA_MAVLINK_URL=off` to never send it). **A PX4 autopilot is recognised** (heartbeat
+`MAV_AUTOPILOT_PX4`): PX4 ignores `GPS_INPUT`, so with `NAVERA_MAVLINK_URL` empty the output
+is left off and the report says "CHECK output: the autopilot is PX4 …" — nothing to set by
+hand; do not write an address there on a PX4 vehicle
+([PX4_INTEGRATION.md](../docs/PX4_INTEGRATION.md)); `NAVERA_MAVLINK_SYSID` is
 set to the autopilot's system id, used by both MAVLink nodes; a ROS vehicle →
 `/navera/fix`. A ROS vehicle is used only when it is on NAVERA's ROS domain with
 `ROS_LOCALHOST_ONLY` not 1, or with `ROS_DOMAIN_ID=auto` (NAVERA then joins it, §6);
