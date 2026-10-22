@@ -585,10 +585,14 @@ NAVERA (a test laptop running `navera_tools/sensor_sim.py`, for instance) — ke
 closed. `check_box.py` FAILs "ROS network" when a source is `ros` while
 `ROS_LOCALHOST_ONLY=1`.
 
-`ROS_DOMAIN_ID=auto` asks navera-discover to join the domain of a ROS vehicle it finds
-(NAVERA's nodes stay on 42, loopback only, when none is found). The decision is verified by
-unit tests; joining a real vehicle's network has not been tested yet — writing the
-vehicle's domain number, as above, is the simplest. Discovery runs once per boot: a
+`ROS_DOMAIN_ID=auto`: at each boot navera-discover looks for a ROS vehicle (Imu / NavSatFix /
+Image topics) on domain 0 and the domains of `NAVERA_DISCOVER_ROS_DOMAINS`. Found: it writes
+`ROS_DOMAIN_ID=<that domain>` and `ROS_LOCALHOST_ONLY=0` in `/var/lib/navera/discovered.env`,
+which every other NAVERA unit loads after `navera.env`, so they all join that domain. None
+found: the units run on domain 42, loopback only (`navera_boot_lib.sh`). **Verified by unit
+tests only** (`navera_common/test/test_discovery.py`: the decision, and discovery running with
+`auto`); joining a real vehicle's network has not been tested. When the vehicle's domain is
+known, writing its number (as above) is the deterministic choice. Discovery runs once per boot: a
 vehicle computer that boots after NAVERA is not seen (restart navera-discover, or write
 the sources).
 
