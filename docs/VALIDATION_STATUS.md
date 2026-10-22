@@ -155,6 +155,20 @@ The 307 m and 554 m maxima were the carried position folding turns; fixed after
 (no relief, no perspective of buildings), no vibration or real blur; the camera was
 re-aimed between campaigns. **Not a flight measurement.**
 
+**Offline regression benchmark (2026-10-22, NAV-PERF-02, `navera_tools/bench/day_perf.py`,
+`navera_tools/tests/test_perf_day_vision.py`, nightly with `NAVERA_PERF=1`, ~3.7 min on the GPU).**
+Campaign 4 recorded no frames, so it cannot be replayed. Two offline proxies, product matcher
+(`matcher:=auto`, DISK + LightGlue, the node's gates): (1) 80 recorded real Insta360 frames of the
+2026-10-20 screen flights (clear 20 / 60 m/s, heavy rain, flare; the screen showed NAVERA's own map,
+prior 0–150 m off): 80/80 located, median 2.9–3.9 m, p95 8–13 m, max 13 m, 0 wrong; (2) campaign 4's
+mission (racetrack, height ±20 %, IMU heading ±5°, one 135 s lap after the GPS loss, VisionNavigator +
+FrameOdometry) with the camera replaced by the other-date terrain cut at its geometry: land median
+0.9–2.0 m, p95 1.6–2.7 m (farms once 10.5 m), coast median 3.2 m, availability 100 % everywhere, 0
+wrong, 100 % within 3σ. Far better than campaign 4 on the same terrains: the losses there (coast
+availability, farm p95) come from the screen + camera chain, which only part (1) carries. The test
+asserts campaign 4's numbers (land median ≤ 5.5 m, p95 ≤ 20 m, coast ≥ 50 % / ≤ 7.3 m, 0 wrong) and
+this baseline with ~2× margin.
+
 ### Day: real drone flights (UAV-VisLoc, 8 flights, 2026-10-20)
 
 NAVERA has not flown. The closest evidence is the public UAV-VisLoc dataset
@@ -550,6 +564,15 @@ e.g. `tile_17_69415_51534.jpg`): identical 0 / 0, no evidence either way.
 camera calibration, and the wrong-fix thresholds (re-check 25 m, map correlation 0.05),
 set on synthetic frames only: a real thermal frame will correlate less with a daylight map.
 STHN's consistency score does not detect a wrong match; the re-check and the motion gate do.
+
+**Offline regression benchmark (2026-10-22, NAV-PERF-03, `navera_tools/bench/night_perf.py`,
+`navera_tools/tests/test_perf_night_vision.py`, nightly with `NAVERA_PERF=1`, ~3.5 min on the GPU; 7 min the first time, while the thermal frames are rendered into `~/.cache/navera_perf`).**
+NightLocalizer with the node's default gates and retries. Synthetic (`night_conditions.py`, 24 poses):
+nominal 400 m 24/24, 10.8 / 16.2 / 23.4 m (median / p90 / max), 600 m 24/24, 10.5 / 16.5 / 18.0 m,
+farmland 22/24, 10.8 m, open sea and uniform frames 0/24 accepted, 0 wrong. Real night LWIR (below,
+Bordeaux, the 60 poses of 2026-10-21, 1000 m): Boson 640 23/60, 10.3 / 20.3 / 31.5 m; Hikvision 160 17/60,
+10.7 / 26.0 / 49.7 m; 0 wrong, 100 % within 3σ — identical to the retry-gate runs below. The earlier
+"8–13 m median at 250–600 m" used an 84° camera; with the 75° camera 250 m is refused and 350 m mostly (5/24, footprint, 2026-10-17).
 
 ### Night vision on REAL aerial thermal imagery (2026-10-21)
 
