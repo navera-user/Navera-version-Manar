@@ -64,6 +64,7 @@ def wpl(poly) -> str:
 
 def upload(url: str, poly, timeout_s: float = 30.0) -> None:
     """Send the polygon as the autopilot's fence (MAVLink mission protocol, mission_type FENCE)."""
+    os.environ.setdefault("MAVLINK20", "1")          # mission_type is a MAVLink 2 extension field
     from pymavlink import mavutil
     m = mavutil.mavlink_connection(url, source_system=255, source_component=190)
     if m.wait_heartbeat(timeout=timeout_s) is None:
