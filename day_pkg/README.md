@@ -186,6 +186,11 @@ cut at the stated time, median / p90; outputs beyond 3 σ; wrong fixes > 50 m):
 | f31_base_shortgps | none, GPS cut 15 s after the climb (no sample) | 13.1 / 22.9 m | 31 m | 0 / 590 | 0 |
 | c2_plane30 (before) | none (1.34 ± 0.43 s never applied) | 50 / 76 m | | 2 / 174 | 8 |
 | f31_plane30 | staged 1.25 ± 0.42 s from 10 samples on | **18 / 67 m** (exposure 16 / 67) | | 9 / 227 | 27 (matching, at the exposure) |
+| f31r_plane30_nostaged (A/B, staging off) | none (1.45 ± 0.41 s not applied) | 48 / 75 m (exposure 14 / 39) | | 2 / 212 | 12 |
+
+The plane's extra wrong fixes (27 vs 8–12, all > 50 m already at the exposure, scattered directions,
+no map bias applied) are matching errors, not the delay; one staged run is not enough to tell them
+from run-to-run variance — a repeat is still to do.
 
 The delay can change in flight (a USB/GStreamer queue, a starved grab thread, an IP camera's network):
 live_camera watches arrival − the source's own stamp (V4L2 buffer timestamp, GStreamer PTS) against
