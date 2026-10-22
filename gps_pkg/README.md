@@ -44,6 +44,7 @@ NMEA:
 | `baud_rate` | int | `9600` | serial speed |
 | `url` | string | `""` | instead of the two above: `serial:/dev/<port>:<baud>`, `tcp:<host>:<port>` (connects; a closed connection exits 1), `udp:<port>` (listens) |
 | `configure_receiver` | bool | `false` | allow NAVERA to turn on UBX `NAV-PVT` / `NAV-DOP` (CFG-MSG and CFG-VALSET, receiver RAM only) |
+| `auto_baud` | bool | `true` | serial: nothing valid for 5 s → listen at the next common baud (9600 … 921600; nothing is sent to the receiver) |
 
 Defaults are also in `config/gps_params.yaml`; the boot service overrides them with
 `NAVERA_GPS_PORT` / `NAVERA_GPS_BAUD`.

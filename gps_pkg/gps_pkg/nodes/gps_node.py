@@ -44,6 +44,10 @@ Parameters:
                                              tcp:<host>:<port> (NAVERA connects) or udp:<port>
                                              (NAVERA listens)
     configure_receiver (default false)     — allow NAVERA to turn on UBX NAV-PVT (RAM only)
+    auto_baud    (default true)            — serial: after 5 s without a valid sentence or frame,
+                                             listen at the next common baud (the receiver is
+                                             never written to; a tapped u-blox an autopilot
+                                             reconfigured after boot is followed)
 """
 import rclpy
 from navera_common.lifecycle import die_with_parent
@@ -72,6 +76,9 @@ KNOTS_TO_MPS = 0.514444
 _VALID_GPS_QUAL = {1, 2, 4, 5}
 # while NAV-PVT arrived this recently, the same receiver's NMEA fix is not published again
 UBX_PREFERRED_S = 3.0
+# a serial receiver silent (nothing checksummed) this long: try the next common baud
+AUTO_BAUD_AFTER_S = 5.0
+AUTO_BAUDS = (9600, 38400, 57600, 115200, 230400, 460800, 921600, 4800, 19200)
 
 
 def _field_float(value):
@@ -99,6 +106,7 @@ class GPSNode(Node):
         self.declare_parameter("baud_rate", 9600)
         self.declare_parameter("url", "")
         self.declare_parameter("configure_receiver", False)
+        self.declare_parameter("auto_baud", True)
         port = self.get_parameter("serial_port").value
         baud = self.get_parameter("baud_rate").value
         url = str(self.get_parameter("url").value or "").strip() or f"serial:{port}:{baud}"
@@ -117,6 +125,8 @@ class GPSNode(Node):
         # Raises on failure: main() turns that into exit code 1 → restart.
         self.stream = Stream(url, timeout=2)
         self.get_logger().info(f"Port open OK: {url}")
+        self.auto_baud = bool(self.get_parameter("auto_baud").value) and self.stream.kind == "serial"
+        self._valid_t = time.monotonic()        # last checksummed sentence / frame
         if self.get_parameter("configure_receiver").value and self.stream.kind != "udp":
             self.get_logger().warn("configure_receiver: turning on UBX NAV-PVT / NAV-DOP (receiver RAM only)")
             for frame in ubx_enable_pvt_frames():
@@ -132,6 +142,8 @@ class GPSNode(Node):
         decoder = StreamDecoder()
         while self.running:
             try:
+                if self.auto_baud and time.monotonic() - self._valid_t > AUTO_BAUD_AFTER_S:
+                    self._next_baud(decoder)
                 for item in decoder.feed(self.stream.read()):
                     if item[0] == "nmea":
                         self._handle_nmea(item[1])
@@ -146,6 +158,21 @@ class GPSNode(Node):
             except Exception as e:
                 self.get_logger().error(f"Loop error: {e}\n{traceback.format_exc()}")
 
+    def _next_baud(self, decoder):
+        """Nothing valid for AUTO_BAUD_AFTER_S: listen at the next common baud (a local
+        setting of NAVERA's port — nothing is sent to the receiver). For a receiver whose
+        speed changed after boot: an autopilot reconfiguring a tapped u-blox (9600 -> 230400).
+        """
+        ser = self.stream._s
+        cur = ser.baudrate
+        nxt = AUTO_BAUDS[(AUTO_BAUDS.index(cur) + 1) % len(AUTO_BAUDS)] if cur in AUTO_BAUDS else AUTO_BAUDS[0]
+        self.get_logger().warn(f"nothing valid for {AUTO_BAUD_AFTER_S:.0f} s at {cur} baud: listening at {nxt}",
+                               throttle_duration_sec=60.0)
+        ser.baudrate = nxt
+        ser.reset_input_buffer()
+        decoder.buf.clear()
+        self._valid_t = time.monotonic()
+
     def _handle_nmea(self, raw):
         self._lines += 1
         if self._lines <= 5:
@@ -156,6 +183,7 @@ class GPSNode(Node):
             msg = pynmea2.parse(raw, check=True)
         except pynmea2.ParseError:
             return
+        self._valid_t = time.monotonic()
         if time.monotonic() - self._ubx_t < UBX_PREFERRED_S:
             return                  # the same receiver's NAV-PVT is the fix (with its accuracy)
         if isinstance(msg, pynmea2.types.talker.GGA):
@@ -176,7 +204,7 @@ class GPSNode(Node):
         pvt = parse_nav_pvt(payload)
         if pvt is None:
             return
-        self._ubx_t = time.monotonic()
+        self._ubx_t = self._valid_t = time.monotonic()
         fix = pvt_fix(pvt, self._dop)
         stamp = self.get_clock().now().to_msg()
         nav = fix_publish.navsatfix(fix, stamp)

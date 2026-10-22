@@ -4,8 +4,8 @@
   1. u-blox UBX on a serial port (pseudo-terminal, as a passive tap on the TX wire of a GPS
      ArduPilot set to UBX at 230400): NAV-PVT -> a fix with the receiver's own accuracy
      (DIAGONAL_KNOWN), its velocity and UTC; the same receiver's NMEA is not published twice;
-     dead reckoning only is invalid; a corrupted frame publishes nothing; NOTHING is written
-     to the receiver.
+     dead reckoning only is invalid; a corrupted frame publishes nothing; a silent port is
+     listened to at another baud (auto baud); NOTHING is written to the receiver.
   2. NMEA over TCP (gps_node url tcp:): fixes, then exit code 1 when the server goes away.
   3. UBX over UDP (gps.launch.py url:=udp:, as the boot service runs it): fixes.
   4. DroneCAN (dronecan_gps_node on a pydronecan virtual bus, mcast:): the Here3-like node's
@@ -23,6 +23,7 @@ import socket
 import struct
 import subprocess
 import sys
+import termios
 import threading
 import time
 import tty
@@ -129,6 +130,10 @@ def part_ubx_serial(ls):
     threading.Thread(target=watch, daemon=True).start()
     try:
         check(ls.wait_publisher(), "ubx serial: gps_node did not start")
+        # nothing valid for 5 s: it listens at another baud (a local setting: nothing sent)
+        time.sleep(6.0)
+        speed = termios.tcgetattr(master)[5]
+        check(speed != termios.B230400, "ubx serial: still at 230400 after 6 s of silence (auto baud)")
         n0 = len(ls.est)
         for _ in range(5):                        # a 5 Hz receiver, NMEA + UBX on one port
             os.write(master, nav_pvt() + GGA)
@@ -257,10 +262,11 @@ def part_dronecan(ls):
                 check(ls.wait_publisher(), "dronecan: the node did not start")
                 heard.clear()
                 n0 = len(ls.est)
-                time.sleep(3.0)                          # it listens 2 s before choosing a node
+                time.sleep(6.0)                          # it listens 2 s before choosing a node
                 new = ls.est[n0:]
                 nodes = {json.loads(m.details_json).get("node_id") for m in new}
-                check(len(new) >= 3 and nodes == {124}, f"dronecan: fixes from nodes {nodes} ({len(new)}), expected 124")
+                check(len(new) >= 3 and nodes == {124},
+                      f"dronecan: fixes from nodes {nodes} ({len(new)}), expected 124")
                 check(all(m.valid and m.position_covariance_type == PositionEstimate.COVARIANCE_TYPE_DIAGONAL_KNOWN
                           and abs(m.position_covariance[0] - 2.25) < 1e-3 for m in new), "dronecan: fix or accuracy")
                 others = heard - {124, 10}
