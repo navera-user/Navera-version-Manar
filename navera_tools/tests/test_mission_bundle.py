@@ -363,3 +363,14 @@ def test_selftest_points_avoid_featureless_stretches():
     assert len(d) == 6 and max(d) < 13010.0 and d == sorted(d)
     assert mb._textured_distances(1000.0, [[0.0, 1.0]], 6) == []
     assert len(mb._textured_distances(1000.0, [], 4)) == 4
+
+
+def test_old_or_undated_imagery_is_warned():
+    import datetime as dt
+    from navera_tools.mission_bundle import imagery_age_warning
+    today = dt.date(2026, 10, 22)
+    assert imagery_age_warning("2023-05-01", today) is None
+    assert "2017" in imagery_age_warning("2017-03-01", today)
+    assert "2017" in imagery_age_warning("2024-01-01; 2017", today)       # the oldest counts
+    assert "unknown" in imagery_age_warning("unknown", today)
+    assert "unknown" in imagery_age_warning(None, today)

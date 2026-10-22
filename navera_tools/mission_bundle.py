@@ -64,6 +64,7 @@ import io
 import json
 import math
 import os
+import re
 import shutil
 import socket
 import sqlite3
@@ -552,6 +553,10 @@ def plan_bundle(spec: MissionSpec, sources: Sequence[TileSource], out_dir: Optio
                         f"with this camera (~{ms:.0f} m)")
     if any(isinstance(s, XYZSource) and "esri" in s.url for s in sources):
         warnings.append("Esri World Imagery: offline storage needs an Esri licence (evaluation only)")
+    for src in sources:
+        w = imagery_age_warning(getattr(src, "imagery_date", None))
+        if w and getattr(src, "imagery_date", "unknown") != "unknown":
+            warnings.append(f"{getattr(src, 'name', 'source')}: {w}")
     return dict(
         id=spec.bundle_id(), route_points=len(spec.route), route_length_km=round(route_length_m(legs) / 1000, 2),
         corridor_width_m=spec.corridor_width_m, buffer_m=round(spec.buffer_m, 1), zoom=spec.zoom,
@@ -704,6 +709,25 @@ def _write_mbtiles(path: str, spec: MissionSpec, tiles: Sequence[Tile], sources:
     return dict(file=MAP_FILE, zooms=[spec.zoom], tiles=sum(counts.values()), tiles_needed=len(tiles),
                 missing=[list(t) for t in left], bbox=bbox, sources=used, downloaded=now,
                 imagery_date=meta["imagery_date"], licence=meta["licence"])
+
+
+IMAGERY_MAX_AGE_Y = 5.0   # Isaac Sim 2026-10-21: a 3-year-old map 96 % matched, an 8-year-old one 0 %
+
+
+def imagery_age_warning(imagery_date, today: Optional[dt.date] = None) -> Optional[str]:
+    """A warning when the map imagery is older than IMAGERY_MAX_AGE_Y or its date unknown, else None.
+
+    imagery_date: the bundle's "imagery_date" text ("2022-03-14", "2022", several joined by "; ").
+    The oldest date counts: day vision fails where the ground changed since the picture was taken."""
+    today = today or dt.date.today()
+    years = [int(y) for y in re.findall(r"\b(19\d\d|20\d\d)\b", str(imagery_date or ""))]
+    if not years:
+        return "map imagery date unknown: check that the imagery is recent (day vision fails on old imagery)"
+    age = today.year - min(years)
+    if age > IMAGERY_MAX_AGE_Y:
+        return (f"map imagery from {min(years)} ({age} years old): day vision may fail where the ground "
+                f"changed (keep it under {IMAGERY_MAX_AGE_Y:.0f} years)")
+    return None
 
 
 def iers_coverage(path: str) -> dict:
@@ -1259,7 +1283,8 @@ def check_bundle(bundle: str, replay: Optional[str] = None, deep: bool = False, 
                         tiles=len(have), corridor_tiles=len(need), missing=len(lack), missing_images=len(lack_img),
                         decoded_sample=f"{decoded}/{len(sample)}", source=meta.get("source"),
                         licence=meta.get("licence"), imagery_date=meta.get("imagery_date"),
-                        downloaded=meta.get("downloaded"), bounds=meta.get("bounds"))
+                        downloaded=meta.get("downloaded"), bounds=meta.get("bounds"),
+                        imagery_warning=imagery_age_warning(meta.get("imagery_date")))
 
         # day: DINOv2 cache, synthetic frames, learned features, replay
         if manifest["day"].get("dinov2_descriptors"):

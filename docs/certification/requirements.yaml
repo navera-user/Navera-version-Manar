@@ -299,10 +299,12 @@ requirements:
   text: 'Without a GPS fix at start, NAVERA shall accept an operator start position on /mission as a search area for day vision only, never as a published position.'
   code:
     - day_pkg/day_pkg/nodes/day_subscriber.py::DaySubscriber.on_operator_position
+  match:
+    - 'test_operator_start\.py::'
   evidence:
     - {level: BENCH, value: 'accepted, a bad latitude refused, a vision node started later receives it (latched) — verified end to end on the Jetson', ref: 'VALIDATION_STATUS.md, limitation 9 (D11 acceptance)'}
   status: verified-BENCH
-  note: 'no automated regression test; not tested in flight'
+  note: 'regression test day_pkg/test/test_operator_start.py (2026-10-22); not tested in flight'
 
 - id: NAV-FUN-18
   category: FUN

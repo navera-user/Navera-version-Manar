@@ -8,6 +8,7 @@ its own: any MAVLink autopilot (ArduPilot, PX4, ...). Publishes, stamped on rece
     /navera/vehicle/altitude_agl   sensor_msgs/Range        downward rangefinder, tilt-corrected
     /navera/vehicle/relative_alt   geometry_msgs/PointStamped  z = height above home (barometer)
     /navera/vehicle/gps2           sensor_msgs/NavSatFix    the vehicle's second GPS, if any
+    /navera/vehicle/gps2_satellites std_msgs/UInt32         its satellites (NavSatFix has no field)
     /navera/vehicle/status         std_msgs/String (JSON)   link, autopilot, armed, message rates
 
 The live camera takes its attitude from /navera/vehicle/imu when NAVERA_SENSOR_SOURCE
@@ -38,7 +39,7 @@ from navera_common.params import declare_float
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from sensor_msgs.msg import Imu, NavSatFix, NavSatStatus, Range
-from std_msgs.msg import String
+from std_msgs.msg import String, UInt32
 
 from navera_output import mavlink_url
 from navera_output.mavlink_in import (attitude_euler, attitude_quaternion, downward_range_agl,
@@ -67,6 +68,7 @@ class VehicleLink(Node):
         self.pub_agl = self.create_publisher(Range, "/navera/vehicle/altitude_agl", 10)
         self.pub_rel = self.create_publisher(PointStamped, "/navera/vehicle/relative_alt", 10)
         self.pub_gps2 = self.create_publisher(NavSatFix, "/navera/vehicle/gps2", 10)
+        self.pub_gps2_sats = self.create_publisher(UInt32, "/navera/vehicle/gps2_satellites", 10)
         self.pub_status = self.create_publisher(String, "/navera/vehicle/status", 10)
         self.counts, self.last_hb, self.autopilot = {}, 0.0, None
         self.armed = None                  # from the autopilot heartbeat (None = unknown)
@@ -243,6 +245,9 @@ class VehicleLink(Node):
                 hv, vv = (h_acc / 1000.0) ** 2, (v_acc / 1000.0) ** 2 if v_acc > 0 else 4 * (h_acc / 1000.0) ** 2
                 f.position_covariance = [hv, 0.0, 0.0, 0.0, hv, 0.0, 0.0, 0.0, vv]
                 f.position_covariance_type = NavSatFix.COVARIANCE_TYPE_DIAGONAL_KNOWN
+            sats = getattr(msg, "satellites_visible", 255)
+            if 0 < sats < 255:                              # 255 = unknown (MAVLink)
+                self.pub_gps2_sats.publish(UInt32(data=int(sats)))
             self.pub_gps2.publish(f)
 
     def _publish_imu(self, stamp, q, rates):
