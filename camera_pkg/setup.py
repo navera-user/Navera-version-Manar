@@ -40,6 +40,7 @@ setup(
             'camera_publisher.py=camera_pkg.nodes.camera_publisher:main',
             'live_camera.py=camera_pkg.nodes.live_camera:main',
             'insta360_imu.py=camera_pkg.nodes.insta360_imu_node:main',
+            'insta360_node.py=camera_pkg.nodes.insta360_node:main',
         ],
     },
 )

@@ -6,6 +6,8 @@ Image input (parameter `input`):
     usb   a USB camera (V4L2), e.g. the Insta360 ONE R in webcam mode: /dev/videoN
     csi   a CSI camera through GStreamer (nvarguscamerasrc)
     ros   any sensor_msgs/Image topic (`input_topic`): the vehicle's own camera
+    insta360  the Insta360 kit's straight-down view (camera_pkg insta360_node, which owns the
+          camera in USB Android mode): an image topic stamped at the exposure, an ideal lens
 
 For each frame published, at the instant it was taken (grab time - capture_latency_s):
     attitude   from `imu_topic` (sensor_msgs/Imu, body ENU): NAVERA's BNO085, or the
@@ -79,7 +81,7 @@ class LiveCamera(Node):
     def __init__(self, **kwargs):
         super().__init__("live_camera", **kwargs)
         self.declare_parameter("camera_type", "day")
-        self.declare_parameter("input", "usb")                 # usb | csi | gst | ros
+        self.declare_parameter("input", "usb")                 # usb | csi | gst | ros | insta360
         # input gst: any GStreamer pipeline ending in "appsink name=sink" giving BGR frames
         # (an IP/RTSP camera, a gimbal's video stream...)
         self.declare_parameter("gst_pipeline", "")
@@ -103,6 +105,10 @@ class LiveCamera(Node):
         self.declare_parameter("require_attitude", True)
         self.declare_parameter("imu_topic", "/navera/sensors/imu")
         self.declare_parameter("attitude_source", "imu")        # label recorded in the meta
+        # an attitude whose yaw is not a heading (orientation_covariance yaw sigma above this, e.g.
+        # the Insta360's gyro yaw before the GPS course or vision set it): the frame is straightened
+        # but carries no heading_deg, and the day node uses its gyro-carried vision heading instead
+        declare_float(self, "max_heading_sigma_deg", 5.0)
         self.declare_parameter("gps_topic", "/navera/sensors/gps_fix")
         self.declare_parameter("altitude_topic", "/navera/sensors/altitude_agl")
         self.declare_parameter("vision_altitude_topic", "/navera/vision/altitude_agl")
@@ -147,6 +153,8 @@ class LiveCamera(Node):
         self.attitude_source, self.frame_id = p("attitude_source"), p("frame_id")
         self.measured_sigma_m = float(p("measured_altitude_sigma_m"))
         self.att = History(maxlen=4000, max_gap_s=0.2, interp=slerp)
+        self.yaw_sigma = History(maxlen=4000, max_gap_s=0.2)    # deg, from orientation_covariance
+        self.max_heading_sigma = float(p("max_heading_sigma_deg"))
         self._last_q, self._same, self._frozen_n = None, 0, 50     # 1 s at 50 Hz
         self._tilt_log = []                     # (time, too tilted) of the last minute's frames
         self.gps = History(maxlen=600, max_gap_s=1.5)
@@ -205,9 +213,11 @@ class LiveCamera(Node):
         self._lock = threading.Lock()
         self._stop = threading.Event()
         self.count = 0
-        if self.input == "ros":
-            # sensor-data QoS (best effort): accepts both best-effort and reliable camera publishers
-            self.create_subscription(Image, p("input_topic"), self._on_image, qos_profile_sensor_data,
+        if self.input in ("ros", "insta360"):
+            # sensor-data QoS (best effort): accepts both best-effort and reliable camera publishers;
+            # the Insta360 kit's own reliable view (2 frames/s, a lost 3 MB frame is a lost fix)
+            qos = qos_img if self.input == "insta360" else qos_profile_sensor_data
+            self.create_subscription(Image, p("input_topic"), self._on_image, qos,
                                      callback_group=MutuallyExclusiveCallbackGroup())
         else:
             threading.Thread(target=self._grab_loop, args=(p("device"),), daemon=True).start()
@@ -247,6 +257,8 @@ class LiveCamera(Node):
             return cam
         if not math.isfinite(hfov):
             raise ValueError("set calibration_file (navera_tools/calibrate_camera.py) or camera_hfov_deg")
+        if self.input == "insta360":                            # a computed view: an ideal lens by construction
+            return CameraModel.ideal(hfov, (self.cw, self.ch))
         self.get_logger().warn("no calibration file: the lens is taken as distortion-free — "
                                "calibrate it (navera_tools/calibrate_camera.py) before a real test")
         return CameraModel.ideal(hfov, (self.cw, self.ch))
@@ -265,6 +277,8 @@ class LiveCamera(Node):
                                     throttle_duration_sec=10.0)
             return
         self.att.add(stamp_s(m.header.stamp), q)
+        v = float(m.orientation_covariance[8])
+        self.yaw_sigma.add(stamp_s(m.header.stamp), math.degrees(math.sqrt(v)) if v > 0 and math.isfinite(v) else 0.0)
 
     def _on_gps(self, m: NavSatFix):
         if m.status.status >= NavSatStatus.STATUS_FIX and math.isfinite(m.latitude):
@@ -374,7 +388,7 @@ class LiveCamera(Node):
             if not self._acked.wait(self.ack_timeout_s) and self._awaiting is not None:
                 self.get_logger().warn(f"no ack for frame {self._awaiting} in {self.ack_timeout_s:.0f} s — sending the next")
             t0 = time.monotonic()
-            if self.input != "ros" and not requested:
+            if self.input not in ("ros", "insta360") and not requested:
                 # camera inputs: a frame decoded for an earlier request (while this loop
                 # slept for the frame rate) is up to one period old — ask for a new one
                 with self._lock:
@@ -385,7 +399,7 @@ class LiveCamera(Node):
                 item, self._latest = self._latest, None
             if item is None:
                 # a grab that never returns is seen here (the grab thread cannot judge itself)
-                stalled = self.watchdog.stalled(time.monotonic()) if self.input != "ros" else None
+                stalled = self.watchdog.stalled(time.monotonic()) if self.input not in ("ros", "insta360") else None
                 if stalled:
                     self._camera_stalled(stalled)
                     break
@@ -403,6 +417,7 @@ class LiveCamera(Node):
             msg = bridge.cv2_to_imgmsg(np.ascontiguousarray(out), "bgr8")
             msg.header.stamp.sec, msg.header.stamp.nanosec = int(t), int((t % 1) * 1e9)
             meta["image_stamp_ns"] = msg.header.stamp.sec * 1_000_000_000 + msg.header.stamp.nanosec
+            self._check_heading(meta, t)
             if meta.get("utc_time"):
                 meta["utc_source"] = "system_clock"         # not a trusted time by itself (celestial, H-08)
             if frozen:
@@ -422,6 +437,16 @@ class LiveCamera(Node):
                     + ("" if meta["usable"] else f" — {meta['reason']}"))
             self.count += 1
             time.sleep(max(0.0, self.period - (time.monotonic() - t0)))
+
+    def _check_heading(self, meta, t):
+        """Drop the frame's heading when the attitude's yaw is not a heading (sigma too large)."""
+        if meta.get("heading_deg") is None:
+            return
+        s = self.yaw_sigma.at(t)
+        if s is not None and s > self.max_heading_sigma:
+            meta.update(heading_deg=None, heading_sigma_deg=round(min(s, 180.0), 1),
+                        heading_note=f"attitude yaw sigma {min(s, 180.0):.0f} deg > {self.max_heading_sigma:.0f}: "
+                                     "no heading from the attitude (the day node carries the vision heading)")
 
     def _moved(self, t0, t1):
         """True when the IMU or the GPS says the vehicle moved between two exposures, False when
@@ -456,7 +481,7 @@ class LiveCamera(Node):
             self.pub_health.publish(String(data=json.dumps({
                 "frozen": bool(why), "reason": why or "", "frozen_frames": self.freeze.repeats,
                 "frozen_s": round(since, 1), "input": self.input})))
-        if why and self.input != "ros" and since > self.frozen_restart_s:
+        if why and self.input not in ("ros", "insta360") and since > self.frozen_restart_s:
             self.get_logger().fatal(f"camera image frozen for {since:.0f} s — exiting so the service restarts "
                                     "and reopens the camera")
             self._stop.set()

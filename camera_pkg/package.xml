@@ -17,6 +17,9 @@
   <depend>sensor_msgs</depend>
   <depend>geometry_msgs</depend>
   <depend>cv_bridge</depend>
+  <!-- the Insta360 kit (insta360_node.py): USB Android mode and its H.264 key frames -->
+  <exec_depend>python3-usb</exec_depend>
+  <exec_depend>python3-av</exec_depend>
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>
