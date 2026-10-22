@@ -213,7 +213,7 @@ def main():
         last_ms = ms
         R_att = cam.attitude_at(ms)
         # still enough for a sharp frame (a hand may still touch the camera: no accelerometer test)
-        rows = cam._rows(1.0, ms, 0.3)
+        rows = cam.imu_rows(1.0, ms, 0.3)
         w = np.array([r[5:8] for r in rows]) - cam.gyro_bias if len(rows) >= 400 else None
         still = w is not None and float(np.degrees(np.linalg.norm(
             w[:len(w) // 50 * 50].reshape(-1, 50, 3).mean(axis=1), axis=1)).max()) < 1.5

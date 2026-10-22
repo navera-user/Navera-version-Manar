@@ -54,7 +54,7 @@ Defaults are also in `config/gps_params.yaml`; the boot service overrides them w
 | out | `/navera/estimate/gps` | `navera_msgs/PositionEstimate` | depth 10 (reliable) |
 | out | `/navera/sensors/gps_fix` | `sensor_msgs/NavSatFix` | depth 10 (reliable) |
 | out | `/navera/sensors/gps_vel` | `geometry_msgs/TwistStamped` (ENU: `linear.x` east, `linear.y` north, m/s, from RMC or NAV-PVT) | depth 10 (reliable) |
-| out | `/navera/sensors/gnss_time` | `sensor_msgs/TimeReference` (the receiver's UTC) | depth 10 (reliable) |
+| out | `/navera/sensors/gnss_time` | `sensor_msgs/TimeReference` (the receiver's UTC, only when it vouches for it: UBX NAV-PVT validDate+validTime+fullyResolved with a fix, RMC status A, ZDA within 2 s of a valid GGA/RMC fix; `header.stamp` = system clock at reception — the GPS time anchor of celestial) | depth 10 (reliable) |
 
 ### `dronecan_gps_node.py` (node name `dronecan_gps`) — a DroneCAN GNSS on a CAN bus
 

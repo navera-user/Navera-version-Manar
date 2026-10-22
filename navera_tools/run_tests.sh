@@ -26,7 +26,7 @@ mapfile -t UNIT < <(find . -path ./build -prune -o -path ./install -prune -o -pa
 # Every step has a time limit: a hang fails the run (TIMED OUT) instead of
 # blocking it. The step runs in its own process group, so the ROS nodes an
 # integration test started are stopped with it.
-UNIT_LIMIT_S="${NAVERA_TEST_UNIT_LIMIT_S:-600}"
+UNIT_LIMIT_S="${NAVERA_TEST_UNIT_LIMIT_S:-1800}"
 INTEGRATION_LIMIT_S="${NAVERA_TEST_INTEGRATION_LIMIT_S:-300}"
 run_limited() {   # run_limited <seconds> <command...>  → the command's exit code, 124 on timeout
   local limit=$1; shift

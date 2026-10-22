@@ -492,6 +492,8 @@ class LearnedMatcher(LocalMatcher):
                 res = r
             if r["accepted"]:
                 break
+            if "too few features in the frame" in str(r.get("reason")):
+                break                       # a uniform frame (sea, blur) stays uniform at any heading
         res = dict(res, heading_source="heading search", heading_tried=[round(x) for x in tried])
         if res["accepted"] and res.get("rotation_deg") is not None:
             self._heading = (float(res["rotation_deg"]), time.time())

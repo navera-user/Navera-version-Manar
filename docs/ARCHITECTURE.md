@@ -270,10 +270,13 @@ measured, its accuracy grown by the maximum speed × its age. Details:
 | `/navera/sensors/gps_fix` | sensor_msgs/NavSatFix | gps_node / ros_gps_node | live camera, diagnostics |
 | `/navera/sensors/gps_vel` | geometry_msgs/TwistStamped (ENU m/s) | gps_node | vehicle_output (velocity with GPS fixes) |
 | `/navera/sensors/imu` | sensor_msgs/Imu | imu_node | live camera, night, celestial, estimator (`NAVERA_SENSOR_SOURCE=box`) |
+| `/navera/sensors/gnss_time` | TimeReference | gps_node (UBX NAV-PVT valid+fully resolved, RMC A, ZDA with a fix) / UBX / DroneCAN nodes | cn_subscriber (GPS time anchor, taken only while nav_status says the GPS contributes) |
 | `/navera/sensors/rtc_time`, `rtc_status` | TimeReference, String (JSON) | rtc_node | cn_subscriber, check_box |
 | `/navera/vehicle/imu`, `altitude_agl`, `relative_alt` | Imu, Range, PointStamped | vehicle_link_node | live camera and pipelines (`vehicle`) |
 | `/navera/vehicle/gps2` | sensor_msgs/NavSatFix | vehicle_link_node | ros_gps_node (`NAVERA_GPS_SOURCE=vehicle`) |
 | `/navera/vehicle/gps1` | sensor_msgs/NavSatFix | vehicle_link_node (`read_gps1`, only while NAVERA does not feed GPS 1) | ros_gps_node (`NAVERA_GPS_SOURCE=vehicle_gps1`) |
+| `/navera/vehicle/system_time` | TimeReference | vehicle_link_node (SYSTEM_TIME) | cn_subscriber (trusted time, second source + anchor cross-check) |
+| `/navera/time_status` | String (JSON) | cn_subscriber | operator / logs: time source, 1-sigma, GPS anchor age / jumps, anchor minus SYSTEM_TIME |
 | `/navera/vehicle/status` | String (JSON) | vehicle_link_node | web bridge (armed lock), vehicle_output (relay check), check_box |
 | `/navera/operator/start_position` | navera_msgs/PositionEstimate (latched; source EXTERNAL) | web bridge (`/mission`) | day_subscriber (search area only) |
 | `/navera/vision/altitude_agl` | sensor_msgs/Range | day_subscriber | live camera (height from the image) |

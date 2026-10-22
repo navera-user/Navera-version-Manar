@@ -35,7 +35,7 @@ discovery-based, and the camera ↔ localizer handshake uses latched topics).
 | `navera-pipeline-cn` | `navera_boot_pipeline_cn.sh` | Celestial pipeline (astrometry.net, CPU) | See §10 — as shipped it replays a bundled sky image |
 | `navera-imu` | `navera_boot_imu.sh` | Box IMU (BNO085, I²C bus 1 @ 0x4A) → `/navera/sensors/imu`; idle when navera-discover found no BNO085 (`NAVERA_BOX_IMU=0`) | `NAVERA_SENSOR_SOURCE=box` and a BNO085 fitted (enabling it elsewhere is harmless) |
 | `navera-insta360` | `navera_boot_insta360.sh` | The Insta360 kit: the One R in USB "Android" mode (one process owns it) → straight-down day view `/navera/sensors/insta360/nadir/image_raw` (stamped at exposure) and attitude `/navera/sensors/insta360/imu` (sensor_msgs/Imu with orientation, 100 Hz), status `/navera/sensors/insta360/status`; exits when the camera is lost (restart 5 s); idle unless `NAVERA_SENSOR_SOURCE` or `NAVERA_CAMERA_INPUT` is `insta360` | The IRIS kit (Insta360 as camera and IMU; enabling it elsewhere is harmless) |
-| `navera-rtc` | `navera_boot_rtc.sh` | Real-time clock (DS3231, I²C bus 1 @ 0x68) → `/navera/sensors/rtc_time`; idle when no DS3231 was found (`NAVERA_BOX_RTC=0`) | A DS3231 is fitted (the reference box has one) |
+| `navera-rtc` | `navera_boot_rtc.sh` | Real-time clock (DS3231, I²C bus 1 @ 0x68) → `/navera/sensors/rtc_time`; idle when no DS3231 was found (`NAVERA_BOX_RTC=0`) | Optional: a DS3231 is fitted. Star time comes first from the GPS anchor and the autopilot (§10); the DS3231 helps only after a reboot with the GPS denied and no autopilot |
 | `navera-vehicle-link` | `navera_boot_vehicle_link.sh` | Reads the autopilot over MAVLink → `/navera/vehicle/*` (attitude, rangefinder, barometric height, 2nd GPS, armed state), and relays NAVERA's MAVLink output to it (local UDP 14650); idle when no autopilot is found or configured | `NAVERA_SENSOR_SOURCE=vehicle`, `NAVERA_GPS_SOURCE=vehicle`, or a MAVLink output through its relay; also recommended with any MAVLink autopilot, so that `/mission` knows when the vehicle is armed |
 | `navera-output` | `navera_boot_output.sh` | Output to the vehicle: NMEA, MAVLink `GPS_INPUT`, ROS `NavSatFix` on `/navera/fix` | NAVERA feeds the autopilot or a ROS consumer |
 | `navera-web` | `navera_boot_web.sh` | Web bridge on port 8181: operator view `/operator`, dashboard `/`, mission preparation `/mission` | Always |
@@ -989,8 +989,8 @@ arbiter uses it after them (GPS > day > night > celestial). It has two modes, ch
 - **`NAVERA_STAR_CAMERA_INPUT` set — a live star camera.** The live camera is read with the
   `NAVERA_STAR_CAMERA_*` settings (same keys as the day camera, prefix `NAVERA_STAR_CAMERA_`:
   `_INPUT`, `_DEVICE`, `_SIZE`, `_FPS`, `_CALIBRATION`, `_HFOV_DEG`, `_GST_PIPELINE`); the
-  attitude comes from the IMU at each exposure (no IMU: no position), the time from the
-  clock (DS3231 / system clock), the prior from NAVERA's last position. Mounting:
+  attitude comes from the IMU at each exposure (no IMU: no position), the time from a
+  trusted source (below), the prior from NAVERA's last position. Mounting:
   `NAVERA_STAR_CAMERA_ELEVATION_DEG`, `NAVERA_STAR_CAMERA_AZIMUTH_DEG`; accuracy:
   `NAVERA_ATTITUDE_SIGMA_DEG`; `NAVERA_MAGNETIC_DECLINATION_DEG` only for an attitude source
   in magnetic north (see `navera.env.example`). A star camera on USB is never taken as the
@@ -1000,6 +1000,29 @@ arbiter uses it after them (GPS > day > night > celestial). It has two modes, ch
   sky image with launch-time attitude, time and operating-area constants (Sousse); its
   camera waits for a mission start from the celestial bridge (`NAVERA_PIPELINE=cn`). This
   is not navigation.
+
+**Time for the stars (no hardware clock required, 2026-10-22).** 1 s of clock error is ~0.5 km.
+The Jetson has no battery clock: it boots on its last saved time and steps when NTP reaches
+the internet. cn_subscriber (`navera_common/trusted_time.py`) uses, in this order:
+
+1. the **GPS time anchor**: the receiver's UTC (`/navera/sensors/gnss_time`: UBX NAV-PVT valid
+   and fully resolved, RMC status A, ZDA next to a fix), taken only while `/navera/nav_status`
+   shows the GPS contributing (the estimator neither refuses nor suspects it), then carried by
+   the monotonic clock: it holds through hours of GPS loss and through a system clock step.
+   Stated 1-sigma 0.5 s + 20 ppm of the time since (`time_drift_ppm`, `gnss_time_sigma_s`). A
+   later GPS time off the first anchor is ignored and logged (spoofing);
+2. the **autopilot's SYSTEM_TIME** (`navera-vehicle-link` → `/navera/vehicle/system_time`; ArduPilot
+   sets it from its GPS and keeps it while powered). It also cross-checks the anchor: more than
+   1 s apart → no star fix, logged;
+3. the **DS3231** (`navera-rtc`), optional;
+4. **NTP** (the system clock when synchronised).
+
+The anchor is **not valid across a reboot** and is never stored: there is no battery clock
+to carry the monotonic clock through a power-off. A Jetson that reboots in flight with the GPS
+denied therefore relies on SYSTEM_TIME (fit `navera-vehicle-link` with a MAVLink autopilot) or
+a DS3231; with neither, the celestial pipeline publishes "no trusted time" until the GPS is
+back. `/navera/time_status` (JSON, 1 Hz) shows the source, its 1-sigma, the anchor's age and
+jumps, and the anchor minus SYSTEM_TIME (a measure of the Jetson clock's drift).
 
 ## 11. Checks
 

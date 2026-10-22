@@ -18,7 +18,7 @@ LEFT circle's optical axis, +z = x cross y).
 import json
 import os
 import struct
-from typing import Iterator, List, Tuple
+from typing import Iterator, List, Optional, Tuple
 
 import numpy as np
 
@@ -122,3 +122,40 @@ def read_raw(folder: str) -> Iterator[Tuple[float, int, int, bytes]]:
                 if len(p) < ln:
                     break
                 yield t, kind, cam_ms, p
+
+
+# ── the IMU feed going silent (F14) ──────────────────────────────────────
+IMU_SILENT_S = 1.5               # no IMU packet for this long: the feed is silent
+IMU_RESTART_GAP_S = 2.0          # between two actions (the IMU counts as back at imu_age < IMU_SILENT_S)
+IMU_WARMUP_S = 4.0               # after opening (or resetting) the camera, before the first action
+IMU_RESTARTS_BEFORE_RESET = 3    # StartLiveStream re-sent this many times in vain: reset the USB device
+
+
+class ImuWatchdog:
+    """What a driver does when the camera's IMU feed goes silent while the video goes on (seen on the first
+    starts after power-on, F14): re-send StartLiveStream (it usually brings the IMU back); after
+    IMU_RESTARTS_BEFORE_RESET restarts in a row that did not, reset the USB device (~8 s after the silence
+    began, before the field server's 10 s full reconnect). step() is called about once a second.
+    """
+
+    def __init__(self, started: float, silent_s: float = IMU_SILENT_S, gap_s: float = IMU_RESTART_GAP_S,
+                 warmup_s: float = IMU_WARMUP_S, restarts_before_reset: int = IMU_RESTARTS_BEFORE_RESET):
+        self.started, self.silent_s, self.gap_s, self.warmup_s = started, silent_s, gap_s, warmup_s
+        self.restarts_before_reset = restarts_before_reset
+        self.failed = 0                 # restarts since the IMU was last heard
+        self._last = -1e18
+
+    def step(self, now: float, imu_age: float) -> Optional[str]:
+        """None, "restart" (re-send StartLiveStream) or "reset" (reset the USB device, then start again)."""
+        if imu_age < self.silent_s:
+            self.failed = 0
+            return None
+        if now - self.started <= self.warmup_s or now - self._last < self.gap_s:
+            return None
+        self._last = now
+        if self.failed >= self.restarts_before_reset:
+            self.failed, self.started = 0, now
+            return "reset"
+        self.failed += 1
+        return "restart"
+

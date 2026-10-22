@@ -60,7 +60,7 @@ class VisionNavigator:
                  gate_k: float = 3.0, strong_inliers: int = 100, min_spread: float = 0.25,
                  retry_after: int = 3, bias_radius_m: float = 3000.0, strong_gate_k: float = 6.0,
                  max_speed_mps: Optional[float] = None, blend_fixes: bool = False,
-                 blend_below_inliers: int = 10 ** 9):
+                 blend_below_inliers: int = 10 ** 9, consistency=None):
         self.max_dr_s, self.max_sigma_m, self.accel = max_dr_s, max_sigma_m, accel_mps2
         self.search_k, self.min_search_m, self.max_search_m = search_k, min_search_m, max_search_m
         self.gate_k, self.strong_inliers, self.min_spread = gate_k, strong_inliers, min_spread
@@ -71,6 +71,9 @@ class VisionNavigator:
         # axis), instead of replacing it: few-inlier fixes (heavy clouds) are noisy, not biased
         self.blend_fixes = blend_fixes
         self.blend_below_inliers = blend_below_inliers   # only fixes with fewer inliers are averaged
+        # day_pkg.fix_consistency.FixConsistency: the product's doubt / confirmation rules (F16, D17);
+        # None: the rules below as they were before 2026-10-22 (the bench baseline)
+        self.consistency = consistency
         self.kinematic_rejected = 0
         self.weak_inliers = 30        # fewer: the fix places the vehicle, not its velocity
         self.fix = None               # (lat, lon, t, sigma_m, heading_deg or None): last position measured
@@ -337,7 +340,19 @@ class VisionNavigator:
                                     f"(max {reach:.0f} m at {self.max_speed_mps:.0f} m/s, {inl} inliers): rejected")
                 return False
         doubt, reacquired = None, False
-        if not gps_valid and pred is not None:
+        if self.consistency is not None:
+            if not gps_valid and pred is not None:
+                lost = pred[2] > self.consistency.lost_sigma_m
+                doubt = self.consistency.doubt(math.hypot(*_en((lat, lon), pred[:2])), pred[2], sig, inl)
+                if doubt is not None:
+                    if not self.consistency.confirm(t, lat, lon, sig, self.vel, lost):
+                        self.fails += 1
+                        self.last_reason = doubt + ": rejected (a second agreeing fix would confirm it)"
+                        return False
+                    self.last_reason = doubt + ": confirmed by the previous fix — re-acquired"
+                    reacquired = True
+            self.consistency.clear()
+        elif not gps_valid and pred is not None:
             d = math.hypot(*_en((lat, lon), pred[:2]))
             lim = self.gate_k * math.hypot(pred[2], sig)
             if inl >= self.strong_inliers:
@@ -349,7 +364,7 @@ class VisionNavigator:
             elif pred[2] > 50.0 and inl < 40:
                 # lost enough that the gate is wide: a weak fix alone could be anywhere in it
                 doubt = f"weak fix ({inl} inliers) while the position is uncertain (±{pred[2]:.0f} m)"
-        if doubt is not None:
+        if doubt is not None and not reacquired:
             # two fixes in a row that agree with each other (carried by the velocity) and not
             # with the prediction: the prediction is what is wrong — re-acquired
             pend, self._pending = self._pending, (t, lat, lon, sig)

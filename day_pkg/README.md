@@ -129,6 +129,11 @@ per-tile cache build (cosine ≥ 0.9996). Progress is printed as JSON lines.
 | `gyro_heading_bias_dps` / `gyro_heading_noise_dps_rthz` | 0.1 / 0.02 | gyro bias left after calibration, rate noise density: the carried heading's growing σ |
 | `gyro_heading_reset_sigma_deg` / `gyro_heading_max_sigma_deg` | 2 / 10 | σ of a vision heading; beyond the max (~100 s after the last good fix) no heading |
 | `gyro_heading_min_inliers` | 20 | inliers of a fix whose rotation restarts the carried heading |
+| `strong_gate_k_sigma` | 3 | a fix with ≥ `strong_inliers` further than this × the two sigmas from the carried position waits for a second agreeing fix (`day_pkg/fix_consistency.py`; was 6, F16) |
+| `reacquire_confirm` | false | while the carried position is lost (σ > 50 m), a fix further from it than 3 × its own σ also waits for confirmation (costs availability: off) |
+| `blend_fixes` | true | a fix is averaged with the carried position by their sigmas when the carry has a heading (attitude or gyro) and the fix is not a re-acquisition (F20, F23, D17) |
+| `frame_max_blur_px` / `frame_exposure_s` / `frame_sharp_rel` | 0 / 1/60 / 0 | `day_pkg/frame_gate.py`: frames smeared beyond this by the gyro rate at the exposure, or less sharp than this × the flight's median, are not matched (0 = off; F20) |
+| `local_heading_search` / `local_heading_search_after` | false / 3 | heading search always / automatically when no heading is known or after this many frames in a row without a match (D18; 0 = never) |
 | `gyro_course_reset` | true | while GPS is trusted, reset the gyro heading from the GPS course (2 s chord, steady course) |
 | `gyro_course_min_speed_mps` / `gyro_course_crab_sigma_deg` | 5 / 5 | slower: no course; σ of the camera's offset from the course when it comes from the meta's `mount_yaw_deg` (nose first) instead of vision |
 | `map_zoom_min_ratio` | 2 | an area with several zooms (`area.json` `zooms`): the finest zoom at least this many times coarser than the frame (`day_pkg/map_levels.py`), else the coarsest |
