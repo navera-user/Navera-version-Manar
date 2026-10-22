@@ -21,8 +21,9 @@ the STHN homography network (`night_localizer.py`, one-stage weights from Huggin
    `config.json`) predicts where the thermal frame's corners lie in the patch.
 4. The centre of that quadrilateral is converted back to lat/lon (exact Web Mercator).
 5. A geometric consistency score (0–1, not a probability) rejects impossible quadrilaterals,
-   and a **motion gate** rejects a fix farther from the last one than the vehicle can travel
-   (`max_speed_mps` × elapsed + `gate_margin_m`): the score does not detect a wrong match.
+   and a **motion gate** rejects a fix farther from the last MEASURED one than the vehicle can
+   travel (`max_speed_mps` × elapsed + `gate_margin_m`; dead reckoning does not reset that clock,
+   B16, 2026-10-22): the score does not detect a wrong match.
 6. **Wrong-fix checks** (2026-10-17): STHN returns a confident quad near the search centre even
    for a frame with no information (sea, salt flat, cloud, noise, heading > 10° off). Each fix
    is re-run from a search centre `recheck_offset_m` (150 m) away and kept only if both agree

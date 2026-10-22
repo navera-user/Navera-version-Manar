@@ -6,8 +6,10 @@ seconds on one clock (the node uses wall time, the bench simulated time).
 
 The anchor is the last position the node retained: GPS (vetted by the arbiter), a
 night STHN fix, or a dead-reckoned position. A night fix is accepted only if it lies
-within the distance the vehicle can have travelled since the anchor
-(max_speed_mps x elapsed + gate_margin_m): STHN can return a confident wrong place.
+within the distance the vehicle can have travelled since the last MEASURED position
+(max_speed_mps x elapsed + gate_margin_m; dead reckoning does not reset that clock, B16)
+and, alone, not farther than max_single_jump_m from the anchor: STHN can return a
+confident wrong place.
 """
 import math
 from typing import Optional, Tuple
@@ -32,7 +34,8 @@ class NightTracker:
         within the window that agree with each other (along the measured motion)
         re-anchor the track — the way out of a wrong anchor (B16). An anchor confirmed by
         reacquire_n agreeing fixes in a row (or GPS) needs reacquire_confirmed_n.
-        dead_reckon_rel_err: share of the dead-reckoned distance added to the reach.
+        dead_reckon_rel_err: share of the dead-reckoned distance added to max_single_jump_m
+        (the dead-reckoned anchor drifts).
         fresh_s / support_cap: a consensus that starts within fresh_s of the last measured
         position contradicts a track that was just confirmed: it must outnumber that track's
         own recent agreeing fixes (counted up to support_cap) — a burst of mutually consistent
@@ -57,6 +60,7 @@ class NightTracker:
         self.anchor: Optional[LatLon] = None
         self.anchor_time: Optional[float] = None
         self.last_measured_time: Optional[float] = None
+        self.measured: Optional[LatLon] = None     # the last measured position (GPS / night fix)
         self.gps_lost_at: Optional[float] = None
         self._dr_m = 0.0                 # distance dead-reckoned since the last measured position
         self._candidates = []            # fixes refused by the gate: (t, lat, lon, heading, speed)
@@ -81,6 +85,7 @@ class NightTracker:
     def _measured(self, lat: float, lon: float, t: float, support: int) -> None:
         self.anchor, self.anchor_time = (float(lat), float(lon)), float(t)
         self.last_measured_time = float(t)
+        self.measured = (float(lat), float(lon))
         self._dr_m = 0.0
         self._candidates = []
         self._support = min(int(support), self.reacquire_confirmed_n)
@@ -107,19 +112,32 @@ class NightTracker:
         return self.anchor
 
     def gate(self, lat: float, lon: float, t: float) -> Optional[str]:
-        """None if a fix at (lat, lon) is reachable from the anchor, else the reason."""
+        """None if a fix at (lat, lon) is reachable, else the reason.
+
+        Reach: from the last MEASURED position (GPS or a night fix), max_speed_mps x the time
+        since it + gate_margin_m — the distance the vehicle can have flown. Dead reckoning does
+        not reset this clock (B16): it used to move the anchor and its time to every refused
+        frame, so after one wrong fix the reach stayed ~1 s wide around the dead-reckoned wrong
+        track and refused the true position until dead reckoning expired. The single-jump
+        limit is still measured from the anchor (the dead-reckoned prediction): a fix far from
+        where the track expects the vehicle is never taken alone.
+        """
         if self.anchor is None or self.anchor_time is None:
             return None
+        ref = self.measured if self.measured is not None else self.anchor
+        t_ref = self.last_measured_time if self.last_measured_time is not None else self.anchor_time
+        dist = haversine_m(ref[0], ref[1], lat, lon)
+        elapsed = max(0.0, t - t_ref)
+        reach = self.max_speed_mps * elapsed + self.gate_margin_m
+        if dist > reach:
+            return (f"implausible jump {dist:.0f} m in {elapsed:.1f} s since the last measured "
+                    f"position (max {reach:.0f} m) — rejected, retrying from the last position")
         jump = haversine_m(self.anchor[0], self.anchor[1], lat, lon)
-        elapsed = max(0.0, t - self.anchor_time)
-        reach = (self.max_speed_mps * elapsed + self.gate_margin_m
-                 + self.dead_reckon_rel_err * self._dr_m)
-        if jump > reach:
-            return (f"implausible jump {jump:.0f} m in {elapsed:.1f} s "
-                    f"(max {reach:.0f} m) — rejected, retrying from the last position")
-        if self.max_single_jump_m is not None and jump > self.max_single_jump_m:
-            return (f"jump {jump:.0f} m after {elapsed:.0f} s without a fix (> "
-                    f"{self.max_single_jump_m:.0f} m): needs {self.reacquire_n} agreeing fixes")
+        limit = (None if self.max_single_jump_m is None
+                 else self.max_single_jump_m + self.dead_reckon_rel_err * self._dr_m)
+        if limit is not None and jump > limit:
+            return (f"jump {jump:.0f} m from the track after {elapsed:.0f} s without a fix (> "
+                    f"{limit:.0f} m): needs {self.reacquire_n} agreeing fixes")
         return None
 
     def offer(self, lat: float, lon: float, t: float, heading_deg=None, speed_mps=None) -> Optional[str]:

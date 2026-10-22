@@ -130,6 +130,47 @@ def test_a_wrong_burst_on_a_fresh_track_is_outnumbered_but_a_gap_resets_it():
     assert all(e is not None and e < 1.0 for e in errs[64:])
 
 
+def test_b16_wrong_burst_after_a_gap_does_not_lock_the_track_while_dead_reckoning():
+    """B16 regression: after a long gap a burst of 5 agreeing wrong fixes (120 m north of the
+    truth) re-anchors the track; the correct fixes then come only every 6 s (cloud gaps), too
+    sparse for a re-acquisition consensus. Dead reckoning from the wrong anchor used to reset the
+    gate's clock every second, so its reach stayed ~70 m and refused the true position (120 m
+    away) until dead reckoning expired 30 s later (then ~10 s more). The reach now grows from the
+    last MEASURED fix: the first correct fix 4 s after the burst is still out of reach (156 m),
+    the next one (10 s) is taken.
+    """
+    tr = NightTracker(max_dead_reckon_s=30.0)
+    tr.set_known(LAT, LON, 0.0)
+    errs = {}
+    for t in range(0, 100):
+        truth = dead_reckon(LAT, LON, 90.0, 25.0, float(t)) if t else (LAT, LON)
+        fix = None
+        if 40 <= t <= 44:
+            fix = dead_reckon(truth[0], truth[1], 0.0, 1.0, 120.0)            # the wrong burst
+        elif t > 44 and t % 6 == 0:
+            fix = truth
+        pub = None
+        if fix is not None and tr.offer(fix[0], fix[1], float(t), 90.0, 25.0) is None:
+            pub = tr.anchor
+        if pub is None:
+            pub = tr.coast(float(t), 90.0, 25.0)
+        errs[t] = None if pub is None else haversine_m(pub[0], pub[1], *truth)
+    assert errs[44] > 100.0                                    # the burst got in (the scenario)
+    assert all(errs[t] is not None and errs[t] < 1.0 for t in range(54, 100))
+    assert tr.gate(*dead_reckon(*tr.measured, 0.0, 1.0, 100.0), tr.last_measured_time + 1.0) is not None
+
+
+def test_dead_reckoning_does_not_reset_the_gate_clock():
+    """The reach grows from the last measured fix, not from the dead-reckoned anchor."""
+    tr = NightTracker(max_speed_mps=30.0, gate_margin_m=30.0, max_single_jump_m=None)
+    tr.set_known(LAT, LON, 0.0)
+    for t in range(1, 6):
+        assert tr.coast(float(t), 90.0, 0.0) is not None       # hovering, dead reckoning
+    assert tr.last_measured_time == 0.0 and tr.anchor_time == 5.0
+    assert tr.gate(*_east(170.0), 5.0) is None                 # 5 s x 30 m/s + 30 m = 180 m
+    assert tr.gate(*_east(190.0), 5.0) is not None
+
+
 def test_reset_forgets_the_track():
     tr = NightTracker()
     tr.set_known(LAT, LON, 0.0)
