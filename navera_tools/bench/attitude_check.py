@@ -12,6 +12,11 @@ screen's measured turn, their difference (the attitude error that would misplace
 vehicle: 1 degree = 24 m at 1,400 m) and how far the lens moved (mm).
 
 Run lens_calib_screen.py --save before (the left lens and a first screen pose). Lights may stay on.
+
+--kit: the attitude and the frame stamps of the PRODUCT's Insta360 kit (camera_pkg insta360_kit:
+AttitudeFilter, each key frame decoded alone and stamped with its own packet) instead of the field
+driver's; --mount: the camera's axes on the "vehicle" for it (the bench: standing, +y,+z,+x). The
+offset fit at the end then checks the kit's exposure stamp (expected best near 0 ms).
 """
 import argparse
 import csv
@@ -33,8 +38,69 @@ from navera_tools.bench.lens_calib_screen import POSE_FILE, SH, SW, grid  # noqa
 from navera_tools.field.insta360_usb import Insta360Usb  # noqa: E402
 from navera_tools.field.reprocess360 import rotvec  # noqa: E402
 from navera_tools.field.sky360 import default_lenses  # noqa: E402
+from navera_common.camera_model import quat_to_matrix  # noqa: E402
 
 W = "NAVERA attitude"
+
+
+class KitCam:
+    """The product kit behind the field driver's interface (latest_stamped, attitude_at, gravity):
+    camera_pkg.insta360_kit on the live camera, attitudes as R (camera IMU -> world)."""
+
+    def __init__(self, mount: str):
+        import collections
+        import threading
+        for p in (os.path.join(ROOT, "camera_pkg"),):
+            sys.path.insert(0, p)
+        from camera_pkg.insta360_attitude import AttitudeFilter
+        from camera_pkg.insta360_imu import ImuStream, UsbImuSource, mount_rotation
+        from camera_pkg.insta360_kit import Insta360Kit, imu_calibration_file
+        from navera_common.insta360_protocol import load_imu_calibration
+        self.R_bc = mount_rotation(mount)
+        self.kit = Insta360Kit(ImuStream(self.R_bc, 5, load_imu_calibration(imu_calibration_file())),
+                               AttitudeFilter(), None)
+        self._lock = threading.Lock()
+        self._att = collections.deque(maxlen=6000)        # (camera ms, R camera IMU -> world)
+        self._acc = collections.deque(maxlen=100)
+        self._frame = (None, 0.0, None)
+        self.error = None
+        self._stop = False
+        self.usb = UsbImuSource(self._on_packet)
+        threading.Thread(target=self._frames, daemon=True).start()
+
+    def _on_packet(self, t, p):
+        for s, st in self.kit.feed(t, p):
+            with self._lock:
+                self._att.append((s.cam_ms, quat_to_matrix(st.q) @ self.R_bc))
+                self._acc.append(self.R_bc.T @ s.accel)
+
+    def _frames(self):
+        while not self._stop:
+            for fr in self.kit.wait_frames(0.5):
+                with self._lock:
+                    self._frame = (fr.image, fr.arrival, fr.cam_ms)
+
+    def latest_stamped(self):
+        with self._lock:
+            return self._frame
+
+    def attitude_at(self, cam_ms):
+        with self._lock:
+            hist = list(self._att)
+        if not hist or cam_ms is None or cam_ms < hist[0][0] or cam_ms > hist[-1][0] + 200:
+            return None
+        return min(hist, key=lambda h: abs(h[0] - cam_ms))[1]
+
+    def gravity(self):
+        with self._lock:
+            a = np.mean(list(self._acc), axis=0) if self._acc else None
+        return (None, None, None) if a is None else (a / np.linalg.norm(a), None, None)
+
+    def close(self):
+        self._stop = True
+        self.usb.close()
+
+
 OFFSETS_MS = (-400, -300, -200, -150, -100, -60, -30, 0, 30, 60, 100, 150, 200, 300, 400)
 
 
@@ -106,6 +172,8 @@ def main():
     ap.add_argument("--seconds", type=float, default=120.0)
     ap.add_argument("--height", type=float, default=1403.0, help="m: the map bench's height, to express lens movement on the ground")
     ap.add_argument("--out", default="attitude_check.csv")
+    ap.add_argument("--kit", action="store_true", help="the product kit's attitude and stamps (camera_pkg)")
+    ap.add_argument("--mount", default="+y,+z,+x", help="--kit: camera IMU axes along the body x,y,z")
     a = ap.parse_args()
     pose = json.load(open(POSE_FILE))
     lens = next(L for L in default_lenses() if L.name == pose.get("lens", "left"))
@@ -117,7 +185,7 @@ def main():
         cv2.circle(img, (int(x), int(y)), 9, 255, -1, cv2.LINE_AA)
     cv2.namedWindow(W, cv2.WND_PROP_FULLSCREEN)
     cv2.setWindowProperty(W, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
-    cam = Insta360Usb()
+    cam = KitCam(a.mount) if a.kit else Insta360Usb()
     end = time.time() + 5.0                                # the stream delay and the IMU start
     while time.time() < end:
         cv2.imshow(W, img)
