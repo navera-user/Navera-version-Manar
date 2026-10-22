@@ -146,6 +146,8 @@ class LiveCamera(Node):
         self.cw, self.ch = (self.crop[2], self.crop[3]) if self.crop else (self.w, self.h)
         self.period = 1.0 / max(float(p("fps")), 1e-3)
         self.latency_s = float(p("capture_latency_s"))
+        from navera_common.delay_monitor import DelayChangeMonitor
+        self.delay_mon = DelayChangeMonitor()
         cam = self._camera_model(p("calibration_file"), float(p("camera_hfov_deg")))
         self.builder = FrameBuilder(cam, (p("mount_roll_deg"), p("mount_pitch_deg"), p("mount_yaw_deg")),
                                     float(p("max_tilt_deg")), p("camera_type"), bool(p("gimbal")),
@@ -334,6 +336,8 @@ class LiveCamera(Node):
         while not self._stop.is_set():
             ok = cap.grab()                                     # paced by the camera itself
             t = self.get_clock().now().nanoseconds * 1e-9 - self.latency_s
+            if ok:
+                self._watch_delay(cap)
             frame = None
             if ok and self._want.is_set():
                 ok, frame = cap.retrieve()                      # decode only the frame to send
@@ -362,6 +366,21 @@ class LiveCamera(Node):
                 self._latest = (frame, t)
             self._want.clear()
         cap.release()
+
+    def _watch_delay(self, cap) -> None:
+        """Feed navera_common.delay_monitor with the frame's (arrival, source stamp): the V4L2
+        buffer timestamp (CLOCK_MONOTONIC) or the GStreamer buffer PTS (running time). A change
+        of the queueing after the source stamps the frame is a change of the camera delay."""
+        try:
+            if isinstance(getattr(cap, "stamps", None), tuple):
+                self.delay_mon.add(*cap.stamps)
+            elif self.input == "usb":
+                import cv2
+                ms = cap.get(cv2.CAP_PROP_POS_MSEC)
+                if ms and ms > 0:
+                    self.delay_mon.add(time.monotonic(), ms / 1000.0)
+        except Exception:                                   # noqa: BLE001 — the monitor is optional
+            pass
 
     def _on_image(self, m: Image):
         from cv_bridge import CvBridge
@@ -418,6 +437,11 @@ class LiveCamera(Node):
             msg.header.stamp.sec, msg.header.stamp.nanosec = int(t), int((t % 1) * 1e9)
             meta["image_stamp_ns"] = msg.header.stamp.sec * 1_000_000_000 + msg.header.stamp.nanosec
             self._check_heading(meta, t)
+            meta["capture_latency_s"] = self.latency_s          # already subtracted: the localizers' set delay
+            meta["delay_monitor"] = self.delay_mon.state()     # the delay's change since start (no GPS needed)
+            if self.delay_mon.significant:
+                self.get_logger().warn(f"camera delay changed by {self.delay_mon.change_s:+.3f} s since the start "
+                                       "(queueing after the camera's stamp)", throttle_duration_sec=30.0)
             if meta.get("utc_time"):
                 meta["utc_source"] = "system_clock"         # not a trusted time by itself (celestial, H-08)
             if frozen:

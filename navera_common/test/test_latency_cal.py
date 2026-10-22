@@ -60,11 +60,15 @@ def test_recovers_the_delay_on_a_turning_track(delay, v, radius, duration, noise
 
 def test_slow_and_noisy_is_estimated_but_not_trusted_enough_to_apply():
     """20 m/s with 3 m of vision noise: the residual spread over the velocity spread is 0.15 s,
-    the stated sigma says so and the delay is not applied (the bench at 20 m/s: 1.3 s for 1.7 s).
+    the stated sigma says so and the delay is not applied as stable (the bench at 20 m/s: 1.3 s
+    for 1.7 s) — for a set delay; an unknown one gets the staged correction with that sigma.
     """
-    cal = fly(LatencyCalibrator(), circle(20.0, 300.0), 1.0, 90.0, noise=3.0)
+    cal = fly(LatencyCalibrator(nominal_s=0.5), circle(20.0, 300.0), 1.0, 90.0, noise=3.0)
     assert abs(cal.estimate - 1.0) < 0.15
     assert cal.sigma > 0.1 and cal.applied is None and "sigma" in cal.reason
+    cal = fly(LatencyCalibrator(), circle(20.0, 300.0), 1.0, 90.0, noise=3.0)
+    assert not cal.stable and "partial" in cal.reason
+    assert cal.applied_sigma > 0.1 and abs(cal.applied - 1.0) < 2 * cal.applied_sigma
 
 
 def test_outliers_do_not_move_it():
@@ -97,8 +101,10 @@ def test_samples_in_a_sharp_turn_are_dropped():
 
 
 def test_too_few_samples_never_applied():
-    cal = fly(LatencyCalibrator(min_samples=20), circle(60.0, 900.0), 1.0, 15.0)
+    cal = fly(LatencyCalibrator(min_samples=20, partial_min_samples=20), circle(60.0, 900.0), 1.0, 15.0)
     assert cal.samples < 20 and cal.applied is None and "samples" in cal.reason
+    cal = fly(LatencyCalibrator(min_samples=20), circle(60.0, 900.0), 1.0, 8.0)
+    assert cal.samples < 10 and cal.applied is None and cal.delay_sigma() is None
 
 
 def test_a_set_delay_within_3_sigma_is_kept():
@@ -180,3 +186,168 @@ def test_a_noisy_gps_on_a_straight_leg_is_not_a_turn():
 def test_a_sharp_turn_is_still_refused_with_a_noisy_gps():
     cal = fly(LatencyCalibrator(), circle(60.0, 150.0), 1.0, 30.0, gps_noise=0.3)
     assert cal.samples == 0 and cal.rejected.get("turning", 0) > 20
+
+
+# ── staged apply, prior, stored delay (F31: Isaac Sim closed loop 2026-10-21) ─────────────────────
+def leg_turn_leg(v=10.0, t_turn=40.0, turn_deg=135.0, turn_s=6.0):
+    """A copter leg east at v, a turn of turn_deg over turn_s, a second leg: the campaign's circuit."""
+    w = math.radians(turn_deg) / turn_s
+
+    def track(t):
+        if t <= t_turn:
+            return v * t, 0.0
+        e0, tt = v * t_turn, min(t - t_turn, turn_s)
+        # constant-rate turn (left), then straight on the new heading
+        r = v / w
+        e, n = e0 + r * math.sin(w * tt), r * (1 - math.cos(w * tt))
+        if t > t_turn + turn_s:
+            h = math.radians(turn_deg)
+            e, n = e + v * (t - t_turn - turn_s) * math.cos(h), n + v * (t - t_turn - turn_s) * math.sin(h)
+        return e, n
+    return track
+
+
+def test_staged_apply_is_the_posterior_with_the_unknown_prior():
+    """Sigma between max_sigma and partial_max_sigma: applied = the estimate shrunk towards 0.
+
+    By 1 / (1 + sigma^2) (prior 0 +- 1 s), its sigma the posterior's.
+    """
+    cal = fly(LatencyCalibrator(), leg_turn_leg(), 1.3, 70.0, noise=4.0, offset=(5.0, 3.0))
+    assert 0.1 < cal.sigma <= 0.5 and not cal.stable
+    w = 1.0 / (1.0 + cal.sigma ** 2)
+    hist = [(t, a, s) for t, a, s in cal._applied_at]
+    assert hist and math.isclose(cal.applied, hist[-1][1])
+    assert cal.applied < cal.estimate or cal.estimate <= 0          # shrunk towards the prior
+    assert abs(cal.applied - 1.3) < 3 * cal.applied_sigma and cal.applied_sigma < cal.sigma
+    assert math.isclose(cal.applied_sigma, math.sqrt(w) * cal.sigma, rel_tol=0.3)   # last update's sigma
+    assert cal.delay_sigma() == cal.applied_sigma and cal.state()["applied_sigma_s"] is not None
+
+
+def test_straight_leg_only_is_never_applied_even_staged():
+    cal = fly(LatencyCalibrator(), circle(10.0, None), 1.3, 75.0, noise=4.0)
+    assert cal.applied is None and cal.delay_sigma() is None
+
+
+def test_hover_is_never_applied():
+    cal = fly(LatencyCalibrator(), lambda t: (0.3 * math.sin(t), 0.2 * math.cos(t)), 1.3, 75.0)
+    assert cal.samples == 0 and cal.applied is None
+
+
+@pytest.mark.parametrize("seed", range(6))
+def test_wrong_samples_are_not_applied_wrong(seed):
+    """Vision fixes unrelated to the delay (40 m of white noise, 20 % gross outliers): whatever is
+    applied stays within 3 of its own sigmas of the truth.
+    """
+    cal = fly(LatencyCalibrator(), leg_turn_leg(), 1.3, 75.0, noise=40.0, outliers=0.2, seed=seed)
+    if cal.applied is not None:
+        assert abs(cal.applied - 1.3) <= 3 * cal.applied_sigma
+
+
+@pytest.mark.parametrize("delay", [0.1, 0.6, 1.3, 2.2])
+@pytest.mark.parametrize("seed", range(4))
+def test_staged_apply_reduces_the_delay_error(delay, seed):
+    """Whatever the true delay, what is applied is closer to it than nothing (0), and within 3 sigma."""
+    cal = fly(LatencyCalibrator(), leg_turn_leg(), delay, 75.0, noise=4.0, seed=seed)
+    if cal.applied is not None:
+        assert abs(cal.applied - delay) <= max(3 * cal.applied_sigma, 0.05)
+        assert abs(cal.applied - delay) <= delay + 0.05
+
+
+def test_a_set_delay_gets_no_staged_correction():
+    cal = fly(LatencyCalibrator(nominal_s=0.4), leg_turn_leg(), 1.3, 70.0, noise=4.0)
+    assert cal.prior is None and not cal.stable and cal.applied is None and cal.delay_sigma() == 0.1
+
+
+def test_spoof_drift_in_the_rollback_window_is_undone():
+    """A GPS dragged at 3 m/s over the last 20 s, then refused: the staged value of that time is
+    dropped with its samples (rollback), back to what was applied before the drift.
+    """
+    track = leg_turn_leg(t_turn=30.0)
+    cal = fly(LatencyCalibrator(), track, 1.3, 50.0, noise=4.0)
+    t_end = 60.0
+
+    def dragged(t):
+        e, n = track(t)
+        return e + 3.0 * max(0.0, t - t_end), n
+    rng = np.random.default_rng(5)
+    for k in range(int(t_end * 5) + 1, int((t_end + 20.0) * 5)):
+        t = k / 5.0
+        cal.add_gps(t, *ll(*dragged(t)))
+        if k % 5 == 0 and t + 1.3 < t_end + 19.0:
+            e, n = track(t - 1.3)
+            cal.add_fix(t, *ll(e + 40.0 + rng.normal(0, 4.0), n - 25.0 + rng.normal(0, 4.0)))
+    during, cut = (cal.applied, cal.applied_sigma), cal._t[-1] - 20.0
+    before = [(x, sx) for t, x, sx in cal._applied_at if t <= cut]
+    cal.freeze("GPS refused", rollback_s=20.0)
+    assert cal._t[-1] <= t_end and before and (cal.applied, cal.applied_sigma) == before[-1] != during
+    assert abs(cal.applied - 1.3) <= 3 * cal.applied_sigma
+
+
+def test_stored_prior_starts_the_flight_and_is_refined():
+    cal = LatencyCalibrator()
+    assert cal.set_prior(1.25, 0.2, "stored")
+    assert cal.applied == 1.25 and cal.delay_sigma() == 0.2 and math.isclose(cal.correction(), 1.25)
+    fly(cal, leg_turn_leg(), 1.3, 70.0, noise=4.0)
+    assert abs(cal.applied - 1.3) < 0.15 and cal.applied_sigma < 0.2 and "stored" in cal.prior_source
+
+
+def test_a_contradicted_stored_prior_is_dropped():
+    """Another camera / stream setting: the stored 0.3 s against a measured 1.3 s."""
+    cal = LatencyCalibrator()
+    cal.set_prior(0.3, 0.1, "stored")
+    fly(cal, leg_turn_leg(), 1.3, 70.0, noise=4.0)
+    assert "contradicted" in cal.reason or cal.prior_source == "unknown delay"
+    assert abs(cal.applied - 1.3) < 3 * cal.applied_sigma
+
+
+def test_rollback_without_earlier_value_returns_to_the_stored_start():
+    cal = LatencyCalibrator()
+    cal.set_prior(1.2, 0.3, "stored")
+    fly(cal, leg_turn_leg(t_turn=5.0), 1.3, 25.0, noise=4.0)
+    cal.freeze("GPS refused", rollback_s=60.0)
+    assert (cal.applied, cal.applied_sigma) == (1.2, 0.3)
+
+
+def test_set_prior_refused_for_a_set_delay_or_out_of_range():
+    assert not LatencyCalibrator(nominal_s=0.4).set_prior(1.0, 0.1)
+    assert not LatencyCalibrator().set_prior(5.0, 0.1)
+    assert not LatencyCalibrator().set_prior(1.0, 0.0)
+
+
+def test_persist_keeps_the_measured_delay_for_the_next_flight(tmp_path, monkeypatch):
+    from navera_common import latency_cal
+    monkeypatch.setenv("NAVERA_STATE_DIR", str(tmp_path))
+    cal = LatencyCalibrator()
+    cal.store_key = "hik_visible_lens.yaml"
+    assert not cal.persist()                           # nothing measured yet: nothing written
+    fly(cal, leg_turn_leg(), 1.3, 70.0, noise=4.0)
+    assert cal.persist() and not cal.persist()         # written once
+    kept = latency_cal.load_stored("hik_visible_lens.yaml", 3600.0)
+    assert kept == (pytest.approx(cal.applied), pytest.approx(cal.applied_sigma))
+    assert latency_cal.load_stored("other_lens.yaml", 3600.0) is None
+    cal.freeze("GPS refused", rollback_s=1e6)          # everything undone: back to what we started from
+    assert cal.applied is None and cal.persist()
+    assert latency_cal.load_stored("hik_visible_lens.yaml", 3600.0) is None
+
+
+def test_store_key_from_the_calibration_file(monkeypatch):
+    from navera_common.latency_cal import store_key
+    monkeypatch.setenv("NAVERA_CAMERA_CALIBRATION", "/etc/navera/hik_visible_lens_2026-10-20.yaml")
+    assert store_key("") == "hik_visible_lens_2026-10-20.yaml" and store_key(" cam2 ") == "cam2"
+    monkeypatch.delenv("NAVERA_CAMERA_CALIBRATION")
+    assert store_key("") == "camera"
+
+
+def test_set_nominal_from_the_camera_replaces_the_unknown_prior_and_a_stored_start():
+    cal = LatencyCalibrator()
+    cal.store_key = "lens.yaml"
+    cal.set_prior(1.1, 0.2, "stored")
+    assert cal.set_nominal(1.3, "camera")
+    assert cal.nominal == 1.3 and cal.applied is None and cal.prior is None and cal.store_key is None
+    assert cal.delay() == 1.3 and cal.correction() == 0.0 and cal.delay_sigma() == 0.1
+    assert not cal.set_nominal(1.3) and not cal.set_nominal(9.0)
+
+
+def test_set_nominal_refused_once_samples_exist():
+    cal = fly(LatencyCalibrator(), leg_turn_leg(), 1.3, 30.0, noise=4.0)
+    assert cal.samples and not cal.set_nominal(1.3) and cal.nominal == 0.0

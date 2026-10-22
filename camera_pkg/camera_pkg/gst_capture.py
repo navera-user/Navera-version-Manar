@@ -23,6 +23,7 @@ class GstCapture:
         Gst.init(None)
         self._Gst, self._timeout = Gst, int(timeout_s * Gst.SECOND)
         self._sample = None
+        self.stamps = None                                  # (arrival s, source PTS s) of the last grab
         try:
             self._pipe = Gst.parse_launch(pipeline)
             self._sink = self._pipe.get_by_name("sink")
@@ -40,6 +41,17 @@ class GstCapture:
         if self._pipe is None:
             return False
         self._sample = self._sink.emit("try-pull-sample", self._timeout)
+        self.stamps = None
+        if self._sample is not None:
+            # (arrival, source stamp) in the pipeline's running time: the buffer PTS was set where the
+            # frame entered (the sensor, the RTP receiver); their difference is the queueing after it
+            try:
+                pts = self._sample.get_buffer().pts
+                clock = self._pipe.get_clock()
+                if pts != self._Gst.CLOCK_TIME_NONE and clock is not None:
+                    self.stamps = ((clock.get_time() - self._pipe.get_base_time()) / 1e9, pts / 1e9)
+            except Exception:                               # noqa: BLE001 — stamps are optional
+                self.stamps = None
         return self._sample is not None
 
     def retrieve(self):
