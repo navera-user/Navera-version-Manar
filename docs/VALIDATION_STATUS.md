@@ -1,6 +1,7 @@
 # NAVERA — Validation status and known limitations
 
-**Release 0.2 — field validation pending.** Last updated 2026-10-03.
+**Release 0.2 — field validation pending.** Last updated 2026-10-22 (the dated sections below
+give each measurement's date; the summary and the known limitations reflect all of them).
 
 This document states what has been measured, how, and what still has to be validated in
 the field. Every number below comes from a run on the Jetson Orin Nano (bench, replay and
@@ -16,7 +17,7 @@ been measured. Open engineering items are tracked in
 | Automatic restart after a crash | Mechanism verified; not yet reboot-tested on a deployed unit | Node exit → launch exit, verified |
 | Day vision — local feature matching (default since 2026-10-01) | **Accurate on aerial test frames; measured with NAVERA's camera on a screen bench only (not flown)** | 32/33 frames within 9 m (median 4 m), no wrong position accepted, 0.16 s/frame |
 | Day vision — DISK + LightGlue matcher, navigation between matches (2026-10-06/07) | **Screen bench with the Insta360 (other-date imagery) and simulator; not flown** | below: "Day vision with NAVERA's camera — screen bench" |
-| Day vision — stated sigma on real drone flights (UAV-VisLoc, 8 flights, 2026-10-20) | **Model alone unsafe (65 % within 3σ); self-calibration + 30 m floor safe (99.8 / 99.9 %) only with a pose–attitude guard not yet in the product — as-is 70 of 2600 fixes 100–325 m off, 13 of them beyond the self-calibrated 3σ** | below: "Day: real drone flights" |
+| Day vision — stated sigma on real drone flights (UAV-VisLoc, 8 flights, 2026-10-20) | **Model alone unsafe (65 % within 3σ); self-calibration + 30 m floor safe with the pose–attitude guard, in the product since 2026-10-20 (VL-1, `pose_tilt_guard_deg`): median 16 m, p90 34 m, 1 of 2599 fixes > 100 m, 0.999 (floor) / 0.993 (self-cal) within 3σ. Without the guard (code before VL-1): 70 fixes 100–325 m off** | below: "Day: real drone flights" |
 | Day vision — a real flight replayed through the whole chain: IMU straightening, tracking, estimator (MARS-LVIG, 2026-10-21) | **Real drone camera and IMU replayed (not NAVERA's camera, 80–130 m, one valley flight + 55 s of another):** GPS cut after 120 s, 310 s without: fixes 6–7 m median, never over 17 m, 100 % within 3σ, 0 over 50 m in 1 493; 36 % of frames matched at z17 (54 % at z18); dead-reckoning alone 4 / 12 m (median / max) over 70 s after two fixes of this branch | below: "Day: a real flight replayed" |
 | Day vision — DINOv2 tile retrieval (former method, fallback) | **Not accurate enough to replace GPS** | Median 442 m on labelled replay frames |
 | Night vision (STHN homography) | Frames scaled and turned north-up from altitude, camera field of view and heading; motion gate; **not flown. Real aerial thermal (2026-10-21, orthomosaic frames, below): night LWIR 28–38 % of frames give a position at 700–1000 m, 10–12 m median, 0 wrong accept with a 640 px camera; a 160 px camera made wrong accepts through the retries** | 8–13 m median on synthetic frames (250–600 m, any heading); simulated night mission, GPS jammed, vehicle barometer (2026-10-07): 10 m median, 21 m max, stated accuracy (simulator-calibrated) 100 % within 3 sigma; **needs an independent height (barometer) after GPS loss** |
@@ -733,8 +734,9 @@ the earlier set incl. `terrain_coast_flat_sea`, the 72-pose A/B set, heading 10/
 
 ### Celestial (`cn_pkg`)
 
-- The latitude formula took a single root. Any camera facing the southern half of the sky
-  produced positions hundreds to thousands of km off. It now computes both solutions and
+- The latitude formula took a single root (the arcsine's principal value). It was right only
+  when the boresight's hour angle satisfied |H| < 90°; any other pointing produced positions
+  hundreds to thousands of km off. It now computes both solutions and
   picks the one matching a prior position. If the prior can't tell them apart, no
   position is reported.
 - Star coordinates are now corrected for precession to the date of observation. The
@@ -1038,7 +1040,15 @@ holds the only results from the real sensors. No sensor recording (log, bag) was
 
 1. **Accuracy is not established on real data.** No real flight has been recorded with
    camera, GPS and IMU together. This is the first thing to do with a vehicle.
-2. **Day vision is not accurate enough** (see above).
+2. **Day vision accuracy is measured on public real imagery and on a bench, not with NAVERA's
+   camera in flight.** Local matching (the default since 2026-10-01; DISK + LightGlue, SIFT
+   fallback) with the pose–attitude guard: 8 real drone flights (UAV-VisLoc) median 16 m,
+   p90 34 m, 1 of 2599 fixes > 100 m; a real flight replayed through the whole chain
+   (MARS-LVIG) 6–7 m median, never over 17 m, but only 36 % of frames matched at z17; screen
+   bench with the Insta360 3.6–7.3 m median. The stated sigma is honest only after in-flight
+   self-calibration (30 m floor before it). The former DINOv2 tile retrieval (fallback,
+   `NAVERA_DAY_MATCHER=retrieval`) is **not** accurate enough (442 m median) and must not be
+   used to replace GPS. See [PRODUCT_READINESS.md](certification/PRODUCT_READINESS.md).
 3. **No inertial navigation.** The IMU gives the camera's attitude and heading changes;
    it is not integrated into a position. Without vision matches, day vision dead-reckons
    along the track measured before the gap for at most 2 minutes / 500 m (simulator figures
