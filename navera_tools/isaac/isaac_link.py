@@ -629,7 +629,7 @@ class IsaacLink(Node):
                     self.get_logger().warn("camera stream: encoder behind, frame dropped", throttle_duration_sec=5.0)
             if not self.ros_camera:
                 self.live["frames_out"] += 1
-                continue
+                return
             m = Image()
             self._stamp(m.header, now)
             m.header.frame_id = "camera"
