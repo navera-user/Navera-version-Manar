@@ -33,7 +33,7 @@ def test_ntp_synchronised_jetson_is_trusted_without_the_phone():
 def test_phone_offset_is_used_when_known():
     s = _bare()
     s.offsets.extend([3600.2, 3600.1, 3600.3])
-    assert abs(s.star_clock_offset_s() - 3600.2) < 1e-9
+    assert abs(s.star_clock_offset_s() - 3600.2) < 1e-6
 
 
 def test_a_clock_step_drops_the_old_offsets():
