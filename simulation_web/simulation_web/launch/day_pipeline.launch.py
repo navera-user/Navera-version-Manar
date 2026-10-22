@@ -20,7 +20,7 @@ Examples:
 import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import LogInfo, DeclareLaunchArgument, IncludeLaunchDescription, Shutdown
+from launch.actions import LogInfo, DeclareLaunchArgument, IncludeLaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
@@ -71,8 +71,10 @@ def generate_launch_description():
         # navera.env); otherwise the replay camera below (recorded frames).
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(os.path.join(camera_share, 'launch', 'live.launch.py')),
+            # a camera that exits (stalled, unplugged) is started again alone: the day node goes on
+            # dead-reckoning meanwhile (B23)
             launch_arguments={'camera_type': 'day', 'ns': 'day',
-                              'ready_topic': '/day/localizer_ready'}.items(),
+                              'ready_topic': '/day/localizer_ready', 'respawn': 'true'}.items(),
         ) if (os.environ.get('NAVERA_CAMERA') or 'replay') == 'live' else IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
                 os.path.join(camera_share, 'launch', 'day.launch.py')
@@ -94,9 +96,14 @@ def generate_launch_description():
             executable='day_subscriber.py',
             name='day_subscriber',
             output='screen',
-            # Any node exiting ends the launch, so the systemd unit
-            # (Restart=always) restarts the whole pipeline.
-            on_exit=Shutdown(reason='node exited'),
+            # Started again alone, 1 s after it exits (crash, OOM kill), B23: the camera keeps its
+            # stream open and sends the next frame as soon as the new node says it is ready
+            # (live_camera._on_ready), the output bridges the gap from the last position it sent.
+            # A whole-pipeline restart by systemd took 25 s in flight (camera reopened, models
+            # reloaded twice over): longer than the output's 10 s bridge — the copter landed.
+            # The replay camera (tests, simulation) still ends the launch when it exits.
+            respawn=True,
+            respawn_delay=1.0,
             parameters=[{
                 'conf_threshold': conf_threshold,
                 'image_topic':  '/day/image_raw',

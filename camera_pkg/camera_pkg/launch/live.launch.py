@@ -19,7 +19,9 @@ Settings (environment, /etc/navera/navera.env or the web page's settings.env):
                                from (navera_common.vehicle.sensor_topics)
 
 Arguments: camera_type (day|thermal|star), ns (topic namespace), ready_topic,
-settings (NAVERA_CAMERA_ or NAVERA_STAR_CAMERA_), wait_for_ready.
+settings (NAVERA_CAMERA_ or NAVERA_STAR_CAMERA_), wait_for_ready,
+respawn (false: the camera exiting ends the launch, so systemd restarts the whole pipeline;
+true: only the camera is started again, after respawn_delay_s — the localizer goes on, B23).
 NAVERA_CAMERA_INPUT may also be gst (NAVERA_CAMERA_GST_PIPELINE: any GStreamer source).
 """
 from launch import LaunchDescription
@@ -41,14 +43,17 @@ def _nodes(context):
                   ready_topic=LaunchConfiguration('ready_topic').perform(context),
                   wait_for_ready=LaunchConfiguration('wait_for_ready').perform(context) == 'true',
                   frame_id=f"{LaunchConfiguration('ns').perform(context)}_camera_link")
+    if LaunchConfiguration('respawn').perform(context) == 'true':
+        restart = dict(respawn=True, respawn_delay=float(LaunchConfiguration('respawn_delay_s').perform(context)))
+    else:
+        restart = dict(on_exit=Shutdown(reason='live camera exited'))
     return [
         LogInfo(msg=f"live camera: {params['input']} {params.get('device') if params['input'] == 'usb' else ''} "
                     f"{params['width']}x{params['height']}, attitude from {params['imu_topic']}, "
                     f"lens {_lens_text(params)}"),
         Node(package='camera_pkg', executable='live_camera.py', name='live_camera',
              namespace=LaunchConfiguration('ns'), output='screen',
-             on_exit=Shutdown(reason='live camera exited'),
-             parameters=[params]),
+             parameters=[params], **restart),
     ]
 
 
@@ -60,5 +65,7 @@ def generate_launch_description():
         # NAVERA_STAR_CAMERA_ for the celestial pipeline's star camera
         DeclareLaunchArgument('settings', default_value='NAVERA_CAMERA_'),
         DeclareLaunchArgument('wait_for_ready', default_value='true'),
+        DeclareLaunchArgument('respawn', default_value='false'),
+        DeclareLaunchArgument('respawn_delay_s', default_value='2.0'),
         OpaqueFunction(function=_nodes),
     ])
