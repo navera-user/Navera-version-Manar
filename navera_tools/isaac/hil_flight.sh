@@ -164,7 +164,7 @@ grep -E '^--> ' "$res/stage_check.log" | sed 's/^/    /' | tee -a "$res/hil.log"
 grep -q '^--> FAIL' "$res/stage_check.log" && { log "staged stack FAILED: $res/stage_check.log"; exit 1; }
 for i in $(seq 1 300); do       # the day node's log says when its map and models are loaded
   find "$STAGE/var/log/ros" -newermt "@$t_start" -type f -name '*.log' -print0 2>/dev/null \
-    | xargs -0 -r grep -l "DayLocalizer ready" 2>/dev/null | grep -q . && break
+    | xargs -0 -r grep -l "localizer_ready=True\|DayLocalizer ready" 2>/dev/null | grep -q . && break
   sleep 2
 done
 "${SSH[@]}" "touch ~/navera_results/$name/jetson_ready"
