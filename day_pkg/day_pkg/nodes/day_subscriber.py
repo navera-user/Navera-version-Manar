@@ -910,18 +910,32 @@ class DaySubscriber(Node):
         """(lat, lon, sigma) of a local fix averaged with the carried position by their sigmas, or None
         (blend_fixes off, a re-acquisition, no carried position, or a carry without a heading: it lags in
         turns, F23). A fix with few inliers is noisy, not biased: averaged, its error is shared with the
-        carry's; a confident wrong one that passed the gate pulls the output part of the way only."""
+        carry's; a confident wrong one that passed the gate pulls the output part of the way only.
+
+        Only the fix's independent error is averaged (F38). The carry is made of the earlier fixes (the
+        track holds the measured fixes, not this output), so the errors common to all of them — the
+        unknown camera delay (speed x its sigma, along the track) and the camera mount's (height x
+        tan(its sigma)) — are in the carry too: they set neither the weight nor shrink in the stated
+        sigma, hypot(sqrt(k) x the independent part, the common part). Counted as independent, they
+        were averaged down frame after frame: Isaac Sim closed loop 2026-10-22 (copter, delay unknown)
+        stated 5-9 m for 13-20 m errors, 146 of 356 outputs beyond 3 sigma, and with the carry fed its
+        own output it lagged 100 m behind (90 wrong fixes without the mount calibration)."""
         if not self.blend_fixes or status.get("reacquired") or self._carry_heading(meta)[0] is None:
             return None
         pred = self._predicted(meta)
         if pred is None:
             return None
         sig = self._fix_sigma(result, meta)
-        k = pred[2] ** 2 / (pred[2] ** 2 + sig ** 2)
+        common = min(sig, self._fix_sigma_common(result, meta))
+        r2 = max(sig * sig - common * common, 0.0)               # the fix's own error
+        q2 = max(float(pred[2]) ** 2 - common * common, 0.0)     # the carry's own (beyond the common part)
+        k = q2 / (q2 + r2) if q2 + r2 > 0.0 else 1.0
         de, dn = _en((lat, lon), pred[:2])
         p = _move(pred[:2], k * de, k * dn)
-        status["blend"] = {"weight": round(k, 3), "fix_sigma_m": round(sig, 1), "carry_sigma_m": round(pred[2], 1)}
-        return p[0], p[1], math.sqrt(k) * sig
+        out_sig = math.hypot(math.sqrt(k * r2), common)
+        status["blend"] = {"weight": round(k, 3), "fix_sigma_m": round(sig, 1), "carry_sigma_m": round(pred[2], 1),
+                           "common_sigma_m": round(common, 1)}
+        return p[0], p[1], out_sig
 
     def _publish_done(self, seq_id):
         self._publish_camera_delay()            # before the ack: the next frame is straightened with it
@@ -1766,6 +1780,16 @@ class DaySubscriber(Node):
                 s = math.hypot(s, sd * math.hypot(v[0], v[1]))
         return s
 
+    def _fix_sigma_common(self, result, meta) -> float:
+        """The part of a local fix's stated sigma that every fix of this flight shares (F38): the camera
+        delay's (speed x its sigma, the frame-time sigma when it is known) and the camera mount's (height x
+        tan(its sigma)), in quadrature. Averaging fixes does not reduce it."""
+        v = self.track.velocity(time.time())
+        speed = math.hypot(v[0], v[1]) if v is not None else 0.0
+        sd = self._unknown_delay_sigma_s()
+        d = speed * (sd if sd > 0.0 else float(getattr(self, "frame_time_sigma_s", 0.0)))
+        return math.hypot(d, self._mount_term_m(result, meta))
+
     def _unknown_delay_sigma_s(self) -> float:
         """The camera delay's uncertainty while it is neither set (camera_latency_s) nor estimated
         (auto_latency): the frame time can be off by that much, the fix by speed x that along the
@@ -2167,6 +2191,7 @@ class DaySubscriber(Node):
             # Accepted match: in spatial mode it lies within R of the anchor by
             # construction; in global mode (no anchor) it passed conf_threshold.
             out_lat, out_lon = float(raw_lat), float(raw_lon)
+            meas_sigma = self._fix_sigma(result, meta) if result.get("matcher") == "local" else self.local_sigma_m
             blended = self._blend_fix(out_lat, out_lon, result, meta, status) \
                 if result.get("matcher") == "local" else None
             if blended is not None:
@@ -2182,7 +2207,7 @@ class DaySubscriber(Node):
                                      mpp=result.get("_frame_mpp"))
             self._anchor_lat, self._anchor_lon, self._anchor_time = out_lat, out_lon, t_now
             self._last_measured_time = t_now
-            fix_sigma = self._fix_sigma(result, meta) if src == "local_match" else self.local_sigma_m
+            fix_sigma = meas_sigma
             if blended is not None:
                 fix_sigma = blended[2]
             self._dr_sigma = self._anchor_sigma = fix_sigma
@@ -2192,10 +2217,14 @@ class DaySubscriber(Node):
             if src == "local_match":
                 ns = meta.get("image_stamp_ns")         # the photo's instant, not the processing's
                 t_vel, t_fix = self.track.last_time(), (int(ns) / 1e9 if ns else t_now)
-                self.track.add(t_fix, out_lat, out_lon, fix_sigma)
+                # the track (the carry's velocity and start) holds the MEASURED fix with its own sigma,
+                # never the blended output: fed its own output the carry was a filter of itself — its
+                # velocity fitted to smoothed points, its sigma shrinking, the fixes weighted down and
+                # the output lagging (Isaac Sim 2026-10-22: 100 m behind a copter, F38)
+                self.track.add(t_fix, float(raw_lat), float(raw_lon), meas_sigma)
                 self._gyro_reset(t_fix, result)
                 self._track_heading = self._carry_heading(meta)[0]
-                self._keep_carry_velocity(out_lat, out_lon, t_fix, meta, self._dr_sigma, t_vel)
+                self._keep_carry_velocity(float(raw_lat), float(raw_lon), t_fix, meta, meas_sigma, t_vel)
             else:
                 self._carry, self._vel_epoch = None, None
             if src == "local_match":
