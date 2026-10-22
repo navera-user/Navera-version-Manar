@@ -83,3 +83,20 @@ navera_require() {
     done
     [ "$missing" -eq 0 ] || exit 1
 }
+
+# navera_idle_until_discovered "why" — an idle unit (nothing found to run) waits here instead
+# of restarting every 10 s. When navera-hotplug finds the missing device later and rewrites
+# discovered.env, the wrapper exits 0: systemd (Restart=always) restarts the unit, which
+# reads the new settings. NAVERA_DISCOVERED_ENV, NAVERA_IDLE_POLL_S: for tests.
+navera_idle_until_discovered() {
+    local f="${NAVERA_DISCOVERED_ENV:-/var/lib/navera/discovered.env}" before now
+    navera_log "$1"
+    before=$(stat -c %Y.%s "$f" 2>/dev/null || echo none)
+    while sleep "${NAVERA_IDLE_POLL_S:-5}"; do
+        now=$(stat -c %Y.%s "$f" 2>/dev/null || echo none)
+        if [ "$now" != "$before" ]; then
+            navera_log "discovered settings changed ($f): restarting with them"
+            exit 0
+        fi
+    done
+}

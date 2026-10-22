@@ -42,9 +42,11 @@ WS = '/home/navera/isaac_ros_common'
 HOME = '/home/navera'
 # set by systemd / the wrappers themselves, or deliberately left out of the example
 INTERNAL_VARS = {'NAVERA_WS', 'NAVERA_BOX_IMU', 'NAVERA_BOX_IMU_BUS', 'NAVERA_BOX_IMU_ADDR',
-                 'NAVERA_BOX_RTC', 'NAVERA_BOX_RTC_BUS'}   # written by navera-discover (discovered.env)
-DEFAULT_UNITS = ('navera-discover navera-estimator navera-gps navera-imu navera-rtc navera-vehicle-link '
-                 'navera-pipeline-day navera-output navera-web')
+                 'NAVERA_BOX_RTC', 'NAVERA_BOX_RTC_BUS',    # written by navera-discover (discovered.env)
+                 'NAVERA_DISCOVERED_ENV', 'NAVERA_IDLE_POLL_S',               # tests of navera_boot_lib.sh
+                 'NAVERA_WRITTEN_ROS_DOMAIN_ID', 'NAVERA_WRITTEN_ROS_LOCALHOST_ONLY'}   # navera_boot_hotplug.sh
+DEFAULT_UNITS = ('navera-discover navera-hotplug navera-estimator navera-gps navera-imu navera-rtc '
+                 'navera-vehicle-link navera-pipeline-day navera-output navera-web')
 
 # install.sh's CODE_EXCLUDES must hold these (B18); a staged workspace must not contain NO_SHIP
 REQUIRED_EXCLUDES = ('/.git', '/.claude/', '/build/', '/install/', '/log/', '.pytest_cache/', 'rosbag2_*/',
@@ -58,7 +60,7 @@ BUILT_ON_BOX = ('build', 'install', 'log')              # made by colcon in the 
 CRITICAL_UNITS = ('navera-estimator', 'navera-output', 'navera-gps', 'navera-imu', 'navera-rtc',
                   'navera-vehicle-link')                 # small; the output to the vehicle needs them
 PIPELINE_UNITS = ('navera-pipeline-day', 'navera-pipeline-night', 'navera-pipeline-cn')   # big, needed
-NONCRITICAL_UNITS = ('navera-web', 'navera-discover')     # not needed to navigate
+NONCRITICAL_UNITS = ('navera-web', 'navera-discover', 'navera-hotplug')     # not needed to navigate
 
 results = []
 
