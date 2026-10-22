@@ -28,7 +28,9 @@ ExecStart=/home/navera/navera_boot_pipeline_day.sh
 # always: `ros2 launch` exits with code 0 even when a node crashed (every node
 # has on_exit=Shutdown), so on-failure would never restart it.
 Restart=always
-RestartSec=10
+# 1 s: back before the output's 10 s bridge ends (B23); a unit failing at every start backs
+# off to 30 s in its wrapper (navera_boot_lib.sh navera_restart_backoff)
+RestartSec=1
 # Memory (F5 / H-11): the vision pipeline is the biggest process (day: ~3.5 GB peak with
 # the learned matcher, F5). Protected from the OOM killer before the desktop, the web
 # page and the tools, never before the small units the output depends on (-900).

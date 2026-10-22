@@ -36,10 +36,11 @@ def test_a_missing_data_disk_stops_the_wrapper_before_the_pipeline(tmp_path):
 @pytest.mark.parametrize('pipeline,needs', [('day', {'NAVERA_MBTILES', 'DAY_DATASET_DIR'}),
                                             ('night', {'NAVERA_MBTILES', 'NAVERA_STHN_DIR', 'NAVERA_STHN_WEIGHTS'})])
 def test_each_vision_pipeline_checks_its_data_before_launching_and_is_retried(pipeline, needs):
-    """DEP-02: the wrapper requires its map / weights before `exec ros2 launch`; the unit restarts in 10 s."""
+    """DEP-02: the wrapper requires its map / weights before `exec ros2 launch`; the unit restarts after 1 s
+    (B23), the wrapper backing off to 30 s while the data stays missing (navera_restart_backoff)."""
     text = open(os.path.join(SYSTEMD, f'navera_boot_pipeline_{pipeline}.sh')).read()
     req = re.search(r'^navera_require (.+)$', text, re.M)
     assert req and set(req.group(1).split()) >= needs
     assert req.start() < text.index('exec ros2 launch')
     unit = open(os.path.join(SYSTEMD, f'navera-pipeline-{pipeline}.service')).read()
-    assert re.search(r'^Restart=always$', unit, re.M) and re.search(r'^RestartSec=10$', unit, re.M)
+    assert re.search(r'^Restart=always$', unit, re.M) and re.search(r'^RestartSec=1$', unit, re.M)

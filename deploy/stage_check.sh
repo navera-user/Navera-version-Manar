@@ -239,6 +239,7 @@ for ku in ${KILLS[@]+"${KILLS[@]}"}; do
   victim=$main
   while child=$(ps -o pid= --ppid "$victim" 2>/dev/null | head -1 | tr -d ' '); [ -n "$child" ]; do victim=$child; done
   echo "    main PID $main ($(ps -o comm= -p "$main")), node PID $victim: $(ps -o args= -p "$victim" | cut -c1-110)"
+  node=$(ps -o args= -p "$victim" | tr ' ' '\n' | grep -m1 -E '\.py$' | xargs -r basename)
   t_kill=$(date +%s)
   kill -KILL "$victim"
   restarted=0
@@ -247,9 +248,19 @@ for ku in ${KILLS[@]+"${KILLS[@]}"}; do
     n=$(systemctl --user show -p NRestarts --value "$unit")
     st=$(systemctl --user show -p ActiveState --value "$unit")
     if [ "$n" -gt "$n0" ] && [ "$st" = active ]; then restarted=1; break; fi
+    # a node the launch respawns alone (day pipeline, B23): a new process of it in the unit
+    if [ -n "$node" ] && [ "$st" = active ]; then
+      cg=$(systemctl --user show -p ControlGroup --value "$unit")
+      for p in $(cat "/sys/fs/cgroup$cg/cgroup.procs" 2>/dev/null); do
+        [ "$p" != "$victim" ] && tr '\0' ' ' < "/proc/$p/cmdline" 2>/dev/null | grep -q "/$node " && restarted=2
+      done
+      [ "$restarted" = 2 ] && break
+    fi
   done
   if [ "$restarted" = 1 ]; then
     verdict PASS "$unit restarted by systemd $(( $(date +%s) - t_kill )) s after the kill (NRestarts $n0 → $n)"
+  elif [ "$restarted" = 2 ]; then
+    verdict PASS "$node respawned alone in $unit $(( $(date +%s) - t_kill )) s after the kill"
   else
     verdict FAIL "$unit not restarted within 60 s (NRestarts $n0 → $n, state $st)"; continue
   fi

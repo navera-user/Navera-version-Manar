@@ -12,8 +12,40 @@ NAVERA_WS="${NAVERA_WS:-/home/navera/isaac_ros_common}"
 
 navera_log() { echo "[navera-boot] $*" >&2; }
 
-# Enter the workspace and source ROS 2 + the NAVERA overlay.
+# navera_restart_backoff — systemd restarts a NAVERA unit 1 s after it exits (RestartSec=1:
+# a crash in flight must be back before the output's 10 s bridge ends, B23) and never gives
+# up (StartLimitIntervalSec=0: the mission must not end). A unit that fails at every start
+# (data disk not mounted, device gone, bad setting) would then restart once a second for
+# hours: past NAVERA_BACKOFF_FREE starts (default 5) within NAVERA_BACKOFF_WINDOW_S (60 s)
+# the wrapper first waits 2, 4, 8... s, at most NAVERA_BACKOFF_MAX_S (30 s). A single crash
+# is back after 1 s. The start times live in RAM (NAVERA_RUN_DIR, default /dev/shm), one file
+# per wrapper, user and workspace. Never fails: a backoff must not stop navigation.
+navera_restart_backoff() {
+    local dir="${NAVERA_RUN_DIR:-/dev/shm}" name now f n=0 wait keep=() t
+    name="$(basename "${1:-$0}" .sh)-$(id -u)-$(printf '%s' "$NAVERA_WS" | cksum | cut -d' ' -f1)"
+    f="$dir/navera-starts-$name"
+    now=$(date +%s)
+    if [ -r "$f" ]; then
+        while read -r t; do
+            [[ "$t" =~ ^[0-9]+$ ]] && [ $(( now - t )) -lt "${NAVERA_BACKOFF_WINDOW_S:-60}" ] && keep+=("$t")
+        done < "$f"
+    fi
+    keep+=("$now")
+    printf '%s\n' "${keep[@]}" > "$f.$$" 2>/dev/null && mv -f "$f.$$" "$f" 2>/dev/null
+    n=${#keep[@]}
+    if [ "$n" -gt "${NAVERA_BACKOFF_FREE:-5}" ]; then
+        wait=$(( 1 << (n - ${NAVERA_BACKOFF_FREE:-5}) ))
+        [ "$wait" -gt "${NAVERA_BACKOFF_MAX_S:-30}" ] && wait=${NAVERA_BACKOFF_MAX_S:-30}
+        navera_log "restart loop: $n starts in ${NAVERA_BACKOFF_WINDOW_S:-60} s — waiting $wait s before this one"
+        sleep "$wait"
+    fi
+    return 0
+}
+
+# Enter the workspace and source ROS 2 + the NAVERA overlay. Every wrapper calls it first:
+# the restart backoff (above) happens here.
 navera_env() {
+    navera_restart_backoff "$0"
     cd "$NAVERA_WS" || { navera_log "workspace $NAVERA_WS not found"; exit 1; }
     # ROS_DOMAIN_ID=auto: join a ROS vehicle navera-discover found (discovered.env sets the
     # number); none found: NAVERA stays on its own isolated domain
@@ -30,7 +62,7 @@ navera_cuda() {
     export LD_LIBRARY_PATH=/usr/local/cuda/lib64${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
 }
 
-# Every ros2 launch creates a log folder; a restart loop (one start per 10 s) would fill
+# Every ros2 launch creates a log folder; a restart loop (one start per second) would fill
 # the disk. Keep the last 7 days, then at most NAVERA_LOG_MAX_MB (default 1024): the oldest
 # entries go first. Warn when the log disk has less than NAVERA_MIN_FREE_MB (default 2048)
 # free. Never fails: logs must not stop navigation.
@@ -70,7 +102,7 @@ navera_check_swap() {
 }
 
 # navera_require VAR... — each named variable must point to an existing path.
-# If the data disk is not mounted yet, exit 1: systemd retries in 10 s, and the
+# If the data disk is not mounted yet, exit 1: systemd retries (1 s, then backing off to 30 s), and the
 # pipeline never starts half-blind.
 navera_require() {
     local v missing=0
@@ -85,7 +117,7 @@ navera_require() {
 }
 
 # navera_idle_until_discovered "why" — an idle unit (nothing found to run) waits here instead
-# of restarting every 10 s. When navera-hotplug finds the missing device later and rewrites
+# of restarting in a loop. When navera-hotplug finds the missing device later and rewrites
 # discovered.env, the wrapper exits 0: systemd (Restart=always) restarts the unit, which
 # reads the new settings. NAVERA_DISCOVERED_ENV, NAVERA_IDLE_POLL_S: for tests.
 navera_idle_until_discovered() {
