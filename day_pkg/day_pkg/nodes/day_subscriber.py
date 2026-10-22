@@ -1986,6 +1986,7 @@ class DaySubscriber(Node):
             self._anchor_lat, self._anchor_lon, self._anchor_time = out_lat, out_lon, t_now
             self._last_measured_time = t_now
             fix_sigma = self._fix_sigma(result, meta) if src == "local_match" else self.local_sigma_m
+            track_fix = (float(raw_lat), float(raw_lon), fix_sigma)
             if blended is not None:
                 fix_sigma = blended[2]
             self._dr_sigma = self._anchor_sigma = fix_sigma
@@ -1995,7 +1996,12 @@ class DaySubscriber(Node):
             if src == "local_match":
                 ns = meta.get("image_stamp_ns")         # the photo's instant, not the processing's
                 t_vel, t_fix = self.track.last_time(), (int(ns) / 1e9 if ns else t_now)
-                self.track.add(t_fix, out_lat, out_lon, fix_sigma)
+                # the track (the velocity of every carry and blend) gets the MEASURED fix, not the blended
+                # output: blended points are mostly the carry when the fix is stated coarser than the carry
+                # (no in-flight sigma calibration: 30 m floor vs ~10 m), and a velocity fitted on them decays
+                # towards the carry's own — Isaac Sim, GPS cut 20 s after reaching altitude: the output
+                # 40 m behind along the track (13 m before blending), stated +-14 m, 318 of 623 beyond 3 sigma
+                self.track.add(t_fix, *track_fix)
                 self._gyro_reset(t_fix, result)
                 self._track_heading = self._carry_heading(meta)[0]
                 self._keep_carry_velocity(out_lat, out_lon, t_fix, meta, self._dr_sigma, t_vel)
