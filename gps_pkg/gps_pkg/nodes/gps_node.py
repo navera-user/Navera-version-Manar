@@ -58,7 +58,6 @@ from rclpy.node import Node
 from sensor_msgs.msg import NavSatFix, NavSatStatus, TimeReference
 from geometry_msgs.msg import TwistStamped
 from navera_msgs.msg import PositionEstimate
-import datetime
 import json
 import math
 import sys
@@ -69,7 +68,7 @@ import traceback
 import pynmea2
 import serial
 from navera_common.gnss import (NAV, NAV_DOP, NAV_PVT, Stream, StreamDecoder, parse_nav_dop, parse_nav_pvt,
-                                pvt_fix, ubx_enable_pvt_frames)
+                                pvt_fix, rmc_utc_epoch, ubx_enable_pvt_frames, zda_utc_epoch)
 
 from gps_pkg import fix_publish
 
@@ -89,34 +88,6 @@ def _field_float(value):
         return float(value) if value not in (None, "") else None
     except (TypeError, ValueError):
         return None
-
-
-def rmc_utc_epoch(msg):
-    """UTC epoch seconds of a valid RMC sentence (status A, date and time present), else None."""
-    if getattr(msg, "status", None) != "A":
-        return None
-    d, t = getattr(msg, "datestamp", None), getattr(msg, "timestamp", None)
-    if not isinstance(d, datetime.date) or not isinstance(t, datetime.time):
-        return None
-    return datetime.datetime.combine(d, t.replace(tzinfo=None), tzinfo=datetime.timezone.utc).timestamp()
-
-
-def zda_utc_epoch(msg):
-    """UTC epoch seconds of a ZDA sentence with a time and a date from 2020 on, else None. ZDA has no
-    validity flag: the caller accepts it only next to a valid fix.
-    """
-    t = getattr(msg, "timestamp", None)
-    try:
-        y, mo, d = int(msg.year), int(msg.month), int(msg.day)
-    except (TypeError, ValueError, AttributeError):
-        return None
-    if not isinstance(t, datetime.time) or y < 2020:
-        return None
-    try:
-        day = datetime.date(y, mo, d)
-    except ValueError:
-        return None
-    return datetime.datetime.combine(day, t.replace(tzinfo=None), tzinfo=datetime.timezone.utc).timestamp()
 
 
 ZDA_FIX_MAX_AGE_S = 2.0          # a ZDA counts only this soon after a valid GGA / RMC
