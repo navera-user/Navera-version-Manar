@@ -61,7 +61,7 @@ cat > "$res/mediamtx.yml" <<EOF
 logLevel: warn
 rtsp: yes
 rtspAddress: :$rtsp_port
-rtspTransports: [tcp, udp]
+protocols: [udp, tcp]
 rtpAddress: :$((rtsp_port + 2))
 rtcpAddress: :$((rtsp_port + 3))
 rtmp: no
