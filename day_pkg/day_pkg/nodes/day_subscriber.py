@@ -251,6 +251,8 @@ class DaySubscriber(Node):
         declare_float(self, "gps_check_near_radius_m", 150.0)
         # faster checks while auto_latency has no stable delay yet (0 = gps_check_period_s always)
         declare_float(self, "gps_check_period_delay_s", 1.0)
+        # an applied camera delay moving more than this forgets the map-bias / sigma samples dated by the old one
+        declare_float(self, "latency_relearn_s", 0.2)
         # Stated accuracy (1 sigma, m) of a local match: day_pkg.fix_sigma.day_fix_sigma_m (the
         # matcher's inlier-class sigma, a floor, the frame-time and attitude terms): 99.2 % within
         # 3 sigma on NAVERA's camera on the screen bench (2026-10-19, median 10.6 m) but only 48 % on
@@ -407,6 +409,7 @@ class DaySubscriber(Node):
         self.gps_vo_height_tau_s = float(self.get_parameter("gps_vo_height_tau_s").value)
         self.calib_near_radius_m = float(self.get_parameter("gps_check_near_radius_m").value)
         self.calib_period_delay_s = float(self.get_parameter("gps_check_period_delay_s").value)
+        self.latency_relearn_s = float(self.get_parameter("latency_relearn_s").value)
         # ── camera delay (exposure -> arrival), estimated online against the trusted GPS ──
         # navera_common.latency_cal: GPS-check matches vs the GPS track; applied (auto_latency)
         # when stable and significantly different from camera_latency_s, or — camera_latency_s 0 —
@@ -414,6 +417,7 @@ class DaySubscriber(Node):
         self.latency_cal, self.auto_latency, self.latency_rollback_s = latency_cal.from_node(self)
         if self.latency_cal.applied is not None:
             self.get_logger().info(f"[day] camera delay: {self.latency_cal.reason}")
+        self._learned_delay = self.latency_cal.correction() if self.auto_latency else 0.0
         self._latency_applied = None
         self._last_calib = 0.0
         self.local = None
@@ -712,6 +716,8 @@ class DaySubscriber(Node):
                 self._handover_from_gps()
                 self.latency_cal.freeze("GPS lost or not trusted", self.latency_rollback_s)
                 self.latency_cal.persist()
+                if self.auto_latency:
+                    self._relearn_after_delay_change()
                 self._rollback_gps_learning()
             self._gps_was_trusted = trusted
             # Live GPS healthy → it is the position source; no inference needed.
@@ -1027,6 +1033,21 @@ class DaySubscriber(Node):
                 self.get_logger().warn(f"[day] the camera subtracts {cl:.3f} s, the delay estimate is relative to "
                                        f"{lc.nominal:.3f} s", throttle_duration_sec=60.0)
 
+    def _relearn_after_delay_change(self):
+        """The applied delay moved by more than latency_relearn_s since the GPS-learned samples
+        (map bias, sigma calibration) were taken: they compared vision with the GPS at the frame
+        time of the OLD delay — speed x the change along the track, learned as a map shift or as
+        vision error. Forget them; the GPS checks learn them again with the new dating (a
+        consistency rule: in the Isaac Sim plane runs of 2026-10-22 no map bias was applied)."""
+        d = self.latency_cal.correction()
+        ref = getattr(self, "_learned_delay", 0.0)
+        if abs(d - ref) <= float(getattr(self, "latency_relearn_s", 0.2)):
+            return
+        self._learned_delay = d
+        n_sig, n_bias = self.sigma_cal.rollback(float("-inf")), self.map_bias.rollback_bias(float("-inf"))
+        self.get_logger().info(f"[day] camera delay moved {d - ref:+.2f} s: forgot {n_bias} map-bias and {n_sig} "
+                               "sigma-calibration samples dated by the old delay")
+
     def _latency_sample(self, meta):
         """A GPS-check match is a camera-delay sample (its arrival = raw stamp + the camera's delay)."""
         raw = meta.get("image_stamp_raw_ns")
@@ -1042,6 +1063,7 @@ class DaySubscriber(Node):
                 + ("" if self.auto_latency else " — auto_latency off: not applied"))
             if self.auto_latency:
                 self.latency_cal.persist()
+                self._relearn_after_delay_change()
 
     def _prewarm(self, img, meta):
         """While GPS is trusted, vision is idle: compute the map features around the current
