@@ -40,6 +40,19 @@ def main():
         fails.append("an empty map file passed")
     if check_box.mbtiles_verdict(full)[0] != check_box.OK:
         fails.append("a valid map file failed")
+    # the Insta360 kit: used when either source is insta360; its USB node's permission
+    if not check_box.insta360_used({"NAVERA_CAMERA_INPUT": "insta360"}) or check_box.insta360_used({}):
+        fails.append("Insta360 kit use not recognised")
+    sysfs, dev = os.path.join(d, "sys"), os.path.join(d, "dev")
+    os.makedirs(os.path.join(sysfs, "1-2.1"))
+    open(os.path.join(sysfs, "1-2.1", "busnum"), "w").write("1\n")
+    open(os.path.join(sysfs, "1-2.1", "devnum"), "w").write("10\n")
+    if check_box.usb_node_writable("1-2.1", sysfs, dev) is not None:
+        fails.append("a missing USB node was judged")
+    os.makedirs(os.path.join(dev, "001"))
+    open(os.path.join(dev, "001", "010"), "w").close()
+    if check_box.usb_node_writable("1-2.1", sysfs, dev) is not True:
+        fails.append("a writable USB node was refused")
     print(text)
     for f in fails:
         print("FAIL", f)
