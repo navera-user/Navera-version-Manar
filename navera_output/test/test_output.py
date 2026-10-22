@@ -393,3 +393,53 @@ def test_bridge_settings_are_validated():
         Config(forward_degraded=True, degraded_sigma_m=50.0, bridge_period_s=0.0).validate()
     with pytest.raises(ValueError):
         Config(forward_degraded=True, degraded_sigma_m=50.0, bridge_max_s=-1.0).validate()
+
+
+# ── MAVLink HIL_GPS (PX4) ─────────────────────────────────────────────────
+def _roundtrip_hil(fields):
+    mav = mavlink2.MAVLink(None, srcSystem=1, srcComponent=191)
+    buf = mav.hil_gps_encode(**fields).pack(mav)
+    return mavlink2.MAVLink(None).parse_char(buf)
+
+
+def test_hil_gps_fix_carries_the_receiver_accuracy_and_altitude():
+    o = decide(Config(), STATE_FIX, 0.1, pos(), 0.1, GPS, (3.0, -4.0))
+    m = _roundtrip_hil(mavlink_out.hil_gps_fields(o, T))
+    assert m.get_type() == "HIL_GPS" and m.fix_type == 3
+    assert m.lat == 358288000 and m.lon == 106360000 and m.alt == 10000      # MSL mm
+    assert m.eph == 200 and m.epv == 400 and m.satellites_visible == 9
+    assert (m.vn, m.ve, m.vd) == (300, -400, 0) and m.vel == 500
+    assert m.cog == pytest.approx(30687, abs=1)
+    assert m.time_usec == int(T.timestamp() * 1e6)
+
+
+def test_hil_gps_vision_position_has_no_vision_height_no_satellites():
+    """A non-GNSS position: PX4 cannot be told to ignore the altitude — the last GNSS altitude
+    (held) goes out with epv UNKNOWN, never the vision height (F7); 0 satellites; stated eph.
+    """
+    est = decide(Config(forward_degraded=True, degraded_sigma_m=15.0), STATE_DEGRADED, 0.1,
+                 pos(source=DAY, alt=500.0), 0.1, DAY)
+    assert est.kind == KIND_ESTIMATED
+    m = _roundtrip_hil(mavlink_out.hil_gps_fields(est, T, held_alt_msl_m=250.4))
+    assert m.fix_type == 3 and m.alt == 250400 and m.epv == mavlink_out.UINT16_UNKNOWN
+    assert m.eph == 1500 and m.satellites_visible == 0
+    # unknown velocity: 0 (PX4 reads it as valid: EKF2_GPS_CTRL must exclude velocity)
+    assert (m.vn, m.ve) == (0, 0) and m.vel == mavlink_out.UINT16_UNKNOWN and m.cog == mavlink_out.UINT16_UNKNOWN
+    m = _roundtrip_hil(mavlink_out.hil_gps_fields(est, T))            # nothing held: 0, still epv unknown
+    assert m.alt == 0 and m.epv == mavlink_out.UINT16_UNKNOWN
+
+
+def test_hil_gps_no_fix_and_clamping():
+    m = _roundtrip_hil(mavlink_out.hil_gps_fields(Output(KIND_NONE), T))
+    assert m.fix_type == mavlink_out.FIX_NO_FIX and m.lat == 0 and m.eph == mavlink_out.UINT16_UNKNOWN
+    big = Output(KIND_ESTIMATED, lat=35.8, lon=10.6, sigma_h_m=900.0, vel_n_mps=400.0, vel_e_mps=-400.0)
+    m = _roundtrip_hil(mavlink_out.hil_gps_fields(big, T))
+    assert m.eph == 65534 and m.vn == 32767 and m.ve == -32767        # never "unknown" by overflow
+    assert mavlink_out.hil_gps_fields(Output(KIND_ESTIMATED, lat=1, lon=1, sigma_h_m=0.004), T)["eph"] == 1
+
+
+def test_message_for_autopilot():
+    from navera_output.nodes.vehicle_output_node import message_for_autopilot
+    assert message_for_autopilot(12) == "hil_gps"                     # MAV_AUTOPILOT_PX4
+    assert message_for_autopilot(3) == "gps_input"                    # ArduPilot
+    assert message_for_autopilot(None) == "gps_input"

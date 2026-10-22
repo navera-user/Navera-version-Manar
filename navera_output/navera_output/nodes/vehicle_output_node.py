@@ -6,7 +6,8 @@ an autopilot understands as a GPS:
 
   * NMEA 0183 (GGA + RMC) on a serial port — any system that takes a GPS
     receiver (drones, boats, ground robots);
-  * MAVLink GPS_INPUT — PX4 / ArduPilot with GPS_TYPE = MAV;
+  * MAVLink GPS_INPUT — ArduPilot with GPS_TYPE = MAV — or HIL_GPS — PX4 with
+    MAV_USEHILGPS = 1 (PX4 ignores GPS_INPUT; mavlink_out.hil_gps_fields);
   * ROS: sensor_msgs/NavSatFix on ros_fix_topic (default /navera/fix), for vehicles
     whose software runs on ROS — the same decision, accuracy as the covariance.
 
@@ -21,7 +22,12 @@ Parameters:
     nmea_baud            (9600)
     mavlink_url          ("")    e.g. "serial:/dev/ttyTHS2:921600" (navera_output.mavlink_url) or
                                  "udpout:127.0.0.1:14550"; "" = disabled
-    mavlink_system_id    (1)     MAVLink ids of this box (companion computer)
+    mavlink_message      ("auto") gps_input (ArduPilot) | hil_gps (PX4) | auto: hil_gps once the
+                                 autopilot's heartbeat says PX4 (MAV_AUTOPILOT_PX4 = 12, heard on
+                                 this node's own link or in navera-vehicle-link's status), else
+                                 gps_input
+    mavlink_system_id    (1)     MAVLink ids of this box (companion computer); PX4 reads HIL_GPS
+                                 only from its own system id (NAVERA_MAVLINK_SYSID)
     mavlink_component_id (191)
     ros_fix_topic        ("/navera/fix")  "" = disabled
     forward_degraded     (False) send DEGRADED positions as "estimated"
@@ -89,6 +95,16 @@ from navera_output.policy import (KIND_ESTIMATED, KIND_FIX, KIND_NONE, Config, b
                                   for_nmea, hold, reacquire)
 
 
+MAVLINK_MESSAGES = ("auto", "gps_input", "hil_gps")
+
+
+def message_for_autopilot(autopilot) -> str:
+    """The position message an autopilot takes: HIL_GPS for PX4 (MAV_AUTOPILOT_PX4 = 12), which has no
+    GPS_INPUT handler; GPS_INPUT for ArduPilot and any other.
+    """
+    return "hil_gps" if autopilot == 12 else "gps_input"
+
+
 class VehicleOutputNode(Node):
     def __init__(self):
         super().__init__("vehicle_output")
@@ -96,6 +112,7 @@ class VehicleOutputNode(Node):
         self.declare_parameter("nmea_port", "")
         self.declare_parameter("nmea_baud", 9600)
         self.declare_parameter("mavlink_url", "")
+        self.declare_parameter("mavlink_message", "auto")
         self.declare_parameter("mavlink_system_id", 1)
         self.declare_parameter("mavlink_component_id", 191)
         self.declare_parameter("forward_degraded", False)
@@ -159,6 +176,11 @@ class VehicleOutputNode(Node):
             self._serial = serial.Serial(port, int(self.get_parameter("nmea_baud").value),
                                          timeout=1, write_timeout=1)
         self._mav = None
+        self._msg_mode = str(self.get_parameter("mavlink_message").value).strip().lower() or "auto"
+        if self._msg_mode not in MAVLINK_MESSAGES:
+            raise ValueError(f"mavlink_message must be one of {', '.join(MAVLINK_MESSAGES)} (got {self._msg_mode!r})")
+        self._msg = "gps_input" if self._msg_mode == "auto" else self._msg_mode
+        self._held_alt_msl = math.nan     # the last GNSS altitude sent (HIL_GPS needs one)
         url = str(self.get_parameter("mavlink_url").value)
         if url:
             if url.startswith("udpout:127.0.0.1:") or url.startswith("udpout:localhost:"):
@@ -168,6 +190,8 @@ class VehicleOutputNode(Node):
                 self.create_timer(5.0, self._check_relay)
             self._mav = mavlink_url.connect(url, int(self.get_parameter("mavlink_system_id").value),
                                             int(self.get_parameter("mavlink_component_id").value))
+            if self._msg_mode == "auto":
+                self.create_timer(1.0, self._poll_heartbeat)      # a direct link hears the autopilot
         topic = str(self.get_parameter("ros_fix_topic").value)
         self._pub_fix = self.create_publisher(NavSatFix, topic, 10) if topic else None
         if self._serial is None and self._mav is None and self._pub_fix is None:
@@ -193,7 +217,8 @@ class VehicleOutputNode(Node):
         self.create_subscription(TwistStamped, "/navera/sensors/gps_vel", self._on_gps_vel, 10)
         self.create_timer(1.0 / rate, self._tick)
         self.get_logger().info(
-            f"vehicle output: nmea={port or 'off'} mavlink={url or 'off'} ros={topic or 'off'} rate={rate:.1f}Hz "
+            f"vehicle output: nmea={port or 'off'} mavlink={url or 'off'}"
+            f"{' (' + self._msg_mode + ')' if url else ''} ros={topic or 'off'} rate={rate:.1f}Hz "
             f"forward_degraded={self.cfg.forward_degraded}")
         self._nmea_degraded = bool(self.get_parameter("nmea_forward_degraded").value)
         if self._serial is not None and self.cfg.forward_degraded:
@@ -206,10 +231,36 @@ class VehicleOutputNode(Node):
 
     def _on_link_status(self, msg) -> None:
         try:
-            if json.loads(msg.data).get("link"):
+            st = json.loads(msg.data)
+            if st.get("link"):
                 self._relay_link_rx = time.monotonic()
+                self._set_autopilot(12 if st.get("autopilot") == "PX4" else None)
         except (ValueError, AttributeError):
             pass
+
+    def _poll_heartbeat(self) -> None:
+        """mavlink_message auto on a direct link: the autopilot's heartbeats say which message it takes."""
+        try:
+            while True:
+                hb = self._mav.recv_match(type="HEARTBEAT", blocking=False)
+                if hb is None:
+                    return
+                if hb.autopilot != 8:                     # not MAV_AUTOPILOT_INVALID (a GCS)
+                    self._set_autopilot(hb.autopilot)
+        except Exception as e:     # a link without input (udpout before the first reply...)
+            self.get_logger().debug(f"heartbeat poll: {e}")
+
+    def _set_autopilot(self, autopilot) -> None:
+        """mavlink_message auto: HIL_GPS for PX4 (MAV_AUTOPILOT_PX4 = 12), GPS_INPUT otherwise."""
+        if self._msg_mode != "auto":
+            return
+        msg = message_for_autopilot(autopilot)
+        if msg != self._msg:
+            self._msg = msg
+            self.get_logger().warn(f"MAVLink output: the autopilot is {'PX4' if msg == 'hil_gps' else 'not PX4'} "
+                                   f"— sending {msg.upper()}"
+                                   + (" (PX4 needs MAV_USEHILGPS = 1 and the EKF2 settings of "
+                                      "docs/PX4_INTEGRATION.md)" if msg == "hil_gps" else ""))
 
     def _check_relay(self) -> None:
         rx = self._relay_link_rx
@@ -284,8 +335,13 @@ class VehicleOutputNode(Node):
                 self._serial.write((nmea.gga(nmea_out, t_utc) + nmea.rmc(nmea_out, t_utc, spd, crs))
                                    .encode("ascii"))
             if self._mav is not None:
-                self._mav.mav.gps_input_send(**mavlink_out.gps_input_fields(
-                    out, t_utc, self._fix_type_without_alt))
+                if out.gnss and math.isfinite(out.alt_msl_m):
+                    self._held_alt_msl = out.alt_msl_m
+                if self._msg == "hil_gps":
+                    self._mav.mav.hil_gps_send(**mavlink_out.hil_gps_fields(out, t_utc, self._held_alt_msl))
+                else:
+                    self._mav.mav.gps_input_send(**mavlink_out.gps_input_fields(
+                        out, t_utc, self._fix_type_without_alt))
             if self._pub_fix is not None:
                 self._pub_fix.publish(self._navsatfix(self._ros_output(out)))
         except Exception as e:     # serial unplugged, socket error...

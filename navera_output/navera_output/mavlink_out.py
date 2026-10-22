@@ -1,4 +1,5 @@
-"""MAVLink GPS_INPUT (id 232) fields for PX4 / ArduPilot (GPS_TYPE = MAV).
+"""MAVLink position messages: GPS_INPUT (id 232) for ArduPilot (GPS_TYPE = MAV), HIL_GPS (id 113)
+for PX4 (MAV_USEHILGPS = 1; hil_gps_fields below — PX4 has no GPS_INPUT handler).
 
 Accuracies are sent as stated (1-sigma, m); anything unknown is marked with the
 corresponding ignore flag instead of a made-up number — except the horizontal velocity.
@@ -104,4 +105,57 @@ def gps_input_fields(out: Output, t_utc: datetime, fix_type_without_alt: int = F
     else:
         ignore |= IGNORE_VERTICAL_ACCURACY | IGNORE_VDOP
     fields.update(fix_type=fix_type, ignore_flags=ignore)
+    return fields
+
+
+# ── PX4: HIL_GPS (id 113) ────────────────────────────────────────────────
+# PX4 (v1.14 / v1.15 / v1.16) has no GPS_INPUT handler. Its MAVLink receiver turns HIL_GPS into a
+# sensor_gps instance — a GPS EKF2 fuses like a receiver — when MAV_USEHILGPS = 1 and the sender
+# uses the autopilot's own system id (mavlink_receiver.cpp handle_message_hil_gps, v1.15.4).
+# What PX4 reads, and therefore what NAVERA must get right (docs/PX4_INTEGRATION.md):
+#   * eph / epv (cm) are the position accuracy (EKF2 noise = max(eph, EKF2_GPS_P_NOISE), capped at
+#     EKF2_NOAID_NOISE while the GPS is the only aiding); UINT16_MAX = unknown (655 m)
+#   * fix_type < 3 is never fused (EKF2 runGnssChecks)
+#   * the velocity is ALWAYS taken as valid with a fixed 0.5 m/s accuracy — no "ignore" flag and no
+#     stated accuracy: PX4 must not fuse it (EKF2_GPS_CTRL = 1, position only); an unknown velocity
+#     goes out as 0 (vel / cog unknown)
+#   * the altitude has no "ignore" flag either: a non-GNSS position carries the last GNSS altitude
+#     NAVERA sent (held, never a vision height — F7) with epv unknown; PX4 must take its height from
+#     the barometer (EKF2_HGT_REF = 0, EKF2_GPS_CTRL bit 1 off)
+#   * satellites: the receiver's count with a GNSS fix, 0 with a vision / celestial position
+#     (EKF2_GPS_CHECK bit 0 off: a vision position has none)
+UINT16_UNKNOWN = 65535
+_INT16_MAX = 32767
+
+
+def _cm(v: float, limit: int = UINT16_UNKNOWN - 1) -> int:
+    """Metres -> centimetres for an unsigned 16-bit field, rounded up, clamped below 'unknown'."""
+    return int(min(max(math.ceil(v * 100.0), 0), limit))
+
+
+def hil_gps_fields(out: Output, t_utc: datetime, held_alt_msl_m: float = math.nan) -> dict:
+    """Keyword arguments for mav.hil_gps_send() (PX4). `held_alt_msl_m`: the last GNSS altitude sent
+    (MSL m) — the altitude field of a non-GNSS position, which PX4 cannot be told to ignore.
+    """
+    fields = dict(time_usec=int(t_utc.timestamp() * 1e6), fix_type=FIX_NO_FIX, lat=0, lon=0, alt=0,
+                  eph=UINT16_UNKNOWN, epv=UINT16_UNKNOWN, vel=UINT16_UNKNOWN, vn=0, ve=0, vd=0,
+                  cog=UINT16_UNKNOWN, satellites_visible=0, id=0, yaw=0)
+    if out.kind not in (KIND_FIX, KIND_ESTIMATED):
+        return fields
+    fields.update(fix_type=FIX_3D, lat=int(round(out.lat * 1e7)), lon=int(round(out.lon * 1e7)),
+                  satellites_visible=min(int(out.satellites), 254) if out.gnss and out.satellites is not None else 0)
+    msl = out.alt_msl_m if out.gnss else math.nan
+    if math.isfinite(msl):
+        fields["alt"] = int(round(msl * 1000.0))
+        if math.isfinite(out.sigma_v_m):
+            fields["epv"] = _cm(out.sigma_v_m)
+    elif math.isfinite(held_alt_msl_m):
+        fields["alt"] = int(round(held_alt_msl_m * 1000.0))
+    if math.isfinite(out.sigma_h_m):
+        fields["eph"] = _cm(out.sigma_h_m)
+    if out.has_velocity:
+        vn = max(-_INT16_MAX, min(_INT16_MAX, int(round(out.vel_n_mps * 100.0))))
+        ve = max(-_INT16_MAX, min(_INT16_MAX, int(round(out.vel_e_mps * 100.0))))
+        fields.update(vn=vn, ve=ve, vel=_cm(math.hypot(out.vel_n_mps, out.vel_e_mps)),
+                      cog=int(round(math.degrees(math.atan2(out.vel_e_mps, out.vel_n_mps)) % 360.0 * 100)) % 36000)
     return fields
