@@ -394,6 +394,38 @@ sudo -u navera -H test -r /data/navera/sousse_satellite.mbtiles && echo readable
 Recordings (`navera_tools/record_session.sh`) also go on this disk (§11, and
 [FIELD_TEST_PROCEDURE.md](../docs/FIELD_TEST_PROCEDURE.md)). Maps of other areas: §8.
 
+### 3.11 Wiring: serial pins and power (Jetson Orin Nano Super developer kit)
+
+**Serial ports.** Checked on this Jetson (2026-10-22, "Jetson Orin Nano Engineering Reference
+Developer Kit Super", carrier P3768, JetPack 6.2.1) from the live device tree and NVIDIA's own
+40-pin header definition (the Jetson-IO overlay `/boot/tegra234-p3767-0000+p3509-a02-hdr40.dtbo`,
+which lists the P3768 Super boards):
+
+| Device | Controller | Where | Use |
+|---|---|---|---|
+| `/dev/ttyTHS1` | UARTA, `serial@3100000` | **40-pin header J12: pin 8 = TX, pin 10 = RX** (pin 11 = RTS, pin 36 = CTS; GND e.g. pin 6) | the box GPS receiver (`NAVERA_GPS_PORT` default) |
+| `/dev/ttyTHS2` | UARTE, `serial@3140000` | **not on the 40-pin header** (the header definition has only UARTA). Its routing on the carrier (NVIDIA's carrier documentation places a UART on the M.2 Key E slot) was not verified here | do not plan a wire on it |
+| `/dev/ttyTCU0` | combined debug UART | kernel console (`console=ttyTCU0` on the command line) | never probed by navera-discover |
+
+So on the developer kit **the header has one UART**: wire the GPS to pins 8/10 (crossed: Jetson
+TX → GPS RX, Jetson RX ← GPS TX) and reach the autopilot over a **USB-to-serial adapter**
+(`/dev/serial/by-id/…`), or over UDP. The examples elsewhere that use `/dev/ttyTHS2` stand for
+"a second serial port": on another carrier board, check its pinout. The header is **3.3 V
+logic**: never RS-232 levels, never 5 V logic without a level shifter.
+
+**Power.** Measured on this Jetson with its on-module INA3221 monitor (`VDD_IN` = the module's
+input; `/sys/bus/i2c/drivers/ina3221/1-0040/hwmon/*`, 300 samples over 60 s, power mode
+MAXN_SUPER), 2026-10-22: **mean 10.5 W, p95 11.7 W, max 12.1 W** (CPU+GPU rail mean 4.6 W, max
+5.8 W; SoC rail 1.9 W; GPU load mean 31 %, peaks 99 %), under a mixed development load — a
+night-vision (STHN, GPU) benchmark, the field server and unit tests — **not the day pipeline
+alone**: the day pipeline was not started for this measurement because other GPU work was
+running on the same Jetson. These figures are the **module only**: the carrier board, the fan,
+the data disk, the cameras and the GPS draw on top and were not measured; nor were the
+brown-out behaviour and the draw at the DC jack. For sizing: NVIDIA's Super release gives the
+Orin Nano 8 GB a 25 W power mode and MAXN_SUPER, which is not power-capped — budget at least
+25 W for the module plus the peripherals until a measurement at the jack with the day
+pipeline is recorded.
+
 ## 4. Camera
 
 Settings (`/etc/navera/navera.env`): `NAVERA_CAMERA=live` (the default `replay` plays recorded
