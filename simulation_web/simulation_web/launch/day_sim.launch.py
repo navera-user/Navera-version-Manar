@@ -47,7 +47,10 @@ def generate_launch_description():
         # track filter — toggle/tune without rebuild
         DeclareLaunchArgument('antijump_enabled',    default_value='true'),
         DeclareLaunchArgument('max_consecutive_rejects', default_value='3'),
-        DeclareLaunchArgument('max_dead_reckon_s',       default_value='30.0'),
+        # the node's default (120 s): dead-reckoning also stops once its stated accuracy passes
+        # dead_reckon_max_sigma_m (500 m, ~1 min at 10 m/s); 30 s (a retrieval-era value) cut the
+        # position in the middle of a 30-60 s cloud bank (Isaac Sim closed loop, F32)
+        DeclareLaunchArgument('max_dead_reckon_s',       default_value='120.0'),
         DeclareLaunchArgument('allow_global_search',     default_value='false'),
 
         # 1) Localization pipeline: camera(day) + day_subscriber

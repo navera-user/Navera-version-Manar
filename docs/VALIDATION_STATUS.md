@@ -999,8 +999,10 @@ holds the only results from the real sensors. No sensor recording (log, bag) was
 2. **Day vision is not accurate enough** (see above).
 3. **No inertial navigation.** The IMU gives the camera's attitude and heading changes;
    it is not integrated into a position. Without vision matches, day vision dead-reckons
-   along the track measured before the gap for at most 2 minutes / 500 m (simulator figures
-   above), then NAVERA gives no position.
+   along the track measured before the gap for at most 2 minutes, while its stated accuracy
+   stays within 500 m (the first limit reached: ~1 minute at 10 m/s; simulator figures above),
+   then NAVERA gives no position until a frame matches again (`max_dead_reckon_s`,
+   `dead_reckon_max_sigma_m`; the product launch uses the node's 120 s since F32).
 4. **One pipeline at a time.** Day and night cannot both be loaded within 8 GB.
 5. **Map coverage is Sousse only** (z13–z19 MBTiles). Other areas need their own map, or
    tiles downloaded through `NAVERA_TILE_URL` when a route is generated on `/mission`
