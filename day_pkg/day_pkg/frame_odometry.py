@@ -21,6 +21,9 @@ class FrameOdometry:
         self.scale, self.min_response, self.max_dt = scale, min_response, max_dt_s
         self._prev = None             # (grey image, heading deg, m per px, t)
         self._win = None
+        # the last measured image shift (pixels of this odometry's reduced frame), or None: near 0 while
+        # the vehicle moves is what a lock on something fixed in the image (overlay, lens dirt) gives
+        self.last_shift_px = None
 
     def reset(self) -> None:
         self._prev = None
@@ -32,6 +35,7 @@ class FrameOdometry:
         frame is shifted by it first and only the remainder measured — what does not move in
         the image (overlays, lens dirt, the vehicle's own parts) then sits at minus the
         prediction, not at zero, and the gate on the result throws it out."""
+        self.last_shift_px = None
         g = frame if frame.ndim == 2 else cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         g = cv2.resize(g, None, fx=self.scale, fy=self.scale, interpolation=cv2.INTER_AREA).astype(np.float32)
         g = g - cv2.GaussianBlur(g, (0, 0), 8)            # high-pass: brightness gradients do not lock
@@ -65,6 +69,7 @@ class FrameOdometry:
         if resp < self.min_response or abs(dx) > w / 4 or abs(dy) > h / 4:
             return None
         dx, dy = dx + px0, dy + py0
+        self.last_shift_px = math.hypot(dx, dy)
         right, fwd = -dx * mpp, dy * mpp                  # the ground moved the other way
         de = fwd * math.sin(th) + right * math.cos(th)
         dn = fwd * math.cos(th) - right * math.sin(th)

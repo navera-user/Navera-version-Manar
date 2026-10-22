@@ -761,14 +761,8 @@ class DaySubscriber(Node):
                 if v is not None and self.vo._prev is not None:
                     dt = t_img - self.vo._prev[3]
                     pred = (v[0] * dt, v[1] * dt)
-                self._vo_step = self.vo.step(img, self._heading_for_match(meta), mpp, t_img, pred)
-                if self._vo_step is not None and v is not None:
-                    # odometry that disagrees with the velocity the map fixes measured is not
-                    # used (phase correlation can lock on what does not move in the image)
-                    de, dn, dt, _ = self._vo_step
-                    dv = math.hypot(de / dt - v[0], dn / dt - v[1])
-                    if dv > max(3.0 * v[2], 0.3 * math.hypot(v[0], v[1]), 3.0):
-                        self._vo_step = None
+                self._vo_step = self._vo_gate(self.vo.step(img, self._heading_for_match(meta), mpp, t_img, pred),
+                                              v, t_img, getattr(self.vo, "last_shift_px", None))
             if self.local is not None and center is not None and mpp is not None:
                 # after height_retry_after failures, 20 % lower and 25 % higher too
                 factors = [1.0] + ([0.8, 1.25] if self._rejects_in_row + 1 >= self.height_retry_after
@@ -1365,6 +1359,36 @@ class DaySubscriber(Node):
         self._emit_fix(now, seq_id, lat, lon, meta, status, "dead_reckon", score, None,
                        reason=f"{why}; carried {t_now - t_last:.0f} s, ±{sigma:.0f} m")
         return True
+
+    # visual odometry that disagrees with the track's velocity is believed when two consecutive steps
+    # agree with each other (VO_AGREE_MPS, or VO_AGREE_REL of the speed), each of quality >= VO_MIN_QUALITY
+    # and an image shift of at least VO_MIN_SHIFT_PX (not a lock on what is fixed in the image)
+    VO_AGREE_MPS, VO_AGREE_REL, VO_MIN_QUALITY, VO_MIN_SHIFT_PX, VO_MAX_GAP_S = 2.5, 0.25, 0.5, 4.0, 3.0
+
+    def _vo_gate(self, step, v, t, shift_px):
+        """The odometry step to use, or None. Agreeing with the velocity of the map fixes (v): used,
+        as before. Disagreeing: phase correlation may have locked on something fixed in the image —
+        or the track's velocity is stale: the vehicle turned round or stopped after its last map fix
+        (Isaac Sim hills 2026-10-21: an RTL turn-round 10 s into a dead-reckoning, carried straight on,
+        875 m off at +-488 m stated). It is then used only when this step and the previous one, both
+        clear (quality, image shift), measure the same velocity: a fixed lock gives no shift, and two
+        independent steps agreeing is the track's velocity being wrong, not the odometry."""
+        prev, self._vo_last = getattr(self, "_vo_last", None), None
+        if step is None:
+            return None
+        de, dn, dt, q = step
+        ve, vn = de / dt, dn / dt
+        clear = q >= self.VO_MIN_QUALITY and shift_px is not None and shift_px >= self.VO_MIN_SHIFT_PX
+        self._vo_last = (t, ve, vn) if clear else None
+        if v is None:
+            return step
+        if math.hypot(ve - v[0], vn - v[1]) <= max(3.0 * v[2], 0.3 * math.hypot(v[0], v[1]), 3.0):
+            return step
+        if clear and prev is not None and 0.0 < t - prev[0] <= self.VO_MAX_GAP_S and \
+                math.hypot(ve - prev[1], vn - prev[2]) <= max(self.VO_AGREE_MPS,
+                                                              self.VO_AGREE_REL * math.hypot(ve, vn)):
+            return step
+        return None
 
     ODOMETRY_MAX_UNSEEN_S = 0.5
 
