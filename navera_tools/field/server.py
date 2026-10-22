@@ -274,8 +274,8 @@ def ground_mask(shape, up, step: int = 8) -> np.ndarray:
 class Stillness:
     """The vehicle at rest at a frame's exposure: the camera driver's stopped() (exposure window steady) AND the
     long-window test of cn_pkg.standstill (D8/D12: 'up' must not have moved without the camera turning over the
-    last LONG_S s, |a| at its value at rest). The driver keeps 7 s of IMU, too short for the long window, so the
-    history is extended on each new driver (extend_history). g_ref is |a| at rest, learned from the windows the
+    last LONG_S s, |a| at its value at rest). The driver keeps insta360_usb.IMU_HISTORY_S (20 s) of IMU rows;
+    extend_history only matters for an older driver object that keeps less. g_ref is |a| at rest, learned from the windows the
     driver calls still (median of the last 60), 1.0 until then (6-position calibrated accelerometer)."""
 
     HISTORY_S = 20.0
@@ -287,7 +287,7 @@ class Stillness:
 
     @staticmethod
     def extend_history(drv, seconds: float = HISTORY_S):
-        """Keep `seconds` of the driver's IMU rows (its own deque holds 7 s at 500 Hz)."""
+        """Keep at least `seconds` of the driver's IMU rows (the driver itself keeps IMU_HISTORY_S = 20 s)."""
         n = int(seconds * 500)
         lock = getattr(drv, "_lock", None)
         if lock is None or not hasattr(drv, "_imu") or (drv._imu.maxlen or 0) >= n:
@@ -301,8 +301,8 @@ class Stillness:
         if not self.LONG_CHECK or not st.get("stopped"):
             return st
         back = standstill.LONG_S + standstill.RUN_EXTRA_S + 0.5
-        rows = drv._rows(back, at_ms, standstill.AFTER_S) if at_ms is not None \
-            else drv._rows(back + standstill.AFTER_S, None)
+        rows = drv.imu_rows(back, at_ms, standstill.AFTER_S) if at_ms is not None \
+            else drv.imu_rows(back + standstill.AFTER_S, None)
         if not rows:
             return {**st, "stopped": False, "why": "no sensor data"}
         arr = np.array([r[1:8] for r in rows], float)
@@ -339,6 +339,7 @@ class Camera360:
         self.stillness = Stillness()
         self.reconnects: list = []                    # [{"t", "why"}] of every reconnect (F14)
         self.imu_restarts_total = 0                   # the driver's IMU stream restarts, summed over reconnects
+        self.usb_resets_total = 0                     # the driver's USB resets (ImuWatchdog), summed over reconnects
         self._open()
         threading.Thread(target=self._watch, daemon=True).start()
 
@@ -383,7 +384,9 @@ class Camera360:
         f, t = self.cam.latest() if self.cam else (None, 0.0)
         if self.cam is not None and time.time() - self.opened_at < 20.0:
             return None                               # the decoder waits for the stream's next key frame
-        imu_dead = self.cam is not None and self.cam.imu_age() > 10.0   # restarting the stream did not bring it back
+        # restarting the stream and the driver's USB reset (ImuWatchdog, ~9 s) did not bring it back
+        imu_dead = self.cam is not None and self.cam.imu_age() > 10.0 \
+            and time.time() - (getattr(self.cam, "last_reset_t", 0.0) or 0.0) > 6.0
         if not (f is None or time.time() - t > 8.0 or imu_dead):
             return None
         why = "no camera"
@@ -391,6 +394,7 @@ class Camera360:
             why = "camera IMU silent for 10 s" if imu_dead else (self.cam.error or "no frame for 8 s")
             self.error = f"{why}: reconnecting"
             self.imu_restarts_total += int(getattr(self.cam, "imu_restarts", 0) or 0)
+            self.usb_resets_total = getattr(self, "usb_resets_total", 0) + int(getattr(self.cam, "usb_resets", 0) or 0)
             self.reconnects.append({"t": round(time.time(), 1), "why": str(why)[:120]})
             del self.reconnects[:-50]
             try:
@@ -408,7 +412,7 @@ class Camera360:
         if drv is None:
             return None
         at = self.frame_ms if at_frame else None
-        rows = drv._rows(2.0, at, 0.5) if at is not None else drv._rows(2.5, None)
+        rows = drv.imu_rows(2.0, at, 0.5) if at is not None else drv.imu_rows(2.5, None)
         if not rows:
             return None
         arr = np.array([r[2:8] for r in rows], float)
@@ -417,7 +421,9 @@ class Camera360:
     def health(self) -> dict:
         """Camera stream health for the frame records (F14/F19): reconnects so far and the IMU stream restarts."""
         cur = int(getattr(self.cam, "imu_restarts", 0) or 0) if self.cam else 0
+        resets = int(getattr(self.cam, "usb_resets", 0) or 0) if self.cam else 0
         return {"reconnects": len(self.reconnects), "imu_restarts": self.imu_restarts_total + cur,
+                "usb_resets": getattr(self, "usb_resets_total", 0) + resets,
                 "imu_age_s": _round(self.cam.imu_age(), 2) if self.cam else None}
 
     def latest(self):

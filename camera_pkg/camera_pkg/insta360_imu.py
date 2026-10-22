@@ -42,7 +42,7 @@ from typing import Callable, Iterator, List, Optional, Sequence, Tuple
 import numpy as np
 
 from navera_common.insta360_protocol import (
-    CMD_START_LIVE, CMD_STOP_LIVE, EP_IN, EP_OUT, KIND_IMU, PKT_KEEPALIVE, PKT_SYNC, START_FULL, VENDOR,
+    CMD_START_LIVE, CMD_STOP_LIVE, EP_IN, EP_OUT, KIND_IMU, PKT_KEEPALIVE, PKT_SYNC, START_FULL, VENDOR, ImuWatchdog,
     frame_packet, imu_records, load_imu_calibration, message_payload, read_raw, split_packets, stream_kind)
 
 G = 9.80665                                   # m/s^2 per g
@@ -308,7 +308,8 @@ class UsbImuSource:
     """The live camera over USB (pyusb): starts the live stream (the only start command known to
     bring the IMU; its video is read and dropped), calls on_packet(host arrival, packet) for every
     packet, sends the keepalive and restarts the stream when the IMU goes silent (seen on the
-    first starts after power-on). Only one process can hold the camera: not with the field server."""
+    first starts after power-on), resetting the USB device after 3 restarts in vain (ImuWatchdog,
+    F14). Only one process can hold the camera: not with the field server."""
 
     def __init__(self, on_packet: Callable[[float, bytes], None], usb_core=None, usb_util=None,
                  now: Callable[[], float] = time.time):
@@ -322,10 +323,11 @@ class UsbImuSource:
         usb_util.claim_interface(self.dev, 0)
         self.on_packet = on_packet
         self.error: Optional[str] = None
-        self.restarts = 0
+        self.restarts = self.usb_resets = 0
         self._seq, self._lock, self._stop = 1, threading.Lock(), threading.Event()
         self._buf = bytearray()
         self._started, self._imu_t = now(), 0.0
+        self._watchdog = ImuWatchdog(self._started)
         self._send(PKT_SYNC)
         self._message(CMD_START_LIVE, START_FULL)
         self._threads = [threading.Thread(target=f, daemon=True) for f in (self._read, self._keepalive)]
@@ -361,17 +363,46 @@ class UsbImuSource:
                 self.on_packet(t, p)
 
     def _keepalive(self) -> None:
-        last_restart = 0.0
         while not self._stop.wait(1.0):
             try:
-                self._send(PKT_KEEPALIVE)
-                t = self._now()
-                if t - self._started > 4.0 and self.imu_age() > 1.5 and t - last_restart > 3.0:
-                    self._message(CMD_START_LIVE, START_FULL)
-                    last_restart, self.restarts = t, self.restarts + 1
-                    self.error = f"camera IMU silent: stream restarted ({self.restarts})"
+                self.keepalive_once()
             except Exception as e:
                 self.error = f"keepalive: {e}"
+
+    def keepalive_once(self) -> None:
+        """The keepalive and the IMU watchdog: StartLiveStream again, then a USB reset (ImuWatchdog)."""
+        self._send(PKT_KEEPALIVE)
+        action = self._watchdog.step(self._now(), self.imu_age())
+        if action == "restart":
+            self._message(CMD_START_LIVE, START_FULL)
+            self.restarts += 1
+            self.error = f"camera IMU silent: stream restarted ({self.restarts})"
+        elif action == "reset":
+            self.reset_usb()
+
+    def reset_usb(self) -> None:
+        """Reset the USB device, open it again (it may re-enumerate) and restart the live stream."""
+        self.usb_resets += 1
+        old = self.dev
+        for f in (old.reset, lambda: self._util.release_interface(old, 0), lambda: self._util.dispose_resources(old)):
+            try:
+                f()
+            except Exception:
+                pass
+        dev = None
+        for _ in range(30):
+            dev = self._core.find(idVendor=VENDOR)
+            if dev is not None:
+                break
+            self._stop.wait(0.1)
+        if dev is None:
+            self.error = "camera lost: not found after a USB reset"
+            return
+        self._util.claim_interface(dev, 0)
+        self.dev = dev
+        self._send(PKT_SYNC)
+        self._message(CMD_START_LIVE, START_FULL)
+        self.error = f"camera IMU silent: USB device reset ({self.usb_resets})"
 
     def close(self) -> None:
         try:

@@ -316,6 +316,7 @@ class Insta360Node(Node):
         imu_age = self._usb.imu_age() if self._usb is not None else None
         d = {"source": self.source, "imu_samples": self.published, "frames": self.frames,
              "imu_age_s": None if imu_age is None or not math.isfinite(imu_age) else round(imu_age, 2),
+             "imu_restarts": getattr(self._usb, "restarts", 0), "usb_resets": getattr(self._usb, "usb_resets", 0),
              "clock_offset_s": k.stream.clock.offset, "clock_resets": k.stream.clock.resets,
              "gyro_bias_dps": [round(math.degrees(b), 4) for b in k.stream.bias.bias],
              "bias_at_rest_updates": k.stream.bias.updates,
