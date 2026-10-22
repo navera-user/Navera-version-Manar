@@ -172,7 +172,7 @@ log "NAVERA up on the box ($(( $(date +%s) - t_start )) s): the PC arms"
 
 # 5. the flight: kills after the GPS cut, until sitl_demo says done
 until [ -f "$res/gps_cut" ]; do
-  kill -0 $pc_pid 2>/dev/null || { log "PC side ended before the GPS cut"; break; }
+  kill -0 $pc_pid 2>/dev/null || { log "PC side ended before the GPS cut: no flight"; exit 1; }
   sleep 1
 done
 t_cut_ms=$(date +%s%3N)
