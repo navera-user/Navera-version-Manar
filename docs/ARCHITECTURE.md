@@ -9,9 +9,10 @@ Reference for integrators and developers. Measured performance and limitations a
 
 ```
 GPS source (navera-gps, NAVERA_GPS_SOURCE)
-  gps_node      (serial NMEA)          ─┐
-  ros_gps_node  (/navera/vehicle/gps2   ├─► /navera/sensors/gps_fix
-                 or a vehicle ROS topic)─┘   /navera/estimate/gps ───────────────────────┐
+  gps_node      (NMEA / UBX: serial, TCP, UDP) ─┐
+  dronecan_gps_node (DroneCAN Fix2, CAN bus)    ├─► /navera/sensors/gps_fix
+  ros_gps_node  (/navera/vehicle/gps2 or gps1,  │   /navera/estimate/gps ───────────────┐
+                 or a vehicle ROS topic)       ─┘                                         │
                                                                                           │
 attitude / height (NAVERA_SENSOR_SOURCE)                                                  │
   imu_node ─► /navera/sensors/imu            (box)                                        │
@@ -143,8 +144,9 @@ gradual spoofer is not (VALIDATION_STATUS.md, known limitation 7).
 
 | Node (package) | Service | Role |
 |---|---|---|
-| `gps_node` (gps_pkg) | navera-gps, `NAVERA_GPS_SOURCE=serial` | NMEA receiver (checksummed) → `/navera/sensors/gps_fix`, `/navera/sensors/gps_vel`, `/navera/estimate/gps`; exits when the port is lost |
-| `ros_gps_node` (gps_pkg) | navera-gps, `vehicle` / `ros` | Republishes a NavSatFix (`/navera/vehicle/gps2`, or `NAVERA_ROS_GPS_TOPIC`) exactly like gps_node: `/navera/sensors/gps_fix` + `/navera/estimate/gps` (valid only with a fix) |
+| `gps_node` (gps_pkg) | navera-gps, `NAVERA_GPS_SOURCE=serial` / `network` | NMEA (checksummed) and / or u-blox UBX NAV-PVT receiver on a serial port, TCP or UDP (read-only) → `/navera/sensors/gps_fix`, `/navera/sensors/gps_vel`, `/navera/estimate/gps`, `/navera/sensors/gnss_time`; exits when the port is lost |
+| `dronecan_gps_node` (gps_pkg) | navera-gps, `dronecan` | DroneCAN GNSS (Fix2) heard passively on a CAN bus → the same topics (gps_pkg/fix_publish.py) |
+| `ros_gps_node` (gps_pkg) | navera-gps, `vehicle` / `vehicle_gps1` / `ros` | Republishes a NavSatFix (`/navera/vehicle/gps2`, `/navera/vehicle/gps1`, or `NAVERA_ROS_GPS_TOPIC`) exactly like gps_node: `/navera/sensors/gps_fix` + `/navera/estimate/gps` (valid only with a fix) |
 | `imu_node` (imu_pkg) | navera-imu | BNO085 → `/navera/sensors/imu`, vehicle frame, true north (WMM at `/navera/position`) |
 | `rtc_node` (rtc_pkg) | navera-rtc | DS3231 → `/navera/sensors/rtc_time`, `/navera/sensors/rtc_status` |
 | `vehicle_link_node` (navera_output) | navera-vehicle-link | Autopilot over MAVLink → `/navera/vehicle/imu`, `altitude_agl`, `relative_alt`, `gps2`, `status` (link, armed). Ignores non-autopilot heartbeats; never reads the autopilot's fused position |
@@ -226,7 +228,12 @@ vehicle's domain. Written settings always win. Rules:
 - the autopilot's second GPS only when `GPS_TYPE2` / `GPS2_TYPE` (read from it) says it is
   a real receiver — never type 14 (the MAVLink-fed GPS that NAVERA's own `GPS_INPUT`
   feeds), never when the types cannot be read;
-- no GPS found: `NAVERA_GPS_SOURCE=none`, the GPS service idles (no default port opened);
+- GPS: serial receiver (UBX or NMEA, also a passive tap) > DroneCAN > network > the
+  autopilot's second GPS > its first GPS (only while its `GPS_TYPE` says NAVERA does not feed
+  it) > ROS; probes read only (no write to a receiver, a passive DroneCAN node);
+- no GPS found: `NAVERA_GPS_SOURCE=none`, the GPS service idles (no default port opened)
+  until navera-hotplug (navera_common/hotplug.py) finds one connected later — idle needs
+  only, never the GPS while the vehicle is armed;
 - several autopilots: the wired port first, a warning when they are different systems;
   `NAVERA_MAVLINK_SYSID` = the autopilot's system id;
 - `ROS_DOMAIN_ID` / `ROS_LOCALHOST_ONLY` written in navera.env are never changed; a ROS
@@ -266,6 +273,7 @@ measured, its accuracy grown by the maximum speed × its age. Details:
 | `/navera/sensors/rtc_time`, `rtc_status` | TimeReference, String (JSON) | rtc_node | cn_subscriber, check_box |
 | `/navera/vehicle/imu`, `altitude_agl`, `relative_alt` | Imu, Range, PointStamped | vehicle_link_node | live camera and pipelines (`vehicle`) |
 | `/navera/vehicle/gps2` | sensor_msgs/NavSatFix | vehicle_link_node | ros_gps_node (`NAVERA_GPS_SOURCE=vehicle`) |
+| `/navera/vehicle/gps1` | sensor_msgs/NavSatFix | vehicle_link_node (`read_gps1`, only while NAVERA does not feed GPS 1) | ros_gps_node (`NAVERA_GPS_SOURCE=vehicle_gps1`) |
 | `/navera/vehicle/status` | String (JSON) | vehicle_link_node | web bridge (armed lock), vehicle_output (relay check), check_box |
 | `/navera/operator/start_position` | navera_msgs/PositionEstimate (latched; source EXTERNAL) | web bridge (`/mission`) | day_subscriber (search area only) |
 | `/navera/vision/altitude_agl` | sensor_msgs/Range | day_subscriber | live camera (height from the image) |

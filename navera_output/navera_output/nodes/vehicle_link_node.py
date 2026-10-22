@@ -9,11 +9,18 @@ its own: any MAVLink autopilot (ArduPilot, PX4, ...). Publishes, stamped on rece
     /navera/vehicle/relative_alt   geometry_msgs/PointStamped  z = height above home (barometer)
     /navera/vehicle/gps2           sensor_msgs/NavSatFix    the vehicle's second GPS, if any
     /navera/vehicle/gps2_satellites std_msgs/UInt32         its satellites (NavSatFix has no field)
+    /navera/vehicle/gps1           sensor_msgs/NavSatFix    the vehicle's FIRST GPS (GPS_RAW_INT), only
+    /navera/vehicle/gps1_satellites std_msgs/UInt32         with read_gps1 and only when NAVERA does not feed it
     /navera/vehicle/status         std_msgs/String (JSON)   link, autopilot, armed, message rates
 
 The live camera takes its attitude from /navera/vehicle/imu when NAVERA_SENSOR_SOURCE
-is "vehicle" (camera_pkg live_camera.launch.py). The autopilot's own GPS position is
-NOT read: when NAVERA feeds it, that would be NAVERA's output coming back.
+is "vehicle" (camera_pkg live_camera.launch.py). The autopilot's fused position is never
+read: when NAVERA feeds it, that would be NAVERA's output coming back. Its first GPS
+(GPS_RAW_INT: ArduPilot always sends GPS instance 1 there) is read only with read_gps1, and
+only once the autopilot's own parameters say NAVERA does not feed that GPS: GPS_TYPE /
+GPS1_TYPE known, not 0, not 14 (MAVLink: NAVERA's GPS_INPUT), and not 5 (NMEA) while NAVERA's
+NMEA output is on (navera_nmea_output). Checked at every connection and every 30 s, whatever
+discovery said.
 
 Parameters:
     mavlink_url     e.g. serial:/dev/ttyTHS2:921600, udpin:0.0.0.0:14551, tcp:127.0.0.1:5763
@@ -25,6 +32,8 @@ Parameters:
                     on to the autopilot: with a single autopilot port, vehicle_output sends
                     its GPS_INPUT to udpout:127.0.0.1:14650 and this node, which owns the
                     link, relays it (no mavlink-router needed)
+    read_gps1       (default false) publish the autopilot's first GPS (see above)
+    navera_nmea_output (default false) NAVERA's NMEA output is on: an NMEA GPS1 may be NAVERA
 """
 import json
 import math
@@ -46,7 +55,52 @@ from navera_output.mavlink_in import (attitude_euler, attitude_quaternion, downw
                                       rates_frd_to_flu)
 
 MSG_IDS = {"ATTITUDE": 30, "ATTITUDE_QUATERNION": 31, "GLOBAL_POSITION_INT": 33,
-           "DISTANCE_SENSOR": 132, "GPS2_RAW": 124, "SYSTEM_TIME": 2}
+           "DISTANCE_SENSOR": 132, "GPS2_RAW": 124, "SYSTEM_TIME": 2, "GPS_RAW_INT": 24}
+GPS_TYPE_MAV, GPS_TYPE_NMEA = 14, 5
+
+
+def gps1_readable(gps1_type, nmea_output: bool):
+    """(may NAVERA read the autopilot's first GPS, why). Only a receiver the autopilot's own
+    parameters say NAVERA does not feed: type known, not none (0), not MAVLink (14 =
+    NAVERA's GPS_INPUT), not NMEA (5) while NAVERA's NMEA output is on.
+    """
+    if gps1_type is None:
+        return False, "GPS1 type not read yet"
+    t = int(gps1_type)
+    if t == 0:
+        return False, "no GPS1 (type 0)"
+    if t == GPS_TYPE_MAV:
+        return False, "GPS1 is fed over MAVLink (type 14): NAVERA's own output"
+    if t == GPS_TYPE_NMEA and nmea_output:
+        return False, "GPS1 is NMEA (type 5) and NAVERA's NMEA output is on: maybe NAVERA's own output"
+    return True, f"GPS1 type {t}"
+
+
+def gps_raw_navsatfix(msg, stamp, frame_id: str, warn=None):
+    """GPS_RAW_INT / GPS2_RAW (3D fix or better) -> NavSatFix (ellipsoid altitude when sent,
+    covariance from h_acc / v_acc), or None.
+    """
+    if msg.fix_type < 3:
+        return None
+    f = NavSatFix()
+    f.header.stamp, f.header.frame_id = stamp, frame_id
+    f.status.status = NavSatStatus.STATUS_FIX
+    f.latitude, f.longitude = msg.lat / 1e7, msg.lon / 1e7
+    # NavSatFix altitude is above the WGS84 ellipsoid; GPS*_RAW alt is above mean sea
+    # level (tens of metres apart): the ellipsoid one when the autopilot gives it
+    alt_e = getattr(msg, "alt_ellipsoid", 0) or 0
+    if alt_e:
+        f.altitude = alt_e / 1000.0
+    else:
+        f.altitude = msg.alt / 1000.0
+        if warn:
+            warn()
+    h_acc, v_acc = getattr(msg, "h_acc", 0) or 0, getattr(msg, "v_acc", 0) or 0
+    if h_acc > 0:                                   # mm: the receiver's own accuracy
+        hv, vv = (h_acc / 1000.0) ** 2, (v_acc / 1000.0) ** 2 if v_acc > 0 else 4 * (h_acc / 1000.0) ** 2
+        f.position_covariance = [hv, 0.0, 0.0, 0.0, hv, 0.0, 0.0, 0.0, vv]
+        f.position_covariance_type = NavSatFix.COVARIANCE_TYPE_DIAGONAL_KNOWN
+    return f
 
 
 class VehicleLink(Node):
@@ -59,6 +113,11 @@ class VehicleLink(Node):
         # behind one mavlink-router must not share an identity
         self.declare_parameter("source_component", 192)
         self.declare_parameter("relay_port", 14650)
+        self.declare_parameter("read_gps1", False)
+        self.declare_parameter("navera_nmea_output", False)
+        self.read_gps1 = bool(self.get_parameter("read_gps1").value)
+        self.nmea_out = bool(self.get_parameter("navera_nmea_output").value)
+        self.gps1_type, self.gps1_ok, self.gps1_why, self._gps1_req_t = None, False, "not asked", 0.0
         self.url = str(self.get_parameter("mavlink_url").value)
         if not self.url:
             raise ValueError("mavlink_url is not set (e.g. serial:/dev/ttyTHS2:921600)")
@@ -69,6 +128,9 @@ class VehicleLink(Node):
         self.pub_rel = self.create_publisher(PointStamped, "/navera/vehicle/relative_alt", 10)
         self.pub_gps2 = self.create_publisher(NavSatFix, "/navera/vehicle/gps2", 10)
         self.pub_gps2_sats = self.create_publisher(UInt32, "/navera/vehicle/gps2_satellites", 10)
+        if self.read_gps1:
+            self.pub_gps1 = self.create_publisher(NavSatFix, "/navera/vehicle/gps1", 10)
+            self.pub_gps1_sats = self.create_publisher(UInt32, "/navera/vehicle/gps1_satellites", 10)
         self.pub_status = self.create_publisher(String, "/navera/vehicle/status", 10)
         self.counts, self.last_hb, self.autopilot = {}, 0.0, None
         self.armed = None                  # from the autopilot heartbeat (None = unknown)
@@ -101,6 +163,8 @@ class VehicleLink(Node):
         from pymavlink import mavutil
         rates = {"ATTITUDE_QUATERNION": self.att_hz, "ATTITUDE": self.att_hz, "GLOBAL_POSITION_INT": 10.0,
                  "DISTANCE_SENSOR": 10.0, "GPS2_RAW": 5.0, "SYSTEM_TIME": 1.0}
+        if self.read_gps1:
+            rates["GPS_RAW_INT"] = 5.0
         for name, hz in rates.items():
             m.mav.command_long_send(m.target_system, m.target_component,
                                     mavutil.mavlink.MAV_CMD_SET_MESSAGE_INTERVAL, 0,
@@ -129,6 +193,8 @@ class VehicleLink(Node):
                 m.write = lambda b, _w=raw_write: self._locked_write(_w, b)
                 self._link = m
                 self.last_hb, self.quat_t, self.q_last = time.monotonic(), 0.0, None
+                # a new connection may be another autopilot / configuration: ask again
+                self.gps1_type, self.gps1_ok, self.gps1_why, self._gps1_req_t = None, False, "not read yet", 0.0
                 self._request_streams(m)
                 t_hb = 0.0
                 while not self._stop.is_set():
@@ -136,6 +202,13 @@ class VehicleLink(Node):
                         m.mav.heartbeat_send(mavutil.mavlink.MAV_TYPE_ONBOARD_CONTROLLER,
                                              mavutil.mavlink.MAV_AUTOPILOT_INVALID, 0, 0, 0)
                         t_hb = time.monotonic()
+                    # GPS1 type: asked until known, then again every 30 s (a type changed to 14 —
+                    # NAVERA's GPS_INPUT — stops the reading; ArduPilot also announces a change)
+                    if self.read_gps1 and time.monotonic() - self._gps1_req_t > (5.0 if self.gps1_type is None
+                                                                                 else 30.0):
+                        for p in ("GPS_TYPE", "GPS1_TYPE"):     # ArduPilot 4.5 / 4.6+
+                            m.mav.param_request_read_send(m.target_system, m.target_component, p.encode(), -1)
+                        self._gps1_req_t = time.monotonic()
                     msg = m.recv_match(blocking=True, timeout=0.5)
                     if msg is None:
                         if time.monotonic() - self.last_hb > 5.0:
@@ -225,30 +298,33 @@ class VehicleLink(Node):
             p.header.stamp, p.header.frame_id = now, "vehicle_home"
             p.point.z = msg.relative_alt / 1000.0
             self.pub_rel.publish(p)
-        elif t == "GPS2_RAW" and msg.fix_type >= 3:
-            f = NavSatFix()
-            f.header.stamp, f.header.frame_id = now, "vehicle_gps2"
-            f.status.status = NavSatStatus.STATUS_FIX
-            f.latitude, f.longitude = msg.lat / 1e7, msg.lon / 1e7
-            # NavSatFix altitude is above the WGS84 ellipsoid; GPS2_RAW.alt is above mean sea
-            # level (tens of metres apart): the ellipsoid one when the autopilot gives it
-            alt_e = getattr(msg, "alt_ellipsoid", 0) or 0
-            if alt_e:
-                f.altitude = alt_e / 1000.0
-            else:
-                f.altitude = msg.alt / 1000.0
-                self.get_logger().warn("second GPS gives its altitude above sea level only: heights from "
-                                       "it are MSL (set NAVERA_GROUND_ALTITUDE_M as MSL too)",
-                                       throttle_duration_sec=600.0)
-            h_acc, v_acc = getattr(msg, "h_acc", 0) or 0, getattr(msg, "v_acc", 0) or 0
-            if h_acc > 0:                                   # mm: the receiver's own accuracy
-                hv, vv = (h_acc / 1000.0) ** 2, (v_acc / 1000.0) ** 2 if v_acc > 0 else 4 * (h_acc / 1000.0) ** 2
-                f.position_covariance = [hv, 0.0, 0.0, 0.0, hv, 0.0, 0.0, 0.0, vv]
-                f.position_covariance_type = NavSatFix.COVARIANCE_TYPE_DIAGONAL_KNOWN
-            sats = getattr(msg, "satellites_visible", 255)
-            if 0 < sats < 255:                              # 255 = unknown (MAVLink)
-                self.pub_gps2_sats.publish(UInt32(data=int(sats)))
-            self.pub_gps2.publish(f)
+        elif t == "GPS2_RAW":
+            f = gps_raw_navsatfix(msg, now, "vehicle_gps2", self._warn_msl)
+            if f is not None:
+                sats = getattr(msg, "satellites_visible", 255)
+                if 0 < sats < 255:                          # 255 = unknown (MAVLink)
+                    self.pub_gps2_sats.publish(UInt32(data=int(sats)))
+                self.pub_gps2.publish(f)
+        elif t == "PARAM_VALUE" and self.read_gps1:
+            pid = msg.param_id.rstrip("\x00") if isinstance(msg.param_id, str) else msg.param_id
+            if pid in ("GPS_TYPE", "GPS1_TYPE"):
+                self.gps1_type = int(msg.param_value)
+                ok, self.gps1_why = gps1_readable(self.gps1_type, self.nmea_out)
+                if ok != self.gps1_ok:
+                    (self.get_logger().info if ok else self.get_logger().warn)(
+                        f"autopilot's first GPS {'read' if ok else 'NOT read'}: {self.gps1_why}")
+                self.gps1_ok = ok
+        elif t == "GPS_RAW_INT" and self.read_gps1 and self.gps1_ok:
+            f = gps_raw_navsatfix(msg, now, "vehicle_gps1", self._warn_msl)
+            if f is not None:
+                sats = getattr(msg, "satellites_visible", 255)
+                if 0 < sats < 255:
+                    self.pub_gps1_sats.publish(UInt32(data=int(sats)))
+                self.pub_gps1.publish(f)
+
+    def _warn_msl(self):
+        self.get_logger().warn("the autopilot's GPS gives its altitude above sea level only: heights from "
+                               "it are MSL (set NAVERA_GROUND_ALTITUDE_M as MSL too)", throttle_duration_sec=600.0)
 
     def _publish_imu(self, stamp, q, rates):
         if not all(math.isfinite(c) for c in q):
@@ -266,7 +342,8 @@ class VehicleLink(Node):
         rates, self.counts = dict(self.counts), {}
         self.pub_status.publish(String(data=json.dumps(
             {"link": alive, "autopilot": self.autopilot, "armed": self.armed if alive else None,
-             "url": self.url, "rates_hz": rates, "relayed_packets": self.relayed})))
+             "url": self.url, "rates_hz": rates, "relayed_packets": self.relayed,
+             **({"gps1_read": self.gps1_ok, "gps1": self.gps1_why} if self.read_gps1 else {})})))
 
     def destroy_node(self):
         self._stop.set()

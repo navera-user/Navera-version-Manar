@@ -309,17 +309,25 @@ requirements:
 - id: NAV-FUN-18
   category: FUN
   title: 'Hardware discovery'
-  text: 'navera-discover shall find the connected GPS receiver, autopilot, IMU, clock, ROS vehicle and cameras for settings left to "auto", never override a written setting, never take NAVERA''s own output back as a GPS, and never block the boot.'
+  text: 'navera-discover shall find the connected GPS receiver (NMEA or u-blox UBX on a serial port, including a passive tap; DroneCAN Fix2 on a CAN bus that is up; NMEA / UBX on configured network addresses), autopilot (serial, UDP, TCP), IMU, clock, ROS vehicle and cameras for settings left to "auto", choose the GPS serial > DroneCAN > network > autopilot GPS2 > autopilot GPS1 > ROS, probe read-only (no write to a receiver, no CAN frame), never override a written setting, never take NAVERA''s own output back as a GPS (autopilot GPS type 14, or 5 while NAVERA outputs NMEA; a CAN node commanding motors), and never block the boot.'
   code:
     - navera_common/navera_common/discovery.py::decide
     - navera_common/navera_common/discovery.py::discover
+    - navera_common/navera_common/discovery.py::gps_kind
+    - navera_common/navera_common/discovery.py::probe_serial_port
+    - navera_common/navera_common/discovery.py::probe_dronecan
+    - navera_common/navera_common/discovery.py::probe_gps_url
     - deploy/systemd/navera_boot_discover.sh
   match:
     - 'test_discovery\.py::'
     - 'sitl_discovery\.py'
+    - 'sitl_gps1_monitor\.py'
   evidence:
     - {level: SIM, value: 'ArduPilot SITL: autopilot found, GPS_TYPE2 1 used, 14 refused', ref: 'ARDUPILOT_INTEGRATION.md §7'}
+    - {level: UT, value: '2026-10-22: UBX NAV-PVT recognised on a pseudo-terminal at 230400 with nothing written back; DroneCAN probe on a pydronecan virtual bus (Here3-like node used, autopilot node re-broadcasting refused, nothing transmitted); NMEA / UBX over TCP and UDP'}
+    - {level: SIM, value: '2026-10-22 ArduPilot SITL: autopilot found over TCP; GPS_TYPE 1 + GPS_TYPE2 14 -> the autopilot GPS1 chosen; GPS_TYPE 14 -> refused', ref: 'navera_tools/tests/sitl_gps1_monitor.py'}
   status: verified-SIM
+  note: 'not yet with a real u-blox, a real Y-cable tap or a real DroneCAN GPS on can0'
 
 - id: NAV-FUN-19
   category: FUN
@@ -901,18 +909,27 @@ requirements:
 
 - id: NAV-IF-03
   category: IF
-  title: 'Serial NMEA GPS input'
-  text: 'The GPS driver shall verify NMEA checksums, reject GGA quality 6/7/8, report ellipsoidal altitude, keep an unknown HDOP unknown, and exit (code 1) when its port vanishes.'
+  title: 'Serial NMEA / u-blox UBX GPS input'
+  text: 'The GPS driver shall verify NMEA checksums, reject GGA quality 6/7/8, report ellipsoidal altitude, keep an unknown HDOP unknown, and exit (code 1) when its port vanishes. On the same stream it shall read u-blox UBX NAV-PVT (Fletcher-checksummed): a fix only with gnssFixOK and a 2D / 3D / GNSS+DR fix (not DR-only, time-only or invalidLlh), the receiver''s hAcc / vAcc as a diagonal covariance (else unknown), ellipsoidal height, ENU velocity and the UTC only when valid and fully resolved; it shall not publish the same receiver''s NMEA fix while NAV-PVT arrives, and never write to the receiver unless configure_receiver is set (then RAM-only NAV-PVT / NAV-DOP enable); a serial port with nothing valid for 5 s shall be listened to at the next common baud (a local setting only).'
   code:
     - gps_pkg/gps_pkg/nodes/gps_node.py::GPSNode._publish_fix
     - gps_pkg/gps_pkg/nodes/gps_node.py::GPSNode._read_loop
+    - gps_pkg/gps_pkg/nodes/gps_node.py::GPSNode._handle_ubx
+    - gps_pkg/gps_pkg/nodes/gps_node.py::GPSNode._next_baud
+    - navera_common/navera_common/gnss.py::StreamDecoder
+    - navera_common/navera_common/gnss.py::pvt_fix
+    - navera_common/navera_common/gnss.py::ubx_enable_pvt_frames
+    - gps_pkg/gps_pkg/fix_publish.py::estimate
   match:
     - 'test_gps_serial\.py'
+    - 'test_gps_sources\.py'
+    - 'test_gnss\.py::test_(ubx|decoder|a_3d_fix|only_satellite|rtk|time_only|u_blox|receiver_configuration)'
   evidence:
     - {level: UT, value: 'pseudo-terminal: checksum, quality, port loss exit 1'}
+    - {level: UT, value: '2026-10-22: UBX NAV-PVT + NMEA mixed on a pseudo-terminal (tap at 230400): fixes with hAcc covariance, velocity, GNSS time, NMEA not repeated, DR-only invalid, corrupted frame dropped, nothing written to the receiver; NAV-PVT layout cross-checked against pyubx2'}
     - {level: HW, value: 'u-blox NEO-M8N on /dev/ttyTHS1 gave a valid fix (project report 2026-06-02; replayed through gps_node)', ref: 'VALIDATION_STATUS.md, Hardware results'}
   status: partial
-  note: 'the real receiver was not run through today''s gps_node live'
+  note: 'the real receiver was not run through today''s gps_node live; UBX only with simulated streams (no real u-blox / Y-cable tap yet)'
 
 - id: NAV-IF-04
   category: IF
@@ -927,6 +944,53 @@ requirements:
   evidence:
     - {level: UT, value: 'stage check 2026-10-21: ros_gps_node fed by a simulated vehicle GPS in the staged stack', ref: 'docs/certification/DEPLOYMENT_VALIDATION.md'}
   status: verified-UT
+
+- id: NAV-IF-08
+  category: IF
+  title: 'DroneCAN GPS input'
+  text: 'A DroneCAN GNSS (uavcan.equipment.gnss.Fix2, legacy Fix) shall become NAVERA''s GPS source with the same contract as the serial GPS: valid only with a 2D / 3D fix, accuracy from its covariance (else unknown), ellipsoidal height, UTC from a UTC or GPS (leap-corrected) timestamp. The node shall listen passively (no node id, nothing sent) unless node id allocation is explicitly enabled, never use a node that commands motors (an autopilot re-broadcasting its GPS), keep one receiver, and exit (code 1) when the bus fails.'
+  code:
+    - navera_common/navera_common/gnss.py::fix2_fix
+    - gps_pkg/gps_pkg/nodes/dronecan_gps_node.py::GnssSelector
+    - gps_pkg/gps_pkg/nodes/dronecan_gps_node.py::DroneCanGps
+  match:
+    - 'test_gnss\.py::test_fix2'
+    - 'test_dronecan_gps\.py::'
+    - 'test_gps_sources\.py'
+  evidence:
+    - {level: UT, value: '2026-10-22: dronecan_gps_node on a pydronecan virtual bus (mcast): Here3-like node 124 used with its covariance, autopilot node 10 (ESC commands + Fix2) never; nothing transmitted in passive mode, node 125 heard only with allocation on'}
+  status: verified-UT
+  note: 'no real DroneCAN GPS on can0 yet (can0 is down on the bench; bringing it up needs root)'
+
+- id: NAV-IF-09
+  category: IF
+  title: 'Network GPS input'
+  text: 'A GPS stream on the network (NMEA and / or UBX, tcp:<host>:<port> as client or udp:<port> as listener) shall be read like a serial GPS; a lost TCP connection shall exit (code 1) so the service reconnects; a UDP GPS is never written to.'
+  code:
+    - navera_common/navera_common/gnss.py::Stream
+    - navera_common/navera_common/gnss.py::parse_stream_url
+  match:
+    - 'test_gnss\.py::test_(stream_urls|tcp_and_udp)'
+    - 'test_gps_sources\.py'
+  evidence:
+    - {level: UT, value: '2026-10-22: gps_node url tcp: (NMEA, exit 1 when the server closes) and udp: (UBX) on loopback'}
+  status: verified-UT
+
+- id: NAV-IF-10
+  category: IF
+  title: 'The autopilot''s first GPS (NAVERA not feeding it)'
+  text: 'With NAVERA_GPS_SOURCE=vehicle_gps1 the vehicle link shall publish the autopilot''s GPS_RAW_INT (3D fix, ellipsoid altitude, h_acc / v_acc) only while the autopilot''s GPS_TYPE / GPS1_TYPE, read at every connection and every 30 s, is known and neither 0, nor 14 (NAVERA''s GPS_INPUT), nor 5 while NAVERA''s NMEA output is on; it shall stop at once otherwise.'
+  code:
+    - navera_output/navera_output/nodes/vehicle_link_node.py::gps1_readable
+    - navera_output/navera_output/nodes/vehicle_link_node.py::gps_raw_navsatfix
+    - navera_output/navera_output/nodes/vehicle_link_node.py::VehicleLink._handle
+  match:
+    - 'test_vehicle_link\.py::test_(the_first_gps|gps_raw)'
+    - 'sitl_gps1_monitor\.py'
+  evidence:
+    - {level: SIM, value: '2026-10-22 ArduPilot SITL (GPS_TYPE 1, GPS_TYPE2 14): /navera/vehicle/gps1 at the SITL home; GPS_TYPE set to 14 -> no more GPS1 messages', ref: 'navera_tools/tests/sitl_gps1_monitor.py'}
+  status: verified-SIM
+  note: 'flying on NAVERA as the autopilot''s GPS 2 (GPS_AUTO_SWITCH) is not verified'
 
 - id: NAV-IF-05
   category: IF
@@ -1059,6 +1123,24 @@ requirements:
     - {level: A, value: 'within a run the ROS log files grow ~1.5 MB/h for the day node (0.4 kB per frame at 1 frame/s, measured on 29 385 simulator frames), a few MB/h in all; the journal (units stdout) is capped by install.sh: SystemMaxUse 1 GB, SystemKeepFree 2 GB, 64 MB files, rate limit (deploy/journald/navera.conf)'}
   status: verified-UT
   note: 'the current run''s ROS log files are pruned at the next start only (~15 MB for a 10 h flight); free space shown by check_box, not on the operator view'
+
+- id: NAV-DEP-06
+  category: DEP
+  title: 'Hot-plug of a GPS, autopilot or camera'
+  text: 'navera-hotplug shall probe, read-only, only the devices that appear after boot (and, while no GPS is found, re-listen to silent ports, CAN buses and network GPS addresses every 60 s), rewrite discovered.env for the needs navera-discover left idle only — never a working source — and never switch the GPS while the vehicle is armed or its armed state is unknown with an autopilot link; idle units shall restart by themselves when discovered.env changes.'
+  code:
+    - navera_common/navera_common/hotplug.py::fill_idle
+    - navera_common/navera_common/hotplug.py::run
+    - navera_common/navera_common/hotplug.py::gps_switch_allowed
+    - deploy/systemd/navera_boot_lib.sh::navera_idle_until_discovered
+    - deploy/systemd/navera-hotplug.service
+  match:
+    - 'test_hotplug\.py::'
+    - 'test_boot_idle\.py::'
+  evidence:
+    - {level: UT, value: '2026-10-22: USB GPS appearing fills the idle GPS only; a second receiver never replaces a working one; armed / unknown -> deferred, disarmed -> filled; idle wrapper exits when discovered.env changes'}
+  status: verified-UT
+  note: 'not yet on the deployed box (systemd restart chain, real USB plug)'
 
 - id: NAV-DEP-05
   category: DEP

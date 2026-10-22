@@ -205,6 +205,30 @@ def config_findings(env):
         if len(keys) > 1:
             out.append((FAIL, "serial ports", f"{dev} is used by {', '.join(keys)}: one program per port "
                                               "(one autopilot port: NAVERA_MAVLINK_URL=udpout:127.0.0.1:14650)"))
+    gps = get("NAVERA_GPS_SOURCE")
+    if gps in ("vehicle", "vehicle_gps1") and not get("NAVERA_VEHICLE_MAVLINK_URL"):
+        out.append((FAIL, "GPS", f"NAVERA_GPS_SOURCE={gps} is read by navera-vehicle-link, but "
+                                 "NAVERA_VEHICLE_MAVLINK_URL is empty"))
+    if gps == "network":
+        from navera_common.gnss import parse_stream_url
+        try:
+            parse_stream_url(get("NAVERA_GPS_URL"))
+        except ValueError as e:
+            out.append((FAIL, "NAVERA_GPS_URL", str(e)))
+    if gps == "dronecan":
+        iface = get("NAVERA_GPS_CAN_IFACE") or "can0"
+        if ":" not in iface:
+            try:
+                up = int(open(f"/sys/class/net/{iface}/flags").read(), 16) & 1
+            except (OSError, ValueError):
+                up = None
+            if not up:
+                out.append((FAIL, "DroneCAN GPS", f"{iface} is {'missing' if up is None else 'down'}: "
+                                                  f"sudo ip link set {iface} up type can bitrate 1000000 "
+                                                  "(deploy/README.md, CAN bus)"))
+        import importlib.util
+        if importlib.util.find_spec("dronecan") is None:
+            out.append((FAIL, "DroneCAN GPS", "the pip package dronecan is not installed"))
     url = get("NAVERA_MAVLINK_URL")
     if url.startswith("udpout:127.0.0.1:") and not get("NAVERA_VEHICLE_MAVLINK_URL"):
         out.append((FAIL, "MAVLink output", "goes to navera-vehicle-link's relay, but NAVERA_VEHICLE_MAVLINK_URL "
@@ -330,13 +354,17 @@ def check_ros(topics, seconds):
     elif src == "box":
         report(WARN, "barometer", "none in box mode: after GPS loss the height comes from the image "
                                   "(matches) or is held")
-    if src == "vehicle":
+    gps_src = os.environ.get("NAVERA_GPS_SOURCE", "")
+    if src == "vehicle" or gps_src in ("vehicle", "vehicle_gps1"):
         if not rate("vlink"):
             report(FAIL, "vehicle link", "no /navera/vehicle/status (navera-vehicle-link service?)")
         else:
             st = json.loads(got["vlink"][-1][1].data)
             report(OK if st.get("link") else FAIL, "vehicle link",
                    f"{st.get('autopilot')} on {st.get('url')}" if st.get("link") else f"no autopilot on {st.get('url')}")
+            if gps_src == "vehicle_gps1" and st.get("link"):
+                report(OK if st.get("gps1_read") else FAIL, "autopilot's first GPS",
+                       st.get("gps1") or "no answer about GPS1 (navera-vehicle-link older than the setting?)")
     if rate("rtc"):
         st = json.loads(got["rtc"][-1][1].data)
         report(OK if st.get("valid") else FAIL, "clock (RTC)", f"valid={st.get('valid')} drift={st.get('drift_s')}")

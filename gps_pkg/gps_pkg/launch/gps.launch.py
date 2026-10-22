@@ -4,6 +4,7 @@
 Examples:
   ros2 launch gps_pkg gps.launch.py
   ros2 launch gps_pkg gps.launch.py serial_port:=/dev/ttyUSB0 baud_rate:=115200
+  ros2 launch gps_pkg gps.launch.py url:=tcp:192.168.1.50:10110      # NMEA / UBX on the network
 """
 import os
 from ament_index_python.packages import get_package_share_directory
@@ -20,6 +21,10 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument('serial_port', default_value='/dev/ttyTHS1'),
         DeclareLaunchArgument('baud_rate',   default_value='9600'),
+        # instead of the two above: serial:/dev/<port>:<baud>, tcp:<host>:<port>, udp:<port>
+        DeclareLaunchArgument('url', default_value=''),
+        # true: NAVERA may turn on UBX NAV-PVT in the receiver (RAM only); default read-only
+        DeclareLaunchArgument('configure_receiver', default_value='false'),
 
         Node(
             package='gps_pkg',
@@ -34,6 +39,8 @@ def generate_launch_description():
                 {
                     'serial_port': LaunchConfiguration('serial_port'),
                     'baud_rate':   LaunchConfiguration('baud_rate'),
+                    'url': LaunchConfiguration('url'),
+                    'configure_receiver': LaunchConfiguration('configure_receiver'),
                 },
             ],
         ),
