@@ -22,6 +22,7 @@ every unit (user manual and the unit itself).
 | astrometry.net (`solve-field`) and its star index files | Celestial plate-solving (units with the celestial option) | BSD-3-Clause; some parts GPL — confirm for the installed build. Index files derive from the Tycho-2 / 2MASS catalogues | © Dustin Lang, David W. Hogg et al. |
 | pygeomag (World Magnetic Model 2025, NOAA/NCEI coefficients) | IMU: magnetic → true heading | MIT (model coefficients: US public domain) | © 2023 Justin Myers |
 | pymavlink | MAVLink vehicle output | **LGPL-3.0** | © ArduPilot / MAVLink developers |
+| dronecan (pydronecan) 1.0.27 | DroneCAN GPS on a CAN bus (Fix2) | MIT | © 2014-2015 Pavel Kirienko, DroneCAN Development Team |
 | Leaflet | Dashboard map | BSD-2-Clause | © Vladimir Agafonkin, CloudMade |
 | ROS 2 Humble (rclpy, rosbag2, message packages) | Middleware | Apache-2.0 (some parts BSD-3-Clause) | © Open Robotics and contributors |
 | Ubuntu 22.04 / NVIDIA JetPack 6 (L4T) | Operating system | GPL-2.0 (Linux kernel), LGPL, other open-source licences; NVIDIA software under the NVIDIA Jetson Software License | © Canonical, NVIDIA and contributors |

@@ -31,6 +31,27 @@ same hours; scattered cloud is handled, overcast gives no fix.
 2. The Jetson joined the operator's hotspot once (it then rejoins alone); the car powers the Jetson.
 3. Claude: `e2e_check --selftest`, `--live`, disk >= 100 GB free, lens and IMU calibration files present,
    `tailscale funnel status` shows 8443, camera USB mode Android.
+4. Battery clock (F27, optional for this test, needed for the product offline): if the DS3231 module is wired
+   (below), set it once while the Jetson has internet: `python3 -m navera_tools.field.rtc_clock --set-from-system`
+   (refused unless NTP-synchronised), then `python3 -m navera_tools.field.rtc_clock` must print `'ok': True`
+   and an offset within 1 s. The service must be restarted to start reading it (`sudo systemctl restart
+   navera-field`, the user). The page's checks then show "Battery clock (DS3231)".
+
+### DS3231 wiring (Jetson Orin Nano 40-pin header, I2C bus 1 — shared with the BNO085 at 0x4A)
+
+| DS3231 pin | Jetson header pin | Signal |
+|---|---|---|
+| VCC | 1 | 3.3 V (not 5 V: the module's pull-ups then hold SDA/SCL at 3.3 V, safe for the Jetson) |
+| GND | 6 (or 9) | ground |
+| SDA | 27 | I2C1_SDA (bus 1) |
+| SCL | 28 | I2C1_SCL (bus 1) |
+| SQW, 32K | not connected | |
+
+A CR2032 in the module's holder keeps the time with the Jetson off. Common ZS-042 boards charge the cell through a
+resistor and diode meant for a rechargeable LIR2032: with a plain CR2032, remove that resistor (or the diode).
+Check: `i2cdetect -y -r 1` shows `68` (and `57`, the module's EEPROM). No root is needed to read it (the user is in
+the `i2c` group). The star time order is then: phone clock > DS3231 > NTP; every frame records `time_source` and
+`rtc_minus_phone_s` (the battery clock's real error against the phone).
 
 ## The drive (operator instructions add one thing: stay parked 3 min after START and before END)
 
@@ -53,11 +74,33 @@ same hours; scattered cloud is handled, overcast gives no fix.
 | stars < 12 in a clear sky | video exposure / detector threshold | live lab: detection variants on the stops; `livectl set` the winner |
 | no fix at stops, many spots | junk (lights, reflections) | live lab: `allsky.MAX_RMS_DEG`, max spots, min altitude variants |
 | fixes refused "chance" | too few matched stars | `allsky.MIN_MATCHED` stays; check focal (`f_scale`) |
-| stopped fixes with the phone moving | stillness fooled (D12) | they are flagged and ignored; tighten the stillness window if frequent |
+| stopped fixes with the phone moving | stillness fooled (D12) | they are flagged and ignored. Since 2026-10-22 the server adds the long-window test (cn_pkg/standstill.py: 'up' must not have moved without the camera turning in the last 10 s, \|a\| at rest); `stillness.why` says which test refused. Live knobs: `standstill.LONG_S`, `standstill.DIR_TOL_DEG`, `Stillness.LONG_CHECK=0` (driver test only) |
+| stops give no stopped frame for ~10 s | a very gentle roll to the stop (no braking): the long window refuses it on purpose | ask the driver to brake normally; nothing to change |
 | constant 50-250 km on every trusted fix | lens-to-IMU mount angle (D11) | expected before the calibration; after `tilt_calibrated` the corrected error must drop |
+| event `tilt_fit_refused` | the calibration samples disagree (no clear majority) | nothing: outliers are left out and do not count; it keeps learning until 12 agree (or 24 taken). `residuals_deg` in the event shows the bad samples |
 | corrected error grows with time | calibration bad (moving sample) or temperature | live lab: recalibrate on later stops; compare |
 | solve time > 6 s | Jetson hot / busy | nothing else runs on the Jetson during the test |
 | phone GPS age > 10 s | screen off / app closed | the app shows a red message; the samples are buffered |
+
+## What the drive must measure (F19) and where it is logged
+
+Simulation assumed these; the night measures them. Every 360 frame record (`frames.jsonl`) carries them, and
+`analyze.py` (report.md "Drive measurements") sums them up; the raw recording keeps the full 500 Hz IMU for
+anything else.
+
+| Measure | Field in each frame record | Why |
+|---|---|---|
+| Vibration at rest (idle) and driving: accelerometer above ~5 Hz, 0.2 s means' spread, gyro rms | `imu_vib` (`acc_hp_rms_g`, `acc_lf_std_g`, `gyro_rms_dps`, `mag_mean_g`) | the car simulation's idle 0.02 g / road 0.03 g / bounce 0.02 g are guesses; they set the stillness thresholds |
+| Stopped flag against the phone's speed: false stops, lost stops; the driver's test vs the long-window test | `stopped`, `stillness` (`driver_stopped`, `why`, `up_change_deg`, `excess_g`, `expected_g`), `phone_speed_mps`, `stopped_but_phone_moving` | D12 was measured on a simulated glass road only |
+| Trusted fixes per stop (20 s stops) | from `stopped`, `solved` and the phone speed | the simulation gave ~3; it decides how long the driver must stop |
+| Solve time on a quiet Jetson, with its load and temperature | `solve_s`, `host` (`load1`, `temp_c`, `mem_avail_mb`) | 6.6-8 s first solve was measured under load; quiet = `load1` < 2 |
+| Image standstill measure (logged only, not used) | `ground_change`, `ground_dt_s` | whether lit ground features can tell a gentle cruise from a stop at night |
+| Time source and the battery clock's error | `time_source`, `rtc_minus_phone_s` | F27 |
+| Camera stream health | `cam_health` (`reconnects`, `imu_restarts`, `imu_age_s`) | F14: how often the IMU feed needs a restart in the car |
+| Mount tilt learned | events `tilt_calibrated` / `tilt_fit_refused` (`residuals_deg`, `rejected`) | D11 |
+
+Live lab rounds load the Jetson: run them while the car drives, not during a stop, so that some stops give a
+quiet-Jetson solve time (`host.load1` < 2 tells them apart in the report).
 
 ## Live lab rounds (agents, while the car drives)
 

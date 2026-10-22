@@ -51,7 +51,8 @@ BUNDLED_CATALOGUE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "da
 
 def load_bsc5(path: str):
     """(ra deg, dec deg, V mag) arrays (ICRS / J2000) from a local Yale BSC5 file: the catalogue's fixed-width
-    text (bsc5.dat) or the bundled CSV (ra,dec,mag). Never downloads (NAVERA runs offline)."""
+    text (bsc5.dat) or the bundled CSV (ra,dec,mag). Never downloads (NAVERA runs offline).
+    """
     if not os.path.exists(path):
         raise FileNotFoundError(f"star catalogue {path} not found (offline: install it before departure)")
     if path.endswith(".csv"):
@@ -76,7 +77,8 @@ def load_bsc5(path: str):
 
 class Catalogue:
     """Bright stars (Yale BSC5, ICRS) and their pair separations, sorted for range lookups.
-    path: a local catalogue file (bsc5.dat or the bundled CSV); default <work_dir>/bsc5.dat."""
+    path: a local catalogue file (bsc5.dat or the bundled CSV); default <work_dir>/bsc5.dat.
+    """
 
     def __init__(self, work_dir: str = os.path.expanduser("~/.navera_sim"), limit_mag: float = 4.0,
                  max_sep_deg: float = 60.0, path: Optional[str] = None):
@@ -99,7 +101,7 @@ class Catalogue:
 NOISE_BLOCK = 32          # px: the noise is measured per block (sky glow, moon and clouds make it vary over the frame)
 NOISE_FLOOR = 1.0         # DN: an 8-bit, compressed dark sky can show zero spread; never threshold below this
 SATURATED = 250           # DN
-MAX_AREA = 150            # px above 3 sigma: a mag -2 star (simulated PSF) covers ~70; lamps, moon, meteors, glare far more
+MAX_AREA = 150            # px above 3 sigma: a mag -2 star (simulated PSF) covers ~70; lamps, moon, glare far more
 MAX_SATURATED = 45        # px at >= 250 DN: Jupiter in the simulation ~37; a street lamp of radius >= 4 px more
 MAX_SHARPNESS = 0.6       # centre / 3x3 sum of the residual: hot pixel ~1, star (PSF sigma >= 0.5 px) <= 0.6
 # defaults of detect_spots / locate, module-level so the field server can tune them live (live_params.json)
@@ -118,13 +120,48 @@ def detect_spots(gray: np.ndarray, lens: Lens, k_sigma: Optional[float] = None, 
     that cannot be a star are dropped: extended (lamps, moon, glare, meteors, lit clouds), saturated
     over a large area, or a single hot pixel. With up_imu and min_alt, spots below that altitude
     (ground, lamps, windows) are dropped before the max_spots cap so they cannot crowd out the sky.
-    stats (optional dict) receives the number of blobs rejected per reason."""
-    import cv2
-    k_sigma = DETECT_K_SIGMA if k_sigma is None else k_sigma
+    stats (optional dict) receives the number of blobs rejected per reason.
+    """
     H = gray.shape[0]
     x0, x1 = int(max(0, lens.cx - lens.radius)), int(min(gray.shape[1], lens.cx + lens.radius))
     y0, y1 = int(max(0, lens.cy - lens.radius)), int(min(H, lens.cy + lens.radius))
-    raw = gray[y0:y1, x0:x1]
+
+    def inside(xx, yy):
+        return np.hypot(xx + x0 - lens.cx, yy + y0 - lens.cy) < lens.radius - 8
+
+    below = None
+    if up_imu is not None and min_alt is not None:
+        def below(xx, yy):
+            up = up_imu / np.linalg.norm(up_imu)
+            alt = np.degrees(np.arcsin(np.clip(unproject(lens, xx + x0, yy + y0) @ up, -1, 1)))
+            return alt < min_alt
+    return _detect_blobs(gray[y0:y1, x0:x1], x0, y0, inside, below, k_sigma, max_spots, stats)
+
+
+def detect_spots_view(gray: np.ndarray, mask: Optional[np.ndarray] = None, k_sigma: Optional[float] = None,
+                      max_spots: int = 60, stats: Optional[dict] = None, border: int = 8):
+    """detect_spots for a rectangular (pinhole) view: the same local-noise threshold and the same star-shape blob
+    filters (extended, saturated, hot pixel), over the pixels where mask is non-zero (all when None) and at least
+    border px from the edges. Used by the screen bench (bench/celestial_screen.py) so that it judges the stars
+    the way the field does (F18: its own peak finder took ~60 spurious spots in clouds and rain).
+    """
+    h, w = gray.shape[:2]
+
+    def inside(xx, yy):
+        ok = (xx >= border) & (yy >= border) & (xx < w - border) & (yy < h - border)
+        if mask is not None:
+            ok &= mask[yy, xx] > 0
+        return ok
+    return _detect_blobs(gray, 0, 0, inside, None, k_sigma, max_spots, stats)
+
+
+def _detect_blobs(raw: np.ndarray, x0: int, y0: int, inside, below, k_sigma: Optional[float], max_spots: int,
+                  stats: Optional[dict]):
+    """The detector shared by detect_spots (one fisheye circle, cropped at x0, y0) and detect_spots_view.
+    inside(xx, yy) / below(xx, yy): boolean masks over candidate peaks in raw's coordinates.
+    """
+    import cv2
+    k_sigma = DETECT_K_SIGMA if k_sigma is None else k_sigma
     sub = raw.astype(np.float32)
     res = sub - cv2.GaussianBlur(sub, (0, 0), 12)
     h, w = res.shape
@@ -137,8 +174,8 @@ def detect_spots(gray: np.ndarray, lens: Lens, k_sigma: Optional[float] = None, 
     peak = (res == cv2.dilate(res, np.ones((7, 7), np.uint8))) & (snr > k_sigma)
     n_lab, lab, st, _ = cv2.connectedComponentsWithStats((snr > 3.0).astype(np.uint8), connectivity=8)
     yy, xx = np.nonzero(peak)
-    inside = np.hypot(xx + x0 - lens.cx, yy + y0 - lens.cy) < lens.radius - 8
-    yy, xx = yy[inside], xx[inside]
+    ok = inside(xx, yy)
+    yy, xx = yy[ok], xx[ok]
     rej = {"extended": 0, "saturated": 0, "hot_pixel": 0, "below_horizon": 0}
     if len(xx) == 0:
         if stats is not None:
@@ -165,10 +202,8 @@ def detect_spots(gray: np.ndarray, lens: Lens, k_sigma: Optional[float] = None, 
     rej["hot_pixel"] = int(hot.sum())
     keep &= ~hot
     yy, xx, lb = yy[keep], xx[keep], lb[keep]
-    if up_imu is not None and min_alt is not None and len(xx):
-        up = up_imu / np.linalg.norm(up_imu)
-        alt = np.degrees(np.arcsin(np.clip(unproject(lens, xx + x0, yy + y0) @ up, -1, 1)))
-        low = alt < min_alt
+    if below is not None and len(xx):
+        low = below(xx, yy)
         rej["below_horizon"] = int(low.sum())
         yy, xx, lb = yy[~low], xx[~low], lb[~low]
     if stats is not None:
@@ -236,7 +271,8 @@ def _frames(u, v):
 
 def match(rays: np.ndarray, R: np.ndarray, tree, chord: float):
     """Ray indices, catalogue indices and chord distances of the rays that land within `chord` of a
-    catalogue star once rotated by R; each catalogue star keeps only its closest ray."""
+    catalogue star once rotated by R; each catalogue star keeps only its closest ray.
+    """
     d, k = tree.query(rays @ R.T, distance_upper_bound=chord)
     ok = np.nonzero(np.isfinite(d))[0]
     if len(ok) == 0:
@@ -251,7 +287,8 @@ def match(rays: np.ndarray, R: np.ndarray, tree, chord: float):
 def chance_probability(n_rays: int, n_matched: int, n_hyp: int, cat: Catalogue, match_deg: float) -> float:
     """Probability that SOME of the n_hyp rotations tried lines up n_matched of n_rays junk points with
     catalogue stars by chance (Bonferroni bound). The two rays that built a rotation match by
-    construction and are not counted."""
+    construction and are not counted.
+    """
     from scipy.stats import binom
     p = len(cat.vec) * (1.0 - math.cos(math.radians(match_deg))) / 2.0      # fraction of the sky near a star
     k, n = n_matched - 2, max(0, n_rays - 2)
@@ -269,7 +306,8 @@ def identify(rays: np.ndarray, cat: Catalogue, n_seed: int = 16, tol_deg: float 
     same separation; each candidate rotation (TRIAD, vectorised over all candidates of a pair) is
     first scored on the seed rays only, the promising ones on all rays. The chance probability
     (chance_probability, conditioned on the number of rotations tried) says how likely the best
-    match is to be junk lined up with stars; the search stops early once it is below stop_p."""
+    match is to be junk lined up with stars; the search stops early once it is below stop_p.
+    """
     from scipy.spatial import cKDTree
     tree = getattr(cat, "_tree", None)
     if tree is None:
@@ -377,7 +415,8 @@ def locate(frame: np.ndarray, up_imu: np.ndarray, utc: str, cat: Catalogue,
     MAX_LENS_DISAGREE_DEG); otherwise solved=False and 'why' says which test failed (after one retry on
     the retry_spots brightest spots, when junk may have crowded the first attempt). sigma_fit_deg
     is the zenith's uncertainty from the star fit alone (residuals, the two lenses' disagreement);
-    the caller adds the accelerometer's and the clock's."""
+    the caller adds the accelerometer's and the clock's.
+    """
     import cv2
     min_alt = LOCATE_MIN_ALT if min_alt is None else min_alt
     max_spots = LOCATE_MAX_SPOTS if max_spots is None else max_spots
@@ -499,8 +538,9 @@ def locate(frame: np.ndarray, up_imu: np.ndarray, utc: str, cat: Catalogue,
     if len(zen) == 2:
         disagree = math.degrees(math.acos(max(-1.0, min(1.0, float(zen[0] @ zen[1])))))
     sigma_fit = math.sqrt((rms / math.sqrt(max(m, 1))) ** 2 + (disagree / 2) ** 2)
-    out.update(f_scale=round(fs, 5), k1_offset=round(dk1[0], 5), matched=int(m), used=int(n_used), rms_deg=round(rms, 3),
-               p_chance=float(f"{p_chance:.3g}"), lens_disagree_deg=round(disagree, 3), sigma_fit_deg=round(sigma_fit, 4),
+    out.update(f_scale=round(fs, 5), k1_offset=round(dk1[0], 5), matched=int(m), used=int(n_used),
+               rms_deg=round(rms, 3), p_chance=float(f"{p_chance:.3g}"), lens_disagree_deg=round(disagree, 3),
+               sigma_fit_deg=round(sigma_fit, 4),
                matched_per_lens={lens.name: int((lens_of[sel[idx]] == li).sum()) for li, lens in enumerate(lenses)})
     why = accept(m, rms, p_chance, disagree)
     if why:
@@ -515,6 +555,7 @@ def locate(frame: np.ndarray, up_imu: np.ndarray, utc: str, cat: Catalogue,
     ra, dec = vec_to_radec(R @ up)
     ra_a, dec_a = apparent_radec(ra, dec, utc)
     out.update(solved=True, lat=dec_a, lon=(ra_a - gast_deg(utc) + 540.0) % 360.0 - 180.0,
-               brightest_matched_mag=round(float(cat.mag[kidx].min()), 2), faintest_matched_mag=round(float(cat.mag[kidx].max()), 2),
+               brightest_matched_mag=round(float(cat.mag[kidx].min()), 2),
+               faintest_matched_mag=round(float(cat.mag[kidx].max()), 2),
                R_icrs_imu=np.round(R, 8).tolist())                  # the camera's orientation among the stars (J2000)
     return out

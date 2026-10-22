@@ -3,7 +3,7 @@
 live.launch.py — the live camera (live_camera.py) configured from the installation.
 
 Settings (environment, /etc/navera/navera.env or the web page's settings.env):
-    NAVERA_CAMERA_INPUT        usb | csi | gst | ros              (default usb)
+    NAVERA_CAMERA_INPUT        usb | csi | gst | ros | insta360   (default usb)
     NAVERA_CAMERA_DEVICE       /dev/videoN for usb                 (default /dev/video0)
     NAVERA_CAMERA_TOPIC        sensor_msgs/Image topic for ros
     NAVERA_CAMERA_SIZE         WIDTHxHEIGHT                        (default 1920x1080)
@@ -15,7 +15,7 @@ Settings (environment, /etc/navera/navera.env or the web page's settings.env):
     NAVERA_CAMERA_MAX_TILT_DEG frames tilted more are not compared (default 45)
     NAVERA_CAMERA_GIMBAL       true: the camera is held level (only the heading is used)
     NAVERA_GROUND_ALTITUDE_M   site elevation (else the first GPS fix)
-    NAVERA_SENSOR_SOURCE       box | vehicle | ros: where attitude / height / GPS come
+    NAVERA_SENSOR_SOURCE       box | vehicle | ros | insta360: where attitude / height / GPS come
                                from (navera_common.vehicle.sensor_topics)
 
 Arguments: camera_type (day|thermal|star), ns (topic namespace), ready_topic,
@@ -29,6 +29,12 @@ from launch_ros.actions import Node
 from navera_common.vehicle import live_camera_params
 
 
+def _lens_text(params) -> str:
+    if params['calibration_file']:
+        return 'calibrated'
+    return 'Insta360 kit view (ideal by construction)' if params['input'] == 'insta360' else 'IDEAL (not calibrated)'
+
+
 def _nodes(context):
     params = live_camera_params(prefix=LaunchConfiguration('settings').perform(context))
     params.update(camera_type=LaunchConfiguration('camera_type').perform(context),
@@ -38,7 +44,7 @@ def _nodes(context):
     return [
         LogInfo(msg=f"live camera: {params['input']} {params.get('device') if params['input'] == 'usb' else ''} "
                     f"{params['width']}x{params['height']}, attitude from {params['imu_topic']}, "
-                    f"lens {'calibrated' if params['calibration_file'] else 'IDEAL (not calibrated)'}"),
+                    f"lens {_lens_text(params)}"),
         Node(package='camera_pkg', executable='live_camera.py', name='live_camera',
              namespace=LaunchConfiguration('ns'), output='screen',
              on_exit=Shutdown(reason='live camera exited'),

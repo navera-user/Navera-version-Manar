@@ -29,6 +29,10 @@ PLANE = "--vehicle plane --gimbal false --legs 4 --radius 1300 --cut-after 75 --
 CONDITIONS = {
     "base": ("clear baseline, 10:30, copter 250 m, gimbal", SHORT),
     "base_nolat": ("baseline, auto_latency OFF", SHORT + " --day-args '-p auto_latency:=false'"),
+    "base_setdelay": ("baseline, camera delay bench-measured (capture_latency_s 1.3)",
+                      SHORT + " --cam-args '-p capture_latency_s:=1.3'"),
+    "base_shortgps": ("baseline, GPS cut 15 s after reaching altitude (no turn on GPS)",
+                      SHORT.replace("--cut-after 75", "--cut-after 15")),
     "dawn": ("low sun 07:00 (long shadows, low contrast)", SHORT + " --time 07:00"),
     "dusk": ("low sun 17:15", SHORT + " --time 17:15"),
     "noon": ("noon harsh shadows 12:30", SHORT + " --time 12:30"),
@@ -68,6 +72,8 @@ CONDITIONS = {
     "spoof": ("slow GPS spoof 3 m/s for 30 s before the cut", SHORT + " --link-args '-p spoof_mps:=3.0'"),
     "plane15": ("plane 15 m/s, 400 m, body-fixed camera", PLANE + " --speed 15 --model plane"),
     "plane30": ("plane 30 m/s, 400 m, body-fixed camera", PLANE + " --speed 30 --model plane"),
+    "plane30_nostaged": ("plane 30 m/s, staged delay apply off (as before F31)",
+                         PLANE + " --speed 30 --model plane --day-args '-p latency_partial_max_sigma_s:=0.0'"),
     # radius 900: with 1500 the jet's turns (r ~ 450 m at 40 deg bank) left the 4 km scene (2026-10-21)
     "plane60": ("plane 60 m/s (jet model), 500 m", PLANE.replace("--alt 400", "--alt 500")
                 + " --speed 60 --model plane-jet --radius 900"),
@@ -90,6 +96,7 @@ def main():
     ap.add_argument("--ssh", default="", help="user@host of the PC (empty: run here)")
     ap.add_argument("--only", default="", help="comma list of conditions (default all, in order)")
     ap.add_argument("--prefix", default="c_")
+    ap.add_argument("--repo", default="~/Navera", help="the NAVERA checkout on the PC to run")
     ap.add_argument("--notice", default="")
     ap.add_argument("--copy-to", default="")
     ap.add_argument("--out", default=os.path.expanduser("~/.navera_sim/isaac/campaign"))

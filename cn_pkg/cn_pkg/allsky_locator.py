@@ -72,7 +72,8 @@ class AllSkyLocator:
     def process(self, frame: np.ndarray, utc: str, meta: Optional[dict] = None, q_xyzw=None,
                 rate_dps: float = 0.0, reference: Optional[Tuple[float, float]] = None) -> dict:
         """One frame → the node's result dict: success, predicted_lat/lon, sigma_m, error and the solver's details.
-        reference: a trusted position at the exposure (fresh GPS) — the fix then also teaches the tilt of 'up'."""
+        reference: a trusted position at the exposure (fresh GPS) — the fix then also teaches the tilt of 'up'.
+        """
         meta = meta or {}
         up, src, why = self.up(meta, q_xyzw)
         out = {"success": False, "source": "allsky360", "up_source": src}
@@ -111,7 +112,9 @@ class AllSkyLocator:
             fit = self.cal.add(R, up, allsky_mount.zenith_icrs(reference[0], reference[1], utc))
             out["cal_sample"] = len(self.cal.samples)
             if fit is not None:
-                out["tilt_calibrated"] = {"samples": fit["n"], "residual_deg": round(fit["rms_deg"], 3),
+                out["tilt_calibrated"] = {"samples": fit["n"], "samples_total": fit["n_total"],
+                                          "rejected": fit["rejected"], "ok": fit["ok"], "why": fit["why"],
+                                          "residual_deg": round(fit["rms_deg"], 3),
                                           "tilt_deg": round(math.degrees(float(np.linalg.norm(fit["w"]))), 3),
                                           "frozen": self.cal.frozen}
         return out

@@ -245,15 +245,22 @@ VERIFY_SIZE = 256           # the map check runs at STHN's input scale (~2 m/px)
 MIN_MATCH_NCC = 0.05
 RECHECK_OFFSET_M = 150.0
 RECHECK_MAX_M = 25.0
-# Stated 1-sigma (per axis, metres) of a confirmed STHN fix (D3), fitted on 1389 accepted
-# synthetic fixes (navera_tools/bench/night_conditions.py, 78 conditions x 30 frames,
-# 2026-10-19): sigma = hypot(8 m + 1 % of the height above 400 m, 0.8 x the disagreement
-# between the two search centres). 99.4 % of the fixes within 3 sigma (random half held
-# out: 99.6 %); fitted on the city alone, it covered farmland only 96.4 %: terrain matters,
-# and real thermal imagery is not measured.
-SIGMA_BASE_M = 8.0
+# Stated 1-sigma (per axis, metres) of a confirmed STHN fix (D3 / D22):
+# sigma = hypot(10 m + 1 % of the height above 400 m, the disagreement between the two search
+# centres). Refitted 2026-10-22 on REAL aerial thermal (night_retry_probe records of every
+# hypothesis, replayed through the product gates: Bordeaux night LWIR and Clermont day MWIR,
+# Boson 640 / Hikvision 160 x 120, 500-1000 m, black-hot, 15 deg heading error; 444 accepted
+# fixes) and synthetic night_conditions frames (493): 100 % within 3 sigma in every camera /
+# height (largest ratio 2.47 sigma nominal, 2.98 with a 15 deg heading error); on the
+# 2026-10-21 runs (other cameras: InfiRay 640, Boson 95 deg, Lepton 160; no first-try gate)
+# 100 % nominal, 99.7 % with the heading-error runs. The former synthetic fit
+# (hypot(8 m + 1 %, 0.8 x disagreement), 2026-10-19) covered real thermal 100 % nominal but
+# only 97 % with a heading error, up to 2.9 sigma: the 10 m floor and the full disagreement
+# give the margin. The errors include the thermal products' own registration to the map
+# (Bordeaux ~12 m north).
+SIGMA_BASE_M = 10.0
 SIGMA_PER_M_ABOVE_400 = 0.01
-SIGMA_RECHECK_K = 0.8
+SIGMA_RECHECK_K = 1.0
 
 
 def fix_sigma_m(altitude_m, recheck_m):
@@ -316,6 +323,14 @@ def verify_match(query_bgr, query_mask, sat_bgr, corners_rw, resize_width=256, s
 # >= 0.97 removed all 7 wrong retried accepts and kept 314 of 328 right ones (95.7 %). A higher
 # map correlation, a tighter re-check (20 m: 91 %) or a per-try increase cost more right fixes
 # for no extra wrong one removed: they stay available (0 = as a first try).
+# First-try gate (2026-10-22, F12 / D20): the first hypothesis needs the same STHN quad consistency
+# as a retry (>= 0.97). On the 2026-10-21/22 probes (real thermal Bordeaux night / Clermont day, 5
+# cameras, 500-1000 m, heading 15 deg off; synthetic incl. heading / height errors), first-try
+# fixes below 0.97 were 6 of the 9 wrong first-try accepts (53-92 m) and 15 right ones, all poor
+# (12-40 m, median 27 m); a refused weak first try then goes through the retries (as a failed map
+# check), which turned both wrong Bordeaux 15-deg fixes (60, 65 m) into right ones (14, 26 m) and
+# the synthetic 10-deg one (53 m, the last wrong accept of the stress test) into 18 m.
+FIRST_MIN_CONF = 0.97
 RETRY_GATE_DEFAULTS = dict(min_ncc=0.05, ncc_per_try=0.0, recheck_max_m=25.0, min_conf=0.97, both_centres=False)
 
 
@@ -531,6 +546,7 @@ class NightLocalizer:
         recheck_offset_m: float = RECHECK_OFFSET_M,
         recheck_max_m: float = RECHECK_MAX_M,
         retry_gate: dict = None,
+        first_min_conf: float = FIRST_MIN_CONF,
         mixed_precision: bool = False,
         map_offset_deg: tuple = (0.0, 0.0),
         contrast_stretch: bool = True,
@@ -552,6 +568,8 @@ class NightLocalizer:
         self.recheck_max_m = recheck_max_m
         # stronger evidence asked of a retried hypothesis (retry_evidence_ok); None = off
         self.retry_gate = dict(RETRY_GATE_DEFAULTS) if retry_gate is None else retry_gate or None
+        # first-try gate (FIRST_MIN_CONF); None = off
+        self.first_min_conf = first_min_conf
         # shifted-map control distances (satellite px) of the map check (verify_match)
         self.map_check_shifts_px = ()
         self.map_offset_deg = (float(map_offset_deg[0]), float(map_offset_deg[1]))
@@ -890,12 +908,21 @@ class NightLocalizer:
         ~5-10 deg: the frame must be north-up). height_retry (relative, e.g. (0.1, -0.1)):
         then the frame is tried at the height scaled by each (STHN does not absorb a ~10 %
         scale error either: a barometric or terrain height, or the stated field of view).
-        Costs one more inference per retry, only on frames that failed the map check.
+        Costs one more inference per retry, only on frames that failed the map check or whose
+        first match is weak (consistency < first_min_conf: refused, then retried).
         """
         def attempt(heading, alt):
             return self._attempt(query_bgr, prior_lat, prior_lon, alt, hfov_deg, heading, require_scale)
 
         r = attempt(heading_deg, altitude_m)
+        if (r.get("success") and self.first_min_conf is not None
+                and float(r.get("conf") or 0.0) < self.first_min_conf):
+            weak = (f"weak match: consistency {float(r.get('conf') or 0.0):.3f} "
+                    f"(min {self.first_min_conf:.2f})")
+            logger.warning(f"STHN prediction rejected: {weak}")
+            r.update(success=False, lat=prior_lat, lon=prior_lon, reason=weak, map_check_failed=True,
+                     weak_lat=r.get("lat"), weak_lon=r.get("lon"))
+            r.pop("sigma_m", None)
         tries = retry_plan(r, heading_deg, altitude_m, heading_retry_deg, height_retry)
         if not tries:
             return r

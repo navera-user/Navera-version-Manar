@@ -252,6 +252,8 @@ class DaySubscriber(Node):
         declare_float(self, "gps_check_near_radius_m", 150.0)
         # faster checks while auto_latency has no stable delay yet (0 = gps_check_period_s always)
         declare_float(self, "gps_check_period_delay_s", 1.0)
+        # an applied camera delay moving more than this forgets the map-bias / sigma samples dated by the old one
+        declare_float(self, "latency_relearn_s", 0.2)
         # Stated accuracy (1 sigma, m) of a local match: day_pkg.fix_sigma.day_fix_sigma_m (the
         # matcher's inlier-class sigma, a floor, the frame-time and attitude terms): 99.2 % within
         # 3 sigma on NAVERA's camera on the screen bench (2026-10-19, median 10.6 m) but only 48 % on
@@ -435,10 +437,15 @@ class DaySubscriber(Node):
         self.gps_vo_height_tau_s = float(self.get_parameter("gps_vo_height_tau_s").value)
         self.calib_near_radius_m = float(self.get_parameter("gps_check_near_radius_m").value)
         self.calib_period_delay_s = float(self.get_parameter("gps_check_period_delay_s").value)
+        self.latency_relearn_s = float(self.get_parameter("latency_relearn_s").value)
         # ── camera delay (exposure -> arrival), estimated online against the trusted GPS ──
         # navera_common.latency_cal: GPS-check matches vs the GPS track; applied (auto_latency)
-        # only when stable and significantly different from camera_latency_s
+        # when stable and significantly different from camera_latency_s, or — camera_latency_s 0 —
+        # staged (combined with the prior: the delay kept from the last flight, else 0 +- unknown_delay_sigma_s)
         self.latency_cal, self.auto_latency, self.latency_rollback_s = latency_cal.from_node(self)
+        if self.latency_cal.applied is not None:
+            self.get_logger().info(f"[day] camera delay: {self.latency_cal.reason}")
+        self._learned_delay = self.latency_cal.correction() if self.auto_latency else 0.0
         self._latency_applied = None
         self._last_calib = 0.0
         self.local = None
@@ -695,6 +702,7 @@ class DaySubscriber(Node):
                 f"[day] frame={seq_id}: image missing or undecodable — acked, not localized")
             self._publish_done(seq_id)
             return
+        self._camera_set_delay(meta)
         # camera delay hook: date the frame by the estimated delay (raw stamp kept in the meta)
         latency_cal.shift_meta(meta, self.latency_cal.correction() if self.auto_latency else 0.0)
         self._frame_count += 1
@@ -735,6 +743,9 @@ class DaySubscriber(Node):
             if self._gps_was_trusted and not trusted:
                 self._handover_from_gps()
                 self.latency_cal.freeze("GPS lost or not trusted", self.latency_rollback_s)
+                self.latency_cal.persist()
+                if self.auto_latency:
+                    self._relearn_after_delay_change()
                 self._rollback_gps_learning()
             self._gps_was_trusted = trusted
             # Live GPS healthy → it is the position source; no inference needed.
@@ -1035,6 +1046,44 @@ class DaySubscriber(Node):
                 break
         return res
 
+    def _camera_set_delay(self, meta):
+        """The delay live_camera already subtracted (capture_latency_s: bench-measured, from the
+        calibration file or NAVERA_CAMERA_LATENCY_S) is the set delay: the frames' raw stamps are
+        arrival minus it. Without this the day node took a measured delay for an unknown one."""
+        dm = meta.get("delay_monitor") or {}
+        # live_camera's delay monitor (navera_common.delay_monitor): the delay moved since the start
+        self._delay_change_s = abs(float(dm.get("change_s") or 0.0)) if dm.get("significant") else 0.0
+        if self._delay_change_s:
+            self.get_logger().warn(f"[day] camera delay changed by {dm.get('change_s')} s since the start: "
+                                   "stated accuracy widened by speed x that", throttle_duration_sec=30.0)
+        cl = meta.get("capture_latency_s")
+        try:
+            cl = float(cl)
+        except (TypeError, ValueError):
+            return
+        lc = self.latency_cal
+        if cl != lc.nominal:
+            if lc.set_nominal(cl, "the camera's capture_latency_s"):
+                self.get_logger().info(f"[day] camera delay {cl:.3f} s set by the camera (bench-measured)")
+            else:
+                self.get_logger().warn(f"[day] the camera subtracts {cl:.3f} s, the delay estimate is relative to "
+                                       f"{lc.nominal:.3f} s", throttle_duration_sec=60.0)
+
+    def _relearn_after_delay_change(self):
+        """The applied delay moved by more than latency_relearn_s since the GPS-learned samples
+        (map bias, sigma calibration) were taken: they compared vision with the GPS at the frame
+        time of the OLD delay — speed x the change along the track, learned as a map shift or as
+        vision error. Forget them; the GPS checks learn them again with the new dating (a
+        consistency rule: in the Isaac Sim plane runs of 2026-10-22 no map bias was applied)."""
+        d = self.latency_cal.correction()
+        ref = getattr(self, "_learned_delay", 0.0)
+        if abs(d - ref) <= float(getattr(self, "latency_relearn_s", 0.2)):
+            return
+        self._learned_delay = d
+        n_sig, n_bias = self.sigma_cal.rollback(float("-inf")), self.map_bias.rollback_bias(float("-inf"))
+        self.get_logger().info(f"[day] camera delay moved {d - ref:+.2f} s: forgot {n_bias} map-bias and {n_sig} "
+                               "sigma-calibration samples dated by the old delay")
+
     def _latency_sample(self, meta):
         """A GPS-check match is a camera-delay sample (its arrival = raw stamp + the camera's delay)."""
         raw = meta.get("image_stamp_raw_ns")
@@ -1045,9 +1094,12 @@ class DaySubscriber(Node):
         if st["applied_s"] != self._latency_applied:
             self._latency_applied = st["applied_s"]
             self.get_logger().warn(
-                f"[day] camera delay {st['delay_s']} s (estimate {st['estimate_s']} +- {st['sigma_s']} s, "
-                f"{st['samples']} samples; set {st['nominal_s']} s)"
+                f"[day] camera delay {st['delay_s']} +- {st['applied_sigma_s']} s (estimate {st['estimate_s']} "
+                f"+- {st['sigma_s']} s, {st['samples']} samples; set {st['nominal_s']} s; {st['reason']})"
                 + ("" if self.auto_latency else " — auto_latency off: not applied"))
+            if self.auto_latency:
+                self.latency_cal.persist()
+                self._relearn_after_delay_change()
 
     def _prewarm(self, img, meta):
         """While GPS is trusted, vision is idle: compute the map features around the current
@@ -1623,11 +1675,17 @@ class DaySubscriber(Node):
         (auto_latency): the frame time can be off by that much, the fix by speed x that along the
         track — a bias that turns with the track, which the in-flight calibration (map bias
         removed) cannot see. Isaac Sim closed loop 2026-10-21: 1.3 s unknown delay at 10 m/s,
-        fixes stated +-7.8 m after the calibration, 24-40 m off after a turn (34 beyond 3 sigma)."""
+        fixes stated +-7.8 m after the calibration, 24-40 m off after a turn (34 beyond 3 sigma).
+        Once auto_latency applies an estimate, the sigma of what it applied (a staged correction
+        before the estimate is stable keeps most of it, latency_cal)."""
         lc = getattr(self, "latency_cal", None)
-        if lc is None or lc.applied is not None or lc.nominal != 0.0:
+        if lc is None:
             return 0.0
-        return float(getattr(self, "unknown_delay_sigma_s", 0.0))
+        sd = lc.delay_sigma() if getattr(self, "auto_latency", False) else \
+            (lc.nominal_sigma if lc.nominal != 0.0 else None)
+        sd = float(getattr(self, "unknown_delay_sigma_s", 0.0)) if sd is None else float(sd)
+        # a change of the delay noticed since the start (live_camera's monitor) is not corrected: stated
+        return math.hypot(sd, float(getattr(self, "_delay_change_s", 0.0)))
 
     def _model_sigma(self, result, meta) -> float:
         """The model sigma of a local match, before the in-flight calibration."""

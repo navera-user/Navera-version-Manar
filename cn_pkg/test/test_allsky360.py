@@ -127,7 +127,9 @@ def test_tilt_calibration_removes_a_mount_tilt():
 
 
 def test_fit_tilt_is_the_field_servers_fit():
-    """fit_tilt is what the field server applies (server._tilt_corrected): same Q, residual and floor."""
+    """fit_tilt is what the field server applies (server._tilt_corrected): same Q, residual and floor. These samples
+    are random (nothing agrees), so the plain fit is compared; the robust one refuses them (no majority).
+    """
     rng = np.random.default_rng(3)
     samples = []
     for _ in range(5):
@@ -135,10 +137,11 @@ def test_fit_tilt_is_the_field_servers_fit():
         z /= np.linalg.norm(z)
         up = np.array([1.0, 0.0, 0.0]) + 0.01 * rng.normal(size=3)
         samples.append((_rot(rng), up, z))
-    fit = allsky_mount.fit_tilt(samples, 0.05)
+    fit = allsky_mount.fit_tilt(samples, 0.05, robust=False)
     w = allsky_mount.fit_mount(samples)
     assert np.allclose(fit["w"], w) and np.allclose(fit["Q"], allsky_mount.rotvec(w))
     assert fit["n"] == 5 and fit["sigma_deg"] == max(fit["rms_deg"], 0.05)
+    assert not allsky_mount.fit_tilt(samples, 0.05)["ok"]
 
 
 # ── 'up' sources and gates of the locator ────────────────────────────
@@ -176,7 +179,8 @@ def _frame(cc, cond, seed):
 @need_bsc5
 def test_sim_vehicle_mount_gives_the_field_fix(cat):
     """A camera mounted at an arbitrary angle on the vehicle: 'up' from the vehicle attitude through R_cam_body
-    gives the same fix as the field path (camera accelerometer), within 50 km of the truth, with its sigma."""
+    gives the same fix as the field path (camera accelerometer), within 50 km of the truth, with its sigma.
+    """
     cc = _sim()
     from navera_tools.sim.allsky_cn_parity import vehicle_attitude
     from navera_tools.field.reprocess360 import haversine_km
@@ -207,7 +211,8 @@ def test_sim_junk_is_refused(cat):
 @need_bsc5
 def test_sim_tilt_learned_from_gps_then_corrected(cat):
     """A 1 deg mount error: raw fixes ~111 km off; once the tilt is learned on fixes with a GPS reference, the
-    later fixes (no reference) are corrected."""
+    later fixes (no reference) are corrected.
+    """
     cc = _sim()
     from navera_tools.field.reprocess360 import haversine_km
     cond = cc.Condition("baseline, level", tilt_deg=0.0)

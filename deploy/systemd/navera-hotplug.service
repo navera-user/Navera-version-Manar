@@ -1,0 +1,28 @@
+[Unit]
+Description=NAVERA hot-plug: a GPS, autopilot or camera connected after boot fills an idle source
+# After the boot discovery (it reads its report); before nothing: the units it may wake wait
+# for it themselves (navera_boot_lib.sh::navera_idle_until_discovered).
+After=local-fs.target navera-discover.service
+Wants=navera-discover.service
+StartLimitIntervalSec=0
+
+[Service]
+# The written settings only (as navera-discover): NOT discovered.env, which it rewrites.
+EnvironmentFile=-/etc/navera/navera.env
+EnvironmentFile=-/var/lib/navera/settings.env
+Type=simple
+User=navera
+Group=navera
+# serial ports, cameras (read-only probes, as navera-discover)
+SupplementaryGroups=dialout i2c video
+WorkingDirectory=/home/navera/isaac_ros_common
+ExecStart=/home/navera/navera_boot_hotplug.sh
+Restart=always
+RestartSec=10
+# Memory (F5 / H-11): a light watcher, not needed to navigate.
+OOMScoreAdjust=500
+MemoryHigh=192M
+MemoryMax=384M
+
+[Install]
+WantedBy=multi-user.target

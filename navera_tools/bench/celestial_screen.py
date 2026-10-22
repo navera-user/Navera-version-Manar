@@ -20,6 +20,11 @@ Conditions (name[:amount], amount 1 = the typical strength, 0 = off; see CONDITI
 every row logs identified / correct / accepted (allsky.accept with the p_chance allsky.locate computes,
 and its retry on the 25 brightest spots) and the gate's reason, so a campaign measures the WRONG-ACCEPT
 rate (must be 0) and the false-reject rate per condition.
+
+Spots: the product's detector (allsky.detect_spots_view: the field's local-noise threshold and star-shape blob
+filters, F18) on the pinhole view, so the bench judges the stars as the field does; --peak-finder legacy
+keeps the bench's former bare local-maximum finder for comparison (~60 spurious spots in clouds and rain).
+--save-frames DIR keeps every grabbed view (PNG) so a campaign can be re-analysed offline.
 """
 import argparse
 import json
@@ -43,6 +48,33 @@ W = "NAVERA stars"
 SW, SH = 1920, 1080
 POSE_FILE = os.path.expanduser("~/.navera_sim/insta360_screen_pose.json")
 RETRY_SPOTS = 25                     # allsky.locate's retry on the brightest spots when junk crowded the first try
+MAX_SPOTS = 60                       # allsky.LOCATE_MAX_SPOTS: the brightest spots given to the identification
+
+
+def find_spots(g: np.ndarray, mask=None, how: str = "product"):
+    """(xs, ys, stats) of the brightest star-like spots of a grey view, brightest first.
+
+    product: allsky.detect_spots_view (the field's detector: local noise per block, one spot per blob, extended /
+    saturated / hot-pixel blobs dropped, centroids). legacy: the bench's former finder (a local maximum 6 global
+    sigmas above a 12 px background, no blob test), kept to measure what F18 changed.
+    """
+    if how == "legacy":
+        g = g.astype(np.float32)
+        res = g - cv2.GaussianBlur(g, (0, 0), 12)
+        noise = 1.4826 * float(np.median(np.abs(res - np.median(res)))) + 1e-3
+        peak = (res == cv2.dilate(res, np.ones((7, 7), np.uint8))) & (res > 6 * noise)
+        if mask is not None:
+            peak &= mask > 0
+        ys, xs = np.nonzero(peak)
+        order = np.argsort(-res[ys, xs])[:MAX_SPOTS]
+        return xs[order].astype(float), ys[order].astype(float), {}
+    st: dict = {}
+    sp = allsky.detect_spots_view(np.clip(g, 0, 255).astype(np.uint8) if g.dtype != np.uint8 else g, mask=mask,
+                                  max_spots=MAX_SPOTS, stats=st)
+    xs = np.array([x for x, _, _ in sp], float)
+    ys = np.array([y for _, y, _ in sp], float)
+    return xs, ys, {k: v for k, v in st.items() if v}
+
 
 # name: what amount 1 means (the default strength); every condition scales with its amount
 CONDITIONS = {
@@ -328,19 +360,19 @@ def offline(a, pose):
             for lim in (float(v) for v in a.limits.split(",")):
                 sky = Sky(pose, ra0, dec0, lim)
                 g = sky.draw(conds, 1.3, rng).astype(np.float32)
-                g = cv2.GaussianBlur(g, (0, 0), 1.0) + rng.normal(0, 2.0, g.shape).astype(np.float32)
-                res = g - cv2.GaussianBlur(g, (0, 0), 12)
-                noise = 1.4826 * float(np.median(np.abs(res - np.median(res)))) + 1e-3
-                peak = (res == cv2.dilate(res, np.ones((7, 7), np.uint8))) & (res > 6 * noise)
-                ys, xs = np.nonzero(peak)
-                order = np.argsort(-res[ys, xs])[:60]
-                xs, ys = xs[order], ys[order]
+                if a.noise_model == "camera":     # sensor noise, then the optics / demosaic / H.264 smoothing
+                    g = cv2.GaussianBlur(g + rng.normal(0, 2.0, g.shape).astype(np.float32), (0, 0), 1.0)
+                else:                             # white noise on every pixel after the optics (the original model)
+                    g = cv2.GaussianBlur(g, (0, 0), 1.0) + rng.normal(0, 2.0, g.shape).astype(np.float32)
+                xs, ys, rej = find_spots(g, None, a.peak_finder)
                 p = np.stack([(xs - SW / 2) * sky.mm, (ys - SH / 2) * sky.mm, np.zeros(len(xs))], axis=-1) + sky.Rs.T @ sky.T
                 rays = p @ sky.Rs.T
                 rays = rays / np.linalg.norm(rays, axis=1, keepdims=True) if len(rays) else rays.reshape(0, 3)
                 R, row = gate(rays, cat)
                 row = {"field": [ra0, dec0], "condition": cond, "limit_mag": lim, "spots": int(len(rays)),
-                       "stars_drawn": sky.n_on_screen, "offline": True, **row}
+                       "stars_drawn": sky.n_on_screen, "offline": True, "peak_finder": a.peak_finder,
+                       "noise_model": a.noise_model,
+                       "rejected_spots": rej, **row}
                 if R is not None:
                     err = math.degrees(math.acos(float(np.clip((R @ sky.c_imu) @ allsky.radec_to_vec(ra0, dec0), -1, 1))))
                     row.update(centre_err_deg=round(err, 3), correct=bool(err < 1.0 + 1.5 * conds.get("wind", 0.0)))
@@ -360,7 +392,14 @@ def main():
     ap.add_argument("--out", default="celestial_screen.json")
     ap.add_argument("--render-only", default="", help="folder: save the drawn screens as PNGs, no camera, no window")
     ap.add_argument("--offline", action="store_true", help="ideal camera: solve the drawn screens themselves (no hardware)")
+    ap.add_argument("--peak-finder", choices=("product", "legacy"), default="product",
+                    help="product: allsky.detect_spots_view, as the field (default); legacy: the former bench finder")
+    ap.add_argument("--noise-model", choices=("white", "camera"), default="white",
+                    help="--offline: white = 2 DN per pixel after the blur; camera = 2 DN before it (smoothed, as H.264)")
+    ap.add_argument("--save-frames", default="", help="folder: keep every grabbed view as a PNG (offline re-analysis)")
     a = ap.parse_args()
+    if a.save_frames:
+        os.makedirs(a.save_frames, exist_ok=True)
     for c in a.conditions.split(","):
         parse_condition(c)                                             # fail before the camera starts
     pose = json.load(open(POSE_FILE))
@@ -391,19 +430,17 @@ def main():
                 img, _ = cam.grab(stabilise=False)
                 if img is None:
                     continue
-                g = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY).astype(np.float32)
-                res = g - cv2.GaussianBlur(g, (0, 0), 12)
-                noise = 1.4826 * float(np.median(np.abs(res - np.median(res)))) + 1e-3
-                peak = (res == cv2.dilate(res, np.ones((7, 7), np.uint8))) & (res > 6 * noise) & (cam.screen_mask > 0)
-                ys, xs = np.nonzero(peak)
-                order = np.argsort(-res[ys, xs])[:60]
-                xs, ys = xs[order], ys[order]
+                g = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+                if a.save_frames:
+                    name = f"f{ra0:g}_{dec0:g}_{cond.replace(':', '-').replace('+', '_')}_m{lim:g}.png"
+                    cv2.imwrite(os.path.join(a.save_frames, name), g)
+                xs, ys, rej = find_spots(g, cam.screen_mask, a.peak_finder)
                 cx, cy = (view.width - 1) / 2, (view.height - 1) / 2
                 rays = np.stack([(xs - cx) / view.f, (ys - cy) / view.f, np.ones(len(xs))], axis=-1)
                 rays = rays / np.linalg.norm(rays, axis=1, keepdims=True) @ view.R_view_imu   # → IMU frame
                 R, row = gate(rays, cat)
                 row = {"field": [ra0, dec0], "condition": cond, "limit_mag": lim, "spots": int(len(rays)),
-                       "stars_drawn": sky.n_on_screen, **row}
+                       "stars_drawn": sky.n_on_screen, "peak_finder": a.peak_finder, "rejected_spots": rej, **row}
                 if R is not None:
                     truth = allsky.radec_to_vec(ra0, dec0)
                     err = math.degrees(math.acos(float(np.clip((R @ sky.c_imu) @ truth, -1, 1))))

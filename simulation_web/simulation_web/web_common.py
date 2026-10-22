@@ -83,6 +83,7 @@ class _CodeGuard:
     def failed(self, addr):
         now = time.monotonic()
         with self._lock:
+            self._forget_old(now)
             ts = [t for t in self._fails.get(addr, []) if now - t < self.WINDOW_S] + [now]
             self._fails[addr] = ts
             if len(ts) >= self.FAILS_ALLOWED:
@@ -91,6 +92,13 @@ class _CodeGuard:
     def succeeded(self, addr):
         with self._lock:
             self._fails.pop(addr, None)
+
+    def _forget_old(self, now):
+        """Drop ended lock-outs and old failures: many addresses over hours never grow the tables."""
+        for a in [a for a, until in self._until.items() if until <= now]:
+            del self._until[a]
+        for a in [a for a, ts in self._fails.items() if not ts or now - ts[-1] >= self.WINDOW_S]:
+            del self._fails[a]
 
 
 _GUARD = _CodeGuard()

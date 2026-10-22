@@ -102,6 +102,9 @@ def check_settings():
                            f"{c.get('model')} RMS {rms} px, {m.out_hfov_deg:.1f} deg wide ({cam['calibration_file']})")
             except Exception as e:                                # noqa: BLE001
                 report(FAIL, "lens calibration", f"{cam['calibration_file']}: {e}")
+        elif cam["input"] == "insta360":
+            report(OK, "lens calibration", "Insta360 kit: a computed straight view (ideal lens); the 360 "
+                                           "lenses' calibration is checked below")
         else:
             report(WARN, "lens calibration", "none: the lens is taken as distortion-free "
                                              "(navera_tools/calibrate_camera.py)")
@@ -114,6 +117,78 @@ def check_settings():
         report(WARN if advice else OK, "camera mount",
                advice or ("gimbal (level)" if cam["gimbal"] else "fixed: tilt fine for this vehicle and speed"))
     return t, cam
+
+
+def insta360_used(env=None) -> bool:
+    env = os.environ if env is None else env
+    return "insta360" in (str(env.get(k, "")).strip().lower() for k in ("NAVERA_SENSOR_SOURCE", "NAVERA_CAMERA_INPUT"))
+
+
+def usb_node_writable(sysdev: str, sysfs="/sys/bus/usb/devices", dev="/dev/bus/usb"):
+    """True / False: the camera's /dev/bus/usb node is writable by this user; None: not found."""
+    try:
+        bus = int(open(os.path.join(sysfs, sysdev, "busnum")).read())
+        num = int(open(os.path.join(sysfs, sysdev, "devnum")).read())
+    except (OSError, ValueError):
+        return None
+    path = os.path.join(dev, f"{bus:03d}", f"{num:03d}")
+    return os.access(path, os.W_OK) if os.path.exists(path) else None
+
+
+def check_insta360():
+    """The Insta360 kit (NAVERA_SENSOR_SOURCE or NAVERA_CAMERA_INPUT = insta360): its settings, the
+    camera in USB Android mode (sysfs only: never opened here), its USB permission, the lens / IMU
+    calibration files, the Python modules, and the day view's geometry for this mount."""
+    if not insta360_used():
+        return
+    from navera_common.discovery import probe_insta360
+    from navera_common.vehicle import insta360_kit_params
+    try:
+        kit = insta360_kit_params()
+        report(OK, "Insta360 kit settings", f"mount {kit['mount_axes']}, view {kit['view_width']}x"
+                                            f"{kit['view_height']} {kit['view_hfov_deg']:g} deg")
+    except ValueError as e:
+        report(FAIL, "Insta360 kit settings", str(e))
+        return
+    found = probe_insta360()
+    if found:
+        w = usb_node_writable(found[0])
+        report(OK if w else WARN if w is None else FAIL, "Insta360 camera",
+               "One R in USB Android mode" + ("" if w else " — its USB node is NOT writable: install "
+                                              "deploy/udev/99-insta360.rules and replug" if w is False else ""))
+    else:
+        webcam = [p for p in os.listdir("/dev/v4l/by-id")] if os.path.isdir("/dev/v4l/by-id") else []
+        webcam = [p for p in webcam if "insta360" in p.lower()]
+        report(FAIL, "Insta360 camera", "in WEBCAM mode: set its USB mode to Android (camera menu), replug"
+               if webcam else "no One R in USB Android mode (2e1a:0002) — plugged? powered? Android mode?")
+    for mod, why in (("usb", "pyusb (USB Android mode)"), ("av", "PyAV (H.264 key frames)")):
+        try:
+            __import__(mod)
+            report(OK, f"Python module {mod}", why)
+        except ImportError:
+            report(FAIL, f"Python module {mod}", f"missing: pip3 install --user {'pyusb' if mod == 'usb' else 'av'}")
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "camera_pkg"))
+    try:
+        from camera_pkg.insta360_imu import mount_rotation
+        from camera_pkg.insta360_view import NadirView, load_lenses
+        lenses, src = load_lenses(kit["lens_file"])
+        report(WARN if src.startswith("first guess") else OK, "Insta360 lens calibration",
+               src if not src.startswith("first guess") else
+               "none found: the view is only roughly straight — copy the calibrated file to "
+               "/var/lib/navera/insta360_lens.json (NAVERA_INSTA360_LENS)")
+        v = NadirView(lenses, mount_rotation(kit["mount_axes"], kit.get("mount_roll_deg", 0.0),
+                                             kit.get("mount_pitch_deg", 0.0), kit.get("mount_yaw_deg", 0.0)),
+                      kit["view_hfov_deg"], 160, 120)
+        report(WARN if v.warning() else OK, "Insta360 day view", v.warning() or
+               f"straight down through the {v.centre_lens} lens ({v.centre_theta_deg} deg off its axis), "
+               f"{v.coverage:.0%} covered")
+    except Exception as e:                                         # noqa: BLE001
+        report(FAIL, "Insta360 day view", str(e))
+    from camera_pkg.insta360_kit import imu_calibration_file
+    cal = imu_calibration_file(kit["calibration_file"])
+    report(OK if os.path.isfile(cal) else WARN, "Insta360 IMU calibration",
+           cal if os.path.isfile(cal) else f"{cal} missing: neutral values (the gyro bias is still measured "
+                                           "at every stop; the accelerometer's 6-position calibration is not)")
 
 
 def check_files():
@@ -135,6 +210,32 @@ def check_files():
     free = shutil.disk_usage(os.environ.get("NAVERA_AREAS_DIR", "/") if os.path.exists(
         os.environ.get("NAVERA_AREAS_DIR", "/")) else "/").free / 2 ** 30
     report(OK if free > 5 else WARN, "free disk space", f"{free:.0f} GB")
+    report(*swap_verdict(open_text(os.environ.get("NAVERA_SWAPS", "/proc/swaps")),
+                         int(os.environ.get("NAVERA_MIN_SWAP_MB") or 4096)))
+
+
+def open_text(path):
+    """The file's text, '' when it cannot be read."""
+    try:
+        with open(path) as f:
+            return f.read()
+    except OSError:
+        return ""
+
+
+def swap_verdict(swaps_text, min_mb=4096):
+    """(level, what, detail) for the swap on disk in /proc/swaps' text (F5: the day pipeline was
+    OOM-killed on the 8 GB Jetson without it). zram lives in RAM and does not count."""
+    kb = 0
+    for line in swaps_text.splitlines()[1:]:
+        f = line.split()
+        if len(f) >= 3 and not f[0].startswith("/dev/zram") and f[2].isdigit():
+            kb += int(f[2])
+    mb = kb // 1024
+    if mb >= min_mb:
+        return OK, "swap on disk", f"{mb} MB"
+    return WARN, "swap on disk", (f"{mb} MB, need {min_mb} MB (zram does not count): the day pipeline may be "
+                                  "OOM-killed — sudo deploy/setup_swap.sh")
 
 
 def mbtiles_verdict(path):
@@ -179,6 +280,30 @@ def config_findings(env):
         if len(keys) > 1:
             out.append((FAIL, "serial ports", f"{dev} is used by {', '.join(keys)}: one program per port "
                                               "(one autopilot port: NAVERA_MAVLINK_URL=udpout:127.0.0.1:14650)"))
+    gps = get("NAVERA_GPS_SOURCE")
+    if gps in ("vehicle", "vehicle_gps1") and not get("NAVERA_VEHICLE_MAVLINK_URL"):
+        out.append((FAIL, "GPS", f"NAVERA_GPS_SOURCE={gps} is read by navera-vehicle-link, but "
+                                 "NAVERA_VEHICLE_MAVLINK_URL is empty"))
+    if gps == "network":
+        from navera_common.gnss import parse_stream_url
+        try:
+            parse_stream_url(get("NAVERA_GPS_URL"))
+        except ValueError as e:
+            out.append((FAIL, "NAVERA_GPS_URL", str(e)))
+    if gps == "dronecan":
+        iface = get("NAVERA_GPS_CAN_IFACE") or "can0"
+        if ":" not in iface:
+            try:
+                up = int(open(f"/sys/class/net/{iface}/flags").read(), 16) & 1
+            except (OSError, ValueError):
+                up = None
+            if not up:
+                out.append((FAIL, "DroneCAN GPS", f"{iface} is {'missing' if up is None else 'down'}: "
+                                                  f"sudo ip link set {iface} up type can bitrate 1000000 "
+                                                  "(deploy/README.md, CAN bus)"))
+        import importlib.util
+        if importlib.util.find_spec("dronecan") is None:
+            out.append((FAIL, "DroneCAN GPS", "the pip package dronecan is not installed"))
     url = get("NAVERA_MAVLINK_URL")
     if url.startswith("udpout:127.0.0.1:") and not get("NAVERA_VEHICLE_MAVLINK_URL"):
         out.append((FAIL, "MAVLink output", "goes to navera-vehicle-link's relay, but NAVERA_VEHICLE_MAVLINK_URL "
@@ -269,6 +394,7 @@ def check_ros(topics, seconds):
             (String, "/navera/sensors/rtc_status", "rtc"),
             (NavStatus, "/navera/nav_status", "nav"),
             (String, "/day/frame_meta", "meta"),
+            (String, "/navera/sensors/insta360/status", "kit"),
             (String, "/thermal/frame_meta", "tmeta")]
     for typ, topic, name in subs:
         node.create_subscription(typ, topic, keep(name), qos_profile_sensor_data if typ is Imu else 10)
@@ -304,13 +430,30 @@ def check_ros(topics, seconds):
     elif src == "box":
         report(WARN, "barometer", "none in box mode: after GPS loss the height comes from the image "
                                   "(matches) or is held")
-    if src == "vehicle":
+    gps_src = os.environ.get("NAVERA_GPS_SOURCE", "")
+    if src == "vehicle" or gps_src in ("vehicle", "vehicle_gps1"):
         if not rate("vlink"):
             report(FAIL, "vehicle link", "no /navera/vehicle/status (navera-vehicle-link service?)")
         else:
             st = json.loads(got["vlink"][-1][1].data)
             report(OK if st.get("link") else FAIL, "vehicle link",
                    f"{st.get('autopilot')} on {st.get('url')}" if st.get("link") else f"no autopilot on {st.get('url')}")
+            if gps_src == "vehicle_gps1" and st.get("link"):
+                report(OK if st.get("gps1_read") else FAIL, "autopilot's first GPS",
+                       st.get("gps1") or "no answer about GPS1 (navera-vehicle-link older than the setting?)")
+    if insta360_used():
+        if not rate("kit"):
+            report(FAIL, "Insta360 kit", "no /navera/sensors/insta360/status (navera-insta360 service? "
+                                         "`journalctl -u navera-insta360 -n 50`)")
+        else:
+            k = json.loads(got["kit"][-1][1].data)
+            age = k.get("imu_age_s")
+            bad = k.get("error") or (age is not None and age > 1.0)
+            err = f" — {k.get('error')}" if k.get("error") else ""
+            report(WARN if bad else OK, "Insta360 kit",
+                   f"{k.get('frames')} frames, tilt +-{k.get('tilt_sigma_deg')} deg, heading "
+                   f"{k.get('heading_deg')} ({k.get('heading_source')}){err}"
+                   + (f" — IMU silent {age} s" if age is not None and age > 1.0 else ""))
     if rate("rtc"):
         st = json.loads(got["rtc"][-1][1].data)
         report(OK if st.get("valid") else FAIL, "clock (RTC)", f"valid={st.get('valid')} drift={st.get('drift_s')}")
@@ -359,6 +502,7 @@ def main():
     check_discovery()
     check_config()
     topics, cam = check_settings()
+    check_insta360()
     check_files()
     if a.camera and cam:
         check_camera_device(cam)

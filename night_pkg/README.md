@@ -21,8 +21,9 @@ the STHN homography network (`night_localizer.py`, one-stage weights from Huggin
    `config.json`) predicts where the thermal frame's corners lie in the patch.
 4. The centre of that quadrilateral is converted back to lat/lon (exact Web Mercator).
 5. A geometric consistency score (0–1, not a probability) rejects impossible quadrilaterals,
-   and a **motion gate** rejects a fix farther from the last one than the vehicle can travel
-   (`max_speed_mps` × elapsed + `gate_margin_m`): the score does not detect a wrong match.
+   and a **motion gate** rejects a fix farther from the last MEASURED one than the vehicle can
+   travel (`max_speed_mps` × elapsed + `gate_margin_m`; dead reckoning does not reset that clock,
+   B16, 2026-10-22): the score does not detect a wrong match.
 6. **Wrong-fix checks** (2026-10-17): STHN returns a confident quad near the search centre even
    for a frame with no information (sea, salt flat, cloud, noise, heading > 10° off). Each fix
    is re-run from a search centre `recheck_offset_m` (150 m) away and kept only if both agree
@@ -33,9 +34,10 @@ the STHN homography network (`night_localizer.py`, one-stage weights from Huggin
    frame are not ground: a frame showing < 55 % ground in the reference is refused.
 7. **2026-10-19** (`docs/test_reports/night_2026-10-19.md`): the frame's ground is stretched
    to the full 8 bits before STHN (a linear-AGC frame with a fire in view: 8/30 → 30/30);
-   each confirmed fix states `sigma_m` = hypot(8 m + 1 % of the height above 400 m, 0.8 × the
-   two-centre disagreement) — 99 % of synthetic fixes within 3 σ, published as covariance only
-   with `state_sim_calibrated_sigma`; the track (`night_tracker.py`) no longer locks onto one
+   each confirmed fix states `sigma_m` (refitted 2026-10-22 on real aerial thermal: hypot(10 m +
+   1 % of the height above 400 m, the two-centre disagreement), 100 % of 444 real-thermal and 493
+   synthetic fixes within 3 σ in every camera / height), published as covariance by default
+   (`state_fix_sigma`, D3 / D22); the track (`night_tracker.py`) no longer locks onto one
    wrong fix (B16): a jump > `max_single_jump_m` (150) is never taken alone and `reacquire_n`
    (3) agreeing refused fixes re-anchor the track (`reacquire_confirmed_n`, 5, against a
    confirmed one).
@@ -70,7 +72,8 @@ The weights must match the network exactly: loading refuses any missing weight.
 | `mbtiles` | `$NAVERA_MBTILES`, else the legacy Sousse MBTiles path | |
 | `zoom` | `17` | |
 | `conf_threshold` | `0.30` | geometric consistency |
-| `state_sim_calibrated_sigma` | `false` | publish `sigma_m` as covariance |
+| `state_fix_sigma` | `true` | publish the two-centre fix's `sigma_m` as covariance (D3; validated on real aerial thermal 2026-10-22: ≥ 99 % within 3σ per camera / height) |
+| `state_sim_calibrated_sigma` | `false` | also publish the simulator fallback sigma (fix without the re-check) |
 | `map_offset_lat_deg`, `map_offset_lon_deg` | `0.0` | map calibration, 0 unless measured |
 | `gps_prior_timeout_s` | `2.0` | |
 | `shadow_mode` | `false` | test flights: run beside a valid GPS (launch: `$NAVERA_SHADOW_MODE`) |
@@ -89,6 +92,7 @@ The weights must match the network exactly: loading refuses any missing weight.
 | `heading_retry_deg` | `"-10,10,-20,20"` | `""` = off |
 | `height_retry` | `"0.1,-0.1,0.2"` | `""` = off |
 | `retry_min_conf` | `0.97` | retry gate; ≤ −1 turns it off |
+| `first_min_conf` | `0.97` | first-try gate (F12 / D20, 2026-10-22): a weaker first match is refused and retried; ≤ −1 turns it off |
 | `retry_min_ncc`, `retry_ncc_per_try`, `retry_recheck_max_m` | `0.05`, `0.0`, `25.0` | retry gate |
 
 Retry checks: `heading_retry_deg` (default `"-10,10,-20,20"`, `""` turns it
@@ -103,7 +107,7 @@ retry accepts); this led to the retry gate below.
 
 Retry gate (2026-10-21): a hypothesis found only after a heading / height retry is the best of
 up to 8 tries, so it must carry more evidence than a first try: STHN quad consistency
-≥ `retry_min_conf` (0.97; a first try needs 0.30), map check ≥ `retry_min_ncc` +
+≥ `retry_min_conf` (0.97; a first try needed 0.30 — since 2026-10-22 `first_min_conf` 0.97 too), map check ≥ `retry_min_ncc` +
 `retry_ncc_per_try` × hypotheses tried, re-check ≤ `retry_recheck_max_m`. A refused retry does not
 stop the search (the next hypothesis is tried) and is listed in `retries_refused` / the reason.
 Measured on every hypothesis of 1940 frames (real thermal, 4 cameras, night and day, 500–1000 m,

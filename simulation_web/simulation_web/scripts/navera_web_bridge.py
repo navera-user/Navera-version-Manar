@@ -73,8 +73,8 @@ from simulation_web import mission_prep
 
 MISSION_FILE_MAX = 512 * 1024       # bytes: an imported autopilot mission file
 # NAVERA units restarted by "Apply settings" (try-restart: only those running)
-NAVERA_UNITS = ["navera-estimator.service", "navera-imu.service", "navera-pipeline-day.service",
-                "navera-pipeline-night.service", "navera-pipeline-cn.service"]
+NAVERA_UNITS = ["navera-estimator.service", "navera-imu.service", "navera-insta360.service",
+                "navera-pipeline-day.service", "navera-pipeline-night.service", "navera-pipeline-cn.service"]
 
 try:
     from ament_index_python.packages import get_package_share_directory

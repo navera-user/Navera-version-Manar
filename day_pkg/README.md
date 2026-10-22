@@ -136,15 +136,67 @@ per-tile cache build (cosine ≥ 0.9996). Progress is printed as JSON lines.
 | `local_sigma_m` | 30 | stated accuracy (1 σ) of a local match |
 | `local_max_radius_m` | 1500 | largest search radius while widening after failed frames |
 
-## Camera delay, estimated online (`navera_common.latency_cal`)
+## Camera delay (`navera_common.latency_cal`, `navera_common.delay_monitor`)
 A frame is dated `arrival - delay`; a wrong delay puts every fix speed × error along the track.
+The GPS may be lost right after take-off and stay lost for hours, so the delay must come from
+before the flight. Sources, in order:
+
+1. **Bench-measured, per camera (main source).** `navera_tools/bench/camera_latency.py --calib
+   <calibration.yaml>` writes `latency_s` into the camera's calibration file (or set
+   `NAVERA_CAMERA_LATENCY_S`). live_camera subtracts it and puts it in every frame's meta
+   (`capture_latency_s`); the day node takes it as its set delay (`camera_latency_s`), stated with
+   `camera_latency_sigma_s` (0.1 s) — speed × 0.1 s added to every stated fix.
+2. **Kept from an earlier flight.** Without a set delay, the delay measured against the GPS on a
+   flight is written to the NAVERA state dir (`camera_delay_<calibration file name>.json`, or
+   `latency_store_key`) and starts the next flight with its sigma (at least
+   `latency_store_min_sigma_s`); a measurement that contradicts it by > 2 σ drops it.
+3. **Measured in this flight**, when the GPS phase allows (below).
+4. **Never measured:** the delay is unknown: nothing is applied and every stated fix includes
+   speed × `unknown_delay_sigma_s` (1 s) for the whole flight — honest, but at 10 m/s that is 10 m
+   of stated σ, and the fix is ~2× worse at the stated time than at the exposure (Isaac Sim:
+   13 m vs 6.5 m median).
+
+In flight, while the GPS is trusted, each GPS-check match is compared with the GPS track at `arrival - D`
 While the GPS is trusted, each GPS-check match is compared with the GPS track at `arrival - D`
 for every D in the search range; D and a constant east/north offset (map shift, mounting) are fitted
 together, so D is observable only from heading/speed changes (a straight line at one speed: never
 applied). Samples need ≥ `latency_min_speed_mps` and no turn faster than `latency_max_turn_dps`. The
 estimate is frozen when the GPS is lost or untrusted, the last `latency_rollback_s` of samples are then
 dropped (a slow spoof is trusted until refused). It is published in the status JSON (`latency`:
-estimate, sigma, applied, delay, samples, reason) whether or not it is applied.
+estimate, sigma, applied, applied_sigma, prior, delay, samples, reason) whether or not it is applied.
+With no set delay the estimate is applied in stages: once it has `latency_partial_min_samples`, a σ ≤
+`latency_partial_max_sigma_s`, is off the bounds and agrees with the previous estimates, the applied
+delay is its inverse-variance combination with the prior (the stored delay, else 0 ± 1 s) and
+the stated fixes include speed × that combination's σ; fully when stable (σ ≤ `latency_max_sigma_s`).
+
+A delay measured in the GPS phase needs heading/speed changes: on the copter circuit (10 m/s, one
+135° turn) σ reaches ~0.3–0.5 s only after the turn, and the samples of the last 20 s before the GPS
+loss are dropped (spoof rollback: replays of a 0.5–3 m/s spoof without it applied up to 1.3 s wrong).
+**Runbook:** to calibrate in flight, fly at cruise speed with at least two turns of ≥ 90° more than
+`latency_rollback_s` (20 s) before the GPS may be lost; otherwise measure the delay on the bench.
+
+Isaac Sim closed loop 2026-10-22 (SIMULATION; true delay 1.3 s; copter 10 m/s 250 m; fix error after the GPS
+cut at the stated time, median / p90; outputs beyond 3 σ; wrong fixes > 50 m):
+
+| run | delay used | stamp error | stated σ (median) | > 3 σ | wrong |
+|---|---|---|---|---|---|
+| c3_base (before) | none (unknown) | 12.8 / 20.7 m | — | 1 / 317 | 0 |
+| f31_base | none: staged 1.39–1.54 ± 0.4 s in the last 20 s, rolled back at the cut | 14.7 / 20.9 m | 15 m | 0 / 367 | 0 |
+| f31_base_setdelay | bench value 1.3 s (`capture_latency_s`) | **7.4 / 11.9 m** | 6.7 m | 0 / 396 | 0 |
+| f31_base_shortgps | none, GPS cut 15 s after the climb (no sample) | 13.1 / 22.9 m | 31 m | 0 / 590 | 0 |
+| c2_plane30 (before) | none (1.34 ± 0.43 s never applied) | 50 / 76 m | | 2 / 174 | 8 |
+| f31_plane30 | staged 1.25 ± 0.42 s from 10 samples on | **18 / 67 m** (exposure 16 / 67) | | 9 / 227 | 27 (matching, at the exposure) |
+| f31r_plane30_nostaged (A/B, staging off) | none (1.45 ± 0.41 s not applied) | 48 / 75 m (exposure 14 / 39) | | 2 / 212 | 12 |
+
+The plane's extra wrong fixes (27 vs 8–12, all > 50 m already at the exposure, scattered directions,
+no map bias applied) are matching errors, not the delay; one staged run is not enough to tell them
+from run-to-run variance — a repeat is still to do.
+
+The delay can change in flight (a USB/GStreamer queue, a starved grab thread, an IP camera's network):
+live_camera watches arrival − the source's own stamp (V4L2 buffer timestamp, GStreamer PTS) against
+the first 60 s (`delay_monitor` in the frame meta); a significant change widens the stated accuracy by
+speed × the change and is logged (not corrected). A change inside the camera before it stamps the
+frame (its encoder) cannot be seen, and an input without source stamps (`ros`) is not watched.
 
 | Parameter | Default | Meaning |
 |---|---|---|
@@ -156,6 +208,10 @@ estimate, sigma, applied, delay, samples, reason) whether or not it is applied.
 | `latency_change_sigmas` | 3 | a set delay within this many σ of the estimate is kept |
 | `latency_min_speed_mps` / `latency_max_turn_dps` | 5 / 8 | motion gates of a sample |
 | `latency_rollback_s` | 20 | samples dropped at a GPS loss/refusal |
+| `camera_latency_sigma_s` | 0.1 | σ of a set (bench-measured) delay in the stated accuracy |
+| `latency_partial_max_sigma_s` / `latency_partial_min_samples` | 0.5 / 10 | staged apply of an unknown delay |
+| `latency_store` / `latency_store_key` | true / "" | keep the measured delay per camera (key: the calibration file name) |
+| `latency_store_max_age_days` / `latency_store_min_sigma_s` | 60 / 0.1 | a stored delay's age limit, and its σ floor |
 
 Bench replay (`navera_tools/bench/replay_latency.py`, screen-bench logs 2026-10-20, 30 s of good GPS +
 the drift phase until refused): at 60 m/s the GPS phase alone gives 0.97–0.99 s for the Hikvision

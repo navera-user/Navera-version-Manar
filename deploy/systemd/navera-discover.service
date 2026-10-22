@@ -3,7 +3,7 @@ Description=NAVERA discovery: find the connected sensors, autopilot, ROS vehicle
 # Runs once at boot, before the other NAVERA units (they are After= it), and writes
 # /var/lib/navera/discovered.env for the settings left to "auto" in navera.env.
 After=local-fs.target
-Before=navera-gps.service navera-imu.service navera-rtc.service navera-vehicle-link.service navera-output.service navera-estimator.service navera-pipeline-day.service navera-pipeline-night.service navera-pipeline-cn.service navera-web.service
+Before=navera-gps.service navera-imu.service navera-insta360.service navera-rtc.service navera-vehicle-link.service navera-output.service navera-estimator.service navera-pipeline-day.service navera-pipeline-night.service navera-pipeline-cn.service navera-web.service
 
 [Service]
 Type=oneshot
@@ -19,6 +19,10 @@ WorkingDirectory=/home/navera/isaac_ros_common
 ExecStart=/home/navera/navera_boot_discover.sh
 # a search takes ~20 s; never hold the boot longer
 TimeoutStartSec=90
+# Memory (F5 / H-11): a short search at boot, not needed to navigate.
+OOMScoreAdjust=500
+MemoryHigh=256M
+MemoryMax=512M
 
 [Install]
 WantedBy=multi-user.target

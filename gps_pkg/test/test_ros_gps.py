@@ -39,3 +39,10 @@ def test_a_zero_or_undefined_covariance_is_not_an_accuracy():
     assert estimate_from_fix(m).position_covariance_type == PositionEstimate.COVARIANCE_TYPE_UNKNOWN
     m = fix(cov_type=7)
     assert estimate_from_fix(m).position_covariance_type == PositionEstimate.COVARIANCE_TYPE_UNKNOWN
+
+
+def test_the_satellite_count_is_stated_when_known():
+    import json
+    assert json.loads(estimate_from_fix(fix(), num_sats=11).details_json)["num_sats"] == 11
+    assert "num_sats" not in json.loads(estimate_from_fix(fix()).details_json)
+    assert "num_sats" not in json.loads(estimate_from_fix(fix(status=NavSatStatus.STATUS_NO_FIX), 11).details_json)

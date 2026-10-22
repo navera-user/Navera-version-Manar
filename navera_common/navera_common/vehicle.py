@@ -76,17 +76,26 @@ def max_speed_params(environ=None) -> dict:
 
 
 # ── where the live camera takes the vehicle's attitude, position and height ──
-ENV_SENSOR_SOURCE = "NAVERA_SENSOR_SOURCE"     # box | vehicle | ros
-SENSOR_SOURCES = ("box", "vehicle", "ros")
+ENV_SENSOR_SOURCE = "NAVERA_SENSOR_SOURCE"     # box | vehicle | ros | insta360
+SENSOR_SOURCES = ("box", "vehicle", "ros", "insta360")
+# the Insta360 kit (camera_pkg insta360_node: the One R in USB Android mode is the camera AND the IMU)
+INSTA360_IMU_TOPIC = "/navera/sensors/insta360/imu"
+INSTA360_IMAGE_TOPIC = "/navera/sensors/insta360/nadir/image_raw"
+INSTA360_STATUS_TOPIC = "/navera/sensors/insta360/status"
+INSTA360_DEFAULT_MOUNT_AXES = "+x,+z,-y"       # lying, the LEFT lens looking down, camera top to the nose
 
 
 def sensor_topics(environ=None) -> dict:
     """Topics the live camera reads, by NAVERA_SENSOR_SOURCE:
-      box      NAVERA's own BNO085 and Neo-M8N (imu_node, gps_node)
+      box      the box's own sensors: /navera/sensors/imu (imu_node: an optional BNO085 — the
+               reference kit's Insta360 One R IMU is being integrated, problem F37) and the
+               box GPS receiver (gps_node, any NMEA serial receiver)
       vehicle  the autopilot's sensors over MAVLink (vehicle_link_node): attitude,
                rangefinder, height above home (the GPS source is NAVERA_GPS_SOURCE)
       ros      the vehicle's ROS topics: NAVERA_ROS_IMU_TOPIC (sensor_msgs/Imu, ENU),
                NAVERA_ROS_GPS_TOPIC (NavSatFix), NAVERA_ROS_ALTITUDE_TOPIC (Range, AGL)
+      insta360 the Insta360 One R's own IMU (the Insta360 kit, navera-insta360): attitude from its
+               gyro + accelerometer; GPS and height as box (NAVERA's receiver; no rangefinder)
     Raises ValueError on an unknown source or a missing ROS IMU topic.
     """
     env = os.environ if environ is None else environ
@@ -101,6 +110,8 @@ def sensor_topics(environ=None) -> dict:
     if src == "vehicle":
         t.update(imu_topic="/navera/vehicle/imu", altitude_topic="/navera/vehicle/altitude_agl",
                  attitude_source="vehicle")
+    elif src == "insta360":
+        t.update(imu_topic=INSTA360_IMU_TOPIC, attitude_source="insta360")
     elif src == "ros":
         imu = str(env.get("NAVERA_ROS_IMU_TOPIC", "")).strip()
         if not imu:
@@ -120,6 +131,8 @@ def live_camera_params(environ=None, prefix: str = "NAVERA_CAMERA_") -> dict:
     size = get(prefix + "SIZE", "1920x1080").lower().split("x")
     if len(size) != 2 or not all(s.isdigit() for s in size):
         raise ValueError(f"{prefix}SIZE={get(prefix + 'SIZE')!r}: expected WIDTHxHEIGHT, e.g. 1920x1080")
+    if get(prefix + "INPUT").lower() == "insta360":
+        return insta360_camera_params(env, prefix)
     p = {"input": get(prefix + "INPUT", "usb").lower().replace("auto", "usb"),
          "device": get(prefix + "DEVICE", "/dev/video0"),
          "input_topic": get(prefix + "TOPIC", "/vehicle/camera/image_raw"),
@@ -145,7 +158,7 @@ def live_camera_params(environ=None, prefix: str = "NAVERA_CAMERA_") -> dict:
     except ValueError as e:
         raise ValueError(f"{prefix}CROP: {e}") from None
     if p["input"] not in ("usb", "csi", "gst", "ros"):
-        raise ValueError(f"{prefix}INPUT={p['input']!r}: expected usb, csi, gst or ros")
+        raise ValueError(f"{prefix}INPUT={p['input']!r}: expected usb, csi, gst, ros or insta360")
     p["gst_pipeline"] = get(prefix + "GST_PIPELINE")
     if p["input"] == "gst" and "name=sink" not in p["gst_pipeline"]:
         raise ValueError(f"{prefix}INPUT=gst needs {prefix}GST_PIPELINE ending in "
@@ -165,6 +178,99 @@ def live_camera_params(environ=None, prefix: str = "NAVERA_CAMERA_") -> dict:
         except ValueError:
             raise ValueError(f"{prefix}MOUNT_RPY={rpy!r}: expected roll,pitch,yaw in degrees") from None
         p.update(mount_roll_deg=r, mount_pitch_deg=pi, mount_yaw_deg=y)
+    g = get("NAVERA_GROUND_ALTITUDE_M")
+    if g:
+        p["ground_altitude_m"] = float(g)
+    t = sensor_topics(env)
+    p.update({k: v for k, v in t.items() if k != "sensor_source"})
+    return p
+
+
+def _size(raw: str, key: str):
+    size = raw.lower().split("x")
+    if len(size) != 2 or not all(s.isdigit() for s in size):
+        raise ValueError(f"{key}={raw!r}: expected WIDTHxHEIGHT, e.g. 1200x900")
+    w, h = int(size[0]), int(size[1])
+    if not (64 <= w <= 4096 and 64 <= h <= 4096):
+        raise ValueError(f"{key}={raw!r}: 64-4096 pixels each way")
+    return w, h
+
+
+def insta360_kit_params(environ=None) -> dict:
+    """insta360_node parameters (the Insta360 kit) from the installation settings.
+
+    NAVERA_INSTA360_MOUNT_AXES: camera IMU axes along body x,y,z (default +x,+z,-y: lying, the
+    LEFT lens looking down, the camera's top towards the nose); NAVERA_INSTA360_MOUNT_RPY: a small
+    trim roll,pitch,yaw (deg) after the axes; NAVERA_INSTA360_VIEW_SIZE: the straight-down view
+    WIDTHxHEIGHT (default 1200x900); NAVERA_INSTA360_VIEW_HFOV_DEG: its width in degrees (default
+    100); NAVERA_INSTA360_LENS / NAVERA_INSTA360_IMU: lens / IMU calibration files (default: the
+    box's /var/lib/navera/insta360_lens.json, then the ~/.navera_sim/ files). Raises ValueError.
+    """
+    env = os.environ if environ is None else environ
+    get = lambda k, d="": str(env.get(k, "") or d).strip()     # noqa: E731
+    axes = get("NAVERA_INSTA360_MOUNT_AXES", INSTA360_DEFAULT_MOUNT_AXES).replace(" ", "")
+    parts = axes.lower().split(",")
+    names = [x.lstrip("+-") for x in parts]
+    if len(parts) != 3 or sorted(names) != ["x", "y", "z"]:
+        raise ValueError(f"NAVERA_INSTA360_MOUNT_AXES={axes!r}: three signed camera axes along body x,y,z, "
+                         f"each axis once, e.g. {INSTA360_DEFAULT_MOUNT_AXES}")
+    # a rotation, not a mirror: the permutation's parity times the signs must be +1
+    perm = ["xyz".index(n) for n in names]
+    parity = 1 if perm in ([0, 1, 2], [1, 2, 0], [2, 0, 1]) else -1
+    signs = 1
+    for x in parts:
+        signs *= -1 if x.startswith("-") else 1
+    if parity * signs != 1:
+        raise ValueError(f"NAVERA_INSTA360_MOUNT_AXES={axes!r} is a mirror, not a rotation: flip one sign")
+    p = {"mount_axes": axes}
+    rpy = get("NAVERA_INSTA360_MOUNT_RPY")
+    if rpy:
+        try:
+            r, pi, y = (float(v) for v in rpy.split(","))
+        except ValueError:
+            raise ValueError(f"NAVERA_INSTA360_MOUNT_RPY={rpy!r}: expected roll,pitch,yaw in degrees") from None
+        if not all(-30.0 <= a <= 30.0 for a in (r, pi, y)):
+            raise ValueError(f"NAVERA_INSTA360_MOUNT_RPY={rpy!r}: a trim within +-30 deg (turn the axes for more)")
+        p.update(mount_roll_deg=r, mount_pitch_deg=pi, mount_yaw_deg=y)
+    p["view_width"], p["view_height"] = _size(get("NAVERA_INSTA360_VIEW_SIZE", "1200x900"), "NAVERA_INSTA360_VIEW_SIZE")
+    hfov = float(get("NAVERA_INSTA360_VIEW_HFOV_DEG", "100"))
+    if not (math.isfinite(hfov) and 30.0 <= hfov <= 140.0):
+        raise ValueError(f"NAVERA_INSTA360_VIEW_HFOV_DEG={hfov:g}: expected 30-140 deg")
+    p["view_hfov_deg"] = hfov
+    p["lens_file"] = get("NAVERA_INSTA360_LENS")
+    p["calibration_file"] = get("NAVERA_INSTA360_IMU")
+    return p
+
+
+def insta360_camera_params(environ=None, prefix: str = "NAVERA_CAMERA_") -> dict:
+    """live_camera parameters for NAVERA_CAMERA_INPUT=insta360: the kit's straight-down view (an
+    image topic stamped at the exposure, an ideal lens of NAVERA_INSTA360_VIEW_HFOV_DEG, the mount
+    already applied by the kit: NAVERA_CAMERA_MOUNT_RPY / _CROP / _CALIBRATION do not apply).
+    """
+    env = os.environ if environ is None else environ
+    get = lambda k, d="": str(env.get(k, "") or d).strip()     # noqa: E731
+    for k in ("MOUNT_RPY", "CROP", "CALIBRATION"):
+        v = get(prefix + k)
+        if k == "MOUNT_RPY" and v.replace(" ", "") in ("0,0,0", "0.0,0.0,0.0"):
+            continue                                      # the example's default: nothing to apply
+        if v:
+            raise ValueError(f"{prefix}INPUT=insta360: {prefix}{k} does not apply (the kit cuts a straight "
+                             f"view from the calibrated 360 lenses; its mount is NAVERA_INSTA360_MOUNT_AXES / _RPY)")
+    kit = insta360_kit_params(env)
+    p = {"input": "insta360", "device": "", "input_topic": INSTA360_IMAGE_TOPIC,
+         "width": kit["view_width"], "height": kit["view_height"], "camera_hfov_deg": kit["view_hfov_deg"],
+         "fps": float(get(prefix + "FPS", "1.0")),
+         "capture_latency_s": float(get(prefix + "LATENCY_S", "0.0")),       # the kit stamps exposures
+         "calibration_file": "", "crop": "",
+         "max_tilt_deg": float(get(prefix + "MAX_TILT_DEG", "45")),
+         "max_rate_dps": float(get(prefix + "MAX_RATE_DPS", "30")),
+         "gimbal": get(prefix + "GIMBAL", "false").lower() in ("1", "true", "yes"),
+         "gst_pipeline": ""}
+    for key, k, lo, hi in ((prefix + "FPS", "fps", 0.05, 2.0), (prefix + "LATENCY_S", "capture_latency_s", -1.0, 2.0),
+                           (prefix + "MAX_TILT_DEG", "max_tilt_deg", 5.0, 80.0),
+                           (prefix + "MAX_RATE_DPS", "max_rate_dps", 1.0, 360.0)):
+        if not (math.isfinite(p[k]) and lo <= p[k] <= hi):
+            raise ValueError(f"{key}: {k} {p[k]:g} out of range [{lo:g}, {hi:g}]")
     g = get("NAVERA_GROUND_ALTITUDE_M")
     if g:
         p["ground_altitude_m"] = float(g)

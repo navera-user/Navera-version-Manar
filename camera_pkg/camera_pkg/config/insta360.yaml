@@ -1,0 +1,28 @@
+insta360:
+  ros__parameters:
+    # The Insta360 kit (insta360_node.py): mount, view and calibration files come from the
+    # installation settings (insta360.launch.py: NAVERA_INSTA360_*); the rest is here.
+    imu_topic: "/navera/sensors/insta360/imu"
+    image_topic: "/navera/sensors/insta360/nadir/image_raw"
+    status_topic: "/navera/sensors/insta360/status"
+    frame_id: "insta360_imu_link"          # aligned with the VEHICLE body (mount applied)
+    decimation: 5                          # 500 Hz IMU records averaged by 5 -> 100 Hz
+    bias_at_rest: true                     # the gyro bias re-measured at every stop
+    max_fps: 2.0                           # key frames only: ~2 per second come anyway
+    camera_lost_exit_s: 5.0                # USB lost this long: exit, systemd reopens the camera
+    # attitude filter (camera_pkg/insta360_attitude.py); tuned on synthetic motion with the
+    # measured noise (navera_tools/bench/insta360_attitude_eval.py)
+    kp: 0.05                               # 1/s: the accelerometer pulls the tilt with tau = 20 s
+    ki: 0.0005
+    acc_gate_g: 0.03                       # |specific force| further from 1 g: not used
+    turn_gate_dps: 1.0                     # turning faster (speed unknown): not used
+    tilt_floor_deg: 0.5                    # tilt 1-sigma while used with the speed known
+    heading_bias_dps: 0.05                 # the carried heading's sigma grows by this (creep measured <= 0.047)
+    # heading sources
+    position_topic: "/navera/position"     # the arbiter's GPS fixes: course and speed
+    course_sigma_deg: 10.0                 # crab (wind, sideslip): the course is not the nose's heading
+    course_min_speed_mps: 5.0
+    vision_status_topic: "/day/day_status"
+    vision_meta_topic: "/day/frame_meta"
+    vision_min_inliers: 20
+    vision_heading_sigma_deg: 2.0

@@ -10,6 +10,11 @@ Usage: python3 drone_sky_prep.py <image> <YYYY-MM-DD> <HH:MM:SS> <tilt> <azimuth
   --prior-lat/--prior-lon = approximate position (operating area). One sky
             direction is consistent with TWO positions in general; without a
             prior that separates them, no position is reported.
+  --up-cam ux,uy,uz = 'up' in the camera's optical frame (x right, y down the
+            image, z along the axis), from the vehicle IMU's roll/pitch and the
+            camera's full mounting (B11). The position then comes from the plate
+            solve's whole camera rotation: one answer, no compass, no prior;
+            tilt/azimuth are only reported (pass nan nan when unknown).
 
 Examples:
   python3 drone_sky_prep.py ~/Images/Tsky.jpeg 2026-03-10 20:20:00 75.46 283.18
@@ -25,8 +30,8 @@ import subprocess
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from celestial_math import (apparent_radec, choose_candidate, gast_deg,  # noqa: E402
-                            observer_candidates)
+from celestial_math import (apparent_radec, camera_rotation_from_wcs,  # noqa: E402
+                            choose_candidate, gast_deg, observer_candidates, zenith_fix)
 
 
 def _pop_flag(name):
@@ -39,8 +44,22 @@ def _pop_flag(name):
     return None
 
 
+def _pop_vec(name):
+    """Remove `name X,Y,Z` from sys.argv and return the three floats (or None)."""
+    if name in sys.argv:
+        i = sys.argv.index(name)
+        val = [float(v) for v in sys.argv[i + 1].split(",")]
+        del sys.argv[i:i + 2]
+        if len(val) != 3:
+            print(f"ERROR: {name} needs three comma-separated numbers")
+            sys.exit(2)
+        return val
+    return None
+
+
 PRIOR_LAT = _pop_flag("--prior-lat")
 PRIOR_LON = _pop_flag("--prior-lon")
+UP_CAM = _pop_vec("--up-cam")
 
 # ── Arguments ──────────────────────────────────────────────
 if len(sys.argv) < 4:
@@ -216,6 +235,7 @@ for line in solve_output.splitlines():
 
 # The solution file gives the direction of the exact image centre (the log's
 # "Field center" line is kept only as a fallback).
+_h = None
 if os.path.exists(WCS_FILE):
     try:
         from astropy.io import fits as _fits
@@ -245,12 +265,27 @@ TILT, AZIMUTH, METHOD = TILT_IN, AZ_IN, "IMU"
 print(f"  Apparent RA={RA_APP:.4f}°  Dec={DEC_APP:.4f}°  GAST={GAST:.4f}°")
 
 print("  [4/4] Computing position...")
-candidates = observer_candidates(TILT, AZIMUTH, RA_APP, DEC_APP, GAST)
-result = choose_candidate(candidates, PRIOR_LAT, PRIOR_LON)
-if result is None:
-    print(f"  ERROR: no unambiguous position. Candidates: {candidates}; "
-          f"prior lat={PRIOR_LAT} lon={PRIOR_LON}")
-    sys.exit(1)
+R_ICRS_CAM = None
+FIX_METHOD = "boresight"
+if UP_CAM is not None:
+    # B11: the whole camera rotation from the plate solve + 'up' from the IMU: no compass, one answer
+    if _h is None:
+        print("  ERROR: no plate solution file (WCS): the compass-free fix needs the camera's rotation")
+        sys.exit(1)
+    try:
+        R_ICRS_CAM = camera_rotation_from_wcs(_h)
+    except ValueError as _e:
+        print(f"  ERROR: {_e}")
+        sys.exit(1)
+    result = zenith_fix(R_ICRS_CAM, UP_CAM, UTC_TIME)
+    FIX_METHOD = "zenith"
+else:
+    candidates = observer_candidates(TILT, AZIMUTH, RA_APP, DEC_APP, GAST)
+    result = choose_candidate(candidates, PRIOR_LAT, PRIOR_LON)
+    if result is None:
+        print(f"  ERROR: no unambiguous position. Candidates: {candidates}; "
+              f"prior lat={PRIOR_LAT} lon={PRIOR_LON}")
+        sys.exit(1)
 
 LAT, LON = result
 constellation = "N/A"
@@ -270,6 +305,11 @@ if FOV_IN:
     print(f"│  FOV provided    : {FOV_IN}°")
 print("├─────────────────────────────────────────────┤")
 print(f"│  Log-odds        : {LOG_ODDS}")
+_METHOD_TEXT = ("zenith (camera rotation + IMU up, no compass)" if FIX_METHOD == "zenith"
+                else "boresight (tilt + compass azimuth)")
+print(f"│  Method          : {_METHOD_TEXT}")
+if R_ICRS_CAM is not None:
+    print("│  R_icrs_cam      : " + ",".join(f"{v:.8f}" for v in R_ICRS_CAM.ravel()))
 print(f"│  Latitude        : {LAT:+.6f}°")
 print(f"│  Longitude       : {LON:+.6f}°")
 print("├─────────────────────────────────────────────┤")

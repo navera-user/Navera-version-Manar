@@ -18,7 +18,8 @@ as live). The new test is written to --out (default <session>_replay_<time>), re
 frames only (the live server decodes key frames: ~2 a second).
 
 --export-frames writes lossless PNG frames (and index.csv: arrival time, camera ms of the exposure, stopped,
-'up' in the IMU frame) for star work; --stops-only keeps the frames the driver's stillness test calls stopped.
+'up' in the IMU frame) for star work; --stops-only keeps the frames the server's stillness test (the driver's
+window + the long-window test of cn_pkg.standstill) calls stopped.
 """
 import argparse
 import ast
@@ -59,6 +60,8 @@ class OfflineDriver(insta360_usb.Insta360Usb):
 
     def __init__(self, keyframes_only: bool = True, max_rate_dps: float = 3.0):
         self._init_state(max_rate_dps, keyframes_only)
+        from navera_tools.field import server
+        server.Stillness.extend_history(self)         # the server's long-window stillness test needs ~16 s of IMU
         import av
         self._codec = av.CodecContext.create("h264", "r")
         self._codec.thread_type = "SLICE"
@@ -108,9 +111,12 @@ class ReplayCamera:
     hfov = None
 
     def __init__(self, driver: OfflineDriver, cal_path: str, latency_s: float):
+        from navera_tools.field import server
         self.cam, self.cal_path, self.latency_s = driver, cal_path, latency_s
         self.error, self.frame_ms = None, None
         self._mod = insta360_usb
+        self.stillness = server.Stillness()           # the live server's stopped test (driver + long window, D12)
+        self.imu_stats = types.MethodType(server.Camera360.imu_stats, self)
 
     def latest(self):
         import cv2
@@ -127,7 +133,7 @@ class ReplayCamera:
         return self.cam.imu_age()
 
     def stopped(self, at_frame=False):
-        return self.cam.stopped(at_ms=self.frame_ms) if at_frame and self.frame_ms is not None else self.cam.stopped()
+        return self.stillness.judge(self.cam, self.frame_ms if at_frame and self.frame_ms is not None else None)
 
 
 def imu_rows(raw_dir: str):
@@ -192,12 +198,14 @@ def info(raw_dir: str) -> dict:
 def export_frames(raw_dir: str, out: str, stops_only: bool, every_frame: bool) -> int:
     import cv2
     os.makedirs(out, exist_ok=True)
+    from navera_tools.field import server
+    still = server.Stillness()
     n = 0
     with open(os.path.join(out, "index.csv"), "w", newline="") as fh:
         w = csv.writer(fh)
         w.writerow(["file", "t_arrival", "cam_ms_exposure", "stopped", "up_x", "up_y", "up_z", "accel_g"])
         for t, ms, f, d in frames(raw_dir, every_frame):
-            st = d.stopped(at_ms=ms)
+            st = still.judge(d, ms)                          # the server's test: driver window + long window (D12)
             if stops_only and not st.get("stopped"):
                 continue
             up, g, _ = d.gravity(at_ms=ms)

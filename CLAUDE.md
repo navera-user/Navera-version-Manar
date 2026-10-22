@@ -56,7 +56,7 @@ gps_node ───────────────────────�
 | `night_pkg` | `night_subscriber.py` (+`night_localizer.py`) | Night localization — **STHN** homography |
 | `cn_pkg` | `cn_subscriber.py` | Celestial — astrometry.net plate-solving |
 | `gps_pkg` | `gps_node.py` | GPS driver (NMEA serial, checksummed) → estimator |
-| `imu_pkg` | `imu_node.py` | IMU driver (BNO085, I²C bus 1 @ 0x4A) — estimator uses it for liveness only |
+| `imu_pkg` | `imu_node.py` | Optional box IMU driver (BNO085, I²C bus 1 @ 0x4A); the reference IRIS kit's IMU is the **Insta360 One R camera's own IMU** (`camera_pkg` `insta360_imu_node`, gyro + accelerometer, no magnetometer — integration in progress, problem F37) |
 | `rtc_pkg` | `rtc_node.py` | Real-time clock (DS3231, I²C bus 1 @ 0x68) |
 | `navera_estimator` | `estimator_node.py` | Position arbiter: GPS > day > night > celestial |
 | `navera_msgs` / `navera_common` | — | Message contracts / shared helpers (lifecycle, geodesy) |
@@ -72,7 +72,10 @@ gps_node ───────────────────────�
 
 ### Source-selection hierarchy
 `GPS (if valid) → day vision → night vision → celestial` (navera_estimator). Inertial
-dead-reckoning is not implemented yet (the IMU is liveness only).
+navigation (integrating the IMU into a position) is not implemented and is not pursued with a
+low-cost IMU (FEAT-2). The IMU gives the camera attitude, the gyro heading carried between vision
+fixes (`day_pkg/gyro_heading.py`) and liveness; vision gaps are bridged along the last measured
+track with a growing sigma (`day_pkg/vision_nav.py`).
 
 ### Important truths (do not "fix" these without discussion)
 - **Measured accuracy lives in `docs/VALIDATION_STATUS.md`.** Day vision: local feature matching
