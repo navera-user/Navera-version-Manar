@@ -226,6 +226,7 @@ configured (NAVERA_VEHICLE_MAVLINK_URL): vehicle link idle"). Publishes, stamped
 | `/navera/vehicle/altitude_agl` | sensor_msgs/Range | downward rangefinder (`DISTANCE_SENSOR`), tilt-corrected |
 | `/navera/vehicle/relative_alt` | geometry_msgs/PointStamped | z = height above home (barometer) |
 | `/navera/vehicle/gps2` | sensor_msgs/NavSatFix | the autopilot's **second** GPS (`GPS2_RAW`, 3D fix or better) — the GPS for `NAVERA_GPS_SOURCE=vehicle`. Altitude above the ellipsoid (`alt_ellipsoid`) when sent, else above mean sea level with a warning ("set NAVERA_GROUND_ALTITUDE_M as MSL too"); covariance from the receiver's `h_acc` / `v_acc` (none without `h_acc`) |
+| `/navera/vehicle/gps1` (+ `gps1_satellites`) | sensor_msgs/NavSatFix | only with `read_gps1` (`NAVERA_GPS_SOURCE=vehicle_gps1`): the autopilot's **first** GPS (`GPS_RAW_INT`, always instance 1 in ArduPilot), published only while the autopilot's `GPS_TYPE` / `GPS1_TYPE` — re-read at every connection and every 30 s — is known and not 0, 14 (NAVERA's `GPS_INPUT`) or 5 while NAVERA's NMEA output is on (`navera_nmea_output`); `/navera/vehicle/status` then says `gps1_read` and why |
 | `/navera/vehicle/status` | std_msgs/String (JSON) | link, autopilot, armed, message rates, relayed packets — the armed state locks the `/mission` page; the output's relay check reads `link` |
 
 It waits for a heartbeat **from an autopilot** (heartbeats from a ground station, another
@@ -241,7 +242,7 @@ It also listens on local UDP `relay_port` (127.0.0.1:14650) and passes the MAVLi
 it receives (vehicle_output's `GPS_INPUT`) to the autopilot over its own link.
 
 Parameters: `mavlink_url`, `attitude_hz` (50), `source_system` (1), `source_component`
-(192), `relay_port` (14650; 0 = off).
+(192), `relay_port` (14650; 0 = off), `read_gps1` (false), `navera_nmea_output` (false).
 
 ## Autopilot setup
 

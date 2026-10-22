@@ -9,8 +9,8 @@ navera_env
 navera_prune_logs
 if [ "${NAVERA_SENSOR_SOURCE:-}" != "insta360" ] && [ "${NAVERA_CAMERA_INPUT:-}" != "insta360" ]; then
     # neither the attitude nor the camera is the Insta360 (navera.env, or navera-discover found
-    # no One R in USB Android mode): idle instead of a restart loop
-    navera_log "the Insta360 kit is not used (NAVERA_SENSOR_SOURCE=${NAVERA_SENSOR_SOURCE:-} NAVERA_CAMERA_INPUT=${NAVERA_CAMERA_INPUT:-}): service idle"
-    exec sleep infinity
+    # no One R in USB Android mode): idle instead of a restart loop, until navera-hotplug finds
+    # one plugged in later (discovered.env changes: the unit restarts with it)
+    navera_idle_until_discovered "the Insta360 kit is not used (NAVERA_SENSOR_SOURCE=${NAVERA_SENSOR_SOURCE:-} NAVERA_CAMERA_INPUT=${NAVERA_CAMERA_INPUT:-}): service idle"
 fi
 exec ros2 launch camera_pkg insta360.launch.py

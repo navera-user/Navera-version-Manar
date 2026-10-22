@@ -97,7 +97,7 @@ The vehicle settings can be set either there or on the `/mission` page (port 818
 systemd runs navera-discover first; drop the units you have not enabled):
 
 ```bash
-sudo systemctl restart navera-discover navera-estimator navera-gps navera-imu navera-rtc \
+sudo systemctl restart navera-discover navera-hotplug navera-estimator navera-gps navera-imu navera-rtc \
     navera-vehicle-link navera-pipeline-day navera-output navera-web
 ```
 

@@ -82,7 +82,7 @@ sudo i2cdetect -y 1 | grep '^60:'               # "68" (or "UU" if a kernel driv
                                                # "--" at 0x68: fit the clock before flying
 
 # start now, then check before rebooting
-sudo systemctl restart navera-discover navera-estimator navera-gps navera-imu navera-rtc \
+sudo systemctl restart navera-discover navera-hotplug navera-estimator navera-gps navera-imu navera-rtc \
     navera-vehicle-link navera-pipeline-day navera-output navera-web
 python3 /home/navera/isaac_ros_common/navera_tools/check_boot.py --wait 8
 python3 /home/navera/isaac_ros_common/navera_tools/check_box.py   # in the NAVERA shell (deploy/README.md §11)

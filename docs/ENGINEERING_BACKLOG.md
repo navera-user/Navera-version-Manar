@@ -124,7 +124,7 @@ Status: ✅ done · 🔧 in progress · ⬜ open
 |---|---|---|
 | FEAT-1 | Vehicle outputs: NMEA GPS emulation (serial) + MAVLink GPS_INPUT | ✅ 44d7e11 |
 | FEAT-1b | Validate the outputs against an autopilot — ArduPilot SITL passed (MAVLink + NMEA); real vehicle pending | ✅ f2f2c6b |
-| FEAT-2 | IMU dead-reckoning (heading/speed) and celestial attitude | ⬜ |
+| FEAT-2 | IMU dead-reckoning (heading/speed) and celestial attitude — **position integration not pursued** (a low-cost MEMS IMU drifts hundreds of m within a minute); what is done instead: gyro heading carried between fixes (`gyro_heading.py`), track carry with growing sigma (`vision_nav.py`), output bridge (`policy.bridge`) — requirement NAV-FUN-20 rewritten 2026-10-22; celestial attitude from the IMU done (CN-2) | ✅ (as rewritten) |
 | FEAT-3 | GPU inference for STHN on JetPack 6 — done (CPU route for small solves); TensorRT not done | ✅ 20634c3 |
 | FEAT-4 | Real-data recording tool (camera + GPS + IMU synchronised) and evaluation harness in repo | ✅ 6652916 |
 | FEAT-5 | Mission simulator: control page (start / destination / vehicle / faults), real NAVERA nodes, ArduPilot SITL fed only by NAVERA | ✅ 465d185 |

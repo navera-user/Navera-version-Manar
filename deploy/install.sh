@@ -34,7 +34,7 @@ set -euo pipefail
 
 SRC="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
 WS=/home/navera/isaac_ros_common
-UNITS="navera-discover navera-estimator navera-gps navera-imu navera-insta360 navera-rtc navera-vehicle-link navera-pipeline-day navera-output navera-web"
+UNITS="navera-discover navera-hotplug navera-estimator navera-gps navera-imu navera-insta360 navera-rtc navera-vehicle-link navera-pipeline-day navera-output navera-web"
 DRY=0; PIP=1; APT=1; START=0; HEADLESS=0; BUILD=1; SWAP=1
 R="${DESTDIR:-}"
 # never copied to the box (both modes): git data and the other worktrees of a working repository
@@ -131,7 +131,7 @@ pip3 install -q --user --no-deps --index-url https://pypi.jetson-ai-lab.io/jp6/c
 pip3 install -q --user -c ~/navera-constraints.txt \
     "numpy<2" "scipy>=1.11,<1.14" timm kornia safetensors einops huggingface_hub \
     scikit-learn pandas "astropy<7" opencv-python==4.11.0.86 \
-    pyserial pynmea2 pymavlink pygeomag==1.1.0 pyusb==1.2.1 av==12.3.0 \
+    pyserial pynmea2 pymavlink pygeomag==1.1.0 dronecan==1.0.27 pyusb==1.2.1 av==12.3.0 \
     Jetson.GPIO adafruit-blinka adafruit-circuitpython-bno08x adafruit-circuitpython-ds3231'
 fi
 

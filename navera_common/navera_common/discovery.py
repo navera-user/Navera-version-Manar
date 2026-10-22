@@ -2,22 +2,31 @@
 
 At every boot (navera-discover.service, before the other units) NAVERA looks for:
   * its own sensors: IMU (BNO085, I2C 0x4A/0x4B) and clock (DS3231, I2C 0x68) on I2C
-    buses 1 and 7, a GPS receiver (checksummed NMEA) on the serial ports;
-  * an autopilot: MAVLink heartbeats on the serial ports and the network (UDP 14550/14551);
-    it is asked which data it streams (attitude, rangefinder, second GPS);
+    buses 1 and 7;
+  * GPS receivers, in every common form: checksummed NMEA or u-blox UBX (NAV-PVT) on the
+    serial ports — the box's receiver, a USB GPS, or a passive tap (Y-cable) on the TX wire
+    of the GPS an autopilot uses —, DroneCAN GNSS nodes (Fix2: Here3/Here4, Holybro...) on
+    the CAN interfaces that are up, NMEA / UBX over the network (NAVERA_DISCOVER_GPS_URLS);
+  * an autopilot: MAVLink heartbeats on the serial ports and the network (UDP 14550/14551,
+    TCP 127.0.0.1:5760, NAVERA_DISCOVER_MAVLINK); it is asked which data it streams
+    (attitude, rangefinder, its GPS receivers) and its GPS types;
   * a ROS vehicle: IMU / GPS / camera / height topics on the ROS domains;
   * cameras: USB (/dev/v4l/by-id), CSI (Jetson video inputs), and an Insta360 One R in USB
     "Android" mode (USB id 2e1a:0002: the Insta360 kit, camera AND IMU, navera-insta360).
 then decides, for each need, the best source found (decide()): attitude box IMU >
-autopilot > ROS > Insta360 kit; GPS box receiver > autopilot's second GPS > ROS; camera
-Insta360 kit > USB > CSI > ROS;
-outputs: MAVLink to the autopilot when one answers (through vehicle_link's relay when it is
-the same link), /navera/fix on ROS when a ROS vehicle is there.
+autopilot > ROS > Insta360 kit; GPS serial receiver (UBX or NMEA) > DroneCAN GNSS > network GPS >
+autopilot's second GPS > autopilot's first GPS (only when NAVERA does not feed it) > ROS;
+camera Insta360 kit > USB > CSI > ROS; outputs: MAVLink to the autopilot when one answers (through
+vehicle_link's relay when it is the same link), /navera/fix on ROS when a ROS vehicle is
+there. A GPS NAVERA itself feeds (GPS type 14 = MAVLink, or NMEA when NAVERA's NMEA output
+is set) is never a source: NAVERA would check its output against itself.
 
 Only settings left to "auto" (or unset) are decided: a value written in navera.env always
 wins. The result is an env file read by the services after navera.env, and a JSON report.
-Probing only READS serial ports, except an identified autopilot, which is asked for its
-data streams; a port another process holds open is never touched.
+Probing only READS: serial ports, CAN buses (a passive DroneCAN listener: no node id, no
+frame sent) and network GPS streams are never written to, except an identified autopilot,
+which is asked for its data streams; a port another process holds open is never touched.
+After boot, navera_common.hotplug looks again when a device appears (hot-plug).
 """
 import glob
 import json
@@ -30,10 +39,15 @@ from typing import Dict, List, Optional
 I2C_SLAVE = 0x0703
 IMU_ADDRS, RTC_ADDR = (0x4A, 0x4B), 0x68
 SERIAL_GLOBS = ("/dev/ttyTHS*", "/dev/ttyUSB*", "/dev/ttyACM*")
-SERIAL_BAUDS = (9600, 38400, 57600, 115200, 230400, 460800, 921600)
+# common bauds first; 230400: a u-blox an autopilot configured (ArduPilot), seen through a tap
+SERIAL_BAUDS = (9600, 38400, 57600, 115200, 230400, 460800, 921600, 4800, 19200)
 NMEA_RE = re.compile(rb"\$([A-Z]{2}[A-Z]{3}),[^*\r\n]*\*([0-9A-F]{2})")
 NAVERA_NS = ("/navera", "/day", "/night", "/thermal", "/celestial", "/cn", "/rosout", "/parameter_events")
 AUTO_KEYS = ("NAVERA_SENSOR_SOURCE", "NAVERA_GPS_SOURCE", "NAVERA_CAMERA_INPUT")
+MAVLINK_NET_DEFAULT = ("udpin:0.0.0.0:14550", "udpin:0.0.0.0:14551", "tcp:127.0.0.1:5760")
+# NMEA-0183 over IP (IEC 61162-450 / de-facto 10110), serial-to-Ethernet converters (2000, 4001)
+GPS_NET_PORTS = (10110, 2000, 4001)
+GPS_TYPE_MAV, GPS_TYPE_NMEA = 14, 5           # ArduPilot GPS_TYPE values NAVERA may itself feed
 
 
 # ── probes (each returns plain data; never raises) ─────────────────────────
@@ -161,8 +175,31 @@ def port_in_use(path: str) -> bool:
     return False
 
 
+def gps_kind(data: bytes) -> Optional[dict]:
+    """A GPS receiver in raw bytes: {"kind": "ubx"|"nmea", "fix", "satellites", ...} or None.
+
+    UBX: checksummed NAV-PVT frames (a u-blox receiver; an autopilot never sends them, so a
+    tap on the receiver's TX wire is recognised the same way). NMEA: 2+ checksummed
+    sentences; "satellites" (GSV/GSA) tells a receiver from an autopilot's NMEA output.
+    UBX frames without NAV-PVT (a u-blox 6, or NAV-PVT turned off) are reported, not used.
+    """
+    from navera_common.gnss import ubx_info
+    u = ubx_info(data)
+    n = nmea_info(data)
+    if u["pvt"]:
+        return {"kind": "ubx", "fix": u["fix"], "satellites": True, "nmea": n["valid"] >= 2}
+    if n["valid"] >= 2:
+        return {"kind": "nmea", "satellites": n["satellites"], "fix": n["fix"],
+                **({"ubx_without_pvt": True} if u["valid"] >= 2 else {})}
+    if u["valid"] >= 2:
+        return {"kind": "ubx_no_pvt", "fix": False, "satellites": False}
+    return None
+
+
 def probe_serial_port(path: str, bauds=SERIAL_BAUDS, listen_s: float = 2.2) -> Optional[dict]:
-    """{"port", "baud", "kind": "nmea"|"mavlink", ...} for what talks on this port, or None."""
+    """{"port", "baud", "kind": "nmea"|"ubx"|"mavlink", ...} for what talks on this port, or None.
+    Only reads (a GPS receiver is never configured, an autopilot only once identified).
+    """
     try:
         import serial
     except ImportError:
@@ -181,17 +218,16 @@ def probe_serial_port(path: str, bauds=SERIAL_BAUDS, listen_s: float = 2.2) -> O
         try:
             while time.time() - t0 < listen_s:
                 data += s.read(4096)
-                n = nmea_info(data)
-                if n["valid"] >= 2 and n["satellites"] and n["fix"]:
+                g = gps_kind(data)
+                if g and g["satellites"] and g["fix"] and (g["kind"] == "ubx" or nmea_info(data)["valid"] >= 2):
                     break                                 # all there is to know
                 hbs = [h for h in mavlink_heartbeats(data) if is_autopilot(h)]
                 if hbs:
                     return {"port": path, "baud": baud, "kind": "mavlink", "url": f"serial:{path}:{baud}",
                             **hbs[0]}
-            n = nmea_info(data)
-            if n["valid"] >= 2:
-                return {"port": path, "baud": baud, "kind": "nmea", "satellites": n["satellites"],
-                        "fix": n["fix"]}
+            g = gps_kind(data)
+            if g:
+                return {"port": path, "baud": baud, **g}
         finally:
             s.close()
     return None
@@ -223,16 +259,160 @@ def probe_mavlink_url(url: str, wait_s: float = 3.0) -> Optional[dict]:
     return None
 
 
+def gps_urls(env) -> List[str]:
+    """The network GPS addresses to probe: NAVERA_DISCOVER_GPS_URLS (comma-separated);
+    "tcp:<host>" without a port tries the common NMEA-over-IP ports of that host, "udp"
+    alone listens on 10110. Nothing by default: NAVERA never connects to an address it was
+    not given.
+    """
+    out = []
+    for u in str(env.get("NAVERA_DISCOVER_GPS_URLS", "") or "").split(","):
+        u = u.strip()
+        if not u:
+            continue
+        kind, _, rest = u.partition(":")
+        if kind == "tcp" and rest and ":" not in rest:
+            out += [f"tcp:{rest}:{p}" for p in GPS_NET_PORTS]
+        elif kind == "udp" and not rest:
+            out.append(f"udp:{GPS_NET_PORTS[0]}")
+        else:
+            out.append(u)
+    return list(dict.fromkeys(out))
+
+
+def probe_gps_url(url: str, listen_s: float = 3.0) -> Optional[dict]:
+    """{"kind": "gps_net", "url", "protocol": "ubx"|"nmea", "fix", "satellites"} for a GPS
+    stream on the network (read only), or None.
+    """
+    from navera_common.gnss import Stream
+    try:
+        st = Stream(url, timeout=0.3)
+    except (OSError, ValueError):
+        return None
+    data, t0 = b"", time.time()
+    try:
+        while time.time() - t0 < listen_s and len(data) < 65536:
+            try:
+                data += st.read()
+            except (OSError, ConnectionError):
+                break
+            g = gps_kind(data)
+            if g and g["fix"] and g["satellites"]:
+                break
+    finally:
+        st.close()
+    g = gps_kind(data)
+    if not g or g["kind"] == "ubx_no_pvt":
+        return None
+    return {"kind": "gps_net", "url": url, "protocol": g["kind"], "fix": g["fix"], "satellites": g["satellites"]}
+
+
+# ── DroneCAN (CAN bus GNSS) ─────────────────────────────────────────────────
+ARPHRD_CAN = 280
+CAN_CONTROLLER_TYPES = ("uavcan.equipment.esc.RawCommand", "uavcan.equipment.actuator.ArrayCommand")
+
+
+def can_interfaces() -> List[dict]:
+    """[{"iface", "up"}] for the SocketCAN interfaces of this computer (can0, vcan0, slcan0...)."""
+    out = []
+    for d in sorted(glob.glob("/sys/class/net/*")):
+        try:
+            if int(open(os.path.join(d, "type")).read()) != ARPHRD_CAN:
+                continue
+            flags = int(open(os.path.join(d, "flags")).read(), 16)
+        except (OSError, ValueError):
+            continue
+        out.append({"iface": os.path.basename(d), "up": bool(flags & 0x1)})
+    return out
+
+
+def probe_dronecan(iface: str, listen_s: float = 3.0) -> dict:
+    """What a DroneCAN bus carries, heard by a PASSIVE node (no node id: it sends nothing):
+    {"kind": "dronecan", "iface", "gnss": [{"node", "fix", "sats", "type"}], "nodes": [ids],
+    "controllers": [ids sending ESC / actuator commands: an autopilot], "alloc_requests":
+    anonymous nodes ask for an id, "allocator": a node answers them}. iface: a SocketCAN
+    name (can0), or any pydronecan address (slcan:/dev/ttyACM0, mcast:0).
+    """
+    r = {"kind": "dronecan", "iface": iface, "gnss": [], "nodes": [], "controllers": [],
+         "alloc_requests": False, "allocator": False}
+    try:
+        import dronecan
+    except ImportError:
+        r["error"] = "pydronecan is not installed (pip install dronecan)"
+        return r
+    import multiprocessing
+    before = set(multiprocessing.active_children())
+    try:
+        node = dronecan.make_node(iface, bitrate=1000000)          # node_id None: passive
+    except Exception as e:                                       # noqa: BLE001 — interface down / absent
+        r["error"] = str(e)
+        return r
+    gnss, nodes, ctrl = {}, set(), set()
+
+    def hook(t):
+        src = t.source_node_id or 0
+        try:
+            name = dronecan.get_dronecan_data_type(t.payload).full_name
+        except Exception:                                        # noqa: BLE001 — unknown type
+            name = ""
+        if name == "uavcan.protocol.dynamic_node_id.Allocation":
+            if src == 0:
+                r["alloc_requests"] = True
+            else:
+                r["allocator"] = True
+        if not src:
+            return
+        nodes.add(src)
+        if name in CAN_CONTROLLER_TYPES:
+            ctrl.add(src)
+        elif name in ("uavcan.equipment.gnss.Fix2", "uavcan.equipment.gnss.Fix"):
+            p = t.payload
+            ok = int(p.status) in (2, 3) and (p.latitude_deg_1e8 or p.longitude_deg_1e8)
+            g = gnss.setdefault(src, {"node": src, "fix": False, "sats": 0, "type": name.rsplit(".", 1)[1]})
+            g["fix"] = g["fix"] or bool(ok)
+            g["sats"] = max(g["sats"], int(p.sats_used))
+            if name.endswith("Fix2"):
+                g["type"] = "Fix2"
+
+    try:
+        node.add_transfer_hook(hook)
+        end = time.monotonic() + listen_s
+        while time.monotonic() < end:
+            node.spin(timeout=min(0.2, max(0.0, end - time.monotonic())))
+    except Exception as e:                                       # noqa: BLE001
+        r["error"] = str(e)
+    finally:
+        try:
+            node.close()
+        except Exception:                                        # noqa: BLE001
+            pass
+        for p in set(multiprocessing.active_children()) - before:   # SLCAN / mcast I/O process
+            p.kill()
+    r["gnss"] = [gnss[k] for k in sorted(gnss)]
+    r["nodes"], r["controllers"] = sorted(nodes), sorted(ctrl)
+    return r
+
+
+def can_buses(env) -> List[str]:
+    """The CAN buses to listen to: SocketCAN interfaces that are up, and NAVERA_DISCOVER_CAN
+    (comma-separated pydronecan addresses, e.g. slcan:/dev/ttyACM1).
+    """
+    up = [c["iface"] for c in can_interfaces() if c["up"]]
+    extra = [u.strip() for u in str(env.get("NAVERA_DISCOVER_CAN", "") or "").split(",") if u.strip()]
+    return list(dict.fromkeys(up + extra))
+
+
 GPS_TYPE_PARAMS = ("GPS_TYPE", "GPS_TYPE2", "GPS1_TYPE", "GPS2_TYPE")   # ArduPilot 4.5 / 4.6+
 
 
 def autopilot_streams(url: str, wait_s: float = 4.0) -> dict:
-    """Ask an identified autopilot for attitude, rangefinder, second GPS and its height
+    """Ask an identified autopilot for attitude, rangefinder, its two GPS and its height
     above home, and for its GPS receiver types; report what arrives:
-    {"ATTITUDE": bool, ..., "GPS2_RAW": bool (sent, any fix), "gps1_type", "gps2_type"}.
+    {"ATTITUDE": bool, ..., "GPS_RAW_INT" / "GPS2_RAW": bool (sent, any fix), "gps1_type",
+    "gps2_type"}.
     GPS type 14 (MAV) is a GPS fed over MAVLink — NAVERA's own GPS_INPUT, never a source.
     """
-    want = {"ATTITUDE": 30, "DISTANCE_SENSOR": 132, "GPS2_RAW": 124, "GLOBAL_POSITION_INT": 33}
+    want = {"ATTITUDE": 30, "DISTANCE_SENSOR": 132, "GPS2_RAW": 124, "GLOBAL_POSITION_INT": 33, "GPS_RAW_INT": 24}
     seen = {k: False for k in want}
     seen.update(gps1_type=None, gps2_type=None)
     try:
@@ -251,7 +431,8 @@ def autopilot_streams(url: str, wait_s: float = 4.0) -> dict:
         for p in GPS_TYPE_PARAMS:
             m.mav.param_request_read_send(m.target_system, m.target_component, p.encode(), -1)
         end = time.time() + wait_s
-        while time.time() < end and not (all(seen[k] for k in want) and seen["gps2_type"] is not None):
+        while time.time() < end and not (all(seen[k] for k in want) and seen["gps1_type"] is not None
+                                         and seen["gps2_type"] is not None):
             msg = m.recv_match(blocking=True, timeout=0.5)
             if msg is None:
                 continue
@@ -336,7 +517,7 @@ def discover(env=None, ros_wait_s: float = 8.0) -> dict:
     """Everything found (probes run in parallel: ~20 s)."""
     env = os.environ if env is None else env
     found = {"time": time.strftime("%Y-%m-%dT%H:%M:%S"), "i2c": {}, "serial": [], "network": [],
-             "cameras": {}, "ros": {}}
+             "cameras": {}, "ros": {}, "can": [], "gps_net": [], "can_ifaces": can_interfaces()}
     threads = []
 
     def run(key, fn, *a):
@@ -353,9 +534,12 @@ def discover(env=None, ros_wait_s: float = 8.0) -> dict:
     run("cameras", probe_cameras)
     for p in serial_ports():
         run("serial", probe_serial_port, p)
-    extra = [u.strip() for u in str(env.get("NAVERA_DISCOVER_MAVLINK", "")).split(",") if u.strip()]
-    for url in ["udpin:0.0.0.0:14550", "udpin:0.0.0.0:14551"] + extra:
+    for url in mavlink_urls(env):
         run("network", probe_mavlink_url, url)
+    for url in gps_urls(env):
+        run("gps_net", probe_gps_url, url)
+    for bus in can_buses(env):
+        run("can", probe_dronecan, bus)
     written = str(env.get("ROS_DOMAIN_ID", "") or "").strip()     # a number, or "auto"
     domains = sorted({0} | ({int(written)} if written.isdigit() else set()) |
                      {int(x) for x in str(env.get("NAVERA_DISCOVER_ROS_DOMAINS", "")).split(",")
@@ -365,10 +549,21 @@ def discover(env=None, ros_wait_s: float = 8.0) -> dict:
         t.start()
     for t in threads:
         t.join(timeout=60)
-    ap = next((x for x in found["serial"] + found["network"] if x.get("kind") == "mavlink"), None)
-    if ap:
-        found["autopilot_streams"] = autopilot_streams(ap["url"])
+    aps = autopilots(found)
+    if aps:
+        found["autopilot_streams"] = autopilot_streams(aps[0]["url"])
     return found
+
+
+def mavlink_urls(env) -> List[str]:
+    extra = [u.strip() for u in str(env.get("NAVERA_DISCOVER_MAVLINK", "")).split(",") if u.strip()]
+    return list(dict.fromkeys(list(MAVLINK_NET_DEFAULT) + extra))
+
+
+def autopilots(found: dict) -> List[dict]:
+    """The autopilot links found, the preferred first (wired UART, then USB, then network)."""
+    aps = [x for x in (found.get("serial") or []) + (found.get("network") or []) if x.get("kind") == "mavlink"]
+    return sorted(aps, key=lambda x: (_port_rank(x["url"]), x["url"]))
 
 
 # ── decision (pure) ─────────────────────────────────────────────────────────
@@ -379,8 +574,12 @@ def _pick(topics: List[str], words) -> Optional[str]:
 
 
 def _port_rank(p: str) -> int:
-    """Wired UARTs first (an autopilot TELEM port, the box's GPS), then USB."""
-    return 0 if "ttyTHS" in p else 1 if "ttyACM" in p else 2
+    """Wired UARTs first (an autopilot TELEM port, the box's GPS), then USB, then network."""
+    return 0 if "ttyTHS" in p else 1 if "ttyACM" in p else 2 if "/dev/" in p else 3
+
+
+def _proto(kind: str) -> str:
+    return {"ubx": "u-blox UBX", "nmea": "NMEA"}.get(kind, kind)
 
 
 def decide(found: dict, env) -> dict:
@@ -391,22 +590,52 @@ def decide(found: dict, env) -> dict:
     get = lambda k: str(env.get(k, "") or "").strip()                       # noqa: E731
     auto = lambda k: get(k).lower() in ("", "auto")                         # noqa: E731
     out, rep = {}, []
+    att_none = False
     i2c = found.get("i2c") or {}
     serial = found.get("serial") or []
     cams = found.get("cameras") or {}
     streams = found.get("autopilot_streams") or {}
 
-    # GPS receivers: they track satellites (GSV/GSA) — an autopilot's NMEA output does not
-    receivers = sorted((s for s in serial if s.get("kind") == "nmea" and s.get("satellites")),
+    # GPS receivers on serial: u-blox UBX (NAV-PVT), or NMEA tracking satellites (GSV/GSA —
+    # an autopilot's NMEA output sends none)
+    receivers = sorted((s for s in serial if s.get("kind") == "ubx" or
+                        (s.get("kind") == "nmea" and s.get("satellites"))),
                        key=lambda s: (not s.get("fix"), _port_rank(s["port"]), s["port"]))
     gps_port = receivers[0] if receivers else None
     for s in serial:
         if s.get("kind") == "nmea" and not s.get("satellites"):
             rep.append(f"  {s['port']}: NMEA without satellite data (an autopilot's NMEA output?) — "
                        f"not used as a GPS")
+        elif s.get("kind") == "ubx_no_pvt":
+            rep.append(f"  {s['port']} @{s['baud']}: u-blox UBX without NAV-PVT (a u-blox 6, or NAV-PVT turned "
+                       f"off) — not used; NMEA from it would be")
+    # DroneCAN GNSS nodes (Fix2 / Fix), heard passively on the CAN buses that are up
+    can_gnss = []
+    for b in found.get("can") or []:
+        if b.get("error"):
+            rep.append(f"CHECK DroneCAN on {b['iface']}: {b['error']}")
+        for g in b.get("gnss") or []:
+            if g["node"] in (b.get("controllers") or []):
+                rep.append(f"  {b['iface']} node {g['node']} sends a GNSS fix but also commands motors (an autopilot "
+                           f"re-broadcasting its own GPS, maybe NAVERA's) — not used")
+                continue
+            can_gnss.append((b, g))
+        if b.get("alloc_requests") and not b.get("allocator"):
+            rep.append(f"CHECK {b['iface']}: a DroneCAN device asks for a node id and nothing gives one (a GPS alone "
+                       f"on NAVERA's CAN?) — set NAVERA_GPS_CAN_ALLOCATE=1, or give it a fixed node id")
+    can_gnss.sort(key=lambda bg: (not bg[1]["fix"], bg[1]["node"], bg[0]["iface"]))
+    for c in found.get("can_ifaces") or []:
+        if not c["up"]:
+            rep.append(f"  {c['iface']} is down: not listened to (a DroneCAN GPS on it: "
+                       f"sudo ip link set {c['iface']} up type can bitrate 1000000)")
+    # GPS streams on the network (NAVERA_DISCOVER_GPS_URLS)
+    net_gps = sorted((g for g in found.get("gps_net") or [] if g.get("protocol") == "ubx" or g.get("satellites")),
+                     key=lambda g: (not g.get("fix"), g["url"]))
+    for g in found.get("gps_net") or []:
+        if g.get("protocol") == "nmea" and not g.get("satellites"):
+            rep.append(f"  {g['url']}: NMEA without satellite data — not used as a GPS")
     # autopilots: one per system id, its wired port preferred
-    aps = [x for x in serial + (found.get("network") or []) if x.get("kind") == "mavlink"]
-    aps.sort(key=lambda x: (_port_rank(x["url"]), x["url"]))
+    aps = autopilots(found)
     ap = aps[0] if aps else None
     if len({x["sysid"] for x in aps}) > 1:
         rep.append("CHECK several autopilots answer (" + ", ".join(f"{x['url']} system {x['sysid']}" for x in aps)
@@ -443,8 +672,11 @@ def decide(found: dict, env) -> dict:
 
     rep.insert(0, "found: " + (", ".join(filter(None, [
         "box IMU" if "imu" in i2c else None, "box clock" if "rtc" in i2c else None,
-        f"GPS receiver {gps_port['port']} @{gps_port['baud']}{'' if gps_port.get('fix') else ' (no fix yet)'}"
-        if gps_port else None,
+        f"GPS receiver {gps_port['port']} @{gps_port['baud']} ({_proto(gps_port['kind'])})"
+        f"{'' if gps_port.get('fix') else ' (no fix yet)'}" if gps_port else None,
+        f"DroneCAN GPS {can_gnss[0][0]['iface']} node {can_gnss[0][1]['node']}"
+        f"{'' if can_gnss[0][1]['fix'] else ' (no fix yet)'}" if can_gnss else None,
+        f"network GPS {net_gps[0]['url']} ({_proto(net_gps[0]['protocol'])})" if net_gps else None,
         f"autopilot {ap['url']} (system {ap['sysid']})" if ap else None,
         f"ROS vehicle on domain {ros_domain}" if ros_domain is not None else None,
         f"USB camera {os.path.basename(usb[0])}" if usb else None,
@@ -453,9 +685,11 @@ def decide(found: dict, env) -> dict:
     for s in serial:
         if s.get("kind") == "busy":
             rep.append(f"  {s['port']} is held by {s.get('why') or 'another program'}: not probed")
-    if len(receivers) > 1:
-        rep.append("CHECK several GPS receivers (" + ", ".join(r["port"] for r in receivers)
-                   + f"): using {gps_port['port']} — set NAVERA_GPS_PORT to choose")
+    direct = ([r["port"] for r in receivers] + [f"{b['iface']} node {g['node']}" for b, g in can_gnss]
+              + [g["url"] for g in net_gps])
+    if len(direct) > 1:
+        rep.append("CHECK several GPS receivers (" + ", ".join(direct) + f"): using {direct[0]} — set "
+                   "NAVERA_GPS_SOURCE and NAVERA_GPS_PORT / NAVERA_GPS_CAN_NODE / NAVERA_GPS_URL to choose")
 
     # which box chips are fitted (the IMU and clock services idle without them)
     out["NAVERA_BOX_IMU"] = "1" if "imu" in i2c else "0"
@@ -482,26 +716,50 @@ def decide(found: dict, env) -> dict:
                                                             "One R's own IMU (the Insta360 kit)")
         else:
             out["NAVERA_SENSOR_SOURCE"], why = "box", "NO attitude source found (frames will be unusable)"
+            att_none = True
         rep.append(f"attitude: {out['NAVERA_SENSOR_SOURCE']} — {why}")
-    # GPS (the start position and the cross-check)
+    # GPS (the start position and the cross-check). Never a GPS NAVERA itself feeds: the
+    # autopilot's MAVLink GPS (type 14 — NAVERA's GPS_INPUT), or its NMEA GPS (type 5) while
+    # NAVERA's NMEA output is on (NAVERA_NMEA_PORT).
     if auto("NAVERA_GPS_SOURCE"):
-        g2 = streams.get("gps2_type")
+        g1, g2 = streams.get("gps1_type"), streams.get("gps2_type")
+        nmea_out = get("NAVERA_NMEA_PORT").lower() not in ("", "off", "none")
+
+        def own_feed(t):
+            return t == GPS_TYPE_MAV or (t == GPS_TYPE_NMEA and nmea_out)
+        gps1_ok = get("NAVERA_GPS_MONITOR_GPS1").lower() not in ("0", "off", "false", "no")
         if gps_port:
             out.update(NAVERA_GPS_SOURCE="serial", NAVERA_GPS_PORT=gps_port["port"],
                        NAVERA_GPS_BAUD=str(gps_port["baud"]))
-            why = f"the box's receiver on {gps_port['port']}" + ("" if gps_port.get("fix") else " (no fix yet)")
-        elif ap and g2 not in (None, 0, 14):
+            why = (f"the receiver on {gps_port['port']} ({_proto(gps_port['kind'])})"
+                   + ("" if gps_port.get("fix") else " (no fix yet)"))
+        elif can_gnss:
+            b, g = can_gnss[0]
+            out.update(NAVERA_GPS_SOURCE="dronecan", NAVERA_GPS_CAN_IFACE=b["iface"],
+                       NAVERA_GPS_CAN_NODE=str(g["node"]))
+            why = f"DroneCAN GNSS node {g['node']} on {b['iface']}" + ("" if g["fix"] else " (no fix yet)")
+        elif net_gps:
+            out.update(NAVERA_GPS_SOURCE="network", NAVERA_GPS_URL=net_gps[0]["url"])
+            why = f"{_proto(net_gps[0]['protocol'])} from {net_gps[0]['url']}" + \
+                ("" if net_gps[0].get("fix") else " (no fix yet)")
+        elif ap and g2 not in (None, 0) and not own_feed(g2):
             out["NAVERA_GPS_SOURCE"], why = "vehicle", f"the autopilot's second GPS (type {g2})"
+        elif ap and gps1_ok and g1 not in (None, 0) and not own_feed(g1):
+            out["NAVERA_GPS_SOURCE"] = "vehicle_gps1"
+            why = (f"the autopilot's first GPS (type {g1}; NAVERA does not feed it"
+                   + (f": NAVERA is its second GPS, type {g2})" if g2 == GPS_TYPE_MAV else ")"))
         elif ros_gps:
             out.update(NAVERA_GPS_SOURCE="ros", NAVERA_ROS_GPS_TOPIC=ros_gps)
             why = f"ROS {ros_gps}"
         else:
             out["NAVERA_GPS_SOURCE"] = "none"
             why = "NO GPS found — NAVERA needs one fix at start"
-            if ap and g2 == 14:
-                why += " (the autopilot's second GPS is fed over MAVLink — NAVERA's own output: never used)"
-            elif ap and g2 is None:
-                why += " (the autopilot's GPS types could not be read: its second GPS is not trusted)"
+            if ap and (own_feed(g1) or own_feed(g2)):
+                why += " (the autopilot's GPS fed by NAVERA's own output is never used)"
+            elif ap and g1 is None and g2 is None:
+                why += " (the autopilot's GPS types could not be read: its GPS are not trusted)"
+            if ap and not gps1_ok and g1 not in (None, 0) and not own_feed(g1):
+                why += " (the autopilot's first GPS not read: NAVERA_GPS_MONITOR_GPS1=0)"
         rep.append(f"GPS: {out['NAVERA_GPS_SOURCE']} — {why}")
     # camera
     if auto("NAVERA_CAMERA_INPUT"):
@@ -556,7 +814,18 @@ def decide(found: dict, env) -> dict:
         rep.append(f"output: /navera/fix (sensor_msgs/NavSatFix) on ROS domain {ros_domain}")
     if not ap and ros_domain is None:
         rep.append("output: no autopilot and no ROS vehicle found — set NAVERA_NMEA_PORT for an NMEA GPS input")
-    return {"settings": out, "report": rep}
+    # what stays idle (navera_common.hotplug fills it when a device appears later)
+    idle = []
+    if out.get("NAVERA_GPS_SOURCE") == "none":
+        idle.append("gps")
+    if att_none:
+        idle.append("attitude")
+    if auto("NAVERA_CAMERA_INPUT") and out.get("NAVERA_CAMERA_INPUT") == "usb" and "NAVERA_CAMERA_DEVICE" not in out \
+            and not get("NAVERA_CAMERA_DEVICE"):
+        idle.append("camera")
+    if not ap and not get("NAVERA_VEHICLE_MAVLINK_URL"):
+        idle.append("autopilot")
+    return {"settings": out, "report": rep, "idle": idle}
 
 
 def write_env(settings: dict, path: str) -> None:
@@ -587,7 +856,8 @@ def main(argv=None) -> int:
     if a.json_out:
         tmp = f"{a.json_out}.tmp"
         with open(tmp, "w") as f:
-            json.dump(dict(found=found, settings=d["settings"], report=d["report"]), f, indent=1, default=str)
+            json.dump(dict(found=found, settings=d["settings"], report=d["report"], idle=d["idle"]), f, indent=1,
+                      default=str)
         os.replace(tmp, a.json_out)
     return 0
 

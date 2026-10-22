@@ -79,7 +79,9 @@ def main(ardupilot):
         d14 = decide({"network": [x for x in found["network"] if x.get("url") == LINK],
                       "autopilot_streams": autopilot_streams(LINK)}, {"ROS_DOMAIN_ID": "78"})
         print("  with GPS_TYPE2=14: " + next(r for r in d14["report"] if r.startswith("GPS")))
-        if d14["settings"].get("NAVERA_GPS_SOURCE") != "none":
+        # never the second GPS NAVERA feeds; its first GPS (type 1, a real receiver) is now the
+        # vehicle's GPS (wiring C, sitl_gps1_monitor.py)
+        if d14["settings"].get("NAVERA_GPS_SOURCE") not in ("none", "vehicle_gps1"):
             failures.append(f"a MAVLink-fed second GPS was taken: {d14['settings'].get('NAVERA_GPS_SOURCE')}")
         # relay: through vehicle_link, which owns the link discovery chose
         os.environ["ROS_DOMAIN_ID"] = "78"

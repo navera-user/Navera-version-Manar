@@ -53,10 +53,35 @@ def test_a_drone_with_an_autopilot_and_no_box_sensors():
 
 
 def test_navera_never_reads_its_own_output_back_as_a_gps():
-    for g2, word in ((14, "NAVERA's own output"), (None, "could not be read"), (0, "NO GPS")):
-        d = decide({"serial": [AP], "autopilot_streams": dict(STREAMS, gps2_type=g2)}, {})
-        assert d["settings"]["NAVERA_GPS_SOURCE"] == "none"
+    # type 14 = MAVLink GPS (NAVERA's GPS_INPUT); type 5 = NMEA while NAVERA's NMEA output is on
+    for g1, g2, env, word in ((14, 14, {}, "NAVERA's own output"), (14, 0, {}, "NAVERA's own output"),
+                              (0, 14, {}, "NAVERA's own output"), (None, None, {}, "could not be read"),
+                              (0, 0, {}, "NO GPS"),
+                              (5, 0, {"NAVERA_NMEA_PORT": "/dev/ttyTHS2"}, "NAVERA's own output")):
+        d = decide({"serial": [AP], "autopilot_streams": dict(STREAMS, gps1_type=g1, gps2_type=g2)}, env)
+        assert d["settings"]["NAVERA_GPS_SOURCE"] == "none", (g1, g2)
         assert any(word in r for r in d["report"]), d["report"]
+        assert "gps" in d["idle"]
+
+
+def test_the_autopilots_first_gps_when_navera_is_its_second():
+    """Wiring C: the client's GPS stays on the autopilot (GPS1), NAVERA feeds GPS2 (type 14).
+    ArduPilot's GPS_RAW_INT is always instance 1: never NAVERA's output.
+    """
+    d = decide({"serial": [AP], "autopilot_streams": dict(STREAMS, gps1_type=2, gps2_type=14)}, {})
+    assert d["settings"]["NAVERA_GPS_SOURCE"] == "vehicle_gps1"
+    assert any("NAVERA is its second GPS" in r for r in d["report"])
+    # NMEA GPS1 is a real receiver when NAVERA's NMEA output is off
+    d = decide({"serial": [AP], "autopilot_streams": dict(STREAMS, gps1_type=5, gps2_type=14)}, {})
+    assert d["settings"]["NAVERA_GPS_SOURCE"] == "vehicle_gps1"
+    # the option turned off
+    d = decide({"serial": [AP], "autopilot_streams": dict(STREAMS, gps1_type=2, gps2_type=14)},
+               {"NAVERA_GPS_MONITOR_GPS1": "0"})
+    assert d["settings"]["NAVERA_GPS_SOURCE"] == "none"
+    assert any("NAVERA_GPS_MONITOR_GPS1=0" in r for r in d["report"])
+    # a real second GPS keeps priority (as before)
+    d = decide({"serial": [AP], "autopilot_streams": dict(STREAMS, gps1_type=1, gps2_type=1)}, {})
+    assert d["settings"]["NAVERA_GPS_SOURCE"] == "vehicle"
 
 
 def test_a_second_gps_without_a_fix_yet_is_still_the_vehicles_gps():
@@ -219,3 +244,182 @@ def test_px4_gets_no_mavlink_output_and_the_imu_address_is_kept():
                 "autopilot_streams": STREAMS}, {})
     assert "NAVERA_MAVLINK_URL" not in d["settings"] and any("PX4" in r for r in d["report"])
     assert d["settings"]["NAVERA_BOX_IMU_ADDR"] == "0x4b"
+
+
+# ── GPS in every common form (UBX, DroneCAN, network) ──────────────────────
+def _pvt(fix=True):
+    from navera_common.gnss import NAV, NAV_PVT, ubx_frame
+    from test_gnss import nav_pvt
+    return ubx_frame(NAV, NAV_PVT, nav_pvt() if fix else nav_pvt(fix_type=0, flags=0))
+
+
+def test_a_u_blox_seen_through_a_passive_tap_is_recognised_and_never_written_to():
+    """A u-blox ArduPilot set to UBX at 230400, tapped by a Y-cable on the receiver's TX.
+
+    NAVERA must recognise NAV-PVT and send nothing back.
+    """
+    import os
+    import select
+    import threading
+    from navera_common.discovery import probe_serial_port
+    from navera_common.gnss import NAV, ubx_frame
+    ports = [_fake_port(_pvt()), _fake_port(ubx_frame(NAV, 0x02, bytes(28)) * 3)]   # NAV-POSLLH only
+    written, stop = [], threading.Event()
+
+    def listen(master):                                          # what the probe sends to the "receiver"
+        while not stop.is_set():
+            if select.select([master], [], [], 0.05)[0]:
+                try:
+                    written.append(os.read(master, 100))
+                except OSError:                                  # no one has the port open
+                    pass
+    for _, _, (master,) in ports:
+        threading.Thread(target=listen, args=(master,), daemon=True).start()
+    try:
+        g = probe_serial_port(ports[0][0], bauds=(230400,), listen_s=1.0)
+        assert g == {"port": ports[0][0], "baud": 230400, "kind": "ubx", "fix": True, "satellites": True,
+                     "nmea": False}
+        old = probe_serial_port(ports[1][0], bauds=(9600,), listen_s=0.8)
+        assert old["kind"] == "ubx_no_pvt"
+        assert b"".join(written) == b"", "the probe wrote to the receiver"
+    finally:
+        stop.set()
+        for _, stop_talk, fds in ports:
+            stop_talk.set()
+            for fd in fds:
+                os.close(fd)
+
+
+UBX_RX = {"kind": "ubx", "port": "/dev/ttyUSB0", "baud": 230400, "fix": True, "satellites": True, "nmea": False}
+HERE3 = {"kind": "dronecan", "iface": "can0", "gnss": [{"node": 124, "fix": True, "sats": 14, "type": "Fix2"}],
+         "nodes": [10, 124], "controllers": [10], "alloc_requests": False, "allocator": True}
+NET = {"kind": "gps_net", "url": "tcp:192.168.1.20:10110", "protocol": "nmea", "fix": True, "satellites": True}
+
+
+def test_gps_priority_serial_then_dronecan_then_network_then_autopilot():
+    st = {"serial": [AP], "autopilot_streams": STREAMS}
+    d = decide(dict(st, serial=[AP, UBX_RX], can=[HERE3], gps_net=[NET]), {})
+    s = d["settings"]
+    assert (s["NAVERA_GPS_SOURCE"], s["NAVERA_GPS_PORT"], s["NAVERA_GPS_BAUD"]) == ("serial", "/dev/ttyUSB0", "230400")
+    assert any("u-blox UBX" in r for r in d["report"]) and any("CHECK several GPS receivers" in r for r in d["report"])
+    s = decide(dict(st, can=[HERE3], gps_net=[NET]), {})["settings"]
+    assert (s["NAVERA_GPS_SOURCE"], s["NAVERA_GPS_CAN_IFACE"], s["NAVERA_GPS_CAN_NODE"]) == ("dronecan", "can0", "124")
+    s = decide(dict(st, gps_net=[NET]), {})["settings"]
+    assert (s["NAVERA_GPS_SOURCE"], s["NAVERA_GPS_URL"]) == ("network", NET["url"])
+    assert decide(st, {})["settings"]["NAVERA_GPS_SOURCE"] == "vehicle"
+    # a receiver with a fix beats one without, whatever the form
+    s = decide({"serial": [dict(UBX_RX, fix=False)], "can": [HERE3]}, {})["settings"]
+    assert s["NAVERA_GPS_SOURCE"] == "serial"       # serial first: a fix only orders receivers of one form
+    s = decide({"serial": [dict(RECEIVER, fix=False), UBX_RX]}, {})["settings"]
+    assert s["NAVERA_GPS_PORT"] == "/dev/ttyUSB0"
+
+
+def test_dronecan_an_autopilot_rebroadcasting_its_gps_and_a_gps_without_a_node_id():
+    ap_node = dict(HERE3, gnss=[{"node": 10, "fix": True, "sats": 20, "type": "Fix2"}])
+    d = decide({"can": [ap_node]}, {})
+    assert d["settings"]["NAVERA_GPS_SOURCE"] == "none"
+    assert any("commands motors" in r for r in d["report"])
+    alone = dict(HERE3, gnss=[], nodes=[], controllers=[], alloc_requests=True, allocator=False)
+    d = decide({"can": [alone], "can_ifaces": [{"iface": "can0", "up": True}, {"iface": "can1", "up": False}]}, {})
+    assert any("NAVERA_GPS_CAN_ALLOCATE=1" in r for r in d["report"])
+    assert any("can1 is down" in r and "bitrate 1000000" in r for r in d["report"])
+    d = decide({"can": [dict(HERE3, gnss=[], error="pydronecan is not installed")]}, {})
+    assert any(r.startswith("CHECK DroneCAN on can0") for r in d["report"])
+
+
+def test_network_gps_addresses_and_mavlink_defaults():
+    from navera_common.discovery import gps_urls, mavlink_urls
+    assert gps_urls({}) == []                                    # never an address it was not given
+    assert gps_urls({"NAVERA_DISCOVER_GPS_URLS": "tcp:10.0.0.5, udp, tcp:10.0.0.6:5017"}) == [
+        "tcp:10.0.0.5:10110", "tcp:10.0.0.5:2000", "tcp:10.0.0.5:4001", "udp:10110", "tcp:10.0.0.6:5017"]
+    assert mavlink_urls({"NAVERA_DISCOVER_MAVLINK": "tcp:127.0.0.1:5760,tcp:10.0.0.2:5760"}) == [
+        "udpin:0.0.0.0:14550", "udpin:0.0.0.0:14551", "tcp:127.0.0.1:5760", "tcp:10.0.0.2:5760"]
+    d = decide({"gps_net": [dict(NET, satellites=False)]}, {})
+    assert d["settings"]["NAVERA_GPS_SOURCE"] == "none" and any("without satellite" in r for r in d["report"])
+
+
+def test_network_gps_probe_tcp_and_udp():
+    import socket
+    import threading
+    import time
+    from navera_common.discovery import probe_gps_url
+    srv = socket.socket()
+    srv.bind(("127.0.0.1", 0))
+    srv.listen(1)
+    port = srv.getsockname()[1]
+
+    def serve():
+        c, _ = srv.accept()
+        for _ in range(10):
+            try:
+                c.sendall(_pvt())
+            except OSError:
+                break
+            time.sleep(0.1)
+        c.close()
+    threading.Thread(target=serve, daemon=True).start()
+    r = probe_gps_url(f"tcp:127.0.0.1:{port}", listen_s=2.0)
+    srv.close()
+    assert r == {"kind": "gps_net", "url": f"tcp:127.0.0.1:{port}", "protocol": "ubx", "fix": True, "satellites": True}
+    assert probe_gps_url(f"tcp:127.0.0.1:{port}", listen_s=0.5) is None           # nothing listens any more
+
+    probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    probe.bind(("127.0.0.1", 0))
+    uport = probe.getsockname()[1]
+    probe.close()
+    stop = threading.Event()
+
+    def send():
+        tx = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        while not stop.is_set():
+            tx.sendto(GGA + RMC + GSV, ("127.0.0.1", uport))
+            time.sleep(0.1)
+        tx.close()
+    threading.Thread(target=send, daemon=True).start()
+    try:
+        r = probe_gps_url(f"udp:127.0.0.1:{uport}", listen_s=2.0)
+    finally:
+        stop.set()
+    assert r["protocol"] == "nmea" and r["fix"] and r["satellites"]
+
+
+def test_dronecan_probe_on_a_virtual_bus():
+    """A Here3-like node (Fix2) and an autopilot node (ESC commands + its own Fix2) on a
+    pydronecan multicast bus: the passive probe hears both, sends nothing.
+    """
+    import threading
+    import pytest
+    dronecan = pytest.importorskip("dronecan")
+    from navera_common.discovery import probe_dronecan
+    bus = "mcast:7"
+    here3 = dronecan.make_node(bus, node_id=124)
+    fc = dronecan.make_node(bus, node_id=10)
+    stop, sent_by_probe = threading.Event(), []
+    spy = dronecan.make_node(bus)
+    spy.add_transfer_hook(lambda t: sent_by_probe.append(t.source_node_id)
+                          if t.source_node_id not in (124, 10) else None)
+
+    def run():
+        fix = dronecan.uavcan.equipment.gnss.Fix2(latitude_deg_1e8=3573400100, longitude_deg_1e8=1057584850,
+                                                  status=3, sats_used=14)
+        while not stop.is_set():
+            here3.broadcast(fix)
+            fc.broadcast(fix)
+            fc.broadcast(dronecan.uavcan.equipment.esc.RawCommand(cmd=[0, 0, 0, 0]))
+            for n in (here3, fc, spy):
+                n.spin(0.05)
+    th = threading.Thread(target=run, daemon=True)
+    th.start()
+    try:
+        r = probe_dronecan(bus, listen_s=1.5)
+    finally:
+        stop.set()
+        th.join(2)
+        for n in (here3, fc, spy):
+            n.close()
+    assert "error" not in r, r
+    assert [g["node"] for g in r["gnss"]] == [10, 124] and all(g["fix"] for g in r["gnss"])
+    assert r["controllers"] == [10] and set(r["nodes"]) >= {10, 124}
+    assert sent_by_probe == []                                   # the probe never transmitted
+    d = decide({"can": [r]}, {})
+    assert d["settings"]["NAVERA_GPS_CAN_NODE"] == "124"         # the autopilot's re-broadcast is not a GPS
