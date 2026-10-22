@@ -566,8 +566,11 @@ class IsaacLink(Node):
             k += 1
 
     def _deliver(self):
+        # one frame per tick (20 ms): frames due together (the camera model behind) were all
+        # stamped with the same arrival time, which NAVERA rightly rejects as "frame time did not
+        # advance" (endurance run 2026-10-22: 54 frames dropped that way)
         now = time.time()
-        while self.delivery and self.delivery[0][0] <= now:
+        if self.delivery and self.delivery[0][0] <= now:
             _, t, img = self.delivery.pop(0)
             m = Image()
             self._stamp(m.header, now)
