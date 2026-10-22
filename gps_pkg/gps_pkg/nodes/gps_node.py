@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """gps_node.py — NAVERA GPS sensor driver.
 
-Reads NMEA sentences from a serial GPS (e.g. /dev/ttyTHS1 on Jetson UART, or
-/dev/ttyUSB0 for a USB GPS) and publishes:
+Reads a GPS receiver's stream — NMEA sentences and/or u-blox UBX binary (NAV-PVT, NAV-DOP),
+recognised automatically, even mixed on one stream — from a serial port (e.g. /dev/ttyTHS1
+on Jetson UART, /dev/ttyUSB0 for a USB GPS, or a passive tap on the TX wire of the GPS an
+autopilot uses), a TCP server or a UDP port, and publishes:
     /navera/sensors/gps_fix    sensor_msgs/NavSatFix       (unchanged, legacy sensor topic)
     /navera/sensors/gps_vel    geometry_msgs/TwistStamped  (ENU: linear.x east, linear.y north, m/s)
     /navera/estimate/gps       navera_msgs/PositionEstimate (NEW: the source contract)
@@ -22,12 +24,26 @@ reckoning), 7 (manual) and 8 (simulator) are reported as invalid. Altitude is
 height above the WGS84 ellipsoid (GGA altitude + geoid separation), NaN when
 unknown.
 
-If the serial port cannot be opened or fails, the node exits with code 1 so the
-launch/systemd service restarts it (and so reconnects) instead of idling.
+UBX: a NAV-PVT is a fix only with gnssFixOK and a 2D / 3D / GNSS+dead-reckoning fix (not
+dead reckoning only, not time only, not invalidLlh); its covariance is the receiver's own
+hAcc / vAcc (DIAGONAL_KNOWN), its altitude the NAV-PVT height (ellipsoid), its velocity
+velN/velE/velD, its time the NAV-PVT UTC when valid and fully resolved. While NAV-PVT
+arrives, NMEA GGA/RMC from the same receiver are not published twice.
+
+Read-only: nothing is ever written to the receiver, unless configure_receiver is true
+(a receiver NAVERA owns): NAV-PVT and NAV-DOP are then turned on, in the receiver's RAM only.
+
+If the port cannot be opened or fails (a TCP server closing the connection too), the node
+exits with code 1 so the launch/systemd service restarts it (and so reconnects) instead of
+idling.
 
 Parameters:
     serial_port  (default "/dev/ttyTHS1") — serial device
     baud_rate    (default 9600)            — typical for NMEA GPS modules
+    url          (default "")              — instead of the two above: serial:/dev/<port>:<baud>,
+                                             tcp:<host>:<port> (NAVERA connects) or udp:<port>
+                                             (NAVERA listens)
+    configure_receiver (default false)     — allow NAVERA to turn on UBX NAV-PVT (RAM only)
 """
 import rclpy
 from navera_common.lifecycle import die_with_parent
@@ -41,14 +57,21 @@ import json
 import math
 import sys
 import threading
+import time
 import traceback
 
 import pynmea2
 import serial
+from navera_common.gnss import (NAV, NAV_DOP, NAV_PVT, Stream, StreamDecoder, parse_nav_dop, parse_nav_pvt,
+                                pvt_fix, ubx_enable_pvt_frames)
+
+from gps_pkg import fix_publish
 
 KNOTS_TO_MPS = 0.514444
 # GGA quality indicators that are a real satellite fix.
 _VALID_GPS_QUAL = {1, 2, 4, 5}
+# while NAV-PVT arrived this recently, the same receiver's NMEA fix is not published again
+UBX_PREFERRED_S = 3.0
 
 
 def _field_float(value):
@@ -74,8 +97,11 @@ class GPSNode(Node):
         super().__init__("gps_node")
         self.declare_parameter("serial_port", "/dev/ttyTHS1")
         self.declare_parameter("baud_rate", 9600)
+        self.declare_parameter("url", "")
+        self.declare_parameter("configure_receiver", False)
         port = self.get_parameter("serial_port").value
         baud = self.get_parameter("baud_rate").value
+        url = str(self.get_parameter("url").value or "").strip() or f"serial:{port}:{baud}"
 
         self.pub_fix = self.create_publisher(NavSatFix,    "/navera/sensors/gps_fix", 10)
         self.pub_vel = self.create_publisher(TwistStamped, "/navera/sensors/gps_vel", 10)
@@ -85,10 +111,16 @@ class GPSNode(Node):
         self.pub_time = self.create_publisher(TimeReference, "/navera/sensors/gnss_time", 10)
         self.fix_count = 0
         self.failed = False
+        self._ubx_t = -1e9                      # last NAV-PVT (monotonic)
+        self._dop = None
 
         # Raises on failure: main() turns that into exit code 1 → restart.
-        self.ser = serial.Serial(port, baud, timeout=2)
-        self.get_logger().info(f"Port open OK: {port} @ {baud}")
+        self.stream = Stream(url, timeout=2)
+        self.get_logger().info(f"Port open OK: {url}")
+        if self.get_parameter("configure_receiver").value and self.stream.kind != "udp":
+            self.get_logger().warn("configure_receiver: turning on UBX NAV-PVT / NAV-DOP (receiver RAM only)")
+            for frame in ubx_enable_pvt_frames():
+                self.stream.write(frame)
 
         self.running = True
         threading.Thread(target=self._read_loop, daemon=True).start()
@@ -96,34 +128,72 @@ class GPSNode(Node):
 
     def _read_loop(self):
         self.get_logger().info("READ LOOP RUNNING")
-        count = 0
+        self._lines = 0
+        decoder = StreamDecoder()
         while self.running:
             try:
-                raw = self.ser.readline().decode("ascii", errors="replace").strip()
-                count += 1
-                if count <= 5:
-                    self.get_logger().info(f"LINE {count}: {raw[:80]}")
-                if not raw.startswith("$"):
-                    continue
-                try:
-                    # check=True: a truncated or corrupted line (no/bad *hh
-                    # checksum) must never become a fix.
-                    msg = pynmea2.parse(raw, check=True)
-                except pynmea2.ParseError:
-                    continue
-                if isinstance(msg, pynmea2.types.talker.GGA):
-                    self._publish_fix(msg)
-                elif isinstance(msg, pynmea2.types.talker.RMC):
-                    self._publish_vel(msg)
-                    self._publish_time(msg)
-            except serial.SerialException as e:
+                for item in decoder.feed(self.stream.read()):
+                    if item[0] == "nmea":
+                        self._handle_nmea(item[1])
+                    else:
+                        self._handle_ubx(item[1], item[2], item[3])
+            except (serial.SerialException, OSError, ConnectionError) as e:
                 if self.running:
-                    self.get_logger().fatal(f"Serial error: {e} — exiting so the service restarts")
+                    self.get_logger().fatal(f"Port error: {e} — exiting so the service restarts")
                     self.failed = True
                     self.context.try_shutdown()
                 return
             except Exception as e:
                 self.get_logger().error(f"Loop error: {e}\n{traceback.format_exc()}")
+
+    def _handle_nmea(self, raw):
+        self._lines += 1
+        if self._lines <= 5:
+            self.get_logger().info(f"LINE {self._lines}: {raw[:80]}")
+        try:
+            # check=True: a truncated or corrupted line (no/bad *hh
+            # checksum) must never become a fix.
+            msg = pynmea2.parse(raw, check=True)
+        except pynmea2.ParseError:
+            return
+        if time.monotonic() - self._ubx_t < UBX_PREFERRED_S:
+            return                  # the same receiver's NAV-PVT is the fix (with its accuracy)
+        if isinstance(msg, pynmea2.types.talker.GGA):
+            self._publish_fix(msg)
+        elif isinstance(msg, pynmea2.types.talker.RMC):
+            self._publish_vel(msg)
+            self._publish_time(msg)
+
+    def _handle_ubx(self, cls, mid, payload):
+        """UBX NAV-PVT (+ NAV-DOP of the same epoch) -> the GPS topics."""
+        if cls != NAV:
+            return
+        if mid == NAV_DOP:
+            self._dop = parse_nav_dop(payload)
+            return
+        if mid != NAV_PVT:
+            return
+        pvt = parse_nav_pvt(payload)
+        if pvt is None:
+            return
+        self._ubx_t = time.monotonic()
+        fix = pvt_fix(pvt, self._dop)
+        stamp = self.get_clock().now().to_msg()
+        nav = fix_publish.navsatfix(fix, stamp)
+        self.pub_fix.publish(nav)
+        self.pub_est.publish(fix_publish.estimate(fix, nav.header, "gps_node", "ubx_nav_pvt"))
+        vel, ref = fix_publish.velocity(fix, stamp), fix_publish.time_reference(fix, stamp)
+        if vel is not None:
+            self.pub_vel.publish(vel)
+        if ref is not None:
+            self.pub_time.publish(ref)
+        if fix.valid:
+            self.fix_count += 1
+            self.get_logger().info(
+                f"FIX #{self.fix_count} (UBX): lat={fix.lat:.6f} lon={fix.lon:.6f} alt={fix.alt:.1f}m "
+                f"sats={fix.num_sats} hAcc={fix.h_acc}", throttle_duration_sec=10.0)
+        else:
+            self.get_logger().info(f"No fix (UBX): {fix.reason}", throttle_duration_sec=10.0)
 
     def _publish_fix(self, msg):
         fix = NavSatFix()
@@ -259,8 +329,8 @@ class GPSNode(Node):
 
     def destroy_node(self):
         self.running = False
-        if hasattr(self, "ser") and self.ser.is_open:
-            self.ser.close()
+        if hasattr(self, "stream"):
+            self.stream.close()
         super().destroy_node()
 
 
@@ -270,9 +340,9 @@ def main(args=None):
     rclpy.init(args=args)
     try:
         node = GPSNode()
-    except (serial.SerialException, OSError) as e:
+    except (serial.SerialException, OSError, ValueError) as e:
         rclpy.logging.get_logger("gps_node").fatal(
-            f"cannot open GPS serial port: {e} — exiting so the service restarts")
+            f"cannot open the GPS port: {e} — exiting so the service restarts")
         rclpy.try_shutdown()
         sys.exit(1)
     try:

@@ -19,12 +19,13 @@ setup(
     zip_safe=True,
     maintainer='IRIS Systems',
     maintainer_email='contact@iris-systems.tn',
-    description='NAVERA GPS sensor driver (NMEA → /navera/sensors/gps_*)',
+    description='NAVERA GPS sources (NMEA / UBX, DroneCAN, vehicle / ROS GPS → /navera/sensors/gps_*)',
     license='Proprietary',
     entry_points={
         'console_scripts': [
             'gps_node.py=gps_pkg.nodes.gps_node:main',
             'ros_gps_node.py=gps_pkg.nodes.ros_gps_node:main',
+            'dronecan_gps_node.py=gps_pkg.nodes.dronecan_gps_node:main',
         ],
     },
 )
