@@ -30,7 +30,7 @@ Wiring and autopilot parameters: [docs/ARDUPILOT_INTEGRATION.md](../docs/ARDUPIL
 | in | `/navera/sensors/gps_vel` | `geometry_msgs/TwistStamped` | receiver velocity sent with a GPS position |
 | in | `/navera/vehicle/status` | `std_msgs/String` (JSON) | only when `mavlink_url` is the local relay (`udpout:127.0.0.1:…`) |
 | out | `ros_fix_topic` (default `/navera/fix`; empty = off) | `sensor_msgs/NavSatFix` | |
-| out | serial `nmea_port` / MAVLink `mavlink_url` | NMEA GGA + RMC / `GPS_INPUT` | not ROS topics |
+| out | serial `nmea_port` / MAVLink `mavlink_url` | NMEA GGA + RMC / `GPS_INPUT` (ArduPilot) or `HIL_GPS` (PX4) | not ROS topics |
 
 `vehicle_link_node` publishes the `/navera/vehicle/*` topics listed in
 [vehicle_link_node](#vehicle_link_node) (`/navera/vehicle/imu` depth 50, the others depth 10)
@@ -165,7 +165,8 @@ On the box: `/etc/navera/navera.env`, read by `navera-output.service` and
 |---|---|---|---|
 | `NAVERA_NMEA_PORT` / `NAVERA_NMEA_BAUD` | `nmea_port` / `nmea_baud` | "" / 9600 | serial device to the autopilot's GPS input; "" = off |
 | `NAVERA_MAVLINK_URL` | `mavlink_url` | "" | MAVLink address (below); "" or `off` (also `none`, `false`, `0`) = off. navera-discover fills an empty one with the relay `udpout:127.0.0.1:14650` when it finds an autopilot |
-| `NAVERA_MAVLINK_SYSID` | `mavlink_system_id` | 1 | the autopilot's own system id (written by navera-discover) |
+| `NAVERA_MAVLINK_SYSID` | `mavlink_system_id` | 1 | the autopilot's own system id (written by navera-discover); PX4 reads `HIL_GPS` only from it |
+| `NAVERA_MAVLINK_MESSAGE` | `mavlink_message` | auto | `gps_input` (ArduPilot) / `hil_gps` (PX4) / `auto`: `HIL_GPS` once the autopilot's heartbeat says PX4 (heard on the node's own link or in `/navera/vehicle/status`), else `GPS_INPUT`. navera-discover writes `hil_gps` for PX4 |
 | — | `mavlink_component_id` | 191 | this box's MAVLink component (onboard computer) |
 | `NAVERA_ROS_FIX_TOPIC` | `ros_fix_topic` | `/navera/fix` | NavSatFix output; set but empty = off |
 | `NAVERA_ROS_FIX_FRAME_ID` | `ros_fix_frame_id` | `navera` | `header.frame_id` of the NavSatFix: a frame of the vehicle's TF tree for `navsat_transform` |
@@ -261,7 +262,9 @@ parameter table and what is verified in ArduPilot SITL only. Key points found in
 - With `forward_degraded`, DEGRADED positions are sent with 0 satellites: arming checks that
   require satellites must be adapted by the integrator, knowingly.
 - **NMEA:** no accuracy field: GPS pass-through only (above).
-- **PX4:** not tested; it ignores `GPS_INPUT` (docs/PX4_INTEGRATION.md).
+- **PX4:** it has no `GPS_INPUT` handler; the node sends `HIL_GPS` instead (`mavlink_message`
+  auto / hil_gps, `MAV_USEHILGPS = 1` on PX4), verified in PX4 v1.15.4 SITL only
+  (docs/PX4_INTEGRATION.md, `navera_tools/tests/sitl_px4.py`).
 
 Measured in SITL, drone at 120 m, 10–15 m/s, GPS jammed in flight, vision at the *target*
 accuracy (15 m σ, simulated): the autopilot kept flying the mission on NAVERA's position with

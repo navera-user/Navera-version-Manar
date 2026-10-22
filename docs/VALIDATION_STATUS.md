@@ -29,7 +29,7 @@ been measured. Open engineering items are tracked in
 | Day vision dead-reckoning along the measured track (no match: sea, uniform ground, frame unusable) | Implemented 2026-10-02; **simulator only** | Land route: no failsafe, error median 10 m, max 33 m; across the bay: carried 90 s over the sea stating ±300 m, true error at most 146 m |
 | Vision position carried to the present (output, operator view) | Implemented; unit tests and simulator only | 1.5 s old photo at 40 m/s: moved 60 m, stated ±31.5 m |
 | Inertial navigation (integrating the IMU) | **Not implemented** — the IMU gives attitude and heading changes | — |
-| Vehicle outputs | ArduPilot SITL only; **PX4 not tested** (and PX4 ignores `GPS_INPUT`) | below; PX4_INTEGRATION.md |
+| Vehicle outputs | ArduPilot SITL; **PX4 v1.15.4 SITL** (`HIL_GPS`: PX4 ignores `GPS_INPUT`); no real autopilot | below; PX4_INTEGRATION.md §4 |
 
 ## Position output contract
 
@@ -1294,9 +1294,9 @@ holds the only results from the real sensors. No sensor recording (log, bag) was
    **At sea** there are no landmarks: away from the coast vision gives nothing beyond the
    2-minute dead-reckoning; a low camera on a boat (a few metres above the water) has not
    been tested at all. The boat results above are simulator runs with simulated vision.
-6. **Vehicle output validated in simulation only** (ArduPilot SITL, above); not yet on a real
-   autopilot, and not on PX4 — which does not handle the `GPS_INPUT` message NAVERA sends
-   (PX4_INTEGRATION.md; no PX4 SITL run). ArduPilot needs `EK3_SRC1_VELXY = 0` /
+6. **Vehicle output validated in simulation only** (ArduPilot SITL, above; PX4 v1.15.4 SITL with
+   `HIL_GPS`, since PX4 does not handle `GPS_INPUT` — PX4_INTEGRATION.md §4); not yet on a real
+   autopilot. ArduPilot needs `EK3_SRC1_VELXY = 0` /
    `EK3_SRC1_VELZ = 0` (which also removes GPS velocity fusion while GPS is good) and one
    real GPS fix at power-on (navera_output/README.md); it caps a stated accuracy at 100 m.
    NMEA carries no accuracy: vision positions are not sent over it by default.

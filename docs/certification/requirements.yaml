@@ -1003,7 +1003,7 @@ requirements:
   evidence:
     - {level: SIM, value: 'ArduCopter 4.5.7 SITL: 3D fix at the NAVERA position, fix lost after NAVERA no fix', ref: 'ARDUPILOT_INTEGRATION.md §3'}
   status: verified-SIM
-  note: 'no real autopilot connected; PX4 ignores GPS_INPUT (D7)'
+  note: 'no real autopilot connected; PX4 ignores GPS_INPUT (D7): it gets HIL_GPS (NAV-IF-11)'
 
 - id: NAV-IF-02
   category: IF
@@ -1103,6 +1103,24 @@ requirements:
     - {level: SIM, value: '2026-10-22 ArduPilot SITL (GPS_TYPE 1, GPS_TYPE2 14): /navera/vehicle/gps1 at the SITL home; GPS_TYPE set to 14 -> no more GPS1 messages', ref: 'navera_tools/tests/sitl_gps1_monitor.py'}
   status: verified-SIM
   note: 'flying on NAVERA as the autopilot''s GPS 2 (GPS_AUTO_SWITCH) is not verified'
+
+- id: NAV-IF-11
+  category: IF
+  title: 'PX4 output: MAVLink HIL_GPS'
+  text: 'To a PX4 autopilot (heartbeat MAV_AUTOPILOT_PX4) NAVERA shall send its output as MAVLink HIL_GPS from the autopilot''s own system id, chosen automatically (navera-discover NAVERA_MAVLINK_MESSAGE=hil_gps; the output node on a PX4 heartbeat): fix type 3 with the stated eph for a position, 1 for no fix; for a non-GNSS position 0 satellites, the last GNSS altitude held with epv unknown (never a vision height), velocity 0 with vel / cog unknown when not known; navera-discover shall report the PX4 parameters that break it (MAV_USEHILGPS, EKF2_GPS_CTRL, EKF2_HGT_REF, EKF2_GPS_CHECK, EKF2_GPS_V_GATE, SYS_HAS_GPS; with forwarding COM_POS_FS_EPH, EKF2_NOAID_NOISE).'
+  code:
+    - navera_output/navera_output/mavlink_out.py::hil_gps_fields
+    - navera_output/navera_output/nodes/vehicle_output_node.py::message_for_autopilot
+    - navera_common/navera_common/discovery.py::px4_param_checks
+    - navera_common/navera_common/discovery.py::px4_param_int
+  match:
+    - 'test_output\.py::test_(hil_gps|message_for_autopilot)'
+    - 'test_discovery\.py::test_px4'
+    - 'sitl_px4\.py'
+  evidence:
+    - {level: SIM, value: '2026-10-22 PX4 v1.15.4 SITL (SIH quad, no simulated GPS, replayed real vision errors): AUTO mission done on HIL_GPS, EKF error on the GPS-denied legs median 14.8 m / p90 50 m; NAVERA silent -> PX4 failsafe in ~5 s; output restarted -> mission resumed; MAV_USEHILGPS 0 -> no position, no arming', ref: 'PX4_INTEGRATION.md §4'}
+  status: verified-SIM
+  note: 'PX4 SITL only (v1.15.4, multicopter, no wind); landing on vision alone failed in 2 of 3 completed runs (86-109 m from home); no PX4 vehicle'
 
 - id: NAV-IF-05
   category: IF
