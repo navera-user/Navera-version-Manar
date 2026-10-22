@@ -946,6 +946,7 @@ class EstimatorNode(Node):
             self._imu_health(imu_alive),
         ]
         status.map_area, status.map_edge_m = self._map_status(winner)
+        status.gps_refused = self._gps_suspect is not None
         status.reason = reason
         self.pub_status.publish(status)
 

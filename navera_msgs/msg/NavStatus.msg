@@ -67,6 +67,12 @@ uint8 MODE_REPLAYED=3                    # dataset ground truth; NEVER a real-fl
 # today proves it is alive but publishes no fix (contributing = false).
 SourceHealth[] sources
 
+# GPS is received but REFUSED (the cross-check with vision or the plausibility gate: spoofing or
+# a jump suspected) -- as opposed to simply lost (jammed, no fix). What NAVERA learned against the
+# GPS just before is then distrusted (a slow spoof is trusted until refused); after a plain loss
+# it is kept.
+bool gps_refused
+
 # ---------- 4. ARE WE STILL OVER THE MAP? (mission-area guard: reported, never acted on) ----------
 
 # Day vision matches against the mission's map only: past its edge it has nothing to match.
