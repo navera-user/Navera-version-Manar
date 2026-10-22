@@ -422,9 +422,11 @@ class AreaJobs:
 
 
 # ── offline mission bundle (navera_tools/mission_bundle.py) ─────────────
-# The page calls the bundle tool as a subprocess, like prepare_area.py: `plan` (--json: the
-# estimate, BEFORE any download), `build` (--progress-json: one {"stage", "done", "total"} JSON
-# object per line, then a summary line) and `check` (--json: the offline verdict, report["ok"]).
+# Helpers for a FUTURE web feature: no page or bridge route calls them yet (bundles are made
+# with the CLI, navera_tools/README.md). They build the bundle tool's command line, to run as a
+# subprocess like prepare_area.py: `plan` (--json: the estimate, BEFORE any download), `build`
+# (--progress-json: one {"stage", "done", "total"} JSON object per line, then a summary line)
+# and `check` (--json: the offline verdict, report["ok"]). Tested in test_mission_prep.py.
 BUNDLE_TOOL = os.environ.get("NAVERA_BUNDLE_TOOL") or os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__)))), "navera_tools", "mission_bundle.py")
 BUNDLE_SOURCES = re.compile(r"^(onboard|esri|xyz:https?://\S+|mbtiles:/\S+|fn:[\w.]+:\w+(:[\w.-]+)?)$")

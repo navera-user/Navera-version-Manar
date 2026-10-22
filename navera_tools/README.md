@@ -150,7 +150,8 @@ alone: 30/30, median 2.2 m, max 5.1 m**; UT1-UTC comes from the bundle's IERS-A 
 imagery as the map: an upper bound, not a field figure. The last 9 km of that corridor are at
 sea (terrain profile): nothing to match there.
 
-Web view: `simulation_web.mission_prep.bundle_command(action, route, out_dir, ...)` builds the
+Web view: **not available yet — no page calls the bundle tool; make bundles with the CLI
+above.** For a future page, `simulation_web.mission_prep.bundle_command(action, route, out_dir, ...)` builds the
 validated command line (`plan --json`, `build --progress-json`: one `{"stage", "done",
 "total"}` JSON object per line — stages `estimate`, `copy`, `download`, `day_tiles`,
 `day_descriptors`, `learned`, `manifest`, `done` — then a summary line; `check --json`:

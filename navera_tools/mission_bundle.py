@@ -49,7 +49,8 @@ Tile sources (--source, first that has a tile wins): `onboard` (the onboard MBTi
 licence-labelled source catalogue), called per block of the corridor; only corridor tiles
 are copied into the bundle.
 
-Python API (the operator web view calls the CLI with --progress-json / --json, or these):
+Python API (machine-readable CLI output: --progress-json / --json; no web page calls this tool
+yet — simulation_web.mission_prep.bundle_command only builds its command line):
     spec = MissionSpec(route=[[lat, lon], ...], corridor_width_m=2000, max_height_m=600)
     plan = plan_bundle(spec, make_sources(["onboard"]))         -> dict (estimate)
     manifest = build_bundle(spec, sources, out_dir, progress)   -> dict
@@ -592,7 +593,7 @@ def format_estimate(p: dict) -> str:
 
 # ══ build ═════════════════════════════════════════════════════════════════
 class Progress:
-    """Progress as JSON lines on stdout ({"stage", "done", "total", ...}: the web view reads them)
+    """Progress as JSON lines on stdout ({"stage", "done", "total", ...}: for a caller program)
     or as text on stderr."""
 
     def __init__(self, json_lines: bool = False):
