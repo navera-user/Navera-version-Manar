@@ -378,6 +378,34 @@ requirements:
   status: verified-PUB
   note: 'Replaces the original FEAT-2 text ("integrate the IMU into a position with a growing sigma"), NOT PURSUED: double-integrating a low-cost MEMS IMU (BNO085-class, the Insta360 One R IMU) drifts by hundreds of metres within a minute (an accelerometer bias of ~10 mg alone gives 0.5 x 0.1 m/s^2 x t^2 = 180 m at 60 s), far beyond the vision gaps it was meant to bridge; a tactical-grade IMU is out of the product''s cost and size. The IMU is used for attitude (frame straightening), the gyro heading carried between fixes, and liveness. Limits: the product launch (day_pipeline.launch.py) sets max_dead_reckon_s = 30 s, the node default (and the simulator) 120 s.'
 
+- id: NAV-FUN-21
+  category: FUN
+  title: 'Insta360 kit: one camera as the day camera and the IMU, from boot'
+  text: 'With the Insta360 One R in USB Android mode, one process (navera-insta360) shall own the camera and publish both a straight-down view stamped at its exposure and the vehicle attitude from the camera''s own IMU (roll / pitch from gyro + accelerometer with acceleration rejection, yaw from the gyro set by the GPS course and vision headings, honest covariances); NAVERA_SENSOR_SOURCE / NAVERA_CAMERA_INPUT = insta360 shall wire it to the live camera and the pipelines, discovery shall choose it when the camera is found and no better attitude source exists, and the box check shall verify it.'
+  code:
+    - camera_pkg/camera_pkg/insta360_attitude.py::AttitudeFilter.update
+    - camera_pkg/camera_pkg/insta360_attitude.py::GpsCourse.maybe_set
+    - camera_pkg/camera_pkg/insta360_view.py::NadirView
+    - camera_pkg/camera_pkg/insta360_kit.py::Insta360Kit.feed
+    - camera_pkg/camera_pkg/nodes/insta360_node.py::Insta360Node
+    - camera_pkg/camera_pkg/nodes/live_camera.py::LiveCamera._check_heading
+    - navera_common/navera_common/vehicle.py::insta360_camera_params
+    - navera_common/navera_common/discovery.py::probe_insta360
+    - navera_tools/check_box.py::check_insta360
+    - deploy/systemd/navera_boot_insta360.sh
+  tests:
+    - navera_tools/tests/test_insta360_kit_ros.py
+  match:
+    - 'test_insta360_kit\.py::'
+    - 'test_discovery_insta360\.py::'
+  evidence:
+    - {level: UT, value: 'synthetic motion with truth: tilt bounded and inside 3 sigma; coordinated-turn trap > 5 deg blind, < 2.5 deg gated; heading from course / vision; real H.264 key frame; ROS node + live camera: frames attitude_source insta360, straightened, usable', ref: 'camera_pkg/test/test_insta360_kit.py; navera_tools/tests/test_insta360_kit_ros.py'}
+    - {level: SIM, value: 'tilt error with the real camera noise on simulated motion: median 0.20-0.33 deg, max 0.71 deg with the GPS speed; median 0.43-0.76 deg, max 2.21 deg without; 99.9-100 % inside 3 sigma', ref: 'navera_tools/bench/insta360_attitude_eval.py; USER_MANUAL.md 3.1'}
+    - {level: SIM, value: 'synthetic raw recording through the kit + day chain (same imagery as the map: plumbing, not accuracy): 166/166 frames with attitude, 139/140 fixes after GPS loss; without orientation 295/295 frames refused, 0 fixes', ref: 'navera_tools/bench/insta360_kit_replay.py; USER_MANUAL.md 3.1'}
+    - {level: BENCH, value: 'real One R at rest (3 recordings): roll / pitch std 0.006-0.10 deg, heading drift 0.02-0.08 deg/min', ref: 'navera_tools/bench/insta360_attitude_eval.py'}
+  status: partial
+  note: 'real camera moving vs truth (attitude_check.py --kit) and a boot on the box not run: the camera was held by navera-field'
+
 # ───────────────────────────── Performance (measured numbers only) ─────────────────────────────
 - id: NAV-PERF-01
   category: PERF

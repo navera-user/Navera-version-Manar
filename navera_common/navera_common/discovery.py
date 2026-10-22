@@ -11,11 +11,12 @@ At every boot (navera-discover.service, before the other units) NAVERA looks for
     TCP 127.0.0.1:5760, NAVERA_DISCOVER_MAVLINK); it is asked which data it streams
     (attitude, rangefinder, its GPS receivers) and its GPS types;
   * a ROS vehicle: IMU / GPS / camera / height topics on the ROS domains;
-  * cameras: USB (/dev/v4l/by-id) and CSI (Jetson video inputs).
+  * cameras: USB (/dev/v4l/by-id), CSI (Jetson video inputs), and an Insta360 One R in USB
+    "Android" mode (USB id 2e1a:0002: the Insta360 kit, camera AND IMU, navera-insta360).
 then decides, for each need, the best source found (decide()): attitude box IMU >
-autopilot > ROS; GPS serial receiver (UBX or NMEA) > DroneCAN GNSS > network GPS >
+autopilot > ROS > Insta360 kit; GPS serial receiver (UBX or NMEA) > DroneCAN GNSS > network GPS >
 autopilot's second GPS > autopilot's first GPS (only when NAVERA does not feed it) > ROS;
-camera USB > CSI > ROS; outputs: MAVLink to the autopilot when one answers (through
+camera Insta360 kit > USB > CSI > ROS; outputs: MAVLink to the autopilot when one answers (through
 vehicle_link's relay when it is the same link), /navera/fix on ROS when a ROS vehicle is
 there. A GPS NAVERA itself feeds (GPS type 14 = MAVLink, or NMEA when NAVERA's NMEA output
 is set) is never a source: NAVERA would check its output against itself.
@@ -449,6 +450,24 @@ def autopilot_streams(url: str, wait_s: float = 4.0) -> dict:
     return seen
 
 
+INSTA360_USB_ID = ("2e1a", "0002")          # the One R in USB "Android" mode (insta360_protocol.VENDOR)
+
+
+def probe_insta360(sysfs: str = "/sys/bus/usb/devices") -> List[str]:
+    """USB device paths of Insta360 One R cameras in USB "Android" mode (read from sysfs only:
+    the camera is never opened here — a wrong probe has wedged it until replugged, D10).
+    """
+    out = []
+    for d in sorted(glob.glob(os.path.join(sysfs, "*"))):
+        try:
+            ids = tuple(open(os.path.join(d, f)).read().strip().lower() for f in ("idVendor", "idProduct"))
+        except OSError:
+            continue
+        if ids == INSTA360_USB_ID:
+            out.append(os.path.basename(d))
+    return out
+
+
 def probe_cameras() -> Dict[str, list]:
     usb = sorted(p for p in glob.glob("/dev/v4l/by-id/*-video-index0"))
     csi = []
@@ -459,7 +478,7 @@ def probe_cameras() -> Dict[str, list]:
             continue
         if "vi-output" in name or re.search(r"\b(imx|ov)\d", name, re.I):
             csi.append(name)
-    return {"usb": usb, "csi": csi}
+    return {"usb": usb, "csi": csi, "insta360": probe_insta360()}
 
 
 def probe_ros(domains, wait_s: float = 3.0) -> Dict[int, Dict[str, List[str]]]:
@@ -661,7 +680,8 @@ def decide(found: dict, env) -> dict:
         f"autopilot {ap['url']} (system {ap['sysid']})" if ap else None,
         f"ROS vehicle on domain {ros_domain}" if ros_domain is not None else None,
         f"USB camera {os.path.basename(usb[0])}" if usb else None,
-        f"CSI camera {cams['csi'][0]}" if cams.get("csi") else None])) or "nothing"))
+        f"CSI camera {cams['csi'][0]}" if cams.get("csi") else None,
+        "Insta360 One R in USB Android mode (camera + IMU kit)" if cams.get("insta360") else None])) or "nothing"))
     for s in serial:
         if s.get("kind") == "busy":
             rep.append(f"  {s['port']} is held by {s.get('why') or 'another program'}: not probed")
@@ -691,6 +711,9 @@ def decide(found: dict, env) -> dict:
             out["NAVERA_ROS_IMU_TOPIC"] = ros_imu
             if ros_alt:
                 out["NAVERA_ROS_ALTITUDE_TOPIC"] = ros_alt
+        elif cams.get("insta360"):
+            out["NAVERA_SENSOR_SOURCE"], why = "insta360", ("no box IMU, no autopilot, no ROS IMU; the Insta360 "
+                                                            "One R's own IMU (the Insta360 kit)")
         else:
             out["NAVERA_SENSOR_SOURCE"], why = "box", "NO attitude source found (frames will be unusable)"
             att_none = True
@@ -743,6 +766,9 @@ def decide(found: dict, env) -> dict:
         written = get("NAVERA_CAMERA_DEVICE")
         if written:
             out["NAVERA_CAMERA_INPUT"], why = "usb", f"the device written in navera.env ({written})"
+        elif cams.get("insta360"):
+            # in Android mode the One R is no webcam; only the kit's process can read it
+            out["NAVERA_CAMERA_INPUT"], why = "insta360", "the Insta360 One R in USB Android mode (the Insta360 kit)"
         elif usb:
             out.update(NAVERA_CAMERA_INPUT="usb", NAVERA_CAMERA_DEVICE=usb[0])
             why = f"USB {os.path.basename(usb[0])}"
@@ -759,6 +785,9 @@ def decide(found: dict, env) -> dict:
         else:
             out["NAVERA_CAMERA_INPUT"], why = "usb", "NO camera found"
         rep.append(f"camera: {out['NAVERA_CAMERA_INPUT']} — {why}")
+    if any("insta360" in os.path.basename(c).lower() for c in cams.get("usb") or []):
+        rep.append("CHECK an Insta360 in WEBCAM mode: cropped strips and no IMU — for the Insta360 kit set its "
+                   "USB mode to Android (camera menu), then replug")
     # the autopilot link: read its sensors and give it NAVERA's position, as its companion
     if ap:
         if not get("NAVERA_VEHICLE_MAVLINK_URL"):

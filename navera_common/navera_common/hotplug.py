@@ -48,7 +48,8 @@ def devices(env) -> Dict[str, List[str]]:
     """What is connected now (names only: cheap enough to list every few seconds)."""
     return {"serial": disc.serial_ports(),
             "can": [c["iface"] for c in disc.can_interfaces() if c["up"]],
-            "cameras": disc.probe_cameras().get("usb", [])}
+            "cameras": disc.probe_cameras().get("usb", []),
+            "insta360": disc.probe_insta360()}             # the Insta360 kit: USB id from sysfs, never opened
 
 
 def added(before: Dict[str, List[str]], now: Dict[str, List[str]]) -> Dict[str, List[str]]:
@@ -60,7 +61,8 @@ def probe(new: Dict[str, List[str]], env, rescan: Optional[dict] = None) -> dict
     GPS addresses) in parallel, read-only: a found fragment in discovery's format.
     """
     rescan = rescan or {}
-    frag = {"serial": [], "can": [], "gps_net": [], "cameras": {"usb": list(new.get("cameras", []))}}
+    frag = {"serial": [], "can": [], "gps_net": [],
+            "cameras": {"usb": list(new.get("cameras", [])), "insta360": list(new.get("insta360", []))}}
     ports = dict.fromkeys(new.get("serial", []) + rescan.get("serial", []))
     jobs = [("serial", disc.probe_serial_port, p) for p in ports]
     jobs += [("can", disc.probe_dronecan, b) for b in dict.fromkeys(new.get("can", []) + rescan.get("can", []))]
@@ -88,7 +90,8 @@ def merge(found: dict, frag: dict) -> dict:
         names = {x.get(ident) for x in new}
         out[key] = [x for x in (found.get(key) or []) if x.get(ident) not in names] + new
     cams = dict(found.get("cameras") or {})
-    cams["usb"] = sorted(set(cams.get("usb") or []) | set((frag.get("cameras") or {}).get("usb") or []))
+    for kind in ("usb", "insta360"):
+        cams[kind] = sorted(set(cams.get(kind) or []) | set((frag.get("cameras") or {}).get(kind) or []))
     out["cameras"] = cams
     return out
 

@@ -1,0 +1,6 @@
+# NAVERA — the Insta360 One R over USB, for the Insta360 kit (navera-insta360, user navera).
+# Vendor 2e1a: the camera in USB "Android" mode (2e1a:0002, one vendor bulk interface: the live
+# 360 stream and its IMU); 4255: its other USB modes. Installed by deploy/install.sh into
+# /etc/udev/rules.d/; replug the camera (or udevadm trigger) after installing.
+SUBSYSTEM=="usb", ATTR{idVendor}=="2e1a", MODE="0666"
+SUBSYSTEM=="usb", ATTR{idVendor}=="4255", MODE="0666"

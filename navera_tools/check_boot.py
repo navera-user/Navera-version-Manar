@@ -44,6 +44,7 @@ EXPECTED_NODES = {
     'navera-estimator.service': [('estimator_node',)],
     'navera-gps.service': [('gps_node',), ('ros_gps',)],
     'navera-imu.service': [('imu_node',)],
+    'navera-insta360.service': [('insta360',)],
     'navera-rtc.service': [('rtc_node',)],
     'navera-vehicle-link.service': [('vehicle_link',)],
     'navera-output.service': [('vehicle_output',)],
