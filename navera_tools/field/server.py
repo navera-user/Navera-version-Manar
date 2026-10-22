@@ -313,6 +313,11 @@ class Field:
         # jumps when NTP reaches the internet, maybe mid-test. A jump makes the earlier offsets wrong.
         self._wall_minus_mono = time.time() - time.monotonic()
         self._ntp_checked, self._ntp_synced = 0.0, False
+        # the DS3231 battery clock, when one is wired (F27): a trusted time with no phone and no internet
+        self.rtc = None
+        if os.environ.get("NAVERA_FIELD_RTC", "1") not in ("0", "off", "no"):
+            from navera_tools.field.rtc_clock import RtcClock
+            self.rtc = RtcClock(int(os.environ.get("NAVERA_FIELD_RTC_BUS", "1"))).start()
         self.speeds = collections.deque(maxlen=120)       # (server time, phone GPS speed m/s): the stopped flag's referee
         self.live: dict = {}
         self.preview: bytes = b""
@@ -396,11 +401,34 @@ class Field:
 
     def star_clock_offset_s(self):
         """Offset to subtract from the Jetson time for a star solve, or None when no trusted time exists
-        (no phone clock yet and the Jetson not synchronised): a solve then would be thousands of km off."""
+        (no phone clock, no valid DS3231 and the Jetson not synchronised): a solve then would be thousands of km off."""
+        return self.star_time()[0]
+
+    def star_time(self):
+        """(offset to subtract from the Jetson time, source) for a star solve: the phone's clock (GPS/network time,
+        the test's reference), else the DS3231 battery clock when one is wired and valid (F27: what the product
+        relies on offline), else the Jetson clock when NTP-synchronised; (None, why) when nothing vouches."""
         off = self.clock_offset_s()
         if off is not None:
-            return off
-        return 0.0 if self.ntp_synced() else None
+            return off, "phone"
+        rtc = getattr(self, "rtc", None)
+        why_rtc = "no DS3231"
+        if rtc is not None:
+            r_off, why_rtc = rtc.offset()
+            if r_off is not None:
+                return -r_off, "rtc"
+        if self.ntp_synced():
+            return 0.0, "ntp"
+        return None, f"no trusted time yet (no phone clock; {why_rtc}; Jetson clock not NTP-synchronised)"
+
+    def rtc_minus_phone_s(self):
+        """DS3231 time minus the phone's time (s) when both are known: the battery clock's error in the field."""
+        rtc = getattr(self, "rtc", None)
+        p_off = self.clock_offset_s()
+        if rtc is None or p_off is None:
+            return None
+        r_off, _ = rtc.offset()
+        return None if r_off is None else round(r_off + p_off, 3)
 
     def on_phone(self, d: dict):
         now = time.time()
@@ -485,6 +513,12 @@ class Field:
         else:
             add("clock", "Phone clock matches Jetson", "wait" if off is None else ("ok" if abs(off) <= 1.0 else "bad"),
                 "" if off is None else f"{off:+.2f} s")
+        rtc = getattr(self, "rtc", None)
+        if rtc is not None:
+            st = rtc.last
+            add("rtc", "Battery clock (DS3231)", "ok" if st.get("ok") else "wait",
+                f"{st.get('kind')}: {st.get('offset_s', 0):+.2f} s from the Jetson" if st.get("ok")
+                else (st.get("why") or "")[:80])
         if self.mode == "360":
             up, g, rate = self.camera.gravity()
             if up is not None:
@@ -825,9 +859,11 @@ class Field:
                     return
             if self.cat is None:
                 self.cat = allsky.Catalogue(limit_mag=4.0)
-            off = self.star_clock_offset_s()
+            off, tsrc = self.star_time()
+            rec["time_source"] = tsrc if off is not None else None
+            rec["rtc_minus_phone_s"] = self.rtc_minus_phone_s()
             if off is None:
-                rec["why"] = "no trusted time yet (Jetson clock not synchronised, phone clock not received)"
+                rec["why"] = tsrc
                 return
             utc = datetime.fromtimestamp(texp - off, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
             t0 = time.time()
@@ -909,9 +945,10 @@ class Field:
         import base64
         try:
             from cn_pkg.nodes.solver import solve_image_b64_geoloc
-            off = self.star_clock_offset_s()
+            off, tsrc = self.star_time()
+            rec["time_source"] = tsrc if off is not None else None
             if off is None:
-                rec["why"] = "no trusted time yet (Jetson clock not synchronised, phone clock not received)"
+                rec["why"] = tsrc
                 return
             utc_epoch = texp - off                    # phone time = Jetson time - offset
             utc = datetime.fromtimestamp(utc_epoch, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
@@ -971,6 +1008,7 @@ class Field:
                                                         "calibration": self.camera.cal_path, "interval_s": self.interval_s,
                                                         "min_stars": MIN_STARS, "attitude_sigma_deg": ATTITUDE_SIGMA_DEG,
                                                         "clock_offset_s": self.clock_offset_s(),
+                                                        "rtc": dict(self.rtc.last) if getattr(self, "rtc", None) else None,
                                                         "mode": self.mode, "operator_note": ""})
                 if self.mode == "360":
                     self.session.update_meta(attitude_sigma_deg=ATTITUDE_SIGMA_360_DEG, imu_calibration=_read_json(self.camera.cal_path),
@@ -1060,6 +1098,7 @@ class Field:
                 "last_fix": self.last_fix, "solving": self.solving, "interval_s": self.interval_s,
                 "done": self.last_done, "disk_error": bool(s and s.io_error), "server_time_ms": int(time.time() * 1000),
                 "raw": self.camera.raw_stats() if hasattr(self.camera, "raw_stats") else None,
+                "rtc": dict(self.rtc.last) if getattr(self, "rtc", None) else None,
                 "live_params": {k: _jsonable(v) if k in ("active", "refused") else v for k, v in self.live_params.items()}}
 
 
