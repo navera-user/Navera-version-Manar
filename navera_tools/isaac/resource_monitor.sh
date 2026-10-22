@@ -18,7 +18,7 @@ mib() { awk -v p="$1" 'index($0, p) && $2 ~ /^[0-9]+$/ {s += $2} END {printf "%.
 while sleep "$period"; do
   docker ps -q -f name=navera_isaac | grep -q . || break
   g=$($smi --query-gpu=memory.used,utilization.gpu,temperature.gpu,power.draw --format=csv,noheader,nounits \
-      2>/dev/null | tr -d ' ' | head -1)
+      2>/dev/null | tr -d ' \r' | head -1)
   [ -n "$g" ] || g=",,,"
   st=$(docker stats --no-stream --format '{{.CPUPerc}} {{.MemUsage}}' navera_isaac 2>/dev/null)
   cpu=$(awk '{gsub("%", "", $1); print $1}' <<< "$st")

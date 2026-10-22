@@ -48,7 +48,9 @@ def wrap(a):
 
 
 def load(res):
-    rd = lambda n: list(csv.DictReader(open(os.path.join(res, n)))) if os.path.exists(os.path.join(res, n)) else []  # noqa: E731
+    # (\r stripped: nvidia-smi.exe ends its lines with CR LF)
+    rd = lambda n: (list(csv.DictReader(open(os.path.join(res, n), newline="").read().replace("\r", "").splitlines()))  # noqa: E731
+                    if os.path.exists(os.path.join(res, n)) else [])
     ev = []
     if os.path.exists(os.path.join(res, "events.jsonl")):
         for line in open(os.path.join(res, "events.jsonl")):
@@ -176,11 +178,16 @@ def main():
     # resources: first / last / max of every column, and the trend per hour (least squares)
     res_sum = {}
     if rsc:
-        tt = [fnum(r, "t_s") for r in rsc]
-        for col in rsc[0].keys():
+        ss = os.path.join(res, "sitl_session.json")
+        t0w = json.load(open(ss))["t0_wall"] if os.path.exists(ss) else None
+        tt = [fnum(r, "epoch") - t0w if t0w else fnum(r, "t_s") for r in rsc]
+        # the GPS-denied flight only (start-up and the end of the run are not a trend)
+        keep = [(t, r) for t, r in zip(tt, rsc) if cut <= t <= min(rtl, t_end)]
+        tt, rsc_f = [k[0] for k in keep], [k[1] for k in keep]
+        for col in (rsc[0].keys() if rsc_f else []):
             if col in ("wall", "epoch", "t_s"):
                 continue
-            pts = [(t, fnum(r, col)) for t, r in zip(tt, rsc) if math.isfinite(fnum(r, col))]
+            pts = [(t, fnum(r, col)) for t, r in zip(tt, rsc_f) if math.isfinite(fnum(r, col))]
             if len(pts) < 3:
                 continue
             n = len(pts)
@@ -280,9 +287,9 @@ def plot(res, cut, t_end, day, pos, ekf, rows, rsc, block_min, rtl):
                label="output error / stated sigma (p90)")
     ax[3].plot(mid, [(r["sigma_cal"] or {}).get("factor") for r in rows], "s-", color=C[3], lw=2, ms=5,
                label="day sigma_cal factor (carried)")
-    ax[3].plot(mid, [abs(r["match_heading_offset_deg"]["mean"]) / 10 if r["match_heading_offset_deg"]["mean"] is not None else None
-                     for r in rows], "^-", color=C[5], lw=1.5, ms=5, label="|match rotation - truth heading| / 10 deg")
-    ax[3].set_title("What is carried: sigma calibration, heading of the matches")
+    ho = [r["match_heading_offset_deg"]["mean"] for r in rows if r["match_heading_offset_deg"]["mean"] is not None]
+    ax[3].set_title("Stated sigma vs the real error (ratio)" + (f"; match rotation - truth heading per block: "
+                    f"{min(ho):+.1f} to {max(ho):+.1f} deg" if ho else ""))
     ax[3].legend(loc="upper left", fontsize=8, frameon=False, ncol=2)
     if rsc:
         # resources.csv: wall-clock epoch -> flight time (sitl_demo's t0)
@@ -330,7 +337,7 @@ def write_md(res, o, block_min):
                  f"{r['matched_pct']} | {f(r['fix_err_stamp_m'])} | {f(r['fix_err_exposure_m'])} | {r['wrong_fixes']} | "
                  f"{r['output_beyond_3sigma']} / {r['outputs']} | {r['output_err_over_sigma']['median']} | {f(r['output_err_m'])} | "
                  f"{f(r['ekf_err_m'])} / {r['ekf_err_m']['max']} | {sc} | {r['match_heading_offset_deg']['mean']} |")
-    L.append("\n## Resources (first 10 min -> last 10 min, max, trend per hour)\n")
+    L.append("\n## Resources during the GPS-denied flight (first 10 min -> last 10 min, max, linear trend per hour)\n")
     L.append("| quantity | first | last | max | per hour |")
     L.append("|---|---|---|---|---|")
     for k, v in o["resources"].items():
