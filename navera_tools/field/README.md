@@ -98,7 +98,11 @@ Off: `NAVERA_AUTOLAB=0` or `touch ~/navera-field/autolab_off`.
 * It does not run the ROS box (estimator, outputs). It calls the same solver code on the same kind of frame.
 * The camera points at the zenith: the position then needs no heading. Each degree the camera is off
   vertical moves the answer 111 km unless the tilt is corrected; the phone's tilt corrects it (0.5 degrees assumed, unmeasured).
-* One second of clock error is 0.46 km.
+* One second of clock error is 0.46 km. The star time follows the product's order (`navera_common/trusted_time.py`):
+  NAVERA's GPS anchor (`NAVERA_FIELD_GPS`, off by default) > the autopilot's SYSTEM_TIME (`NAVERA_FIELD_MAVLINK`, off
+  by default; must agree with the anchor within 1 s) > the DS3231 (`NAVERA_FIELD_RTC`, read when wired) > the phone's
+  clock > NTP; none: no solve. The page's "Star time" line shows the source and its 1-sigma (`time_feeds.py`,
+  `docs/field/celestial_test_runbook.md`).
 * All limits (12 stars, 1 degree level, 0.5 s clock) are first guesses until a real night calibrates them.
 
 ## What counts as a star

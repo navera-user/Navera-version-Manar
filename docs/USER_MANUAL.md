@@ -65,7 +65,7 @@ NAVERA knows where the vehicle is.
   Star camera ---+--> celestial ----->|           |                                 (operator view)  |
   (experimental) |                    +-----------+                                                  |
   IMU / attitude-+--> straightens the pictures, carries the heading                                    |
-  Clock (DS3231)-+--> correct time with no network                                                   |
+  GPS time ------+--> trusted time for the stars (kept by the box after the GPS is lost)            |
                  +-----------------------------------------------------------------------------------+
 ```
 
@@ -121,7 +121,7 @@ NAVERA's own sensors, fitted to the box:
 | IMU (IRIS kit) | the **Insta360 ONE R's own IMU** (gyroscope + accelerometer, ~500 Hz, measured gyro noise 0.003 °/s/√Hz), read over the camera's USB link by the same program as its picture (`navera-insta360`) | USB (camera in "Android" USB mode) | The IRIS kit's IMU: gives the **attitude** (roll / pitch from gyro + accelerometer; heading from the gyro, set by the GPS course and vision — **no magnetometer**), section 3.1 |
 | IMU (optional / legacy) | **Bosch BNO085** (I²C, address 0x4A or 0x4B) | I²C bus 1 (pins 27/28) or bus 7 (pins 3/5), 3.3 V | Optional. Still supported and still detected automatically; no longer part of the IRIS kit |
 | Attitude for the vision | one source giving roll, pitch and heading: the Insta360 kit's own IMU, the autopilot (MAVLink), the vehicle's ROS IMU, or a BNO085 | — | **Required for a fixed camera** (see 3.1); with a gimbal, a gyro is enough |
-| Clock | **Maxim DS3231** real-time clock **with its coin cell fitted** | I²C, address 0x68 | **Required on the IRIS kit** (keeps the time with no network; the star navigation refuses to work on a wrong clock) |
+| Clock | **Maxim DS3231** real-time clock with its coin cell fitted | I²C, address 0x68 | **Optional** (2026-10-22). The star navigation's time comes from the **GPS at take-off**, kept by the box afterwards, cross-checked with the autopilot's time; a DS3231 only helps after a box reboot with the GPS denied and no autopilot time (section 6.6) |
 | Thermal camera | any LWIR camera NAVERA can read (USB, RTSP) | USB / Ethernet | Optional — needed only for night |
 | Star camera | a USB camera pointing up | USB | Optional — experimental |
 
@@ -1068,7 +1068,22 @@ hold the camera: not with IRIS's field tools, and not in webcam mode.
 
 - Without a star camera configured, the celestial service plays a **sample sky** (demonstration).
 - A real star camera: set `NAVERA_STAR_CAMERA_INPUT` and the other `NAVERA_STAR_CAMERA_*` settings
-  (appendix A). It needs the clock (DS3231) and the IMU.
+  (appendix A). It needs the IMU and a **trusted time** (1 s of clock error = ~0.5 km).
+- **Time for the stars** (no battery clock needed). Operating rule: the GPS is good at take-off.
+  NAVERA then takes the GPS receiver's UTC (only while the arbiter trusts the GPS: not refused,
+  not suspected of spoofing) and keeps it with the box's own steady clock for the rest of the
+  flight, however long the GPS is lost; its stated uncertainty grows slowly (0.5 s + 20 ppm of the
+  time since: ~0.7 s after 3 h). In order, NAVERA uses: this **GPS time anchor** > the
+  **autopilot's time** (MAVLink `SYSTEM_TIME`, which ArduPilot sets from its GPS) > a **DS3231**
+  if fitted > the network time (NTP). The GPS anchor and the autopilot's time must agree within
+  1 s; otherwise no star fix is made (one of them is wrong — a spoofed GPS can fake the time too)
+  and the log says so. A later GPS time that jumps away from the anchor is ignored and logged.
+  Without any of them, no star fix: never on a guessed clock. `/navera/time_status` shows the
+  source and its uncertainty.
+- **If the box reboots in flight with the GPS denied**, the GPS anchor is lost (it is not kept
+  across a reboot: there is no battery clock to carry it). NAVERA then uses the autopilot's
+  time (the autopilot keeps it while powered), or the DS3231 if one is fitted; with neither, the
+  star navigation stays off until the GPS comes back.
 - Accuracy: kilometres (24–119 km with a BNO085-class IMU in simulation). Never sent to the
   autopilot (coarser than 1 km).
 
