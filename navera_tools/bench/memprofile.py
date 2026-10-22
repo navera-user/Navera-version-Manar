@@ -23,7 +23,6 @@ import collections
 import gc
 import importlib
 import json
-import os
 import sys
 import threading
 import time
@@ -38,6 +37,11 @@ def _status():
             if k in ("VmRSS", "VmSize", "RssAnon", "RssFile", "RssShmem"):
                 out[k] = round(int(v.split()[0]) / 1024.0, 1)
     return out
+
+
+def _short(path):
+    """A source path without its site-packages / workspace prefix."""
+    return path.split("/site-packages/")[-1].split("/build/")[-1]
 
 
 def _containers(roots):
@@ -91,8 +95,7 @@ def sampler(a, t_start):
             else:
                 stats = snap.compare_to(first, "traceback")
                 rec["top"] = [dict(kib=round(s.size_diff / 1024.0, 1), n=s.count_diff,
-                                   where=[f"{fr.filename.split('/site-packages/')[-1].split('/src/navera/')[-1]}:{fr.lineno}"
-                                          for fr in s.traceback[-a.depth:]])
+                                   where=[f"{_short(fr.filename)}:{fr.lineno}" for fr in s.traceback[-a.depth:]])
                               for s in stats[:25] if s.size_diff > 0]
         counts = collections.Counter(type(o).__name__ for o in gc.get_objects())
         if gc_first is None:
