@@ -135,6 +135,32 @@ def check_files():
     free = shutil.disk_usage(os.environ.get("NAVERA_AREAS_DIR", "/") if os.path.exists(
         os.environ.get("NAVERA_AREAS_DIR", "/")) else "/").free / 2 ** 30
     report(OK if free > 5 else WARN, "free disk space", f"{free:.0f} GB")
+    report(*swap_verdict(open_text(os.environ.get("NAVERA_SWAPS", "/proc/swaps")),
+                         int(os.environ.get("NAVERA_MIN_SWAP_MB") or 4096)))
+
+
+def open_text(path):
+    """The file's text, '' when it cannot be read."""
+    try:
+        with open(path) as f:
+            return f.read()
+    except OSError:
+        return ""
+
+
+def swap_verdict(swaps_text, min_mb=4096):
+    """(level, what, detail) for the swap on disk in /proc/swaps' text (F5: the day pipeline was
+    OOM-killed on the 8 GB Jetson without it). zram lives in RAM and does not count."""
+    kb = 0
+    for line in swaps_text.splitlines()[1:]:
+        f = line.split()
+        if len(f) >= 3 and not f[0].startswith("/dev/zram") and f[2].isdigit():
+            kb += int(f[2])
+    mb = kb // 1024
+    if mb >= min_mb:
+        return OK, "swap on disk", f"{mb} MB"
+    return WARN, "swap on disk", (f"{mb} MB, need {min_mb} MB (zram does not count): the day pipeline may be "
+                                  "OOM-killed — sudo deploy/setup_swap.sh")
 
 
 def mbtiles_verdict(path):

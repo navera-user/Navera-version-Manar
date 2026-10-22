@@ -6,7 +6,8 @@
 #   deploy/check_boot.sh            # report; exit 0 = every enabled unit active
 #
 # For each navera-* unit enabled at boot: active or not, how long after boot it became
-# active, how many times systemd restarted it, and its last error lines; then the clock
+# active, how many times systemd restarted it, and its last error lines; then the swap on
+# disk (a warning when short of NAVERA_MIN_SWAP_MB, F5), the clock
 # (RTC), and NAVERA's own pre-flight check (navera_tools/check_box.py) when ROS is there.
 set -u
 case "${1:-}" in
@@ -33,6 +34,8 @@ done
   echo "no NAVERA unit is enabled at boot (sudo deploy/install.sh)"; exit 1; }
 
 echo
+# swap on disk (F5): a warning, not a failure (zram does not count)
+"$(dirname "$(readlink -f "$0")")/setup_swap.sh" --check 2>&1 | sed 's/^swap: WARNING/WARN  swap:/' || true
 journalctl -b -u navera-rtc --no-pager -o cat 2>/dev/null | grep -iE "valid|lost_power|drift" | tail -2
 if [ -f "$WS/install/setup.bash" ]; then
   echo

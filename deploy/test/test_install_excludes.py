@@ -78,3 +78,22 @@ def test_verify_units_finds_junk_in_a_workspace(tmp_path):
     found = {os.path.relpath(p, ws) for p in verify_units.shipped_junk(ws)}
     assert {'.git', '.claude', 'navera_common/.pytest_cache', 'navera_tools/rosbag2_2026_10_21',
             'recordings/flight.mcap', 'day_pkg/test/stray.db3'} == found     # build / install / log: built there
+
+
+@pytest.mark.skipif(not (shutil.which('rsync') and shutil.which('systemctl') and shutil.which('visudo')
+                         and os.path.isfile('/opt/ros/humble/setup.bash')), reason='rsync / systemd / ROS absent')
+def test_an_update_removes_the_junk_an_older_install_left_on_the_box(repo, tmp_path):
+    """rsync --delete skips excluded paths: an update over an install older than B18 must still
+    remove its .git, worktrees, caches and recordings — and keep build/, install/, log/."""
+    stage = tmp_path / 'stage'
+    ws = str(stage) + WS
+    for rel in JUNK:
+        _touch(ws, rel)
+    r = subprocess.run(['bash', str(repo / 'deploy' / 'install.sh'), '--root', str(stage), '--no-build',
+                        '--units', 'navera-estimator'], capture_output=True, text=True, timeout=120)
+    assert r.returncode == 0, r.stdout[-2000:] + r.stderr[-2000:]
+    assert verify_units.shipped_junk(ws) == []
+    for rel in ('build/pkg/x.o', 'install/setup.bash', 'log/latest/x'):
+        assert os.path.isfile(os.path.join(ws, rel)), rel
+    for rel in CODE:
+        assert os.path.isfile(os.path.join(ws, rel)), rel

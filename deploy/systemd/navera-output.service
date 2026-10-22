@@ -32,6 +32,10 @@ ExecStart=/home/navera/navera_boot_output.sh
 # has on_exit=Shutdown), so on-failure would never restart it.
 Restart=always
 RestartSec=10
+# Memory (F5 / H-11): a small process NAVERA cannot fly without. The kernel OOM killer
+# takes it last (it is never the memory hog), systemd-oomd never picks it.
+OOMScoreAdjust=-900
+ManagedOOMPreference=omit
 
 [Install]
 WantedBy=multi-user.target

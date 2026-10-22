@@ -90,6 +90,22 @@ would never restart anything. Instead:
   serial port is missing or disconnects, `vehicle_output` when an output cannot be opened or
   written, the live camera when the camera cannot be opened or stops sending frames.
 
+- a camera that gives no frame for 10 s (`camera_stall_restart_s`: unplugged, USB reset,
+  stuck driver, stalled stream) makes the live camera exit for a restart; a replugged USB camera
+  is found again under its `/dev/v4l/by-id/...` name.
+
+### Memory, swap and logs (8 GB Jetson)
+
+The day pipeline uses 2.5 GB (real flight replay, 100 m) to 5 GB (bench mission, ~520 m); it
+was OOM-killed without swap (F5). `install.sh` therefore makes an 8 GB `/swapfile`
+(`deploy/setup_swap.sh`, `NAVERA_SWAP_MB`) when less than `NAVERA_MIN_SWAP_MB` (4 GB) of swap
+on disk is active — JetPack's zram is in RAM and does not count — and every pipeline start,
+`check_boot.sh` and `check_box.py` warn without it. The units set who the kernel's OOM killer
+takes first: the web page and the discovery (`OOMScoreAdjust=500`, capped by `MemoryHigh` /
+`MemoryMax`, beyond which they go to swap), then the vision pipelines (-300), last the output
+chain (estimator, output, GPS, IMU, RTC, vehicle link: -900; systemd-oomd never picks them).
+The journal is capped at 1 GB with 2 GB kept free (`/etc/systemd/journald.conf.d/navera.conf`).
+
 A restart in flight does not start from scratch: the ground altitude and day vision's last
 position are kept on disk (§9).
 

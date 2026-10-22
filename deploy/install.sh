@@ -8,13 +8,15 @@
 #   sudo deploy/install.sh --no-pip --no-apt    # code + build + units only (fast update)
 #   sudo deploy/install.sh --start              # also start them now
 #   sudo deploy/install.sh --headless           # boot without the desktop (multi-user.target)
+#   sudo deploy/install.sh --no-swap            # do not make the swap file (deploy/setup_swap.sh)
 #   deploy/install.sh --root /tmp/stage         # staged install into another root, no sudo:
 #                                               # (or DESTDIR=/tmp/stage) for checks, see below
 #
 # It performs deploy/README.md §3 (system packages, the `navera` service user and its
 # groups, the code in /home/navera/isaac_ros_common, Python packages for that user, the
-# build, /var/lib/navera, /etc/navera/navera.env if absent, sudoers, wrappers and units,
-# enabling). Safe to run again: an existing /etc/navera/navera.env is never overwritten;
+# build, /var/lib/navera, /etc/navera/navera.env if absent, a swap file on disk when there
+# is not enough (deploy/setup_swap.sh, F5), the journal size cap, sudoers, wrappers and
+# units, enabling). Safe to run again: an existing /etc/navera/navera.env is never overwritten;
 # the code is synchronised from this repository without git data, other worktrees, build
 # products, caches or test recordings (CODE_EXCLUDES below; B18 — checked by verify_units.py).
 # After it: edit /etc/navera/navera.env, calibrate the camera, then
@@ -33,7 +35,7 @@ set -euo pipefail
 SRC="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
 WS=/home/navera/isaac_ros_common
 UNITS="navera-discover navera-estimator navera-gps navera-imu navera-rtc navera-vehicle-link navera-pipeline-day navera-output navera-web"
-DRY=0; PIP=1; APT=1; START=0; HEADLESS=0; BUILD=1
+DRY=0; PIP=1; APT=1; START=0; HEADLESS=0; BUILD=1; SWAP=1
 R="${DESTDIR:-}"
 # never copied to the box (both modes): git data and the other worktrees of a working repository
 # (.claude/worktrees), build products (rebuilt there), Python / test caches, test recordings.
@@ -51,6 +53,7 @@ while [ $# -gt 0 ]; do
     --headless) HEADLESS=1 ;;
     --units) shift; UNITS="$1" ;;
     --no-build) BUILD=0 ;;
+    --no-swap) SWAP=0 ;;
     --root) shift; R="$1" ;;
     -h|--help) sed -n '2,/^set -euo/p' "$0" | sed '$d' | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "unknown option: $1 (--help)" >&2; exit 2 ;;
@@ -107,6 +110,16 @@ fi
 say "code: $SRC -> $R$WS"
 run install -d "${OWN[@]}" "$R$WS"
 run rsync -a --delete "${CODE_EXCLUDES[@]}" "$SRC/" "$R$WS/"
+# rsync --delete never removes excluded paths: junk shipped by an install older than B18 (git
+# data, worktrees, caches, recordings) is removed here; build/, install/, log/ (built on the
+# box) are kept
+if [ -d "$R$WS" ]; then
+  run rm -rf "$R$WS/.git" "$R$WS/.claude"
+  while IFS= read -r -d '' junk; do
+    run rm -rf "$junk"
+  done < <(find "$R$WS" -mindepth 1 \( -path "$R$WS/build" -o -path "$R$WS/install" -o -path "$R$WS/log" \) -prune \
+             -o \( -name .pytest_cache -o -name 'rosbag2_*' -o -name '*.db3' -o -name '*.mcap' \) -print0 -prune)
+fi
 if [ -n "$R" ]; then skip "chown -R navera:navera $WS"; else run chown -R navera:navera "$WS"; fi
 
 if [ "$PIP" = 1 ]; then
@@ -149,6 +162,26 @@ else
   run install -m 0640 "${OWN_ENV[@]}" "$SRC/deploy/navera.env.example" "$R/etc/navera/navera.env"
   NEW_ENV=1
 fi
+
+say "swap file on disk (F5: the day pipeline was OOM-killed without swap on the 8 GB Jetson)"
+# sizes from navera.env (NAVERA_SWAP_MB, NAVERA_MIN_SWAP_MB) when set there. Staged: only when
+# NAVERA_SWAP_MB is given explicitly (a staged check must not write an 8 GB file)
+SWAP_ARGS=(); [ "$DRY" = 1 ] && SWAP_ARGS+=(--dry-run); [ -n "$R" ] && SWAP_ARGS+=(--root "$R")
+if [ "$SWAP" = 0 ]; then
+  echo "  skipped (--no-swap): check it with deploy/setup_swap.sh --check"
+elif [ -n "$R" ] && [ -z "${NAVERA_SWAP_MB:-}" ]; then
+  skip "deploy/setup_swap.sh (swap file + /etc/fstab line; NAVERA_SWAP_MB=<MB> to stage it)"
+else
+  ( set -a; [ -f "$R/etc/navera/navera.env" ] && . "$R/etc/navera/navera.env"; set +a
+    "$SRC/deploy/setup_swap.sh" "${SWAP_ARGS[@]}" ) \
+    || echo "  WARNING: no swap file made: the day pipeline may be OOM-killed (deploy/setup_swap.sh --help)"
+fi
+
+say "journal size cap (hours-long flights, restart loops: the log never fills the disk)"
+run install -d -m 0755 "$R/etc/systemd/journald.conf.d"
+run install -m 0644 "$SRC/deploy/journald/navera.conf" "$R/etc/systemd/journald.conf.d/navera.conf"
+if [ -n "$R" ]; then skip "systemctl restart systemd-journald"; else run systemctl restart systemd-journald; fi
+
 [ -n "$R" ] && run install -d -m 0750 "$R/etc/sudoers.d"
 run install -m 0440 "$SRC/deploy/sudoers/navera-web" "$R/etc/sudoers.d/navera-web"
 if [ -n "$R" ]; then

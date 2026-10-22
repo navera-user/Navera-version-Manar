@@ -32,6 +32,11 @@ moved (navera_common.health.FrozenFrameDetector) is published marked unusable ("
 image frozen: ..."), so no localizer turns it into a position; <ns>/camera_health (JSON)
 reports it, and a camera input frozen longer than `frozen_restart_s` exits so the service
 restarts and reopens the device. The first new picture ends the freeze.
+
+Camera stall: a camera input (usb / csi / gst) that delivers no frame for
+`camera_stall_restart_s` (unplugged, USB reset, stuck driver, stalled stream, or a grab that
+never returns) is reported on <ns>/camera_health ("stalled") and the node exits so the service
+restarts and reopens it (camera_pkg.grab_watchdog).
 """
 import json
 import math
@@ -48,6 +53,7 @@ from navera_common.camera_model import CameraModel, parse_crop
 from navera_common.frame_builder import FrameBuilder
 from navera_common.geo import haversine_m
 from navera_common.health import FrozenFrameDetector
+from camera_pkg.grab_watchdog import GrabWatchdog
 from navera_common.lifecycle import die_with_parent
 from navera_common.params import declare_float
 from navera_common.sensor_history import History, slerp
@@ -122,6 +128,8 @@ class LiveCamera(Node):
         declare_float(self, "frozen_motion_m", 5.0)
         # a camera input (not a ROS topic) frozen this long exits: systemd restarts and reopens it
         declare_float(self, "frozen_restart_s", 20.0)
+        # a camera input that gives no frame this long exits: systemd restarts and reopens it
+        declare_float(self, "camera_stall_restart_s", 10.0)
         self.declare_parameter("frame_id", "camera_link")
         p = lambda n: self.get_parameter(n).value               # noqa: E731
 
@@ -162,6 +170,7 @@ class LiveCamera(Node):
         self.freeze = FrozenFrameDetector(float(p("frozen_still_diff")))
         self.frozen_motion_deg, self.frozen_motion_m = float(p("frozen_motion_deg")), float(p("frozen_motion_m"))
         self.frozen_restart_s = float(p("frozen_restart_s"))
+        self.watchdog = GrabWatchdog(float(p("camera_stall_restart_s")))
         self._prev_t = None                                     # exposure of the previous frame sent
         # sensors in their own callback group: converting images never delays them
         sensors = MutuallyExclusiveCallbackGroup()
@@ -307,6 +316,7 @@ class LiveCamera(Node):
             self.context.try_shutdown()
             return
         fails = 0
+        self.watchdog.start(time.monotonic())
         while not self._stop.is_set():
             ok = cap.grab()                                     # paced by the camera itself
             t = self.get_clock().now().nanoseconds * 1e-9 - self.latency_s
@@ -315,16 +325,18 @@ class LiveCamera(Node):
                 ok, frame = cap.retrieve()                      # decode only the frame to send
             elif ok:
                 fails = 0
+                self.watchdog.ok(time.monotonic())
                 continue
             if not ok or frame is None:
                 fails += 1
-                if fails > 50:
-                    self.get_logger().fatal("the camera stopped sending frames — exiting so the service restarts")
-                    self.context.try_shutdown()
+                stalled = self.watchdog.stalled(time.monotonic())
+                if fails > 50 or stalled:
+                    self._camera_stalled(stalled or f"{fails} failed grabs")
                     return
                 time.sleep(0.05)
                 continue
             fails = 0
+            self.watchdog.ok(time.monotonic())
             if frame.shape[1] != self.w or frame.shape[0] != self.h:
                 self.get_logger().error(f"camera gives {frame.shape[1]}x{frame.shape[0]}, set to {self.w}x{self.h}",
                                         throttle_duration_sec=10.0)
@@ -372,6 +384,11 @@ class LiveCamera(Node):
             with self._lock:
                 item, self._latest = self._latest, None
             if item is None:
+                # a grab that never returns is seen here (the grab thread cannot judge itself)
+                stalled = self.watchdog.stalled(time.monotonic()) if self.input != "ros" else None
+                if stalled:
+                    self._camera_stalled(stalled)
+                    break
                 time.sleep(0.02)
                 continue
             requested = False
@@ -445,6 +462,17 @@ class LiveCamera(Node):
             self._stop.set()
             self.context.try_shutdown()
         return why
+
+    def _camera_stalled(self, why):
+        """Report a stalled camera input and exit: systemd restarts the service, which reopens it."""
+        if self._stop.is_set():
+            return
+        self._stop.set()
+        self.pub_health.publish(String(data=json.dumps({
+            "frozen": False, "stalled": True, "reason": why, "input": self.input})))
+        self.get_logger().fatal(f"the camera stopped sending frames ({why}) — exiting so the service restarts "
+                                "and reopens it")
+        self.context.try_shutdown()
 
     def _rate_dps(self, t):
         """The vehicle's rotation rate around the exposure (deg/s, from the attitude 0.2 s

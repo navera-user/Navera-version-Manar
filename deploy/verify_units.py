@@ -20,6 +20,9 @@ Changes nothing outside a temporary directory. For every deploy/systemd/navera-*
     enabled          (--root) the units --units names are enabled in the staged root
     conflicts        the day and night pipelines conflict with each other (one GPU pipeline)
     sudoers          visudo -c -f deploy/sudoers/navera-web; every unit it may restart exists
+    memory           (F5 / H-11) every unit has a memory class: critical units OOMScoreAdjust <= -500
+                     and never picked by systemd-oomd, vision pipelines below 0 and above the
+                     critical ones, non-critical units above 0 with MemoryHigh / MemoryMax
     code excludes    deploy/install.sh never copies git data, other worktrees, build products or
                      test recordings (B18); --root: none of them in the staged workspace
 
@@ -50,6 +53,12 @@ NO_SHIP_TOP = ('.git', '.claude')                       # at the workspace root
 NO_SHIP_DIRS = ('.pytest_cache',)                       # anywhere
 NO_SHIP_GLOBS = ('rosbag2_*', '*.db3', '*.mcap')        # anywhere
 BUILT_ON_BOX = ('build', 'install', 'log')              # made by colcon in the workspace itself
+
+# memory classes (F5 / H-11): which process the OOM killer may take first
+CRITICAL_UNITS = ('navera-estimator', 'navera-output', 'navera-gps', 'navera-imu', 'navera-rtc',
+                  'navera-vehicle-link')                 # small; the output to the vehicle needs them
+PIPELINE_UNITS = ('navera-pipeline-day', 'navera-pipeline-night', 'navera-pipeline-cn')   # big, needed
+NONCRITICAL_UNITS = ('navera-web', 'navera-discover')     # not needed to navigate
 
 results = []
 
@@ -217,6 +226,39 @@ def check_code_excludes(root):
                ', '.join(os.path.relpath(b, root + WS) for b in bad[:5]) + (' ...' if len(bad) > 5 else ''))
 
 
+def _int(vals, default=0):
+    try:
+        return int(vals[-1]) if vals else default
+    except ValueError:
+        return default
+
+
+def memory_findings(units):
+    """(level, unit, what, detail) of the memory class checks (F5 / H-11) over {file name: parsed unit}."""
+    out = []
+    for name, u in sorted(units.items()):
+        base = name[:-len('.service')]
+        adj = _int(values(u, 'Service', 'OOMScoreAdjust'))
+        pref = values(u, 'Service', 'ManagedOOMPreference')
+        high, mx = values(u, 'Service', 'MemoryHigh'), values(u, 'Service', 'MemoryMax')
+        if base in CRITICAL_UNITS:
+            ok = adj <= -500 and pref == ['omit'] and not mx
+            out.append(('PASS' if ok else 'FAIL', name, 'critical: OOMScoreAdjust <= -500, oomd omit, no MemoryMax',
+                        f'OOMScoreAdjust={adj} ManagedOOMPreference={",".join(pref) or "-"}'))
+        elif base in PIPELINE_UNITS:
+            ok = -500 < adj < 0 and pref == ['avoid'] and not mx
+            out.append(('PASS' if ok else 'FAIL', name, 'pipeline: -500 < OOMScoreAdjust < 0, oomd avoid, no MemoryMax',
+                        f'OOMScoreAdjust={adj} ManagedOOMPreference={",".join(pref) or "-"}'))
+        elif base in NONCRITICAL_UNITS:
+            ok = adj > 0 and bool(high) and bool(mx)
+            out.append(('PASS' if ok else 'FAIL', name, 'non-critical: OOMScoreAdjust > 0, MemoryHigh and MemoryMax',
+                        f'OOMScoreAdjust={adj} MemoryHigh={",".join(high) or "-"} MemoryMax={",".join(mx) or "-"}'))
+        else:
+            out.append(('FAIL', name, 'memory class',
+                        'not in CRITICAL / PIPELINE / NONCRITICAL_UNITS of verify_units.py'))
+    return out
+
+
 def main(argv=None):
     """Run every check; return 0 when none FAILs."""
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
@@ -285,6 +327,9 @@ def main(argv=None):
         ok = ('navera-pipeline-night.service' in ' '.join(values(day, 'Unit', 'Conflicts'))
               and 'navera-pipeline-day.service' in ' '.join(values(night, 'Unit', 'Conflicts')))
         report('PASS' if ok else 'FAIL', 'pipelines', 'day and night conflict (one GPU pipeline)')
+
+    for f in memory_findings(by):
+        report(*f)
 
     sud = os.path.join(root + '/etc/sudoers.d' if root else os.path.join(REPO, 'deploy', 'sudoers'), 'navera-web')
     if os.path.isfile(sud):

@@ -423,13 +423,22 @@ requirements:
   text: 'One vision pipeline at a time shall fit the 8 GB Jetson with the rest of the stack; measured: learned day matcher RSS 3.7 GB at 1500 m (was 4.5–5.2 GB); a 30 min day run reached 3.5 GB and was OOM-killed without swap, completed with a 16 GB swap file (F5).'
   code:
     - deploy/systemd/navera-pipeline-day.service::Conflicts
+    - deploy/setup_swap.sh
+    - deploy/systemd/navera_boot_lib.sh::navera_check_swap
+    - deploy/verify_units.py::memory_findings
+    - navera_tools/check_box.py::swap_verdict
   tests:
     - deploy/verify_units.py
+  match:
+    - 'test_swap\.py::'
+    - 'test_memory_protection\.py::'
   evidence:
     - {level: BENCH, value: 'D14: learned matcher 3.7 GB RSS at 1500 m', ref: 'problems doc D14'}
     - {level: BENCH, against: true, value: 'F5: OOM kill at 4.6 min without swap (completed with a 16 GB swap file)', ref: 'problems doc F5'}
-  status: open
-  note: 'swap not installed by deploy/install.sh; no OOM protection (OOMScoreAdjust) in the units'
+    - {level: BENCH, value: '2026-10-22 on the Orin Nano: the product day chain (DaySubscriber + EstimatorNode, learned matcher) replaying the real MARS-LVIG AMvalley03 flight (430 s, 104 m above ground, z17 map) peaked at 2.48 GB RSS (system +1.5 GB); the day_perf mission bench (city + coast at ~520 m, bench imagery in the same process) at 5.0 GB RSS (system +4.1 GB, swap +0.26 GB)', ref: 'VALIDATION_STATUS.md, Memory of the day pipeline'}
+    - {level: UT, value: 'install.sh makes an 8 GB /swapfile + fstab line when less than 4 GB of disk swap is active (zram does not count; staged and dry-run tested), pipelines / check_boot.sh / check_box.py warn without it; units: output chain OOMScoreAdjust -900 + oomd omit, pipelines -300, web / discover +500 with MemoryHigh / MemoryMax (verify_units)', ref: 'deploy/test/test_swap.py, deploy/test/test_memory_protection.py'}
+  status: partial
+  note: 'swap creation, OOM scores and memory caps not yet run on a box as root (commands in docs/certification/DEPLOYMENT_VALIDATION.md); peak grows with height (bigger search area): 3.5–5 GB with the learned matcher, so the 8 GB box needs the swap file'
 
 - id: NAV-PERF-07
   category: PERF
@@ -659,12 +668,17 @@ requirements:
   text: 'When the camera cannot be opened or stops delivering frames (> 50 failed grabs), the live camera node shall exit so systemd restarts the pipeline; while no frame is localized the vision source goes stale and the arbiter stops using it.'
   code:
     - camera_pkg/camera_pkg/nodes/live_camera.py::LiveCamera._grab_loop
+    - camera_pkg/camera_pkg/nodes/live_camera.py::LiveCamera._camera_stalled
+    - camera_pkg/camera_pkg/grab_watchdog.py::GrabWatchdog
     - navera_estimator/navera_estimator/nodes/estimator_node.py::EstimatorNode._eval_source
   match:
     - 'test_live_camera\.py'
+    - 'test_live_camera_stall\.py'
+    - 'test_grab_watchdog\.py::'
     - 'test_gst_capture\.py::test_a_bad_pipeline'
   evidence:
     - {level: SIM, value: 'GPS jammed + camera failed → NO FIX → autopilot failsafe (LAND / HOLD)', ref: 'VALIDATION_STATUS.md, Autopilot in the loop'}
+    - {level: UT, value: 'a GStreamer camera that stops sending: camera_health "stalled" and the node exits 2.8 s after its last frames with camera_stall_restart_s 3 s (before: > 50 failed grabs = 100 s here, minutes with V4L2 10 s grab timeouts, never for a blocking grab)', ref: 'navera_tools/tests/test_live_camera_stall.py'}
   status: verified-SIM
 
 - id: NAV-SAF-15
@@ -739,7 +753,9 @@ requirements:
   match:
     - 'test_health\.py::test_(a_camera_delivering|an_identical_picture|a_frame_whose_time|a_nearly_identical)'
     - 'test_cn_gates\.py::test_a_frozen_star_picture'
+    - 'test_frozen_replay\.py::'
   evidence:
+    - {level: PUB, value: 'real flight MARS-LVIG AMvalley03 at 1 Hz (513 frames, 52 with the vehicle still on the ground / in the hover): 0 false freezes; smallest change between real frames while moving 16.2 grey levels (threshold 0.5); an injected driver freeze caught on every frame; a stream re-encoding the stuck picture caught from its 2nd frame (one JPEG re-encode changes it 0.9-3.6 grey levels: the 1st, ~1 s old, passes)', ref: 'navera_common/test/test_frozen_replay.py'}
     - {level: UT, value: 'live_camera on a ROS camera: frozen pictures and an old-stamp frame published unusable with the reason, camera_health frozen, recovery on the first new picture (problems log D24, hazard H-01b)'}
   status: verified-UT
   note: 'not yet seen on a real stuck driver / RTSP stall; the localizers rely on the frame_meta usable flag (day and night already honour it)'
@@ -937,6 +953,7 @@ requirements:
     - navera_estimator/navera_estimator/nodes/estimator_node.py::EstimatorNode._measured_at
   match:
     - 'test_estimator\.py::<script>'
+    - 'test_estimator_rules\.py::test_(node_freshness_defaults_are_the_deployed_ones|a_day_fix_stays_usable_5_s)'
   evidence:
     - {level: SIM, value: 'day window 3 s → 5 s (e1d0674): under load NAVERA alternated FIX / NO_FIX on 20–60 % of samples and the autopilot landed in a 6.7–9.2 s gap', ref: 'VALIDATION_STATUS.md, Vision positions carried to the present'}
     - {level: UT, value: 'C4 resolved: the node default was 3.0 while the deployed yaml and the docs said 5 s — default now 5.0, a test keeps the node defaults equal to the yaml'}
@@ -1008,13 +1025,32 @@ requirements:
   text: 'At every unit start, ROS log folders older than 7 days shall be pruned, then the oldest until the log folder is under NAVERA_LOG_MAX_MB (1024 MB), and a free space below NAVERA_MIN_FREE_MB (2048 MB) on its disk shall be warned without stopping the unit; recordings go to the data disk.'
   code:
     - deploy/systemd/navera_boot_lib.sh::navera_prune_logs
+    - deploy/journald/navera.conf
   match:
     - 'test_boot_logs\.py::'
+    - 'test_swap\.py::test_the_staged_install_makes_the_swap_only_when_asked_and_caps_the_journal'
   evidence:
     - {level: A, value: 'DEP-13 (252fa15)'}
     - {level: UT, value: '9-day-old folder pruned, 1-day-old kept; 10 restarts × 0.4 MB with a 2 MB cap → the newest 5 kept; low free space warned, exit 0'}
+    - {level: A, value: 'within a run the ROS log files grow ~1.5 MB/h for the day node (0.4 kB per frame at 1 frame/s, measured on 29 385 simulator frames), a few MB/h in all; the journal (units stdout) is capped by install.sh: SystemMaxUse 1 GB, SystemKeepFree 2 GB, 64 MB files, rate limit (deploy/journald/navera.conf)'}
   status: verified-UT
-  note: 'journald size (SystemMaxUse) not configured; free space not shown on the operator view / check_box'
+  note: 'the current run''s ROS log files are pruned at the next start only (~15 MB for a 10 h flight); free space shown by check_box, not on the operator view'
+
+- id: NAV-DEP-05
+  category: DEP
+  title: 'Hours-long operation without growing state'
+  text: 'Over a flight of hours (with or without GPS) no runtime state shall grow without bound: every history, queue and per-message table of the nodes is capped by size or time, the web service keeps at most MAX_PLANS (20) route plans and forgets ended lock-outs and old wrong-code addresses.'
+  code:
+    - simulation_web/simulation_web/mission_prep.py::AreaJobs.plan
+    - simulation_web/simulation_web/web_common.py::_CodeGuard._forget_old
+  match:
+    - 'test_mission_prep\.py::test_route_plans_kept_are_bounded'
+    - 'test_web_common\.py::test_the_code_guard_forgets_old_addresses'
+  evidence:
+    - {level: A, value: '2026-10-22 audit of every runtime node (estimator, camera, day / night / celestial, output, GPS / IMU / RTC, web): histories are deque(maxlen) or pruned by time, pairing tables trimmed, per-source tables popped before insert; no node writes its own growing file; only the web plans and wrong-code tables grew (fixed here)'}
+    - {level: UT, value: '35 plans → the newest 20 kept; 500 addresses × 5 wrong codes → nothing kept once the lock-outs and the window have passed'}
+  status: verified-UT
+  note: 'no multi-hour soak run on the box yet (memory measured over 430 s of real flight replay: NAV-PERF-06)'
 
 - id: NAV-DEP-04
   category: DEP
@@ -1032,5 +1068,6 @@ requirements:
   evidence:
     - {level: UT, value: 'staged install (--root) + systemd-analyze verify + visudo -c -f: PASS; real-mode dry-run output byte-identical to before the change', ref: 'docs/certification/DEPLOYMENT_VALIDATION.md'}
     - {level: UT, value: 'B18: a staged install from a working repository with .git, .claude/worktrees, build/, caches and rosbag / mcap recordings ships the code and none of them; real-mode dry-run shows the same excludes', ref: 'deploy/test/test_install_excludes.py'}
+    - {level: UT, value: '2026-10-22: an update over an install older than B18 removes the .git, .claude worktrees, caches and recordings it left (rsync --delete skips excluded paths), keeps build/ install/ log/ (found by stage_check on a stage reused from 2026-10-21)', ref: 'deploy/test/test_install_excludes.py'}
   status: verified-UT
-  note: 'R-8 — the sudoers restart path to verify on an installed box; excluded paths already on a box from an older install are left there (rsync --delete skips excluded paths)'
+  note: 'R-8 — the sudoers restart path to verify on an installed box'

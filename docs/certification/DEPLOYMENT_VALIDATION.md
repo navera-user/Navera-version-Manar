@@ -66,9 +66,16 @@ python3 /home/navera/isaac_ros_common/deploy/verify_units.py --root /   # instal
 
 # data disk and swap (H-11 / F5: a day pipeline without swap was OOM-killed after 4.6 min)
 findmnt /data && sudo -u navera -H test -r "$(sudo grep -oP '^NAVERA_MBTILES=\K.*' /etc/navera/navera.env)" && echo map readable
-swapon --show                                  # expect a swap file; else, for example:
-#   sudo fallocate -l 16G /data/swapfile && sudo chmod 600 /data/swapfile && sudo mkswap /data/swapfile \
-#   && sudo swapon /data/swapfile && echo '/data/swapfile none swap sw,nofail 0 0' | sudo tee -a /etc/fstab
+# install.sh made /swapfile (8 GB) if less than 4 GB of disk swap was active (deploy/setup_swap.sh;
+# NAVERA_SWAP_MB / NAVERA_SWAP_FILE in navera.env to change it; zram does not count)
+/home/navera/isaac_ros_common/deploy/setup_swap.sh --check   # "swap: ... OK"; else: sudo .../setup_swap.sh
+swapon --show; grep swap /etc/fstab            # the file, active, and in fstab (sw,nofail)
+# memory protection of the units (F5 / H-11): the output chain last for the OOM killer, web / discovery first
+for u in navera-estimator navera-output navera-pipeline-day navera-web; do
+  printf '%-22s %s\n' $u "$(systemctl show -p OOMScoreAdjust -p MemoryHigh -p MemoryMax $u | tr '\n' ' ')"; done
+for p in $(systemctl show -p MainPID --value navera-estimator navera-web); do cat /proc/$p/oom_score_adj; done  # -900, 500
+cat /sys/fs/cgroup/system.slice/navera-web.service/memory.max   # 2147483648
+ls /etc/systemd/journald.conf.d/navera.conf && journalctl --disk-usage   # journal capped at 1 GB
 
 # clock (F27): the box needs a battery-backed RTC
 sudo i2cdetect -y 1 | grep '^60:'               # "68" (or "UU" if a kernel driver holds it) = DS3231 present;
@@ -109,3 +116,33 @@ power cut, `check_boot.py` reports `reboot check: PASS` (every enabled unit acti
 node in the graph), the clock line shows `valid: true` and `lost_power: false`, each killed node
 is back with `NRestarts` + 1, and the sudoers restart works. Attach the saved reports to the
 release record and add the result to docs/VALIDATION_STATUS.md.
+
+## 3. Root steps left by the 2026-10-22 hardening (swap, OOM order, journal cap)
+
+Everything below was tested without root (staged install, dry-run, unit checks, user units);
+these commands are what only an administrator can run on the box. From the release checkout:
+
+```bash
+# all at once: the normal update (code, units, swap file if missing, journal cap)
+sudo deploy/install.sh --no-apt --no-pip
+
+# or one by one
+sudo deploy/setup_swap.sh                      # /swapfile 8 GB + fstab line if < 4 GB disk swap active
+sudo install -D -m 0644 deploy/journald/navera.conf /etc/systemd/journald.conf.d/navera.conf
+sudo systemctl restart systemd-journald
+sudo install -m 0644 deploy/systemd/navera-*.service /etc/systemd/system/
+sudo install -o navera -g navera -m 0755 deploy/systemd/navera_boot_*.sh /home/navera/
+sudo systemctl daemon-reload
+sudo systemctl restart navera-estimator navera-gps navera-imu navera-rtc navera-vehicle-link \
+    navera-pipeline-day navera-output navera-web
+
+# check (no root)
+deploy/setup_swap.sh --check                   # swap: ... OK
+python3 deploy/verify_units.py --root /        # memory classes PASS
+for u in navera-estimator navera-output navera-pipeline-day navera-web; do
+  p=$(systemctl show -p MainPID --value $u); echo "$u oom_score_adj=$(cat /proc/$p/oom_score_adj)"; done
+                                               # -900 -900 -300 500
+cat /sys/fs/cgroup/system.slice/navera-web.service/memory.max          # 2147483648
+journalctl -u navera-pipeline-day -b | grep -i swap                    # no "WARNING: only ... swap"
+sudo reboot                                    # then deploy/check_boot.sh: the swap line says OK
+```

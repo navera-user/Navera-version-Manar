@@ -44,6 +44,7 @@ def _named_sources():
 
 SETTINGS_FILE = os.environ.get("NAVERA_SETTINGS_FILE", "/var/lib/navera/settings.env")
 BUFFER_M = 1000.0
+MAX_PLANS = 20                    # route plans kept for Generate (the newest; each holds a route + profile)
 DISK_MARGIN_MB = 2048.0
 TILE_KB, DESC_KB = 20.0, 3.0
 VEHICLE_TYPES = ("drone", "plane", "boat", "robot", "other")
@@ -279,7 +280,10 @@ class AreaJobs:
                     active=self.active_dir() == self.path(aid),
                     terrain=self._terrain(aid) or self._quick_terrain(legs))
         with self.lock:
+            self.plans.pop(aid, None)
             self.plans[aid] = plan
+            while len(self.plans) > MAX_PLANS:              # the oldest plans go: never grows
+                self.plans.pop(next(iter(self.plans)))
         return plan
 
     def _quick_terrain(self, legs):
