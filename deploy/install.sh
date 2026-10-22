@@ -34,7 +34,7 @@ set -euo pipefail
 
 SRC="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
 WS=/home/navera/isaac_ros_common
-UNITS="navera-discover navera-estimator navera-gps navera-imu navera-rtc navera-vehicle-link navera-pipeline-day navera-output navera-web"
+UNITS="navera-discover navera-estimator navera-gps navera-imu navera-insta360 navera-rtc navera-vehicle-link navera-pipeline-day navera-output navera-web"
 DRY=0; PIP=1; APT=1; START=0; HEADLESS=0; BUILD=1; SWAP=1
 R="${DESTDIR:-}"
 # never copied to the box (both modes): git data and the other worktrees of a working repository
@@ -89,7 +89,7 @@ if [ "$APT" = 1 ]; then
   say "system packages"
   run apt-get update -q
   run apt-get install -y -q git rsync python3-pip python3-colcon-common-extensions python3-yaml \
-      python3-gi gir1.2-gstreamer-1.0 ros-humble-cv-bridge ros-humble-rosbag2-py
+      python3-gi gir1.2-gstreamer-1.0 ros-humble-cv-bridge ros-humble-rosbag2-py libusb-1.0-0
   if echo "$UNITS" | grep -q navera-pipeline-cn; then
     run apt-get install -y -q astrometry.net astrometry-data-tycho2-10-19
   fi
@@ -131,7 +131,7 @@ pip3 install -q --user --no-deps --index-url https://pypi.jetson-ai-lab.io/jp6/c
 pip3 install -q --user -c ~/navera-constraints.txt \
     "numpy<2" "scipy>=1.11,<1.14" timm kornia safetensors einops huggingface_hub \
     scikit-learn pandas "astropy<7" opencv-python==4.11.0.86 \
-    pyserial pynmea2 pymavlink pygeomag==1.1.0 \
+    pyserial pynmea2 pymavlink pygeomag==1.1.0 pyusb==1.2.1 av==12.3.0 \
     Jetson.GPIO adafruit-blinka adafruit-circuitpython-bno08x adafruit-circuitpython-ds3231'
 fi
 
@@ -191,6 +191,16 @@ if [ -n "$R" ]; then
   fi
 elif [ "$DRY" = 0 ] && ! visudo -c -q; then
   rm -f /etc/sudoers.d/navera-web; echo "sudoers check failed: navera-web removed" >&2; exit 1
+fi
+
+say "udev rule: the Insta360 One R over USB for the service user (the Insta360 kit, navera-insta360)"
+run install -d -m 0755 "$R/etc/udev/rules.d"
+run install -m 0644 "$SRC/deploy/udev/99-insta360.rules" "$R/etc/udev/rules.d/99-insta360.rules"
+if [ -n "$R" ]; then
+  skip "udevadm control --reload-rules; udevadm trigger --subsystem-match=usb"
+else
+  run udevadm control --reload-rules
+  run udevadm trigger --subsystem-match=usb --attr-match=idVendor=2e1a || true
 fi
 
 say "wrappers and units"

@@ -43,7 +43,7 @@ HOME = '/home/navera'
 # set by systemd / the wrappers themselves, or deliberately left out of the example
 INTERNAL_VARS = {'NAVERA_WS', 'NAVERA_BOX_IMU', 'NAVERA_BOX_IMU_BUS', 'NAVERA_BOX_IMU_ADDR',
                  'NAVERA_BOX_RTC', 'NAVERA_BOX_RTC_BUS'}   # written by navera-discover (discovered.env)
-DEFAULT_UNITS = ('navera-discover navera-estimator navera-gps navera-imu navera-rtc navera-vehicle-link '
+DEFAULT_UNITS = ('navera-discover navera-estimator navera-gps navera-imu navera-insta360 navera-rtc navera-vehicle-link '
                  'navera-pipeline-day navera-output navera-web')
 
 # install.sh's CODE_EXCLUDES must hold these (B18); a staged workspace must not contain NO_SHIP
@@ -57,7 +57,8 @@ BUILT_ON_BOX = ('build', 'install', 'log')              # made by colcon in the 
 # memory classes (F5 / H-11): which process the OOM killer may take first
 CRITICAL_UNITS = ('navera-estimator', 'navera-output', 'navera-gps', 'navera-imu', 'navera-rtc',
                   'navera-vehicle-link')                 # small; the output to the vehicle needs them
-PIPELINE_UNITS = ('navera-pipeline-day', 'navera-pipeline-night', 'navera-pipeline-cn')   # big, needed
+PIPELINE_UNITS = ('navera-pipeline-day', 'navera-pipeline-night', 'navera-pipeline-cn',
+                  'navera-insta360')                     # big, needed
 NONCRITICAL_UNITS = ('navera-web', 'navera-discover')     # not needed to navigate
 
 results = []

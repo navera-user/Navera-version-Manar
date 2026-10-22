@@ -69,7 +69,7 @@ if ss -ltn 2>/dev/null | grep -q ":$PORT "; then echo "port $PORT is in use: set
 systemctl --user is-system-running >/dev/null 2>&1 || systemctl --user status >/dev/null 2>&1 \
   || { echo "no user systemd instance (systemctl --user): cannot stage" >&2; exit 2; }
 
-UNITS="navera-estimator navera-gps navera-imu navera-rtc navera-vehicle-link navera-output navera-web"
+UNITS="navera-estimator navera-gps navera-imu navera-insta360 navera-rtc navera-vehicle-link navera-output navera-web"
 [ "$DAY" = 1 ] && [ -n "${NAVERA_MBTILES:-}" ] && [ -n "${DAY_DATASET_DIR:-}" ] && UNITS="$UNITS navera-pipeline-day"
 case " $UNITS " in *" navera-pipeline-day "*) ;; *) echo "(day pipeline not staged: --no-day, or NAVERA_MBTILES / DAY_DATASET_DIR unset)";; esac
 
