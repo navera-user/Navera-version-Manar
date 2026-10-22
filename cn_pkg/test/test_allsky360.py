@@ -127,7 +127,8 @@ def test_tilt_calibration_removes_a_mount_tilt():
 
 
 def test_fit_tilt_is_the_field_servers_fit():
-    """fit_tilt is what the field server applies (server._tilt_corrected): same Q, residual and floor."""
+    """fit_tilt is what the field server applies (server._tilt_corrected): same Q, residual and floor. These samples
+    are random (nothing agrees), so the plain fit is compared; the robust one refuses them (no majority)."""
     rng = np.random.default_rng(3)
     samples = []
     for _ in range(5):
@@ -135,10 +136,11 @@ def test_fit_tilt_is_the_field_servers_fit():
         z /= np.linalg.norm(z)
         up = np.array([1.0, 0.0, 0.0]) + 0.01 * rng.normal(size=3)
         samples.append((_rot(rng), up, z))
-    fit = allsky_mount.fit_tilt(samples, 0.05)
+    fit = allsky_mount.fit_tilt(samples, 0.05, robust=False)
     w = allsky_mount.fit_mount(samples)
     assert np.allclose(fit["w"], w) and np.allclose(fit["Q"], allsky_mount.rotvec(w))
     assert fit["n"] == 5 and fit["sigma_deg"] == max(fit["rms_deg"], 0.05)
+    assert not allsky_mount.fit_tilt(samples, 0.05)["ok"]
 
 
 # ── 'up' sources and gates of the locator ────────────────────────────

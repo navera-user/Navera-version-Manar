@@ -78,7 +78,9 @@ F_SCALE_SEARCH = (0.96, 1.0, 1.04)
 # 360: the lens-to-IMU mounting angle and the accelerometer's residual tilt are one fixed tilt of 'up' in the camera
 # (1 deg = ~111 km on every fix; nothing in the stars shows it). While a reference position exists (the phone here,
 # NAVERA's GPS before it is lost in the product), stopped fixes measure it; it is learned on the first
-# CAL_SAMPLES of them, then frozen, so every later corrected fix is judged on frames the fit never saw.
+# CAL_SAMPLES of them, then frozen, so every later corrected fix is judged on frames the fit never saw. The fit is
+# robust (allsky_mount.fit_tilt, D11): a sample far from the others (a 'stopped' frame taken while moving, a wrong
+# reference) is left out and does not count towards CAL_SAMPLES; a fit without a clear majority is not applied.
 CAL_MIN_SAMPLES = 4
 CAL_SAMPLES = 12
 CAL_SIGMA_FLOOR_DEG = 0.05
@@ -588,7 +590,7 @@ class Field:
     def _apply_live_params(self, want):
         by = str(want.get("_by") or "file")[:40]
         refused, active = {}, self.live_params["active"]
-        frozen = len(self.cal_samples) >= CAL_SAMPLES
+        frozen = self._cal_frozen()
         for key in list(active):                        # taken out of the file: back to the value at start
             if key not in want and key not in self._lp_defaults:
                 active.pop(key)                         # an action: nothing to undo
@@ -881,19 +883,27 @@ class Field:
         p = self.phone
         trusted = rec.get("stopped") and not rec.get("stopped_but_phone_moving")
         fresh = p.get("lat") is not None and time.time() - self.phone_recv < 4.0 and (p.get("acc") or 999) <= 30
-        if not trusted or not fresh or len(self.cal_samples) >= CAL_SAMPLES:
+        if not trusted or not fresh or self._cal_frozen():
             return
         self.cal_samples.append((R, np.asarray(up, float), rp.zenith_icrs(p["lat"], p["lon"], utc)))
         rec["cal_sample"] = len(self.cal_samples)
         if len(self.cal_samples) < CAL_MIN_SAMPLES:
             return
         from cn_pkg.allsky_mount import fit_tilt                  # shared with the flight node (cn_subscriber)
-        fit = fit_tilt(self.cal_samples, CAL_SIGMA_FLOOR_DEG)
+        fit = fit_tilt(self.cal_samples, CAL_SIGMA_FLOOR_DEG)     # robust: outlying samples left out (D11)
         w, n, rms = fit["w"], fit["n"], fit["rms_deg"]
-        self.tilt_cal = {"Q": fit["Q"], "n": n, "sigma_deg": fit["sigma_deg"]}
-        s.event("tilt_calibrated", samples=n, tilt_deg=round(math.degrees(float(np.linalg.norm(w))), 3),
+        if fit["ok"]:
+            self.tilt_cal = {"Q": fit["Q"], "n": n, "sigma_deg": fit["sigma_deg"]}
+        s.event("tilt_calibrated" if fit["ok"] else "tilt_fit_refused", samples=n, samples_total=fit["n_total"],
+                rejected=fit["rejected"], why=fit["why"], tilt_deg=round(math.degrees(float(np.linalg.norm(w))), 3),
                 rotvec_deg=[round(math.degrees(float(v)), 3) for v in w], residual_deg=round(rms, 3),
-                frozen=n >= CAL_SAMPLES)
+                residuals_deg=fit["residuals_deg"], frozen=self._cal_frozen())
+
+    def _cal_frozen(self) -> bool:
+        """The tilt calibration stops taking samples once CAL_SAMPLES of them agree with the applied fit (outliers
+        do not count, D11), or after 2 x CAL_SAMPLES samples whatever they say."""
+        agree = self.tilt_cal["n"] if self.tilt_cal else 0
+        return agree >= CAL_SAMPLES or len(self.cal_samples) >= 2 * CAL_SAMPLES
 
     def _solve(self, s, rec, jpg, att, texp, hfov):
         import base64

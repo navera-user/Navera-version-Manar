@@ -111,7 +111,9 @@ class AllSkyLocator:
             fit = self.cal.add(R, up, allsky_mount.zenith_icrs(reference[0], reference[1], utc))
             out["cal_sample"] = len(self.cal.samples)
             if fit is not None:
-                out["tilt_calibrated"] = {"samples": fit["n"], "residual_deg": round(fit["rms_deg"], 3),
+                out["tilt_calibrated"] = {"samples": fit["n"], "samples_total": fit["n_total"],
+                                          "rejected": fit["rejected"], "ok": fit["ok"], "why": fit["why"],
+                                          "residual_deg": round(fit["rms_deg"], 3),
                                           "tilt_deg": round(math.degrees(float(np.linalg.norm(fit["w"]))), 3),
                                           "frozen": self.cal.frozen}
         return out
