@@ -161,6 +161,18 @@ for i in $(seq 1 600); do
   kill -0 $pc_pid 2>/dev/null || { log "PC side ended: $("${SSH[@]}" "tail -5 ~/navera_hil_$name.out")"; exit 1; }
   sleep 3
 done
+# the box must reach the PC's camera and GPS ports over the LAN (the PC's firewall / WSL mirrored
+# networking has refused them: hil_resil1 flew 15 min with neither and never armed)
+reach=""
+for i in $(seq 1 20); do
+  reach=""
+  for port in $rtsp_port $nmea_port; do
+    timeout 2 bash -c "echo > /dev/tcp/$pc_ip/$port" 2>/dev/null || reach="$reach $port"
+  done
+  [ -z "$reach" ] && break
+  sleep 3
+done
+[ -z "$reach" ] || { log "the box cannot reach $pc_ip on TCP port(s)$reach (PC firewall / network): no flight"; exit 1; }
 log "camera stream up: starting NAVERA (staged product units, nice 0)"
 NAVERA_STAGE_DOMAIN=$DOMAIN "$repo/deploy/stage_check.sh" --stage "$STAGE" --reuse --keep --kill none --nice 0 \
   --env-extra "$res/hil.env" > "$res/stage_check.log" 2>&1
