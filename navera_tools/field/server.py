@@ -487,6 +487,7 @@ class Field:
         self.cal_samples: list = []                 # 360: (R_icrs_imu, up, true zenith) of stopped fixes with a reference
         self.tilt_cal: Optional[dict] = None        # 360: the fitted tilt of 'up' (see CAL_SAMPLES)
         self.spots: list = []
+        self._small = collections.deque(maxlen=3)   # 360: (exposure time, frame / 8) of the last frames: ground_change
         self.live_params = {"active": {}, "refused": {}, "mtime": None, "error": None}
         self._lp_defaults: dict = {}                # KEY: value at start, for a key taken out of the file
         self._lp_check_t = 0.0
@@ -831,6 +832,8 @@ class Field:
                 for k, v in st.items():
                     rejected[k] = rejected.get(k, 0) + v
         self.spots = spots
+        if not self._small or self._small[-1][0] != texp:
+            self._small.append((texp, img[::8, ::8].copy()))          # the image standstill measure (logged only)
         sky = "too bright" if level >= 80 else "clear"
         self.live = {"t": texp, "detected": len(spots), "confirmed": len(spots), "sky": sky,
                      "rejected": {k: v for k, v in rejected.items() if v}, "shift_px": 0.0, "background": round(level, 1), "noise": None}
@@ -918,6 +921,7 @@ class Field:
         st = self.camera.stopped(at_frame=True) if hasattr(self.camera, "stopped") else {"stopped": True}
         rec["stopped"] = bool(st.get("stopped"))          # moving: vehicle acceleration can tilt 'up' (not trusted)
         rec["stillness"] = {k: v for k, v in st.items() if k != "stopped"}
+        self._drive_log(rec, up)
         v = self._phone_speed_at(texp)
         if v is not None:
             # the test's referee only, never used to decide: a stopped flag while the phone's GPS says the car moves
@@ -941,6 +945,26 @@ class Field:
         self.solving, self.solving_since = True, time.time()
         rec["t_exp"] = round(texp, 3)                     # Jetson time of the exposure (the phone track is on this clock)
         threading.Thread(target=self._solve360, args=(s, rec, img, np.array(up), texp, stack), daemon=True).start()
+
+    def _drive_log(self, rec, up):
+        """What the real drive must measure (F19), on every 360 frame record: the camera IMU's vibration over the
+        exposure window, the image standstill measure (ground_change, logged only), the camera stream's health
+        (reconnects, IMU restarts) and the Jetson's load and temperature (the solve time is only meaningful on a
+        quiet Jetson). Never raises: logging must not stop a test."""
+        try:
+            if hasattr(self.camera, "imu_stats"):
+                rec["imu_vib"] = self.camera.imu_stats(at_frame=True)
+            if hasattr(self.camera, "health"):
+                rec["cam_health"] = self.camera.health()
+            rec["host"] = host_stats()
+            if up is not None and len(self._small) >= 2:
+                (t0, a), (t1, b) = self._small[-2], self._small[-1]
+                if 0.2 <= t1 - t0 <= 3.0:
+                    from cn_pkg import standstill
+                    rec["ground_change"] = standstill.ground_change(a, b, ground_mask(b.shape, up, 8), step=1)
+                    rec["ground_dt_s"] = round(t1 - t0, 2)
+        except Exception as e:
+            rec["drive_log_error"] = repr(e)[:120]
 
     def _sync_stack_ring(self):
         """The camera driver keeps the recent key frames only while stacking is on (stack.py)."""
