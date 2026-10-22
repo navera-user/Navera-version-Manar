@@ -11,6 +11,12 @@ its own: any MAVLink autopilot (ArduPilot, PX4, ...). Publishes, stamped on rece
     /navera/vehicle/gps2_satellites std_msgs/UInt32         its satellites (NavSatFix has no field)
     /navera/vehicle/gps1           sensor_msgs/NavSatFix    the vehicle's FIRST GPS (GPS_RAW_INT), only
     /navera/vehicle/gps1_satellites std_msgs/UInt32         with read_gps1 and only when NAVERA does not feed it
+    /navera/vehicle/system_time    sensor_msgs/TimeReference the autopilot's SYSTEM_TIME.time_unix_usec
+                                                            (time_ref; header.stamp = system clock at
+                                                            receipt; only once the autopilot has a time:
+                                                            ArduPilot sets it from its GPS and keeps it
+                                                            while powered) — the second trusted-time
+                                                            source of celestial (navera_common.trusted_time)
     /navera/vehicle/status         std_msgs/String (JSON)   link, autopilot, armed, message rates
 
 The live camera takes its attitude from /navera/vehicle/imu when NAVERA_SENSOR_SOURCE
@@ -47,7 +53,7 @@ from navera_common.lifecycle import die_with_parent
 from navera_common.params import declare_float
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
-from sensor_msgs.msg import Imu, NavSatFix, NavSatStatus, Range
+from sensor_msgs.msg import Imu, NavSatFix, NavSatStatus, Range, TimeReference
 from std_msgs.msg import String, UInt32
 
 from navera_output import mavlink_url
@@ -57,6 +63,7 @@ from navera_output.mavlink_in import (attitude_euler, attitude_quaternion, downw
 MSG_IDS = {"ATTITUDE": 30, "ATTITUDE_QUATERNION": 31, "GLOBAL_POSITION_INT": 33,
            "DISTANCE_SENSOR": 132, "GPS2_RAW": 124, "SYSTEM_TIME": 2, "GPS_RAW_INT": 24}
 GPS_TYPE_MAV, GPS_TYPE_NMEA = 14, 5
+MIN_UNIX_TIME_S = 1_577_836_800          # 2020-01-01: below it the autopilot has no real time (0 = unset)
 
 
 def gps1_readable(gps1_type, nmea_output: bool):
@@ -103,6 +110,20 @@ def gps_raw_navsatfix(msg, stamp, frame_id: str, warn=None):
     return f
 
 
+def system_time_reference(msg, stamp):
+    """SYSTEM_TIME -> TimeReference (time_ref = the autopilot's UTC, source "autopilot"), or None while
+    the autopilot has no real time (time_unix_usec 0 / before 2020).
+    """
+    usec = int(getattr(msg, "time_unix_usec", 0) or 0)
+    if usec < MIN_UNIX_TIME_S * 1_000_000:
+        return None
+    ref = TimeReference()
+    ref.header.stamp, ref.header.frame_id = stamp, "autopilot"
+    ref.time_ref.sec, ref.time_ref.nanosec = usec // 1_000_000, (usec % 1_000_000) * 1000
+    ref.source = "autopilot"
+    return ref
+
+
 class VehicleLink(Node):
     def __init__(self, **kwargs):
         super().__init__("vehicle_link", **kwargs)
@@ -132,6 +153,7 @@ class VehicleLink(Node):
             self.pub_gps1 = self.create_publisher(NavSatFix, "/navera/vehicle/gps1", 10)
             self.pub_gps1_sats = self.create_publisher(UInt32, "/navera/vehicle/gps1_satellites", 10)
         self.pub_status = self.create_publisher(String, "/navera/vehicle/status", 10)
+        self.pub_time = self.create_publisher(TimeReference, "/navera/vehicle/system_time", 10)
         self.counts, self.last_hb, self.autopilot = {}, 0.0, None
         self.armed = None                  # from the autopilot heartbeat (None = unknown)
         self.q_last, self.q_t = None, 0.0
@@ -305,6 +327,10 @@ class VehicleLink(Node):
                 if 0 < sats < 255:                          # 255 = unknown (MAVLink)
                     self.pub_gps2_sats.publish(UInt32(data=int(sats)))
                 self.pub_gps2.publish(f)
+        elif t == "SYSTEM_TIME":
+            ref = system_time_reference(msg, now)
+            if ref is not None:
+                self.pub_time.publish(ref)
         elif t == "PARAM_VALUE" and self.read_gps1:
             pid = msg.param_id.rstrip("\x00") if isinstance(msg.param_id, str) else msg.param_id
             if pid in ("GPS_TYPE", "GPS1_TYPE"):

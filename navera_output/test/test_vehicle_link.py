@@ -59,3 +59,13 @@ def test_gps_raw_messages_become_a_navsatfix_with_the_receivers_accuracy():
     assert f2.altitude == 95.3 and warned == [1]                   # MSL only: said
     assert f2.position_covariance_type == NavSatFix.COVARIANCE_TYPE_UNKNOWN
     assert gps_raw_navsatfix(mav.MAVLink_gps_raw_int_message(0, 2, 1, 1, 0, 0, 0, 0, 0, 5), None, "x") is None
+
+
+def test_system_time_becomes_a_time_reference_only_once_the_autopilot_has_a_time():
+    from builtin_interfaces.msg import Time
+    from navera_output.nodes.vehicle_link_node import system_time_reference
+    assert system_time_reference(mav.MAVLink_system_time_message(0, 123456), Time()) is None
+    assert system_time_reference(mav.MAVLink_system_time_message(86_400_000_000, 1), Time()) is None   # 1970
+    ref = system_time_reference(mav.MAVLink_system_time_message(1_792_613_999_500_123, 1), Time(sec=5))
+    assert (ref.time_ref.sec, ref.time_ref.nanosec) == (1_792_613_999, 500_123_000)
+    assert ref.source == "autopilot" and ref.header.stamp.sec == 5
