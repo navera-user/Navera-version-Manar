@@ -101,7 +101,6 @@ def main():
     ap.add_argument("--copy-to", default="")
     ap.add_argument("--out", default=os.path.expanduser("~/.navera_sim/isaac/campaign"))
     ap.add_argument("--list", action="store_true")
-    ap.add_argument("--repo", default="~/Navera", help="the NAVERA checkout on the PC whose code runs")
     ap.add_argument("--ws", default="", help="its colcon build directory on the PC (default ~/.navera_isaac_ws)")
     ap.add_argument("--extra", default="", help="launcher arguments appended to every condition's")
     a = ap.parse_args()
