@@ -26,7 +26,7 @@ set +u; source /ws/install/setup.bash; set -u
 export NAVERA_STATE_DIR=/results/state DAY_DATASET_DIR=/data/area TORCH_HOME=/torch_home
 mkdir -p "$NAVERA_STATE_DIR"
 L=/results/logs; mkdir -p $L
-rm -f /results/gps_port /results/lens.yaml /results/navera_ready /results/finished /results/gps_cut   # a re-used run name
+rm -f /results/gps_port /results/lens.yaml /results/navera_ready /results/finished /results/gps_cut /results/stop_day   # a re-used run name
 share=$(ros2 pkg prefix navera_estimator)/share/navera_estimator/config/estimator_params.yaml
 pids=()
 if [ "${HIL:-0}" = 1 ]; then
@@ -41,8 +41,13 @@ if [ "${HIL:-0}" = 1 ]; then
 fi
 ros2 run navera_estimator estimator_node.py --ros-args --params-file "$share" \
   -p max_speed_mps:=${MAX_SPEED:-45.0} > $L/estimator.log 2>&1 & pids+=($!)
-ros2 run day_pkg day_subscriber.py --ros-args -p matcher:=${MATCHER:-auto} \
-  -p max_speed_mps:=${MAX_SPEED:-45.0} ${DAY_ARGS:-} > $L/day.log 2>&1 & pids+=($!)
+# respawned alone after a crash or a kill, 1 s later (as the product's day_pipeline.launch.py does: B23);
+# /results/stop_day ends the loop
+( while [ ! -f /results/stop_day ]; do
+    ros2 run day_pkg day_subscriber.py --ros-args -p matcher:=${MATCHER:-auto} \
+      -p max_speed_mps:=${MAX_SPEED:-45.0} ${DAY_ARGS:-}
+    echo "[run_navera_nodes] $(date +%T) day_subscriber exited ($?): respawning in 1 s"; sleep 1
+  done ) >> $L/day.log 2>&1 & pids+=($!)
 if [ -n "${VEHICLE_OUT:-}" ]; then        # closed loop: NAVERA's position to the autopilot (GPS_INPUT)
   ( until ros2 run navera_output vehicle_output_node.py --ros-args -p mavlink_url:=$VEHICLE_OUT \
       -p forward_degraded:=true -p degraded_sigma_m:=${DEGRADED_SIGMA:-30.0} \
@@ -63,9 +68,10 @@ ros2 run camera_pkg live_camera.py --ros-args -r __ns:=/day -p input:=ros \
   -p ready_topic:=/day/localizer_ready -p ground_altitude_m:=${GROUND_ALT:-nan} \
   -p gimbal:=${GIMBAL:-false} ${CAM_ARGS:-} > $L/camera.log 2>&1 &
 pids+=($!)
-trap 'kill ${pids[@]} $link 2>/dev/null; exit 0' INT TERM
+trap 'touch /results/stop_day; kill ${pids[@]} $link 2>/dev/null; exit 0' INT TERM
 # ready marker for the launcher: day_subscriber has its map and models
 ( until grep -q "awaiting frames\|DayLocalizer ready\|localizer_ready=True" $L/day.log 2>/dev/null; do sleep 1; done; touch /results/navera_ready ) &
 wait $link
+touch /results/stop_day
 sleep 2
 kill ${pids[@]} 2>/dev/null
