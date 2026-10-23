@@ -383,6 +383,10 @@ class DaySubscriber(Node):
         # feeds the autopilot carried positions: 1/2 drift t^2 in the stated accuracy
         self.declare_parameter("autopilot_velocity_topic", "/navera/vehicle/velocity")
         declare_float(self, "autopilot_velocity_drift_mps2", 0.1)
+        # the fitted bias is added to the autopilot's velocity only when the autopilot does NOT fly on
+        # NAVERA's positions (its EKF then cannot absorb it); fed by NAVERA (the default installation) the
+        # carry adding it ran away (_applied_bias), so it only widens the stated accuracy
+        self.declare_parameter("autopilot_velocity_apply_bias", False)
         # the IMU attitude's absolute yaw (orientation of the gyro's IMU message): the turn across a
         # restart of this process, persisted with the snapshot (carry_aids.AttitudeYaw)
         self.declare_parameter("attitude_yaw_carry", True)
@@ -464,6 +468,7 @@ class DaySubscriber(Node):
         self._dr_snap = None
         self.apv = VelocityRef() if str(self.get_parameter("autopilot_velocity_topic").value).strip() else None
         self.ap_drift = float(self.get_parameter("autopilot_velocity_drift_mps2").value)
+        self.ap_apply_bias = bool(self.get_parameter("autopilot_velocity_apply_bias").value)
         self.att_yaw = AttitudeYaw() if bool(self.get_parameter("attitude_yaw_carry").value) else None
         self._ap_fit_cache = None               # ((t_last, n points), bias) of the last _ap_bias()
         self._restored_bias = None              # (be, bn, sigma, t_ref) persisted with a restored snapshot
@@ -808,7 +813,7 @@ class DaySubscriber(Node):
             if apv is not None:
                 tf, b = self._gps_ap_fit
                 if t - tf >= 0.5:
-                    b = apv.fit_bias(list(gv._pts), t)
+                    b = DaySubscriber._applied_bias(self, apv.fit_bias(list(gv._pts), t))
                     self._gps_ap_fit = (t, b)
             va = apv.v(t) if b is not None else None
             if va is not None:
@@ -1762,13 +1767,22 @@ class DaySubscriber(Node):
         cache = getattr(self, "_ap_fit_cache", None)
         if cache is not None and cache[0] == key:
             return cache[1]
-        b = apv.fit_bias(list(self.track._pts), last[0])
+        b = DaySubscriber._applied_bias(self, apv.fit_bias(list(self.track._pts), last[0]))
         r = None if b is None else (b[0], b[1], b[2], last[0])
         rb = getattr(self, "_restored_bias", None)
         if r is None and rb is not None and abs(rb[3] - last[0]) < 1e-6:
             r = rb
         self._ap_fit_cache = (key, r)
         return r
+
+    def _applied_bias(self, b):
+        """The fitted bias as the carry applies it: as fitted when the autopilot does not fly on NAVERA's
+        positions (autopilot_velocity_apply_bias), else none, its size added to the sigma. Fed NAVERA's
+        positions, the autopilot's EKF takes a bias the carry adds in, its velocity moves by it, the carry
+        adds it again: Isaac Sim outage60 (o3_o60b), its velocity 0.5 -> 7 m/s off in 45 s of cloud."""
+        if b is None or getattr(self, "ap_apply_bias", False):
+            return b
+        return 0.0, 0.0, math.hypot(b[2], math.hypot(b[0], b[1]))
 
     def _ap_predicted(self, t):
         """(lat, lon, sigma_m, ve, vn) carried to t along the autopilot's velocity + its fitted bias, from

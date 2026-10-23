@@ -180,10 +180,13 @@ def test_carried_along_the_autopilot_velocity_through_a_corner_and_a_speed_up(en
         tau = min(s - 13.0, 5.0)                                # 10 -> 20 m/s over 5 s, east
         return e + tau * tau + 10.0 * max(0.0, s - 18.0), n, 10.0 + 2.0 * tau, 0.0
 
-    for aided in (True, False):
+    from navera_common import state_store
+    for aided in ("bias applied", "fed by NAVERA", None):
+        state_store.save(TRACK_STATE, {"pts": []})              # not the previous variant's track
         n = make()
-        if not aided:
+        if aided is None:
             n.apv = None
+        n.ap_apply_bias = aided == "bias applied"   # an autopilot NAVERA does not feed: its offset removed
         for k in range(0, 460):                                 # 10 Hz up to s = 46
             s = 0.1 * k
             _, _, ve, vn = truth(s)
@@ -202,9 +205,13 @@ def test_carried_along_the_autopilot_velocity_through_a_corner_and_a_speed_up(en
                                   {}, 0.0, "cloud")
         e, nn, _, _ = truth(45.0)
         err = _err(n.est[-1], e, nn)
-        if aided:
+        if aided == "bias applied":
             assert err < 40.0 and err < 3.0 * _sigma(n.est[-1]), (err, _sigma(n.est[-1]))
             assert _sigma(n.est[-1]) < 250.0
+        elif aided:
+            # fed by NAVERA the offset is not removed (its EKF would absorb it: outage60 ran away) — it
+            # widens the stated accuracy: 2.2 m/s x 30 s off, within it
+            assert err < 100.0 and err < 2.0 * _sigma(n.est[-1]), (err, _sigma(n.est[-1]))
         else:
             assert err > 150.0, err                             # the plain carry: hover / chord velocity
 
@@ -233,6 +240,10 @@ def test_the_gps_snapshot_carries_the_autopilot_bias_for_the_handover(env):
         m.latitude, m.longitude = _ll(*truth(s)[:2])
         m.header.stamp.sec, m.header.stamp.nanosec = int(t0 + s), int(round(((t0 + s) % 1) * 1e9))
         n.on_gps(m)
+    # fed by NAVERA: the offset is not applied (0) but in the velocity's sigma
+    assert n._dr_snap.be == 0.0 and n._dr_snap.bn == 0.0 and n._dr_snap.sig_v > 1.0
+    n.ap_apply_bias, n._gps_ap_fit = True, (-math.inf, None)
+    n.on_gps(m)
     assert n._dr_snap.be == pytest.approx(-1.0, abs=0.3) and n._dr_snap.bn == pytest.approx(-0.5, abs=0.3)
     R.VClock.now = t0 + 27.0
     n._last_frame = (R.VClock.now, {})

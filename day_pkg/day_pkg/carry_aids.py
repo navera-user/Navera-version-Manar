@@ -19,8 +19,11 @@ Two aids, each optional:
   NAVERA's measured fixes of the last 20 s (each fix minus the path the autopilot's velocity draws
   from the reference instant; the line through the rest is the bias), refused when the fixes do not
   lie on that path within their stated accuracy (chi-square). The carry is then the integral of the
-  autopilot's velocity plus the bias; its uncertainty: the bias's error x t plus 1/2 drift t^2 (the
-  autopilot's velocity drifting while NAVERA feeds it carried positions).
+  autopilot's velocity (plus the bias only for an autopilot NAVERA does not feed: fed NAVERA's
+  positions its EKF absorbs the bias the carry adds, its velocity moves by it, the carry adds it again
+  — Isaac Sim outage60, 0.5 -> 7 m/s off in 45 s; then the bias's size only widens the stated
+  accuracy); its uncertainty: the velocity error x t plus 1/2 drift t^2 (the autopilot's velocity
+  drifting while NAVERA feeds it carried positions).
 - **AttitudeYaw**: the absolute yaw of the IMU's attitude (vehicle or camera IMU). The gyro heading
   (gyro_heading.py) integrates rates inside one process; across a restart of the day process (no
   samples for the seconds it is down) the turn over the gap is the yaw now minus the yaw persisted
