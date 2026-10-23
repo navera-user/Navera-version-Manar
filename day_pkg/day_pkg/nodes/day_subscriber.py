@@ -361,6 +361,9 @@ class DaySubscriber(Node):
         self.declare_parameter("reacquire_min_inliers", 25)
         # a frame stops trying windows after this long (s): the carry must not go stale between frames
         declare_float(self, "reacquire_budget_s", 2.5)
+        # a frame that failed at its own height tries 20 % lower and 25 % higher only while it has
+        # spent less than this (s) — the carried position must not wait for one frame
+        declare_float(self, "frame_budget_s", 6.0)
         # the carried position is also published by a watchdog in its own thread (day_pkg.carry_state):
         # when no output for dr_watchdog_s (a match stalled: 5.7 s in the endurance flight endur2, 7-10 s
         # at 1200 m), checked every dr_watchdog_period_s. 0: off (only the matching thread publishes)
@@ -512,6 +515,7 @@ class DaySubscriber(Node):
         self.reacquire_max_radius_m = float(self.get_parameter("reacquire_max_radius_m").value)
         self.reacquire_min_inliers = int(self.get_parameter("reacquire_min_inliers").value)
         self.reacquire_budget_s = float(self.get_parameter("reacquire_budget_s").value)
+        self.frame_budget_s = float(self.get_parameter("frame_budget_s").value)
         self._scan = WindowScan()
         self.local_scale_tol_max = float(self.get_parameter("local_scale_tol_max").value)
         self.local_heading_tol_deg = float(self.get_parameter("local_heading_tol_deg").value)
@@ -932,8 +936,16 @@ class DaySubscriber(Node):
                 # after height_retry_after failures, 20 % lower and 25 % higher too
                 factors = [1.0] + ([0.8, 1.25] if self._rejects_in_row + 1 >= self.height_retry_after
                                    and not self._compute_degraded() else [])
+                t_frame0, budget, result = time.monotonic(), getattr(self, "frame_budget_s", 6.0), {}
                 for f in factors:
-                    result = self._locate_search(img, center, R, mpp * f, meta, windows=f == 1.0)
+                    if f != 1.0 and time.monotonic() - t_frame0 > budget:
+                        result["reason"] = (f"{result.get('reason')}; other heights not tried "
+                                            f"(frame budget {budget:.0f} s)")
+                        break
+                    # the heading search (12 headings) only at the frame's own height: at 1200 m the
+                    # three heights x 12 headings held one frame 58-93 s (Isaac Sim h1200)
+                    result = self._locate_search(img, center, R, mpp * f, meta, windows=f == 1.0,
+                                                 heading_search=f == 1.0)
                     if result.get("accepted"):
                         break
                 sc = float(result.get("scale_residual") or 1.0)
@@ -1432,7 +1444,7 @@ class DaySubscriber(Node):
                                                    f"off the carried position (min {self.reacquire_min_inliers})")
         return res
 
-    def _locate_search(self, img, center, R, mpp, meta, windows: bool = True) -> dict:
+    def _locate_search(self, img, center, R, mpp, meta, windows: bool = True, heading_search: bool = True) -> dict:
         """locate() over the search circle (center, R): one window when R is at most ~one window wide
         (or windows is False: only the carried position's), else the circle covered with windows
         (cover_windows), this frame's share of them (WindowScan) tried nearest first until a match.
@@ -1442,6 +1454,8 @@ class DaySubscriber(Node):
         hk = self._match_heading_kw(meta)
         kw = dict(scale_tol=self._scale_tol(meta), **hk, hfov_deg=self._hfov(meta),
                   expected_tilt_deg=self._expected_tilt(meta), **self._heading_search_kw())
+        if not heading_search and "heading_search" in kw:
+            kw["heading_search"] = False
         w = self._reacquire_window_m(img, mpp)
         if not getattr(self, "reacquire_windows", False) or R <= 1.25 * w:
             self._scan.reset()
