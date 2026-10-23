@@ -55,10 +55,12 @@ def load_disk_engine(default: bool = DISK_TRT_DEFAULT):
 
 def map_level(frame_scale: float, max_level: int = 3) -> int:
     """Map level (the map shrunk 2**level times) to match a frame whose pixels are frame_scale map
-    pixels: 0 up to 1.3 (the frame is enlarged a little), else the level nearest its scale."""
+    pixels: 0 up to 1.3 (the frame is enlarged a little), else the level nearest its scale, at least 1.
+    (Rounding alone gave level 0 up to 1.41: Isaac Sim at 1200 m, scale 1.38, the frames enlarged 1.38x
+    found nothing, while the same frames tried 25 % higher — level 1 — matched with 150-355 inliers.)"""
     if not math.isfinite(frame_scale) or frame_scale < 1.3:
         return 0
-    return int(min(max_level, max(0, round(math.log2(frame_scale)))))
+    return int(min(max_level, max(1, round(math.log2(frame_scale)))))
 
 
 def north_up_matrix(shape, heading_deg: float):

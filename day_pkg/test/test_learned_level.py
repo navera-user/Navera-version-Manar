@@ -10,6 +10,7 @@ def test_low_frames_stay_on_the_zoom():
 
 def test_high_frames_use_the_nearest_level():
     assert map_level(1.64) == 1          # ~800 m with the bench camera
+    assert map_level(1.38) == 1          # Isaac Sim 1200 m (open3: level 0 found nothing, level 1 matched)
     assert map_level(3.07) == 2          # ~1500 m
     assert map_level(40.0) == 3          # capped
     assert map_level(float("nan")) == 0

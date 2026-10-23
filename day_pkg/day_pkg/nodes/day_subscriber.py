@@ -873,6 +873,7 @@ class DaySubscriber(Node):
             self.gyro.clear()
         state_store.save("day_anchor", {"lat": None, "lon": None})   # forgotten too
         self._carry, self._vel_epoch, self._dr_snap = None, None, None
+        self._ap_last_fit = self._restored_bias = None
         state_store.save(TRACK_STATE, {"pts": []})
         self._rejects_in_row = 0
         self.get_logger().info("[day] mission rewind — tracking state reset")
@@ -1767,11 +1768,21 @@ class DaySubscriber(Node):
         cache = getattr(self, "_ap_fit_cache", None)
         if cache is not None and cache[0] == key:
             return cache[1]
-        b = DaySubscriber._applied_bias(self, apv.fit_bias(list(self.track._pts), last[0]))
+        pts = list(self.track._pts)
+        b = DaySubscriber._applied_bias(self, apv.fit_bias(pts, last[0]))
         r = None if b is None else (b[0], b[1], b[2], last[0])
         rb = getattr(self, "_restored_bias", None)
         if r is None and rb is not None and abs(rb[3] - last[0]) < 1e-6:
             r = rb
+        prev = getattr(self, "_ap_last_fit", None)
+        if r is None and prev is not None and last[0] - prev[3] <= self.max_dead_reckon_s and \
+                apv.fit_bias(pts, last[0], max_chi2=math.inf) is None:
+            # too few points since a gap to fit again (the first fixes after a GPS loss or a cloud bank:
+            # Isaac Sim h1200, the carry fell back to the hover velocity after the first fix): the last fit
+            # holds, its drift term counting from its own reference time. A refusal (chi-square) does not.
+            r = prev
+        if r is not None:
+            self._ap_last_fit = r
         self._ap_fit_cache = (key, r)
         return r
 

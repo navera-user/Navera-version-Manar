@@ -256,3 +256,24 @@ def test_the_gps_snapshot_carries_the_autopilot_bias_for_the_handover(env):
     _, nn, _, _ = truth(27.0)
     err = _err(n.est[-1], 0.0, nn)
     assert err < 3.0 * _sigma(n.est[-1]) and err < 15.0, (err, nn)
+
+
+def test_the_first_fix_after_a_gap_keeps_the_autopilot_fit(env):
+    """h1200 (o3_h12a): after the GPS loss the first vision fix stood alone after a > 5 s gap, too few
+    points to fit again, and the carry fell back to the hover velocity; the last fit now holds."""
+    R, make = env
+    t0 = R.VClock.now
+    n = make()
+    for k in range(400):
+        n.on_ap_velocity(_vel(t0 + 0.1 * k, 0.0, 5.0))
+    for i in range(10):                                         # 10 s of points, then a gap of 12 s
+        n.track.add(t0 + i, *_ll(0.0, 5.0 * i), 3.0)
+    b = n._ap_bias()
+    assert b is not None
+    n.track.add(t0 + 21.0, *_ll(0.0, 105.0), 20.0)              # one fix after the gap
+    assert n._ap_bias() == b
+    n.track.add(t0 + 22.0, *_ll(400.0, 110.0), 20.0)            # far off its path: refused, not held
+    n.track.add(t0 + 23.0, *_ll(-400.0, 115.0), 20.0)
+    n.track.add(t0 + 24.0, *_ll(400.0, 120.0), 20.0)
+    n.track.add(t0 + 25.5, *_ll(-400.0, 127.5), 20.0)
+    assert n._ap_bias() is None
