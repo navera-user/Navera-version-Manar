@@ -57,6 +57,9 @@ rc=$?
 if [ "${1:-}" = "--integration" ]; then
   export ROS_DOMAIN_ID="${NAVERA_TEST_DOMAIN_ID:-77}"
   export ROS_LOCALHOST_ONLY=1
+  # the scripts import navera_tools.* from the repository they belong to (a git worktree too:
+  # no install or user site-packages entry points at it)
+  export PYTHONPATH="$PWD${PYTHONPATH:+:$PYTHONPATH}"
   for t in navera_tools/tests/test_*.py; do
     echo "== integration: $t"
     NAVERA_STATE_DIR="$STATE_TMP/$(basename "$t" .py)" run_limited "$INTEGRATION_LIMIT_S" python3 "$t"

@@ -26,6 +26,15 @@ applied from the first frame, refined by whatever GPS checks the flight gives. W
 prior is zero with prior_deg, and that sigma stays in the stated accuracy for the whole flight.
 export() gives what to persist (only samples older than the spoof rollback window).
 
+What the fit cannot separate it must not learn (F41, Isaac Sim 2026-10-22). Two cases made the
+learned correction WORSE than none and its posterior sigma (independent residuals assumed) far too
+small: (1) frames dated with an unknown camera delay — a copter flies nose first, so the delay's
+offset (speed x delay, along the track) lies along the frame top like a pitch error: 1.2-1.5 deg
+"learned" for the point under the camera (which no mount error moves) — the day node therefore adds
+no sample whose dating error (speed x the delay's sigma) exceeds a few metres; (2) a climb on one
+heading — the mount offset and a map shift are the same vector (600 m: 10 -> 16 m median). An
+in-flight fit is used only once its samples span min_heading_span_deg of frame headings (a turn).
+
 A calibration belongs to the camera settings it was learned with: live_camera's mount_id (mount
 roll/pitch/yaw, the lens file's content, the crop) is stored with it, and a stored one whose
 mount_id differs from the frames' is dropped (stale_reason / reset): the camera was re-fitted or
@@ -53,10 +62,12 @@ class MountCalibration:
     """Boresight error of the camera, per position kind, from GPS-check matches."""
 
     def __init__(self, prior_deg: float = 2.0, min_samples: int = 12, window: int = 200,
-                 bias_prior_m: float = 15.0, floor_deg: float = 0.25, max_deg: float = 10.0):
+                 bias_prior_m: float = 15.0, floor_deg: float = 0.25, max_deg: float = 10.0,
+                 min_heading_span_deg: float = 90.0):
         self.prior = math.tan(math.radians(float(prior_deg)))
         self.prior_deg = float(prior_deg)
         self.min_samples = int(min_samples)
+        self.min_heading_span_deg = float(min_heading_span_deg)
         self.bias_prior_m = float(bias_prior_m)
         self.floor_deg = float(floor_deg)
         self.max = math.tan(math.radians(float(max_deg)))
@@ -100,7 +111,7 @@ class MountCalibration:
         out = {}
         for k in KINDS:
             s = [x for x in self._s[k] if before_t is None or x[0] < before_t]
-            if len(s) < self.min_samples:
+            if not self._enough(s):
                 continue
             f = self._solve(np.array(s, float), max(float(delay_sigma_s), 1e-3), k)
             out[k] = {"top_deg": round(math.degrees(math.atan(f["m_f"])), 3),
@@ -159,13 +170,18 @@ class MountCalibration:
             return self._cache[key]
         s = list(self._s.get(kind, ()))
         out = None
-        if len(s) >= self.min_samples:
+        if self._enough(s):
             out = self._solve(np.array(s, float), max(float(delay_sigma_s), 1e-3), kind)
         elif kind in self._prior:                             # the persisted calibration alone
             m0f, m0r, sig = self._prior[kind]
             out = dict(m_f=m0f, m_r=m0r, sigma=sig, b=(0.0, 0.0), d=0.0, noise_m=None, n=0)
         self._cache[key] = out
         return out
+
+    def _enough(self, s) -> bool:
+        """min_samples samples, on frame headings spanning min_heading_span_deg (else the mount offset
+        and a map shift cannot be told apart)."""
+        return len(s) >= self.min_samples and heading_span_deg([x[3] for x in s]) >= self.min_heading_span_deg
 
     def _solve(self, s: np.ndarray, delay_sigma_s: float, kind: str) -> dict:
         hd = np.radians(s[:, 3])
@@ -234,6 +250,15 @@ class MountCalibration:
                               map_shift_m=[round(v, 1) for v in f["b"]], delay_s=round(f["d"], 2),
                               noise_m=None if f["noise_m"] is None else round(f["noise_m"], 1))
         return out
+
+
+def heading_span_deg(headings) -> float:
+    """The smallest arc (deg) holding every heading: 360 minus the widest gap between them."""
+    h = sorted(float(x) % 360.0 for x in headings)
+    if len(h) < 2:
+        return 0.0
+    gaps = [b - a for a, b in zip(h, h[1:])] + [h[0] + 360.0 - h[-1]]
+    return 360.0 - max(gaps)
 
 
 def stale_reason(stored_id: Optional[str], mount_id: Optional[str]) -> Optional[str]:

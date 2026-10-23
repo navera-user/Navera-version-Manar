@@ -102,6 +102,7 @@ class VisionNavigator:
         self.max_bias_m = 30.0
         self.vo_rejected = 0
         self._pending = None          # (t, lat, lon, sigma) of a fix the gate doubted
+        self._out = None              # (t, lat, lon, sigma): the blended output of the last fix
         self.last_reason = ""
 
     # ── inputs ───────────────────────────────────────────────────────────
@@ -391,14 +392,16 @@ class VisionNavigator:
             hs = max(0.03 * hv, 0.05 * hv if inl < 50 else 0.0)
             self._height_update(t, hv, 0.12 * hv if wide and inl < 100 else hs, "vision")
         if not gps_valid:
+            out = None
             if self.blend_fixes and pred is not None and not reacquired and inl < self.blend_below_inliers:
                 k = pred[2] ** 2 / (pred[2] ** 2 + sig ** 2)
                 de, dn = _en((lat, lon), pred[:2])
-                lat, lon = _move(pred[:2], k * de, k * dn)
-                sig = math.sqrt(k) * sig
+                out = _move(pred[:2], k * de, k * dn) + (math.sqrt(k) * sig,)
             # a weak fix places the vehicle but does not measure its velocity (campaign 5: the
-            # velocity of weak fixes carried the output to 68-142 m)
+            # velocity of weak fixes carried the output to 68-142 m). The carry starts from the
+            # MEASURED fix: fed the blended output it filtered itself (as day_subscriber, F41)
             self._set_fix(t, lat, lon, sig, heading_deg, velocity=inl >= self.weak_inliers)
+            self._out = None if out is None else (t,) + out
         return True
 
     def _set_fix(self, t, lat, lon, sigma_m, heading_deg, velocity: bool = True):
@@ -444,4 +447,6 @@ class VisionNavigator:
         age = t - self.fix[2]
         if age > self.max_dr_s or p[2] > self.max_sigma_m:
             return None, None, p[2], "unavailable"
+        if age < 0.5 and self._out is not None and self._out[0] == self.fix[2]:
+            return self._out[1], self._out[2], self._out[3], "measured"
         return p[0], p[1], p[2], ("measured" if age < 0.5 else "propagated")

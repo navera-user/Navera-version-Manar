@@ -11,12 +11,13 @@ from day_pkg.vision_nav import _en, _move
 P0 = (35.82, 10.61)
 
 
-def _node(heading=90.0, pred_sigma=10.0, fix_sigma=10.0):
+def _node(heading=90.0, pred_sigma=10.0, fix_sigma=10.0, common=0.0):
     n = DaySubscriber.__new__(DaySubscriber)
     n.blend_fixes = True
     n._carry_heading = lambda meta: (heading, 1.0)
     n._predicted = lambda meta: (P0[0], P0[1], pred_sigma)
     n._fix_sigma = lambda result, meta: fix_sigma
+    n._fix_sigma_common = lambda result, meta: common
     return n
 
 
@@ -28,6 +29,24 @@ def test_equal_sigmas_meet_half_way_with_a_smaller_sigma():
     de, dn = _en((lat, lon), P0)
     assert math.isclose(de, 20.0, abs_tol=0.1) and abs(dn) < 0.1
     assert math.isclose(sig, 10.0 / math.sqrt(2), rel_tol=1e-6) and st["blend"]["weight"] == 0.5
+
+
+def test_the_error_common_to_fix_and_carry_is_not_averaged_down():
+    """F41: the unknown delay's and the mount's error is in every fix, so in the carry made of them —
+    it sets neither the weight nor shrinks: sigma = hypot(sqrt(k) x the fix's own part, the common part)."""
+    fix = _move(P0, 40.0, 0.0)
+    st = {}
+    lat, lon, sig = _node(pred_sigma=10.0, fix_sigma=10.0, common=8.0)._blend_fix(*fix, {}, {}, st)
+    assert st["blend"]["weight"] == 0.5 and st["blend"]["common_sigma_m"] == 8.0
+    assert math.isclose(sig, math.hypot(math.sqrt(0.5) * 6.0, 8.0), rel_tol=1e-6) and sig > 8.0
+    # a fix whose own error is small against a carry that is mostly the common error: the fix wins
+    lat, lon, sig = _node(pred_sigma=12.0, fix_sigma=8.5, common=8.0)._blend_fix(*fix, {}, {}, {})
+    assert _en((lat, lon), P0)[0] > 0.85 * 40.0 and sig >= 8.0
+    # repeated blending never states less than the common part (it shrank to 5-9 m for 13-20 m errors)
+    s = 10.0
+    for _ in range(50):
+        s = _node(pred_sigma=s + 1.0, fix_sigma=10.0, common=8.0)._blend_fix(*fix, {}, {}, {})[2]
+    assert s >= 8.0
 
 
 def test_no_blend_without_heading_on_reacquisition_or_when_off():

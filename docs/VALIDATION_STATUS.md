@@ -1390,12 +1390,98 @@ after the exposure, so on a banked plane the frame centre landed 50–272 m off.
   ~5 m, after the blending with the carried track halved the fix sigma) — the stated accuracy
   after the F33 / day-robustness merges is overconfident on a copter whose delay is not learned
   (its delay samples are refused as "too slow" / "turning"; in pd_nomc_base a 1.0 ± 0.44 s
-  staged delay was undone by the 20 s rollback at the GPS cut). Open: find which merged change
-  shrank the sigma (blend of correlated fix and carry, mount sigma 0.3 deg) — to fix before
-  claiming the copter numbers again.
+  staged delay was undone by the 20 s rollback at the GPS cut). Found and fixed in F41 (next
+  section): the blend fed the carry its own output and averaged the common error, and the mount
+  calibration learned the delay.
 - **Plane 60 m/s: no frame used** (as c2_plane60): live_camera measures 60–190 deg/s rotation
   at every exposure on the jet model and refuses the frames (max 30 deg/s). Open: an attitude
   stream / jet model problem in the simulation, not investigated here.
+
+### Isaac Sim closed loop: the overconfident copter sigma found and fixed (F41, 2026-10-22)
+
+**SIMULATION only.** The F35b open item: after the F31 / day-robustness / F33 merges the copter's
+stated sigma was 5–9 m for 13–20 m errors (pd_ref_base 146/356 outputs beyond 3σ; pd_nomc_base
+182/461 and 90 wrong fixes; pd_h600 EKF failsafe). Bisected **offline**:
+`navera_tools/bench/replay_sigma_isaac.py` replays a run's recorded matcher answers after the GPS
+cut through `DaySubscriber._publish_result` (built by its own `__init__`, shipped defaults, virtual
+clock; the calibrations as they stood at the cut), one feature toggled at a time. It reproduces the
+live runs (pd_ref_base 19.8 m / 160 beyond 3σ vs 19.2 m / 146 live; pd_nomc_base 99 wrong vs 90).
+
+Bisection (bef4170, error at the stated time median, outputs beyond 3σ, wrong fixes):
+
+| run | product | blend_fixes off | mount_cal off | strong gate 6σ | unknown_delay_sigma 0 |
+|---|---|---|---|---|---|
+| pd_ref_base | 19.8 m, 160/353, 0 | **11.2 m, 3/353**, 0 | 21.8 m, 158/353 | 21.6 m, 176/353 | 17.5 m, 171/353 |
+| pd_nomc_base | 38.7 m, 196/454, **99** | **15.2 m, 0/454, 0** | (= product) | 41.2 m, 212/454, 114 | 37.2 m, 186/454, 80 |
+| pd_h600 | 16.3 m, 111/185 | 16.5 m, 1/185 | **10.0 m, 1/185** | = | 16.3 m, 126/185 |
+| pd_plane30 | 12.7 m, 14/168 | 14.2 m, 1/168 | 14.4 m, 7/168 | 13.1 m, 11/168 | = |
+| c3_base frames | 14.8 m, 71/315 | 12.9 m, 0/315 | = | = | 14.8 m, 87/315 |
+
+Root causes:
+1. **blend_fixes (F23) fed the carry its own output.** The track (velocity fit, carry start) got the
+   blended position, so the carry was a filter of itself: velocity fitted to smoothed points, its
+   sigma shrinking, each fix weighted ~0.2, and after every speed change the output lagged — up to
+   100 m behind the copter (pd_nomc_base: the 90 wrong fixes are blended outputs; the raw matches
+   were 6.6 m median at the exposure). And the blend counted the error **common to every fix** —
+   speed × the unknown delay's sigma (10 m at 10 m/s), height × tan(mount sigma) — as independent,
+   averaging it down frame after frame (fix 12 m ⊕ carry 7 m → 6 m stated).
+2. **mount_cal (F33) learned what it cannot separate.** A copter flies nose first: the unknown
+   delay's offset lies along the frame top like a pitch error — 1.2–1.5° "learned" for the point
+   under the camera, which no mount error moves; at 600 m all GPS checks were on one heading during
+   the climb, where a mount offset is a map shift: the correction put the fixes 16 m off instead of
+   10 m, with a 0.33° stated sigma.
+
+Fixes: the track holds the **measured** fix with its own sigma (the output is still the blend);
+the blend weight uses the independent parts only and states hypot(√k × the fix's own part, the
+common part); a GPS check is a mount sample only while the camera delay is known and speed × its
+sigma ≤ `mount_cal_max_dating_m` (2 m); an in-flight mount fit is used / persisted only once its
+samples span `mount_cal_min_heading_span_deg` (90°). Replay after the fixes:
+
+| run | error at stated time med/p90/max | at exposure | beyond 3σ | wrong | median stated σ |
+|---|---|---|---|---|---|
+| pd_ref_base | 15.6/23.5/37.0 (19.8/33.5/47.3) | 7.2/12.2/22.0 | **3/353** (160) | 0 | 13.5 m (7.2) |
+| pd_base | 19.5/26.3/31.5 (21.8/42.6/60.4) | 10.2/16.2/21.0 | **0/379** (186) | 0 (1) | 13.7 m |
+| pd_nomc_base | 17.5/28.3/42.6 (38.7/75.4/98.3) | 7.5/13.2/22.3 | **0/454** (196) | **0** (99) | 23.8 m |
+| pd_h600 | 9.9/12.4/17.5 (16.3/19.8/27.0) | 5.6/9.6/19.1 | **1/185** (111) | 0 | 14.8 m |
+| pd_plane30 | 9.9/18.8/43.5 (12.7/29.8/41.1) | 11.3/17.5/39.0 | **1/168** (14) | 0 | 17.9 m |
+| c3_base frames | 12.7/21.5/32.5 (14.8/36.9/53.0) | 6.3/12.4/17.6 | 0/315 (71) | 0 | 14.0 m |
+
+(in brackets: bef4170.) Blending still costs ~1.5 m median against no blending in these runs
+(pd_ref_base 15.6 vs 14.1 m: the carry adds lag, the fixes here are good and their error is mostly
+the delay's); on the screen bench (VisionNavigator, which now carries from the measured fix too)
+its gain shrinks: wind measured outputs > 50 m 51 → 26 (was 51 → 16 with the self-filtering carry,
+whose constant-circle bench truth flattered it), other conditions 57 → 29 (was 13). Regression
+test: `day_pkg/test/test_isaac_sigma_replay.py` (fixtures of pd_ref_base and pd_nomc_base; fails
+on bef4170). Also found: `isaac_link.py` on bef4170 did not compile (`continue` outside a loop):
+no closed-loop flight could start.
+
+Isaac Sim flights with the fixes (code d53c4be–5808792, one flight each, results
+`~/.navera_sim/isaac/f38/sr_*` on the Jetson; same arguments as the pd_* runs):
+
+| run | matched % | fix error at stated time med/p90/max | at exposure | output err | > 3σ | wrong | mission |
+|---|---|---|---|---|---|---|---|
+| **sr_base** | 98.1 | **13.7/21.9/30.7** | 6.9/12.3/18.9 | 13.8/21.6/30.7 | **0/315** | **0** | completed |
+| c3_base (reference) | 98.7 | 12.8/20.7/30.0 | 6.5/12.2/14.8 | 12.8/20.7/30.0 | 1/317 | 0 | completed |
+| pd_ref_base (d0ab1c2) | 96.9 | 19/34/47 | 10/22/38 | 20/35/88 | 146/356 | 0 | completed |
+| **sr_nomc_base** (mount_cal off) | 98.3 | **13.8/22.7/31.9** | 6.6/12.3/18.1 | 13.7/22.6/31.9 | **0/301** | **0** (90) | completed |
+| **sr_h600** | 98.1 | 20.5/32.0/54.4 | 14.7/20.5/35.9 | 20.5/35.6/54.4 | **0/276** (112/217) | 0 | **completed** (pd_h600: EKF failsafe, LAND) |
+| **sr_plane30** | 97.6 | 13.3/23.3/41.1 | 11.1/17.9/34.3 | 13.3/24.0/79.1 | 0/170 | **0** | completed |
+
+The copter base is back to c3_base (13.7 vs 12.8 m median, one run each: within run-to-run spread;
+0/315 beyond 3σ, 0 wrong). At 600 m the error is c2_h600's level again (21/30/36 before F33) and now
+stated honestly; the 600 m mount error is no longer corrected (never learned with the delay unknown,
+its 2° prior stated instead). Plane 30 m/s: no regression (0 wrong, 0 beyond 3σ).
+
+**The same cause on the real Jetson in the loop** (B23 runs hil_resil4/5, 2026-10-22: day fix error
+20–45 m after the GPS cut against 5–7 m in hil_base1 / hil_endur30, from before any kill; hil_base1
+and hil_endur30 ran code without blending or mount calibration). Replayed offline (stated time,
+med/p90/max; beyond 3σ): hil_resil5 bef4170 40.2/59.9/77.9 m, 1833/2919 → blend off 6.1/10.1/20.6 m,
+0 → with the fixes 4.6/8.5/18.6 m, 0/2919; hil_resil4 32.0/61.8/105.3 m, 140/287 → with the fixes
+15.6/26.8/31.7 m, 0/287 (its remaining 15 m is the camera delay, never learned in that run). Neither
+isaac_link's one frame per tick nor the learned 2.0 s delay (true 1.7 s) explains it: the fixes
+replayed with that same delay are 4.6 m. Note: the HIL summaries' exposure errors and "wrong fixes"
+(resil5: 1334) are unreliable — day.csv's `t_exposure` joined from the PC stream is off for part of
+the frames (e.g. 659 s for a fix stamped 140 s); judge HIL runs by the stated-time error.
 
 ### Long route (simulator, 2026-10-01)
 

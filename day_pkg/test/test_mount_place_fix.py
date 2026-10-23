@@ -14,7 +14,7 @@ from navera_common.sensor_history import History
 
 LAT0, LON0 = 35.8685, 10.5352
 METHODS = ("_place_fix", "_pose_guard_refusal", "_mount_corrected", "_delay_known_sigma_s",
-           "_unknown_delay_sigma_s", "_mount_check_fix", "_mount_sigma")
+           "_unknown_delay_sigma_s", "_mount_check_fix", "_mount_sigma", "_mount_term_m", "_mount_sample_refused")
 
 
 def _node(pred=None, mount=True):
@@ -195,3 +195,26 @@ def test_a_bench_calibration_file_and_none_at_all(tmp_path, monkeypatch):
     bad, log = _persist_node(tmp_path, monkeypatch)
     bad._load_mount_cal(str(tmp_path / "missing.json"), 0.5)
     assert any("unreadable" in m for m in log.lines) and not bad.mount_cal.state()["frame centre"]["persisted"]
+
+
+def _check(n, speed):
+    g = (LAT0, LON0)
+    n._gps_hist.add(99.0, _move(g, 0.0, -speed))
+    n._gps_hist.add(100.0, g)
+    res = {"predicted_lat": LAT0 + 1e-4, "predicted_lon": LON0, "centre_lat": LAT0 + 1e-4, "centre_lon": LON0,
+           "position_from": "frame centre", "rotation_deg": 0.0}
+    return n._mount_check_fix(res, META, g)
+
+
+def test_no_mount_sample_while_the_frame_time_is_unknown():
+    """F41: a copter flies nose first — the unknown delay's offset (speed x delay) lies along the frame top
+    like a pitch error (Isaac Sim 2026-10-22: 1.5 deg 'learned' for the point under the camera)."""
+    n = _node()
+    n.latency_cal = LatencyCalibrator()                           # no delay set, nothing applied
+    assert _check(n, 10.0) is not None and n.mount_cal.samples("frame centre") == 0
+    assert n._mount_sample_refused((10.0, 0.0)) == "camera delay unknown"
+    n = _node()                                                   # set 1.3 +- 0.1 s
+    assert _check(n, 10.0) is not None and n.mount_cal.samples("frame centre") == 1     # 1 m: a sample
+    n = _node()
+    assert _check(n, 30.0) is not None and n.mount_cal.samples("frame centre") == 0     # 3 m: none
+    assert "dating error 3.0 m" in n._mount_sample_refused((30.0, 0.0))

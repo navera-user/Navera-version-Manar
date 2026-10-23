@@ -149,3 +149,26 @@ def test_bad_persisted_values_are_ignored():
     assert cal.load(None) == 0 and cal.load({"frame centre": {"top_deg": "x"}}) == 0
     assert not cal.set_prior("frame centre", 30.0, 0.0, 1.0)               # beyond max_deg
     assert not cal.set_prior("frame centre", 1.0, 0.0, 0.0)
+
+
+def test_heading_span():
+    from day_pkg.mount_cal import heading_span_deg
+    assert heading_span_deg([350.0, 10.0]) == pytest.approx(20.0)
+    assert heading_span_deg([0.0, 90.0, 180.0]) == pytest.approx(180.0)
+    assert heading_span_deg([10.0, 130.0, 250.0]) == pytest.approx(240.0)
+    assert heading_span_deg([42.0]) == 0.0 and heading_span_deg([]) == 0.0
+
+
+def test_a_climb_on_one_heading_is_not_learned_but_a_persisted_calibration_stays():
+    """F41 (Isaac Sim h600, 2026-10-22): GPS checks during a climb on one heading (height 136-570 m) gave a
+    1.2 deg 'mount' with a 0.33 deg sigma — a map shift — that put the fixes 16 m off instead of 10 m."""
+    cal = MountCalibration(prior_deg=2.0, min_samples=12)
+    for i in range(40):
+        h = 136.0 + 11.0 * i
+        cal.add("camera pose", (-7.0 + random.Random(i).gauss(0, 1.5), 8.0), 354.0, h, t=float(i), vel_en=(0.0, 0.3))
+    assert cal.fit("camera pose") is None and cal.correction("camera pose", 89.0, 573.0) == (0.0, 0.0)
+    assert cal.sigma_deg("camera pose") == 2.0 and cal.export() == {}
+    assert cal.set_prior("camera pose", 0.5, -0.2, 0.6)
+    assert cal.fit("camera pose")["n"] == 0                       # the persisted one alone
+    _fly(cal, kind="camera pose", n=30, t0=100.0)                 # then a circuit: learned
+    assert cal.fit("camera pose")["n"] > 12
