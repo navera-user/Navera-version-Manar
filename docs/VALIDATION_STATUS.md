@@ -1432,7 +1432,7 @@ holds the only results from the real sensors. No sensor recording (log, bag) was
    attitude and heading changes; it is not integrated into a position — a low-cost MEMS IMU
    would drift hundreds of metres within a minute. Without vision matches, day vision dead-reckons
    along the track measured before the gap for at most 2 minutes, while its stated accuracy
-   stays within 500 m (the first limit reached: ~1 minute at 10 m/s; simulator figures above),
+   stays within 900 m (the first limit reached: ~80 s at 10 m/s; simulator figures above),
    then NAVERA gives no position until a frame matches again (`max_dead_reckon_s`,
    `dead_reckon_max_sigma_m`; the product launch uses the node's 120 s since F32).
 4. **One pipeline at a time.** Day and night cannot both be loaded within 8 GB.

@@ -133,7 +133,11 @@ class DaySubscriber(Node):
         # last measured fixes (turned by the IMU heading change) this long, while its stated
         # uncertainty stays under dead_reckon_max_sigma_m
         declare_float(self, "max_dead_reckon_s", 120.0)
-        declare_float(self, "dead_reckon_max_sigma_m", 500.0)
+        # 900 (was 500): below the vehicle output's max_forward_sigma_m (1000). A 60 s cloud bank at 10 m/s
+        # reached +-500 m 20 s before vision came back: NAVERA went silent and the autopilot's EKF failed safe
+        # 11 s later; with 900 it stayed aided (error 334 m at +-594 m) and the mission completed (Isaac Sim
+        # closed loop, GPS cut 20 s after reaching altitude, F32)
+        declare_float(self, "dead_reckon_max_sigma_m", 900.0)
         # unseen acceleration allowed for in the stated accuracy (1/2 a t^2). 0.25: outages
         # replayed on the real camera campaign's fixes (2026-10-19, 1606 per gap length, true
         # heading change given): still 100 % within 3 sigma at 5-60 s on a constant 900 m turn

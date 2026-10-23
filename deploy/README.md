@@ -874,12 +874,12 @@ reported: inside them day vision has nothing to match.
 landmarks (uniform tiles of the map files: sea, lakes, uniform ground) and says so; the
 figure is measured again when the map is generated. Over those stretches vision has
 nothing to match: NAVERA carries on along its measured course for up to 2 minutes and only
-while its stated accuracy stays within 500 m (about 1 minute at 10 m/s), then gives no
+while its stated accuracy stays within 900 m (about 80 s at 10 m/s), then gives no
 position and the vehicle relies on its own navigation; vision keeps searching around the
 carried position and gives positions again as soon as a frame matches. Prefer a route along the coast or over varied ground.
 
 **Boats and low cameras.** Day vision needs land with texture in the camera's footprint.
-At sea there are no landmarks: away from the coast a boat gets at most the 2 minutes / 500 m of
+At sea there are no landmarks: away from the coast a boat gets at most the 2 minutes / 900 m of
 dead-reckoning above, then nothing. A camera only a few metres above the water sees a
 small, oblique footprint, which the straight-down matching against a satellite map is not
 designed for; NAVERA has **not** been tested on a boat with a real camera (the boat results
