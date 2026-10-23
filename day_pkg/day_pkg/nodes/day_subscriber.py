@@ -33,7 +33,7 @@ from collections import deque
 import cv2
 
 import rclpy
-from navera_common import latency_cal, state_store
+from navera_common import latency_cal, memory_trim, state_store
 from navera_common.compute_health import watch_degraded
 from navera_common.geo import is_finite_latlon
 from navera_common.track import TrackVelocity
@@ -55,6 +55,7 @@ from navera_msgs.msg import NavStatus, PositionEstimate
 # DayLocalizer().predict(bgr_array, threshold=...) -> dict
 from day_pkg.nodes.day_localizer import IMAGES_DIR, DayLocalizer, haversine_m
 from day_pkg.fix_sigma import SigmaCalibration, day_fix_sigma_m
+from day_pkg.fix_sigma import load_stored as load_sigma_cal, save_stored as save_sigma_cal
 from day_pkg.fix_consistency import FixConsistency
 from day_pkg.frame_gate import FrameGate, focal_px
 from day_pkg.frame_odometry import FrameOdometry
@@ -462,6 +463,7 @@ class DaySubscriber(Node):
         period = float(self.get_parameter("dr_watchdog_period_s").value)
         self.create_timer(period if period > 0 else 1.0, self._watchdog,
                           callback_group=MutuallyExclusiveCallbackGroup())
+        self._memory_trim_init()
         self._pairer       = FramePairer()   # image/meta matched on the image stamp
         self._frame_count   = 0
         self._success_count = 0
@@ -506,6 +508,7 @@ class DaySubscriber(Node):
         self.sigma_cal = SigmaCalibration(float(self.get_parameter("sigma_floor_no_cal_m").value),
                                           int(self.get_parameter("sigma_cal_min_samples").value))
         self.calib_rollback_s = float(self.get_parameter("calib_rollback_s").value)
+        self._sigma_store_init()
         self._init_mount_cal()
         self._last_fix_sigma = self.local_sigma_m
         self.local_max_radius_m = float(self.get_parameter("local_max_radius_m").value)
@@ -713,6 +716,7 @@ class DaySubscriber(Node):
     def on_nav_status(self, msg: NavStatus):
         self._gps_prior.arbiter(msg.active_source == NavStatus.SOURCE_GPS
                                 and msg.state in (NavStatus.STATE_FIX, NavStatus.STATE_DEGRADED))
+        self._gps_refused_flag = bool(getattr(msg, "gps_refused", False))
 
     def on_gps(self, msg: PositionEstimate):
         """GPS position vetted by the arbiter → it becomes the anchor (the prior for GPS loss).
@@ -888,11 +892,14 @@ class DaySubscriber(Node):
             trusted = self._gps_prior.fresh() is not None
             if self._gps_was_trusted and not trusted:
                 self._handover_from_gps()
-                self.latency_cal.freeze("GPS lost or not trusted", self.latency_rollback_s)
+                # the last delay samples are dropped after a refusal only (as the sigma ones, F39)
+                self.latency_cal.freeze("GPS lost or not trusted",
+                                        self.latency_rollback_s if getattr(self, "_gps_refused_flag", True) else 0.0)
                 self.latency_cal.persist()
                 if self.auto_latency:
                     self._relearn_after_delay_change()
                 self._rollback_gps_learning()
+                self._sigma_store_save(final=True)
             self._gps_was_trusted = trusted
             # Live GPS healthy → it is the position source; no inference needed.
             if trusted and not self.shadow_mode:
@@ -1126,13 +1133,82 @@ class DaySubscriber(Node):
         if self.calib_rollback_s <= 0:
             return
         since = time.time() - self.calib_rollback_s
-        n_sig, n_bias = self.sigma_cal.rollback(since), self.map_bias.rollback_bias(since)
+        # the sigma samples only after a REFUSAL (a slow spoof is trusted until refused); a GPS simply
+        # lost keeps them: right after take-off they are all there is (Isaac endurance 2026-10-22: GPS
+        # lost 12 s after reaching altitude, the 24 samples of the climb forgotten, F39). A drift
+        # learned as vision error could only make the stated sigma larger. The map bias and the camera
+        # mount (a spoof's drift would be learned as a mount error) are rolled back at any loss.
+        refused = getattr(self, "_gps_refused_flag", True)
+        n_sig = self.sigma_cal.rollback(since) if refused else 0
+        n_bias = self.map_bias.rollback_bias(since)
         n_mount = self.mount_cal.rollback(since) if getattr(self, "mount_cal", None) is not None else 0
         self._save_mount_cal()
         if n_sig or n_bias or n_mount:
             self.get_logger().info(f"[day] GPS no longer trusted: forgot the last {self.calib_rollback_s:.0f} s of "
                                    f"GPS-learned samples (sigma calibration {n_sig}, map bias {n_bias}, "
                                    f"camera mount {n_mount})")
+        if not refused and self.sigma_cal.samples:
+            self.get_logger().info(f"[day] GPS lost (not refused): the sigma calibration keeps its "
+                                   f"{self.sigma_cal.samples} samples")
+
+    # ── memory: the heap pages freed by the frames go back to the system (F40) ──
+    def _memory_trim_init(self):
+        """A timer (in the node's serial callback group: never during a frame) that calls glibc
+        malloc_trim every memory_trim_period_s (navera_common.memory_trim)."""
+        declare_float(self, "memory_trim_period_s", 60.0,
+                      "give freed heap memory back to the system this often (s); 0 = never")
+        self._trimmer = memory_trim.Trimmer(float(self.get_parameter("memory_trim_period_s").value))
+        if self._trimmer.period_s > 0:
+            self.create_timer(min(self._trimmer.period_s, 30.0), self._memory_trim)
+
+    def _memory_trim(self):
+        if self._trimmer.maybe_trim():
+            self.get_logger().info(f"[day] memory: RSS {memory_trim.rss_mib() or 0:.0f} MiB after malloc_trim "
+                                   f"(gave back {self._trimmer.last_freed_mib or 0:.0f} MiB in "
+                                   f"{self._trimmer.last_ms or 0:.0f} ms)", throttle_duration_sec=600.0)
+
+    # ── the sigma calibration kept per camera across flights (F39) ──
+    def _sigma_store_init(self):
+        """Parameters of the stored sigma calibration, and the one kept for this camera (by the
+        camera-delay key: latency_store_key / the calibration file's name) as this flight's prior."""
+        self.declare_parameter("sigma_cal_store", True)
+        self.declare_parameter("sigma_cal_store_key", "")
+        declare_float(self, "sigma_cal_store_max_age_days", 30.0, "a stored sigma calibration older than this is ignored")
+        declare_float(self, "sigma_cal_store_inflation", 1.3,
+                      "a stored calibration is used scaled by this (terrain, light, height change between flights)")
+        declare_float(self, "sigma_cal_store_floor_m", 10.0, "a stored calibration never states less than this (m)")
+        self._gps_refused_flag = False
+        self._sigma_store_t, self._sigma_store_saved = 0.0, None
+        self._sigma_store_key = (latency_cal.store_key(str(self.get_parameter("sigma_cal_store_key").value))
+                                 if bool(self.get_parameter("sigma_cal_store").value) else None)
+        if self._sigma_store_key is None:
+            return
+        kept = load_sigma_cal(self._sigma_store_key,
+                              float(self.get_parameter("sigma_cal_store_max_age_days").value) * 86400.0)
+        if kept is None:
+            return
+        age_d = (time.time() - kept["saved_at"]) / 86400.0
+        if self.sigma_cal.set_prior(kept["f"], kept["b"], f"stored ({self._sigma_store_key}, {age_d:.1f} d old)",
+                                    float(self.get_parameter("sigma_cal_store_inflation").value),
+                                    float(self.get_parameter("sigma_cal_store_floor_m").value)):
+            self.get_logger().info(f"[day] sigma calibration: starting from the one kept for this camera "
+                                   f"(f {kept['f']:.2f}, b {kept['b']:.1f} m, {kept['samples']} samples, "
+                                   f"{age_d:.1f} days old) until this flight has its own")
+
+    def _sigma_store_save(self, final: bool = False):
+        """Keep this flight's sigma calibration for the next flight with this camera: every 60 s
+        from the samples older than calib_rollback_s (a later spoof refusal could still roll the
+        newer ones back), and at the GPS loss / refusal from what the rollback left."""
+        if self._sigma_store_key is None or (not final and time.time() - self._sigma_store_t < 60.0):
+            return
+        self._sigma_store_t = time.time()
+        terms = self.sigma_cal.export(None if final else time.time() - self.calib_rollback_s)
+        if terms is None or terms == self._sigma_store_saved:
+            return
+        if save_sigma_cal(self._sigma_store_key, terms):
+            self._sigma_store_saved = terms
+            self.get_logger().info(f"[day] sigma calibration kept for the next flight ({self._sigma_store_key}): "
+                                   f"f {terms['f']:.2f}, b {terms['b']:.1f} m, {terms['samples']} samples")
 
     def _calibrate_altitude(self, seq_id, img, meta):
         """GPS trusted: every gps_check_period_s, match this frame within gps_check_radius_m
@@ -1169,6 +1245,7 @@ class DaySubscriber(Node):
                 v = _move(self._check_fix[:2], de, dn)
                 self.sigma_cal.add(haversine_m(v[0], v[1], g[0], g[1]), self._model_sigma(res, meta),
                                    t=self._check_fix[2])
+                self._sigma_store_save()
             st = {}
             self._publish_vision_altitude(meta, res, st)
             self._publish_estimate(exposure_stamp(meta, self.get_clock().now().to_msg()), seq_id, "local_match",

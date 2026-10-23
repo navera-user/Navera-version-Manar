@@ -488,7 +488,7 @@ class NaveraWebBridge(Node):
 
         # 2) The arbiter says no source is usable. A first-class answer.
         if status.state not in (NavStatus.STATE_FIX, NavStatus.STATE_DEGRADED):
-            return {"valid": False, "state": state_name, "reason": status.reason}
+            return self._with_map({"valid": False, "state": state_name, "reason": status.reason}, status)
 
         # 3) A winner exists → its latest position must be here. The arbiter
         #    publishes each measurement once and owns freshness; we only check
@@ -541,6 +541,21 @@ class NaveraWebBridge(Node):
         warn = self._camera_warning()
         if warn:
             out["camera_warning"] = warn
+        return self._with_map(out, status)
+
+    @staticmethod
+    def _with_map(out, status):
+        """The mission-area guard (NavStatus.map_area / map_edge_m): the operator is told when
+        the vehicle nears or leaves the edge of the mission's map (day vision has nothing to
+        match past it). A translation, like the rest: the estimator decided."""
+        flag = getattr(status, "map_area", 0)
+        edge = float(getattr(status, "map_edge_m", math.nan))
+        if flag and math.isfinite(edge):
+            out["map_edge_m"] = round(edge)
+            if flag == NavStatus.MAP_AREA_NEAR_EDGE:
+                out["map_warning"] = f"{edge:.0f} m from the edge of the map: day vision stops past it"
+            elif flag == NavStatus.MAP_AREA_OUTSIDE:
+                out["map_warning"] = f"{-edge:.0f} m OUTSIDE the map: no day-vision fix possible"
         return out
 
     def _on_frame_meta(self, msg):

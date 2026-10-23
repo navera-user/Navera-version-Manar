@@ -14,6 +14,7 @@ nodes: run them on a test machine or a bench box, **never on a box installed on 
 | `calibrate_camera.py` | lens calibration (once per camera and resolution; stop the pipeline first) — below |
 | `record_session.sh <dir> [day\|night\|cn]` | record a test session (all sensors, estimates, decision, camera) into a ROS 2 bag, on the data disk |
 | `evaluate_session.py <bag dir> [--csv file]` | measure each source against GPS in a recorded session (median / p90 / within 50-100-300 m) and whether the stated accuracy is honest |
+| `map_geofence.py AREA [--margin-m 500] [--plan f.plan] [--waypoints f.txt] [--upload URL]` | the **autopilot geofence** from the mission's map (bundle, prepared area or images dir): an inclusion polygon at least the margin inside the map, as a QGroundControl .plan, a QGC WPL 110 fence file (MAVProxy `fence load`, Mission Planner) or uploaded (MAVLink fence protocol). NAVERA itself only reports the map's edge (NavStatus.map_area) |
 | `mission_bundle.py plan\|build\|check\|env` | **offline mission bundle**: the route's corridor map, day-vision area and features, IERS table and star catalogue in one directory, with a sha256 manifest; `check` proves it works with the network off — below |
 
 `check_boot.py` (the reboot check with the ROS node of every unit; `--user --prefix

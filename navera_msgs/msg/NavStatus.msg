@@ -67,6 +67,23 @@ uint8 MODE_REPLAYED=3                    # dataset ground truth; NEVER a real-fl
 # today proves it is alive but publishes no fix (contributing = false).
 SourceHealth[] sources
 
+# GPS is received but REFUSED (the cross-check with vision or the plausibility gate: spoofing or
+# a jump suspected) -- as opposed to simply lost (jammed, no fix). What NAVERA learned against the
+# GPS just before is then distrusted (a slow spoof is trusted until refused); after a plain loss
+# it is kept.
+bool gps_refused
+
+# ---------- 4. ARE WE STILL OVER THE MAP? (mission-area guard: reported, never acted on) ----------
+
+# Day vision matches against the mission's map only: past its edge it has nothing to match.
+# Computed from the published position against the map's tiles (navera_common.map_area).
+uint8 map_area
+uint8 MAP_AREA_UNKNOWN=0                # no map loaded, or no position
+uint8 MAP_AREA_INSIDE=1
+uint8 MAP_AREA_NEAR_EDGE=2              # closer to the edge than map_edge_warn_m (estimator parameter)
+uint8 MAP_AREA_OUTSIDE=3                # beyond the mapped area
+float32 map_edge_m                      # distance to the map's edge, m: > 0 inside, < 0 outside, NaN unknown
+
 # ---------- FOR HUMANS ----------
 
 string reason                           # one line explaining the current state; for display, never parsed

@@ -89,6 +89,15 @@ MISSIONS = {
     "plane": dict(alt=100.0, wps=[(600, 0), (600, 1200), (-600, 1200), (-600, 0), (600, 0)],
                   params={"TKOFF_ALT": 60, "RTL_RADIUS": 0, "ALT_HOLD_RTL": 10000}, corner_m=250.0),
 }
+# --endurance S (Copter): the Isaac endurance flight (navera_tools/isaac/run_closed_loop.sh --endurance):
+# 250 m, 8 m/s, a 500 m diamond around home flown again and again (DO_JUMP forever) for S s after
+# the GPS loss, then RTL
+ENDURANCE = dict(alt=250.0, wps=[(500, 0), (0, 500), (-500, 0), (0, -500), (500, 0)],
+                 params={"WPNAV_SPEED": 800, "WPNAV_SPEED_UP": 500, "WPNAV_SPEED_DN": 300, "LAND_SPEED_HIGH": 300,
+                         "ANGLE_MAX": 3500, "RTL_ALT": 25000, "RTL_ALT_FINAL": 25000, "WPNAV_RADIUS": 200,
+                         "SIM_BATT_CAP_AH": 0, "BATT_FS_LOW_ACT": 0, "BATT_FS_CRT_ACT": 0},
+                 corner_m=60.0)
+BLOCK_S = 300.0                              # endurance: statistics per 5 minutes after the loss
 SCENARIOS = ("nominal", "outage10", "outage30", "outage60", "spoof", "burst", "poor")
 EVENT_AT_S = 40.0                            # outage / burst start after the GPS loss
 SPOOF_RATE_MPS, SPOOF_JAM_AFTER_S = 2.0, 120.0
@@ -112,13 +121,24 @@ def load_frames(pool):
 class VisionErrors:
     """The real per-photo results replayed in order from a random start."""
 
-    def __init__(self, pool, rng):
+    def __init__(self, pool, rng, max_refusals=0):
         self.frames = load_frames(pool)
         self.i = rng.randrange(len(self.frames))
+        self.max_refusals = max_refusals     # > 0: a refusal run is cut to this many photos
+        self.refused = 0
 
     def next(self):
         f = self.frames[self.i % len(self.frames)]
         self.i += 1
+        if f is None and self.max_refusals > 0:
+            self.refused += 1
+            if self.refused > self.max_refusals:   # skip to the run's end: its next accepted photo
+                while self.frames[self.i % len(self.frames)] is None:
+                    self.i += 1
+                f = self.frames[self.i % len(self.frames)]
+                self.i += 1
+        if f is not None:
+            self.refused = 0
         return f
 
 
@@ -284,7 +304,11 @@ class Run:
         self.vehicle, self.scenario, self.a, self.work = vehicle, scenario, args, work
         self.rng = random.Random(args.seed)
         self.mission = MISSIONS[vehicle]
-        self.errors = VisionErrors("poor" if scenario == "poor" else "good", self.rng)
+        if args.endurance > 0:
+            if vehicle != "copter":
+                raise SystemExit("--endurance: copter only")
+            self.mission = ENDURANCE
+        self.errors = VisionErrors("poor" if scenario == "poor" else "good", self.rng, args.max_refusals)
         self.est = Estimator()
         self.cfg = Config(forward_degraded=True, degraded_sigma_m=args.sigma, bridge_max_s=args.bridge_max_s,
                           reacquire_after_s=args.reacquire_after_s,
@@ -433,6 +457,11 @@ class Run:
             seq=mc.seq if mc else None, mode=link.mode_name(), armed=link.armed(),
             pv=round(ek.pos_horiz_variance, 3) if ek else None, vv=round(ek.velocity_variance, 3) if ek else None,
             ekf_flags=ek.flags if ek else None))
+        lp, ss = link.last.get("LOCAL_POSITION_NED"), link.last.get("SIM_STATE")
+        if lp is not None and ss is not None:      # the autopilot's velocity vs the simulator's (m/s)
+            self.samples[-1].update(evn=round(lp.vx, 2), eve=round(lp.vy, 2), tvn=round(ss.vn, 2),
+                                    tve=round(ss.ve, 2), lpx=round(lp.x, 2), lpy=round(lp.y, 2),
+                                    lpt=lp.time_boot_ms)
         if self.live is not None:
             s = self.samples[-1]
             n, e = sv.ne_from(s["tlat"], s["tlon"], s["elat"], s["elon"])
@@ -476,6 +505,7 @@ class Run:
             self.link = link
             link.request({mavutil.mavlink.MAVLINK_MSG_ID_SIM_STATE: 10,
                           mavutil.mavlink.MAVLINK_MSG_ID_GLOBAL_POSITION_INT: 5,
+                          mavutil.mavlink.MAVLINK_MSG_ID_LOCAL_POSITION_NED: 5,
                           mavutil.mavlink.MAVLINK_MSG_ID_ATTITUDE: 25,
                           mavutil.mavlink.MAVLINK_MSG_ID_EKF_STATUS_REPORT: 2,
                           mavutil.mavlink.MAVLINK_MSG_ID_MISSION_CURRENT: 2})
@@ -528,6 +558,8 @@ class Run:
             lat, lon = sv.offset_ll(HOME[0], HOME[1], n, e)
             self.wps.append((lat, lon))
             items.append(sv.mission_item(len(items), mavutil.mavlink.MAV_CMD_NAV_WAYPOINT, lat, lon, m["alt"]))
+        if self.a.endurance > 0:              # the diamond again and again: back to its second corner
+            items.append(sv.mission_item(len(items), mavutil.mavlink.MAV_CMD_DO_JUMP, p1=3, p2=-1))
         items.append(sv.mission_item(len(items), mavutil.mavlink.MAV_CMD_NAV_RETURN_TO_LAUNCH))
         self.rtl_seq = len(items) - 1
         link.inbox.clear()
@@ -554,8 +586,13 @@ class Run:
         print(f"  {'GPS spoof starts' if self.scenario == 'spoof' else 'GPS lost'} at {self.t_loss:.1f} s")
         t_rtl = None
         limit = time.time() + self.a.max_s
+        last_rtl_try = 0.0
         while time.time() < limit:
             self.idle(link)
+            if self.a.endurance > 0 and t_rtl is None and link.t > self.t_loss + self.a.endurance \
+                    and time.time() - last_rtl_try > 3.0 and link.armed() and link.mode_name() == "AUTO":
+                last_rtl_try = time.time()           # endurance over: home on vision
+                link.set_mode(v, "RTL")
             if self.seq >= self.rtl_seq or link.mode_name() == "RTL":
                 t_rtl = t_rtl or link.t
             if v == "copter" and not link.armed() and link.t > self.t_loss + 5:
@@ -574,6 +611,29 @@ class Run:
         self.t_rtl = t_rtl
 
     # ------------------------------------------------------------------------- analysis
+    def blocks(self, after_loss):
+        """Endurance: per BLOCK_S after the loss, the autopilot's position / velocity error, its
+        position resets and the vision positions / velocities sent."""
+        out = []
+        t0 = self.t_loss
+        n = int(max((s["t"] for s in after_loss), default=t0) - t0) // int(BLOCK_S) + 1
+        for k in range(n):
+            lo, hi = t0 + k * BLOCK_S, t0 + (k + 1) * BLOCK_S
+            ss = [s for s in after_loss if lo <= s["t"] < hi and s["armed"]]
+            ev = [s for s in ss if "evn" in s]
+            pe = [_dist(sv.ne_from(HOME[0], HOME[1], s["elat"], s["elon"]),
+                        sv.ne_from(HOME[0], HOME[1], s["tlat"], s["tlon"])) for s in ss]
+            ve = [_vel_err(s) for s in ev]
+            sent = [x for x in self.sent if lo <= x[0] < hi and x[1] == KIND_ESTIMATED]
+            out.append(dict(block_min=f"{k * BLOCK_S / 60:.0f}-{(k + 1) * BLOCK_S / 60:.0f}",
+                            ekf_err=[_q(pe, 0.5), _q(pe, 0.9), _q(pe, 1.0)],
+                            ekf_vel_err=[_q(ve, 0.5), _q(ve, 0.9), _q(ve, 1.0)],
+                            resets=len(_resets(ev)), modes=sorted({s["mode"] for s in ss}),
+                            sent_err=[_q([x[3] for x in sent], 0.5), _q([x[3] for x in sent], 0.9)],
+                            sent_vel_err=[_q([x[6] for x in sent], 0.5), _q([x[6] for x in sent], 0.9)],
+                            sent_vel_sigma=_q([x[5] for x in sent], 0.5)))
+        return out
+
     def analyse(self):
         S = self.samples
         lat0, lon0 = HOME[0], HOME[1]
@@ -651,6 +711,13 @@ class Run:
             if s0["mode"] == "AUTO" and s0["seq"] is not None and 3 <= s0["seq"] < self.rtl_seq and s1["t"] > s0["t"]:
                 spd.append(_dist(ne(s1["tlat"], s1["tlon"]), ne(s0["tlat"], s0["tlon"])) / (s1["t"] - s0["t"]))
         res["leg_speed_median"] = _q(spd, 0.5)
+        ev = [s for s in after_loss if "evn" in s and s["armed"]]
+        res["ekf_vel_err_median"] = _q([_vel_err(s) for s in ev], 0.5)
+        res["ekf_vel_err_p90"] = _q([_vel_err(s) for s in ev], 0.9)
+        res["ekf_vel_err_max"] = _q([_vel_err(s) for s in ev], 1.0)
+        res["ekf_pos_resets"] = len(_resets(ev))
+        if self.a.endurance > 0:
+            res["blocks"] = self.blocks(after_loss)
         if self.vehicle == "copter":
             air = False
             for s in after_loss:
@@ -675,6 +742,26 @@ class Run:
             pre = [s for s in S if self.t_loss <= s["t"] < (self.t_jam or 1e9)]
             res["spoof_max_ekf_err"] = _q([_dist(ne(s["elat"], s["elon"]), ne(s["tlat"], s["tlon"])) for s in pre], 1.0)
         return res
+
+
+def _vel_err(s):
+    """The autopilot's horizontal velocity error (m/s) in one sample."""
+    return math.hypot(s["evn"] - s["tvn"], s["eve"] - s["tve"])
+
+
+def _resets(samples, jump_m=3.0):
+    """EKF position resets: a step of the autopilot's local position that its own velocity does not
+    explain (> jump_m between two samples); [(t, step m)]."""
+    out = []
+    for a, b in zip(samples, samples[1:]):
+        dt = (b["lpt"] - a["lpt"]) / 1000.0
+        if dt <= 0 or dt > 1.0:
+            continue
+        d = math.hypot(b["lpx"] - a["lpx"] - 0.5 * (a["evn"] + b["evn"]) * dt,
+                       b["lpy"] - a["lpy"] - 0.5 * (a["eve"] + b["eve"]) * dt)
+        if d > jump_m:
+            out.append((b["t"], round(d, 1)))
+    return out
 
 
 def _dist(a, b):
@@ -753,6 +840,11 @@ def main():
     ap.add_argument("--reacquire-after-s", type=float, default=Config.reacquire_after_s,
                     help="policy.Config.reacquire_after_s (0 = never hold back after a gap)")
     ap.add_argument("--reacquire-vel-sigma", type=float, default=Config.reacquire_vel_sigma_mps)
+    ap.add_argument("--endurance", type=float, default=0.0,
+                    help="Copter: fly the Isaac endurance diamond (250 m, 8 m/s, 500 m) for S s after the loss, then RTL")
+    ap.add_argument("--max-refusals", type=int, default=0,
+                    help="cut the replayed refusal runs to this many photos (0 = as measured); the Isaac "
+                         "endurance flight had no vision gap above 7 s: --frame-period 0.6 --max-refusals 5")
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--instance", type=int, default=5)
     ap.add_argument("--speedup", type=float, default=1.0)

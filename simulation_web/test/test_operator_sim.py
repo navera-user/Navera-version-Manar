@@ -17,6 +17,7 @@ class _Stub:
     operator_decision = NaveraWebBridge.operator_decision
     _source_label = NaveraWebBridge._source_label
     _camera_warning = NaveraWebBridge._camera_warning
+    _with_map = staticmethod(NaveraWebBridge._with_map)
 
     def __init__(self, details=""):
         now = time.monotonic()
@@ -89,3 +90,15 @@ def test_operator_sees_the_accuracy_the_source_and_camera_warnings():
     now = time.monotonic()
     b._frames = [(now, False, "camera tilted 52 deg from vertical (max 45)")] * 8 + [(now, True, "")] * 4
     assert "too tilted" in b.operator_decision()["camera_warning"]
+
+
+def test_operator_is_told_when_the_vehicle_nears_or_leaves_the_map():
+    b = _Stub()
+    assert "map_warning" not in b.operator_decision()             # no map flag: nothing said
+    b._nav_status.map_area, b._nav_status.map_edge_m = NavStatus.MAP_AREA_NEAR_EDGE, 320.0
+    d = b.operator_decision()
+    assert d["map_edge_m"] == 320 and "320 m from the edge" in d["map_warning"]
+    b._nav_status.state = NavStatus.STATE_NO_FIX                    # no position: still told
+    b._nav_status.map_area, b._nav_status.map_edge_m = NavStatus.MAP_AREA_OUTSIDE, -450.0
+    d = b.operator_decision()
+    assert d["valid"] is False and "450 m OUTSIDE the map" in d["map_warning"]

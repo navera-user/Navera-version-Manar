@@ -17,6 +17,9 @@ health, reason). Rules: [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md) §3.
 | `gps_jump_margin_m` | 50 | GPS noise allowance in that gate |
 | `gps_jump_window_s` | 20 | the gate also against every trusted fix of this window, with one margin: per fix only, a steady drag of max speed + margin/period passed (150 m/s with the defaults) |
 | `fix_max_sigma_m` | 25 | largest horizontal sigma still reported as FIX |
+| `map_images_dir` | "" (= `$DAY_DATASET_DIR/images`) | the mission's map tiles, for the **mission-area guard**: `NavStatus.map_area` (UNKNOWN / INSIDE / NEAR_EDGE / OUTSIDE) and `map_edge_m` (distance to the map's edge: > 0 inside, < 0 outside) from the published position (`navera_common.map_area`, 20 m grid). Reported only — NAVERA never acts on the vehicle |
+| `map_edge_warn_m` | 500 | closer to the edge than this: NEAR_EDGE (the camera footprint at 250 m with a 100° lens is ~600 m wide) |
+| `map_hold_s` | 60 | the last published position keeps the flag this long, so NO_FIX past the edge still says OUTSIDE |
 | `gps_crosscheck_sigmas`, `gps_crosscheck_persist_s` | 5, 3 | size rules: a trusted GPS disagreeing with an independent fix of stated accuracy beyond 5 sigma + margin for 3 s, or beyond 3 sigma at 5 fixes in a row, is refused (`navera_common.gps_crosscheck`) |
 | `gps_trend_enabled` | true | growth test (slow spoofing, `GpsDriftTrend`): the GPS - fix offset (vector, GPS interpolated at the fix's instant) GROWING steadily, not its size |
 | `gps_trend_z` | 6 | growth needed in units of the noise the fixes show (80th-percentile jitter around the trend) |
@@ -30,6 +33,11 @@ health, reason). Rules: [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md) §3.
 | `gps_motion_min_growth_m` | 12 | drift accumulated since the CUSUM left 0 needed to refuse |
 | `gps_motion_bias_mps` | 0.5 | GPS / odometry drift always allowed |
 | `gps_motion_eps_floor` | 0.03 | odometry scale / heading error always allowed (× the step length); the gain itself is learned from the day map fixes only, never from GPS |
+
+`NavStatus.gps_refused` is true while a received GPS is refused (cross-check, trend, motion or jump
+gate) — as opposed to lost: the day node then forgets what it learned against the GPS just before
+(sigma calibration, camera delay; a slow spoof is trusted until refused), and keeps it after a
+plain loss.
 
 A growth or motion refusal is lifted only once the offset is back nearer its value before the growth (it
 refuses inside 3 sigma, so "agrees within 3 sigma" alone would let the spoofed GPS straight back).

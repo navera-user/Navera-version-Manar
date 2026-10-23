@@ -165,6 +165,17 @@ the motion gate), ArduCopter's EKF reported "EKF variance" and switched to LAND 
 an autopilot told a position is better than it is rejects it and fails safe. Over textured
 ground (Sousse, median 111 m) the same setting flew on.
 
+## Mission-area guard (STATUSTEXT)
+
+Day vision only works over the mission's map. `navera_estimator` reports in `NavStatus` how far the
+published position is from the map's edge (`map_area`, `map_edge_m`; `navera_common.map_area`).
+`vehicle_output_node` passes NEAR_EDGE (within `map_edge_warn_m`, 500 m) and OUTSIDE on to the
+autopilot as a MAVLink `STATUSTEXT` — "NAVERA: map edge in 420 m" (WARNING), "NAVERA: 250 m OUTSIDE
+map, no vision fix" (CRITICAL), "NAVERA: back inside the map" (NOTICE) — when it changes and every
+30 s while it lasts (`navera_output/map_guard.py`); the autopilot logs it and forwards it to the
+ground station. NAVERA **only reports**: to have the autopilot act, load a geofence made from the map
+before flight (`navera_tools/map_geofence.py`, docs/ARDUPILOT_INTEGRATION.md §3).
+
 ## Configuration
 
 On the box: `/etc/navera/navera.env`, read by `navera-output.service` and

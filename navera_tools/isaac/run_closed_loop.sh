@@ -17,7 +17,6 @@
 #                  camera delay: --cam-args "-p capture_latency_s:=1.3" (NAVERA_CAMERA_LATENCY_S)
 #   --set K=V,...  extra / overriding ArduPilot parameters (after NAVERA's recommended ones)
 #   NAVERA_ISAAC_WS (env): the colcon build directory (default ~/.navera_isaac_ws; one per checkout)
-
 #   --area NAME  NAVERA's map ~/navera_data/isaac_NAME_area (default: the scene's, isaac_<scene>_area)
 #
 #   windows: "NAVERA - Isaac Sim flight" (the scene, chase view), MAVProxy map + console,
