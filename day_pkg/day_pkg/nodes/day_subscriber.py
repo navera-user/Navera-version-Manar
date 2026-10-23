@@ -1650,6 +1650,7 @@ class DaySubscriber(Node):
         velocity the next carry would use (the carried one, else the track's)."""
         t_last = self.track.last_time()
         if t_last is None:
+            self._dr_snap = None
             return
         c = self._carry
         if c is not None and c[2] >= t_last:
@@ -1659,6 +1660,7 @@ class DaySubscriber(Node):
         else:
             v = self.track.velocity(t)
             if v is None:
+                self._dr_snap = None            # nothing to carry: an older snapshot must not outlive this output
                 return
             ve, vn, sig_v = v
             since_v = t - t_last
@@ -1738,7 +1740,7 @@ class DaySubscriber(Node):
             sigma = self._dr_sigma + self._odometry_rel_error(meta) * math.hypot(de, dn) + 1.0
             if sigma <= self.dr_max_sigma_m:
                 t_vel = self.track.last_time()
-                self.track.add(t_now, lat, lon, sigma)
+                self.track.insert(t_now, lat, lon, sigma)
                 self._keep_carry_velocity(lat, lon, t_now, meta, sigma, t_vel)
                 self._anchor_lat, self._anchor_lon, self._anchor_time = lat, lon, t_now
                 self._dr_sigma = self._anchor_sigma = sigma
@@ -2535,7 +2537,7 @@ class DaySubscriber(Node):
                 # never the blended output: fed its own output the carry was a filter of itself — its
                 # velocity fitted to smoothed points, its sigma shrinking, the fixes weighted down and
                 # the output lagging (Isaac Sim 2026-10-22: 100 m behind a copter, F41)
-                self.track.add(t_fix, float(raw_lat), float(raw_lon), meas_sigma)
+                self.track.insert(t_fix, float(raw_lat), float(raw_lon), meas_sigma)
                 self._gyro_reset(t_fix, result)
                 self._track_heading = self._carry_heading(meta)[0]
                 self._keep_carry_velocity(float(raw_lat), float(raw_lon), t_fix, meta, meas_sigma, t_vel)

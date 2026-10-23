@@ -190,6 +190,21 @@ def test_gps_handover_during_a_long_match_h1200(env):
     meta = {"altitude_m": 1200.0, "image_stamp_ns": int(R.VClock.now * 1e9)}
     _, r = n._spatial_window(np.zeros((480, 640, 3), np.uint8), meta)
     assert r < 150.0                                    # was the 600 m circle around the anchor
+    # the first fix after the cut: a frame exposed 2.5 s before the last GPS point (camera delay + a
+    # 10 s match). It used to erase the GPS track (taken for a clock step back): 600 m search after it
+    t_exp = t0 + 19.8 - 2.5
+    lat, lon = _truth(t_exp, t0)
+    n._gps_was_trusted = False
+    n._publish_result(1, {"frame_id": 1, "image_stamp_ns": int(t_exp * 1e9), "altitude_m": 1200.0},
+                      {"matcher": "local", "accepted": True, "predicted_lat": lat, "predicted_lon": lon,
+                       "inliers": 300, "spread": 1.0, "score": 300.0, "sigma_m": 5.0, "spatial": True,
+                       "radius_m": 80.0})
+    assert n.est[-1].mode == PositionEstimate.MODE_MEASURED and n.est[-1].valid
+    assert n.track.velocity(R.VClock.now) is not None
+    R.VClock.now += 2.0
+    meta = {"altitude_m": 1200.0, "image_stamp_ns": int(R.VClock.now * 1e9)}
+    _, r = n._spatial_window(np.zeros((480, 640, 3), np.uint8), meta)
+    assert r < 200.0
 
 
 def test_carry_state_pure_rules():
