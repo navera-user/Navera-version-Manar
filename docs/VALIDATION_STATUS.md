@@ -1,6 +1,6 @@
 # NAVERA — Validation status and known limitations
 
-**Release 0.2 — field validation pending.** Last updated 2026-10-22 (the dated sections below
+**Release 0.2 — field validation pending.** Last updated 2026-10-23 (the dated sections below
 give each measurement's date; the summary and the known limitations reflect all of them).
 
 This document states what has been measured, how, and what still has to be validated in
@@ -663,6 +663,26 @@ further from it than 3 × its own sigma waits for a second agreeing one): believ
 where fixes are sparse). Two wrong matches in a row at the same place are still believed (a moving
 lens near the screen did that on the bench): D17 stays partly open — what is left is a real
 multi-hypothesis track.
+
+*2026-10-23 (D17, two in a row):* `FixConsistency` now believes a far-off fix on a good track only
+after **3** doubted fixes in a row agree, each carried by the velocity from the previous one
+(`confirm_fixes` 3; `confirm_fixes_lost` 2 after a gap, so re-acquisition is unchanged): two
+consecutive frames match the same ground against the same map window, so the matcher's mistake
+repeats and moves with the vehicle — agreement and the carried displacement cannot tell it from a
+real jump. Same replay, today's code (the numbers above predate the open3 carry): believed
+injected two-in-a-row, product 10-22 → now: missions **55 → 49** / 1029, flights **35 → 33** / 1151
+(output p95 40 → 35 m, missions); single 9 → 9 / 5 → 5; right fixes refused without injection
+282 → 282 (missions), 94 → 97 (flights). Most of what is left never reaches the confirmation:
+the first wrong fix passes the 3σ gate while the carry is uncertain (σ 35–50 m, or lost) and the
+second agrees with the track it moved. `reacquire_confirm` with the new rule: 21 / 24 believed,
+but right fixes refused 407 → 1000 (missions) — still off. D17 stays partly open.
+
+*Day node memory (2026-10-23):* PyTorch's CUDA cache (system memory on the Jetson) was emptied only
+after a > 300 m window; ordinary frames of varying size grew it to 2.5 GB reserved for ~90 MiB
+allocated (60-min soak: day_subscriber 2.9 GB RSS + 1.3 GB swap). It is now emptied when it holds
+> 256 MiB unused (`learned_matcher._trim_cache`). 7-min A/B, `memory_soak.sh`: peak RSS + swap
+**4.30 → 2.36 GB**, swap 0.32 → 0 GB; frame time median 0.403 → 0.432 s. (The 2026-10-22 "before"
+soak at 2.0 GB never matched a frame — no GPS prior — so it was not a baseline.)
 
 **F23 — blending with the gyro heading** (strong fixes at 3σ in all arms; measured output > 50 m /
 output p95 m / within 3σ):
