@@ -57,7 +57,8 @@ def _dist(p, q):
 # ── extraction: a run directory -> a compact replay record ─────────────────────────────────────
 def extract(run: str) -> dict:
     """The run's GPS-lost frames and what the node had learned by the cut (see the module doc)."""
-    summ = json.load(open(os.path.join(run, "summary.json")))
+    sp = os.path.join(run, "summary.json")
+    summ = json.load(open(sp if os.path.exists(sp) else os.path.join(run, "hil_summary.json")))   # HIL runs
     sess = json.load(open(os.path.join(run, "session.json")))
     cut = float(summ["mission"]["cut_at"])
     fr = [json.loads(x) for x in open(os.path.join(run, "frames.jsonl"))]
@@ -70,18 +71,19 @@ def extract(run: str) -> dict:
     def heading(t):
         return float(np.degrees(np.interp(t, T[:, 0], hd)) % 360.0)
 
-    day = {}
+    day = {}                              # frame -> its rows (a restarted node numbers frames again)
     for r in csv.DictReader(open(os.path.join(run, "day.csv"))):
-        day.setdefault(int(r["frame"]), r)
+        day.setdefault(int(r["frame"]), []).append(r)
     events = [json.loads(x) for x in open(os.path.join(run, "events.jsonl"))]
     rows, mount, sig_cal, lat_applied = [], {}, None, None
     for e in events:
         d = e.get("day_status") or {}
         if e["t"] < cut or d.get("raw_lat") is None or d.get("matcher") != "local":
             continue
-        r = day.get(int(d.get("frame_id", -1)))
-        if r is None:
+        cand = [x for x in day.get(int(d.get("frame_id", -1)), []) if float(x["t"]) <= e["t"] + 0.5]
+        if not cand:
             continue
+        r = min(cand, key=lambda x: e["t"] - float(x["t"]))      # the latest stamp before the status
         stamp, t_exp = float(r["t"]), float(r["t_exposure"])
         accepted = d.get("source") == "local_match" or "geometric inliers" not in str(d.get("reason"))
         if d.get("source") != "local_match":
