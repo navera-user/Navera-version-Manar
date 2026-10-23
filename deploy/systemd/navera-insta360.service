@@ -27,7 +27,9 @@ ExecStart=/home/navera/navera_boot_insta360.sh
 # has on_exit=Shutdown), so on-failure would never restart it. The node exits when the
 # camera is lost (unplugged, USB error): the restart opens it again.
 Restart=always
-RestartSec=5
+# 1 s: back before the output's 10 s bridge ends (B23); a unit failing at every start backs
+# off to 30 s in its wrapper (navera_boot_lib.sh navera_restart_backoff)
+RestartSec=1
 # Memory (F5 / H-11): a pipeline-class process (decodes 3840x1920 key frames, ~300 MB):
 # needed to navigate with the kit, taken after the web page and before the output chain.
 OOMScoreAdjust=-300

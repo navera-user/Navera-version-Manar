@@ -25,7 +25,9 @@ ExecStart=/home/navera/navera_boot_imu.sh
 # always: `ros2 launch` exits with code 0 even when a node crashed (every node
 # has on_exit=Shutdown), so on-failure would never restart it.
 Restart=always
-RestartSec=10
+# 1 s: back before the output's 10 s bridge ends (B23); a unit failing at every start backs
+# off to 30 s in its wrapper (navera_boot_lib.sh navera_restart_backoff)
+RestartSec=1
 # Memory (F5 / H-11): a small process NAVERA cannot fly without. The kernel OOM killer
 # takes it last (it is never the memory hog), systemd-oomd never picks it.
 OOMScoreAdjust=-900

@@ -12,6 +12,12 @@ LAT, LON = 35.85, 10.57
 M = 1.0 / 111195.0
 
 
+@pytest.fixture(autouse=True)
+def _own_state_dir(tmp_path, monkeypatch):
+    """Each test its own NAVERA state directory: a node reads back the GPS gate state (B23)."""
+    monkeypatch.setenv("NAVERA_STATE_DIR", str(tmp_path))
+
+
 @pytest.fixture(scope="module")
 def node():
     rclpy.init()
@@ -245,3 +251,49 @@ def test_a_motion_refusal_holds_while_the_spoof_lasts(node):
     first = next(t for t, why in log if why)
     assert 150.0 < first < 165.0
     assert all(why for t, why in log if first <= t < 260.0)
+
+
+def test_a_restart_keeps_a_refused_gps_refused_and_restores_no_position(tmp_path):
+    """B23: the arbiter restarts in ~1 s in flight; a GPS refused for spoofing before the crash stays
+    refused until an independent fix confirms it, the jump gate starts from the last trusted fix, and
+    nothing is published from the saved state (no stale position as fresh)."""
+    first = EstimatorNode()
+    try:
+        first._on_gps(_msg(first, PositionEstimate.SOURCE_GPS, sigma=2.0))       # trusted
+        first._tick()
+        first._gps_suspect = "implausible jump 5000 m in 1.0 s — possible spoofing"
+        first._tick()                                                            # saved at once
+    finally:
+        first.destroy_node()
+    published = []
+    second = EstimatorNode()
+    try:
+        second.pub_pos.publish = published.append
+        assert second._gps_suspect.startswith("(before a restart) implausible jump")
+        assert second._confirm_needed_since is not None
+        lat, lon, _ = second._gps_trusted
+        assert math.isclose(lat, LAT) and math.isclose(lon, LON)
+        # the spoofed GPS keeps coming, no independent source: still refused, nothing published
+        far = _msg(second, PositionEstimate.SOURCE_GPS, north_m=5000.0, sigma=2.0)
+        second._on_gps(far)
+        second._tick()
+        assert second._gps_suspect and published == []
+        assert second._last_published_key is None
+    finally:
+        second.destroy_node()
+
+
+def test_an_old_gps_gate_state_is_not_read_back(tmp_path):
+    """A state older than gps_state_memory_s (600 s) is ignored: a new flight starts clean."""
+    from navera_common import state_store
+    state_store.save("estimator_gps", {"suspect": "x", "trusted": {"lat": LAT, "lon": LON, "t": 1.0}})
+    path = tmp_path / "estimator_gps.json"
+    import json as _json
+    d = _json.loads(path.read_text())
+    d["saved_at"] -= 601.0
+    path.write_text(_json.dumps(d))
+    n = EstimatorNode()
+    try:
+        assert n._gps_suspect is None and n._gps_trusted is None
+    finally:
+        n.destroy_node()

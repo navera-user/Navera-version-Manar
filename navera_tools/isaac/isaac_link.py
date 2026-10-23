@@ -627,16 +627,14 @@ class IsaacLink(Node):
                     self.stream_q.put_nowait((t, img))
                 except queue.Full:
                     self.get_logger().warn("camera stream: encoder behind, frame dropped", throttle_duration_sec=5.0)
-            if not self.ros_camera:
-                self.live["frames_out"] += 1
-                continue
-            m = Image()
-            self._stamp(m.header, now)
-            m.header.frame_id = "camera"
-            m.height, m.width, m.encoding, m.step = img.shape[0], img.shape[1], "bgr8", img.shape[1] * 3
-            m.data = img.tobytes()
-            self.arrival[m.header.stamp.sec * 1_000_000_000 + m.header.stamp.nanosec] = t
-            self.pub_img.publish(m)
+            if self.ros_camera:            # HIL (ros_camera false): the RTSP stream only
+                m = Image()
+                self._stamp(m.header, now)
+                m.header.frame_id = "camera"
+                m.height, m.width, m.encoding, m.step = img.shape[0], img.shape[1], "bgr8", img.shape[1] * 3
+                m.data = img.tobytes()
+                self.arrival[m.header.stamp.sec * 1_000_000_000 + m.header.stamp.nanosec] = t
+                self.pub_img.publish(m)
             self.live["frames_out"] += 1
         if self.done and not self.delivery:
             self._summary()

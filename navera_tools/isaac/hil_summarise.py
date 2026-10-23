@@ -216,9 +216,18 @@ def restarts(res, offset):
     ev = [json.loads(x) for x in open(os.path.join(res, "sitl_events.jsonl"))] \
         if os.path.exists(os.path.join(res, "sitl_events.jsonl")) else []
     t0 = json.load(open(os.path.join(res, "hil_t0.json")))["t0_pc"] if os.path.exists(os.path.join(res, "hil_t0.json")) else 0
+    fixes = sorted(fv(r, "rx_box") for r in rows(os.path.join(res, "hil_out.csv")) if r["fix"] == "1") \
+        if os.path.exists(os.path.join(res, "hil_out.csv")) else []
+    nofix = sorted(fv(r, "rx_box") for r in rows(os.path.join(res, "hil_out.csv")) if r["fix"] == "0") \
+        if os.path.exists(os.path.join(res, "hil_out.csv")) else []
     out = []
     for k in kills:
         tk = float(k["box"])
+        # what the autopilot was given (/navera/fix = its GPS_INPUT): the longest time without a
+        # position from just before the kill until 90 s after, and any "no fix" sent meanwhile
+        win = [p for p in fixes if tk - 5.0 <= p <= tk + 90.0]
+        out_gap = max((b - a for a, b in zip(win, win[1:])), default=None)
+        nf = [p for p in nofix if tk <= p <= tk + 90.0]
         before = [p for p in pos if p < tk]
         after = [p for p in pos if p > tk + 0.05]
         gap_pos = (after[0] - before[-1]) if before and after else None
@@ -235,6 +244,9 @@ def restarts(res, offset):
                  if e.get("kind") in ("text", "mode") and tk_pc - t0 <= e["t"] <= tk_pc - t0 + 60]
         out.append(dict(unit=k["unit"], t_flight=round(tk_pc - t0, 1), position_back_after_s=round(back_pos, 1) if back_pos else None,
                         position_gap_s=round(gap_pos, 1) if gap_pos else None,
+                        output_max_gap_s=round(out_gap, 1) if out_gap is not None else None,
+                        output_no_fix_after_s=round(nf[0] - tk, 1) if nf else None,
+                        node=k.get("node"), back_how=k.get("how"), back_after_s=k.get("active_after_s"),
                         systemd_restarted=k.get("restarted"), autopilot_gps=ap_lost, autopilot_said=texts[:8]))
     return out
 

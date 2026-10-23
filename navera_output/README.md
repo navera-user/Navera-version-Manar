@@ -54,7 +54,7 @@ overrides below and the vehicle's maximum speed (`NAVERA_MAX_SPEED_KMH`).
 | FIX (GPS; or a source with a stated σ ≤ 25 m) | GGA quality 1, HDOP = σ/2 m, satellites, altitude; RMC status A, mode A, speed and course from the receiver | fix_type 3, horiz/vert accuracy = σ, horizontal velocity from the receiver with `speed_accuracy` = `gnss_speed_sigma_mps` (none current: stated unknown, below) | status FIX, `service` GPS, covariance from σ |
 | FIX without altitude (vision / celestial) | GGA quality 1, no altitude | fix_type 3 with the altitude flagged ignored (`fix_type_without_alt`), velocity as for DEGRADED | status FIX (no vision source reaches FIX today) |
 | DEGRADED (vision, celestial, dead-reckoned; a GPS "in doubt") | **no fix** — even with `forward_degraded`, unless `nmea_forward_degraded`: then quality 6 (estimated), HDOP from the accuracy, RMC mode E | **no fix by default**; with `forward_degraded`: accuracy = the worse of `degraded_sigma_m` and the source's own, plus the lag; 0 satellites; NAVERA's own velocity with its accuracy, or "unknown" (below); held back after a gap until that velocity is known | **sent by default** (`ros_forward_degraded`): status FIX, `service` 0, the stated accuracy plus the lag in the covariance — only when an accuracy is stated (else no fix) |
-| NO_FIX; arbiter silent > 2 s; no new position for 5 s; measured more than `max_measurement_age_s` ago; coarser than `max_forward_sigma_m` | GGA quality 0 with empty position, RMC status V | fix_type 1, no position | STATUS_NO_FIX, NaN position |
+| NO_FIX; arbiter silent > 2 s (bridged first, see below); no new position for 5 s; measured more than `max_measurement_age_s` ago; coarser than `max_forward_sigma_m` | GGA quality 0 with empty position, RMC status V | fix_type 1, no position | STATUS_NO_FIX, NaN position |
 
 Today **every vision and celestial position is DEGRADED** (the estimator gives FIX only with
 a stated σ ≤ `fix_max_sigma_m` = 25 m; day vision states 30 m until measured with NAVERA's
@@ -117,9 +117,18 @@ about once a second (`bridge_period_s`), its accuracy growing with the gap: velo
 t + 5° heading error × distance + ½ × `bridge_accel_mps2` × t² (without a velocity: the position
 stays and the accuracy grows by `max_speed_mps` × t). After `bridge_max_s` (10 s), or when the
 grown accuracy exceeds `max_forward_sigma_m`, it is "no fix" again and the autopilot's own
-failsafe acts. Only a forwarded estimate is bridged — never a GPS fix, never while the arbiter is
-silent — and the bridge never claims better than it knows. `bridge_max_s = 0` disables it.
+failsafe acts. Only a forwarded vision / celestial position is bridged — never a GPS fix — and
+the bridge never claims better than it knows. `bridge_max_s = 0` disables it.
 Log lines: `no new position for 2.6 s: bridging along the last one`, `bridge ended: …`.
+
+**A crash of NAVERA is a gap like any other (B23).** The arbiter silent (navera-estimator
+crashed, systemd restarting it in ~1 s) or initializing (just restarted) is bridged the same way:
+on the real box a killed estimator used to give "no fix" at once and the copter landed. The
+output itself keeps its last forwarded position and the velocity sent with it on disk
+(`state_store` `output_held`, at most once a second; a GPS fix clears it): restarted, it
+resumes the bridge at once (`restart: the last position given to the autopilot … is bridged on`)
+and does not hold the next vision positions back for their velocity — the autopilot never timed
+out. A held position older than `bridge_max_s` is never reused.
 
 **Carried to the present.** A vision position describes where its photo was taken, 1–2.5 s
 before it reaches the output; sent as it was, a plane at 40 m/s was 83 m off with a stated

@@ -217,7 +217,7 @@ class LiveCamera(Node):
             self._ready.set()
         if not bool(p("start_paused")):
             self._go.set()
-        self.create_subscription(Bool, p("ready_topic"), lambda m: self._ready.set() if m.data else None, LATCHED)
+        self.create_subscription(Bool, p("ready_topic"), self._on_ready, LATCHED)
         self.create_subscription(Bool, "start", lambda m: self._go.set() if m.data else self._go.clear(), LATCHED)
         self.ack_timeout_s = float(p("ack_timeout_s"))
         self._awaiting, self._acked = None, threading.Event()
@@ -332,6 +332,17 @@ class LiveCamera(Node):
             self.get_logger().info(f"attitude taken {shift:+.2f} s before the frame stamp (the day node's camera "
                                    f"delay {d.get('delay_s')} +- {d.get('sigma_s')} s)")
         self.att_shift_s = shift
+
+    def _on_ready(self, m: Bool):
+        """The localizer is ready. Heard again while a frame waits for its ack: the localizer was
+        restarted (respawned alone, B23) and that frame is lost with it — the next one goes at once
+        instead of after ack_timeout_s."""
+        if not m.data:
+            return
+        if self._ready.is_set() and self._awaiting is not None and not self._acked.is_set():
+            self.get_logger().warn(f"the localizer restarted: frame {self._awaiting} dropped, sending the next")
+            self._acked.set()
+        self._ready.set()
 
     def _on_ack(self, m: Int32):
         if self._awaiting is not None and m.data == self._awaiting:

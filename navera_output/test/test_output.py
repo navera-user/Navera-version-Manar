@@ -314,9 +314,13 @@ def test_the_soft_no_fix_reasons_are_the_ones_a_gap_can_be_bridged_for():
     assert decide(cfg, STATE_NO_FIX, 0.1, pos(source=DAY), 0.1, DAY).soft
     assert decide(cfg, STATE_DEGRADED, 0.1, pos(source=DAY), 6.0, DAY).soft          # position not current
     assert decide(cfg, STATE_DEGRADED, 0.1, pos(source=DAY), 0.1, DAY, None, 6.0).soft  # measured too long ago
-    assert not decide(cfg, None, None, None, None, None).soft                       # the arbiter is silent
+    # the arbiter silent (crashed, restarting) or initializing (just restarted): no NEW position,
+    # bridgeable (B23: a killed estimator landed the copter on the real box)
+    assert decide(cfg, None, None, None, None, None).soft
+    assert decide(cfg, STATE_DEGRADED, 3.0, pos(source=DAY), 0.1, DAY).soft         # nav_status stale
+    init = decide(cfg, 0, 0.1, pos(source=DAY), 0.1, DAY)
+    assert init.soft and init.kind == KIND_NONE and "initializing" in init.reason
     assert not decide(cfg, STATE_DEGRADED, 0.1, pos(source=DAY), 0.1, GPS).soft      # other source
-    assert not decide(cfg, 0, 0.1, pos(source=DAY), 0.1, DAY).soft                   # initializing
     coarse = decide(Config(forward_degraded=True, degraded_sigma_m=900.0, max_speed_mps=30.0), STATE_DEGRADED, 0.1,
                     pos(source=DAY, details={}), 0.1, DAY, None, 4.0)
     assert coarse.kind == KIND_NONE and not coarse.soft and "too coarse" in coarse.reason
