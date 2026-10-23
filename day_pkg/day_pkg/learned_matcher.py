@@ -405,8 +405,7 @@ class LearnedMatcher(LocalMatcher):
             res = self._locate_heading_search(frame, prior, search_m, frame_m_per_px, margin_m, scale_tol,
                                               heading_deg, hfov_deg, expected_tilt_deg)
             res["total_ms"] = (time.time() - t0) * 1000.0
-            if search_m > 300.0:
-                self._t.cuda.empty_cache()
+            self._trim_cache(search_m)
             return res
         hdg, hdg_src = heading_deg, "attitude"
         if hdg is None and self._heading and time.time() - self._heading[1] < self.HEADING_MEMORY_S:
@@ -447,11 +446,21 @@ class LearnedMatcher(LocalMatcher):
         if res["accepted"] and res.get("rotation_deg") is not None:
             self._heading = (float(res["rotation_deg"]), time.time())
         res["total_ms"] = (time.time() - t0) * 1000.0
-        if search_m > 300.0:
-            # a wide window's tensors stay in PyTorch's cache, which on the Jetson is system
-            # memory: a single 600 m frame raised the process by 1.7 GB (campaign 4)
-            self._t.cuda.empty_cache()
+        self._trim_cache(search_m)
         return res
+
+    CACHE_SLACK_MIB = 256.0
+
+    def _trim_cache(self, search_m: float) -> None:
+        """PyTorch's CUDA cache is system memory on the Jetson: a wide window's tensors (a single 600 m
+        frame raised the process by 1.7 GB, campaign 4) and the varying sizes of ordinary frames
+        (re-matches, map levels, keypoint counts: reserved 1.3 -> 2.3 GB for 86 MiB allocated over a
+        60-min soak, 2026-10-23) stay cached. Emptied after a wide window, or when the cache holds
+        more than CACHE_SLACK_MIB unused."""
+        c = self._t.cuda
+        if search_m > 300.0 or \
+                (c.memory_reserved() - c.memory_allocated()) / 2 ** 20 > self.CACHE_SLACK_MIB:
+            c.empty_cache()
 
     def heading_search_order(self, heading_deg: Optional[float]) -> list:
         """Headings tried by the heading search, in order: the previous match's rotation (kept
