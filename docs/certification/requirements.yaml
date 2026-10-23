@@ -129,6 +129,7 @@ requirements:
     - day_pkg/day_pkg/image_quality.py::sharpness
   match:
     - 'test_local_matcher\.py::test_(wrong_altitude|prior_elsewhere|uniform_ground|retry_features)'
+    - 'test_rescaled_match\.py::'
     - 'test_image_quality\.py::'
     - 'test_vision_nav\.py::test_(weak_fix_far|a_strong_fix_far|an_impossible_jump|inliers_on_a_strip)'
   evidence:
@@ -145,8 +146,16 @@ requirements:
     - day_pkg/day_pkg/nodes/day_subscriber.py::DaySubscriber._dead_reckon
     - day_pkg/day_pkg/nodes/day_subscriber.py::DaySubscriber._watchdog
     - day_pkg/day_pkg/carry_state.py::watchdog_carry
+    - day_pkg/day_pkg/carry_state.py::carry_snap_aided
+    - day_pkg/day_pkg/carry_aids.py::VelocityRef
+    - day_pkg/day_pkg/carry_aids.py::AttitudeYaw
+    - day_pkg/day_pkg/nodes/day_subscriber.py::DaySubscriber._ap_predicted
+    - navera_output/navera_output/nodes/vehicle_link_node.py::global_position_velocity
     - navera_common/navera_common/track.py::TrackVelocity.propagate
   match:
+    - 'test_carry_aids\.py::'
+    - 'test_day_carry_aided\.py::test_carried_along|test_day_carry_aided\.py::test_the_gps_snapshot'
+    - 'test_vehicle_link\.py::test_global_position_velocity'
     - 'test_vision_nav\.py::test_(straight_gap|turn_is_followed|a_turn_grows|a_full_lap|no_velocity_chord|velocity_from_before)'
     - 'test_day_track_restart\.py::test_(the_watchdog|gps_handover|carry_state)'
     - 'test_dead_reckon_sigma\.py::'
@@ -1403,7 +1412,10 @@ requirements:
     - day_pkg/day_pkg/nodes/day_subscriber.py::DaySubscriber._restore_track
     - day_pkg/day_pkg/carry_state.py::restore_track
     - day_pkg/day_pkg/nodes/day_entry.py::EarlyBridge
+    - day_pkg/day_pkg/nodes/day_subscriber.py::DaySubscriber.take_early_bridge
+    - navera_tools/isaac/corner_kill.py
   match:
+    - 'test_day_carry_aided\.py::test_(a_day_node_killed|the_early_bridge)'
     - 'test_bridge_flow\.py::test_(a_restarted|no_restore|the_held_position)'
     - 'test_day_track_restart\.py::test_a_(restarted|stale)'
     - 'test_day_early_bridge\.py::'
