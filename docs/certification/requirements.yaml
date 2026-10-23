@@ -925,6 +925,47 @@ requirements:
     - {level: UT, value: '1 deg tilt, 12 samples with 1-4 bad ones 1.5-8 deg off: plain fit 0.30-0.91 deg (33-101 km), robust 0.007-0.021 deg (0.8-2.4 km); clean samples unchanged'}
   status: verified-UT
 
+- id: NAV-SAF-30
+  category: SAF
+  title: 'Mission-area guard: the edge of the map reported, never acted on'
+  text: 'NAVERA shall report how far its published position is from the edge of the mission map day vision matches against (NavStatus.map_area INSIDE / NEAR_EDGE within map_edge_warn_m / OUTSIDE, map_edge_m), keep the flag for map_hold_s after the last position, pass NEAR_EDGE and OUTSIDE on to the autopilot as a MAVLink STATUSTEXT (on change and every 30 s) and to the operator view, and offer a pre-flight tool that turns the map into an autopilot inclusion geofence at least a margin inside it. NAVERA shall not act on the vehicle by itself.'
+  code:
+    - navera_common/navera_common/map_area.py::MapArea
+    - navera_estimator/navera_estimator/nodes/estimator_node.py::EstimatorNode._map_status
+    - navera_output/navera_output/map_guard.py::MapGuard
+    - simulation_web/simulation_web/scripts/navera_web_bridge.py::NaveraWebBridge._with_map
+    - navera_tools/map_geofence.py::main
+  match:
+    - 'test_map_area\.py::'
+    - 'test_map_guard\.py::'
+    - 'test_map_status\.py::'
+    - 'test_operator_sim\.py::test_operator_is_told_when_the_vehicle_nears_or_leaves_the_map'
+  evidence:
+    - {level: UT, value: '2.2 km square map: centre ~1100 m inside, 400 m beyond the north edge -400 +-40 m; L-shaped corridor: fence polygon (<= 20 vertices) >= margin - 2 cells inside along every edge, the empty corner outside; STATUSTEXT once on change, every 30 s, back-inside notice once'}
+    - {level: A, value: 'Isaac endurance 2026-10-22 (F38): the vehicle flew ~2.7 km N / 1.3 km W of home, past the 6 x 6 km map edge (~3 km from its centre), NAVERA stopped, EKF failsafe LAND: NEAR_EDGE would have been reported 500 m before the edge', ref: 'navera_tools/isaac/README.md, endur_2h'}
+    - {level: SIM, value: 'ArduCopter 4.5.7 SITL: map_geofence --upload of the Kalaa map fence (4 vertices, 500 m inside) accepted, read back identical (MAV_CMD_NAV_FENCE_POLYGON_VERTEX_INCLUSION)', ref: 'VALIDATION_STATUS.md, Endurance'}
+  status: verified-UT
+  note: 'the fence was not flown against in SITL (breach / FENCE_ACTION not exercised); whether to load the fence and its FENCE_ACTION are the integrator''s decision'
+
+- id: NAV-FUN-30
+  category: FUN
+  title: 'In-flight sigma calibration kept per camera, and kept at a plain GPS loss'
+  text: 'The day-vision sigma calibration learned against a trusted GPS shall be forgotten for the last calib_rollback_s only when the GPS is refused (NavStatus.gps_refused), not when it is simply lost; it shall be kept per camera (the camera-delay key) in NAVERA_STATE_DIR for sigma_cal_store_max_age_days, written only from samples older than calib_rollback_s while GPS is trusted (and at the loss), and start the next flight as a prior used only while that flight has fewer than its own min_samples, scaled by sigma_cal_store_inflation, never below sigma_cal_store_floor_m, and dropped when 2 of its own samples lie beyond 3 prior sigmas. The camera-delay samples follow the same refusal-only rollback.'
+  code:
+    - day_pkg/day_pkg/fix_sigma.py::SigmaCalibration.set_prior
+    - day_pkg/day_pkg/fix_sigma.py::SigmaCalibration.export
+    - day_pkg/day_pkg/fix_sigma.py::save_stored
+    - day_pkg/day_pkg/fix_sigma.py::load_stored
+    - day_pkg/day_pkg/nodes/day_subscriber.py::DaySubscriber._sigma_store_init
+    - day_pkg/day_pkg/nodes/day_subscriber.py::DaySubscriber._sigma_store_save
+    - day_pkg/day_pkg/nodes/day_subscriber.py::DaySubscriber._rollback_gps_learning
+  match:
+    - 'test_sigma_store\.py::'
+  evidence:
+    - {level: UT, value: 'prior used until 15 own samples, x1.3, >= 10 m; dropped after 2 samples beyond 3 sigma; export leaves out the samples a late refusal could roll back; plain loss keeps 20 samples, refusal forgets them; round trip, age and key checked'}
+    - {level: A, value: 'Isaac endurance 2026-10-22 (F39): GPS lost 12 s after reaching altitude; the 24 sigma samples of the climb all forgotten by the 60 s rollback: 30 m stated for ~14 m errors', ref: 'endur_2h logs/day.log'}
+  status: verified-UT
+
 - id: NAV-FUN-25
   category: FUN
   title: 'Compass-free celestial fix for a narrow star camera with a known mount'
