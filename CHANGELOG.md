@@ -4,6 +4,16 @@ Measured numbers come from simulation (Isaac Sim + ArduPilot/PX4 SITL), bench, o
 data from other vehicles; **no NAVERA flight yet**. Details: `docs/VALIDATION_STATUS.md`,
 requirements: `docs/certification/REQUIREMENTS.md`, known problems: the shared problems list.
 
+## 0.5.1 — 2026-10-23
+- Day vision: multi-hypothesis track (D17). A far-off fix starts an alternative instead of moving
+  the track; it takes over only after 3+ agreeing fixes and a clear likelihood lead, and the stated
+  sigma covers it meanwhile. Replay with injected wrong matches: two-in-a-row believed 49 → 11
+  (missions), 33 → 7 (flights); output max 1541 → 727 m. Applies while the carried sigma is
+  30–250 m (beyond that, two agreeing fixes still re-acquire, to keep availability).
+- 1200 m while accelerating: Isaac Sim flight on 0.5.0 code completed (95.5 % matched, 22 m
+  median, 0 wrong, 0 beyond 3 sigma).
+- 1,097 tests.
+
 ## 0.5.0 — 2026-10-23 (since 0.4.0, 2026-09-28)
 
 ### Navigation
@@ -42,7 +52,6 @@ requirements: `docs/certification/REQUIREMENTS.md`, known problems: the shared p
 - Public real flights (UAV-VisLoc, AerialVL), real aerial thermal (Bordeaux), real sky (ESO).
 
 ### Known limits
-- No real NAVERA flight; ground hidden (fog, low cloud, sea); maps older than ~5 years;
-  1200 m while accelerating (fixes unit-tested, not flown); two agreeing wrong matches while
-  the track is uncertain can still be believed (D17, multi-hypothesis tracking not done).
+- No real NAVERA flight; ground hidden (fog, low cloud, sea); maps older than ~5 years.
+- (0.5.1 closed the 1200 m and most of the D17 items listed for 0.5.0.)
 - Vision positions go to the autopilot only with `NAVERA_FORWARD_DEGRADED=true`.
