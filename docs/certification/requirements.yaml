@@ -524,8 +524,10 @@ requirements:
   code:
     - day_pkg/day_pkg/fix_sigma.py::SigmaCalibration
     - day_pkg/day_pkg/fix_sigma.py::day_fix_sigma_m
+    - day_pkg/day_pkg/nodes/day_subscriber.py::DaySubscriber._fix_sigma_common
     - night_pkg/night_pkg/nodes/night_localizer.py::fix_sigma_m
   match:
+    - 'test_isaac_sigma_replay\.py::'
     - 'test_day_fix_sigma\.py::'
     - 'test_fix_sigma_rollback\.py::'
     - 'test_evaluate_session\.py'
@@ -533,6 +535,7 @@ requirements:
     - 'test_stated_sigma\.py::'
   evidence:
     - {level: PUB, value: 'model alone 0.65–0.71 (unsafe); self-cal + floor + guard 0.993 / 0.999', ref: 'VALIDATION_STATUS.md, verdict on the stated sigma'}
+    - {level: SIM, against: true, value: 'F41: Isaac Sim copter with the camera delay unknown (bef4170): 146/356 outputs beyond 3σ (stated 5–9 m, error 13–20 m) — the blend and the mount calibration; fixed: offline replay of 6 runs 0–1 % beyond 3σ (regression test on 2 of them); Isaac flights after the fix: base 0/315, mount_cal off 0/301, 600 m 0/276, plane 30 m/s 0/170, 0 wrong', ref: 'VALIDATION_STATUS.md, Isaac Sim closed loop: the overconfident copter sigma'}
     - {level: PUB, value: 'Esri map, 2026-10-22: UAV-VisLoc 10 flights 0.997 (30 m floor) / 0.995 (self-cal), 5 fixes > 50 m beyond 3σ; AerialVL 1.000 / 1.000; model alone 0.70–0.73', ref: 'VALIDATION_STATUS.md, Day: more public flights, on NAVERA''s own map source'}
     - {level: PUB, value: 'night (D3 / D22): hypot(10 m + 1 % above 400 m, two-centre gap) 100 % of 444 real-thermal fixes within 3σ in every camera / height (max 2.47σ nominal, 2.98σ with a 15° heading error), 493 synthetic 100 %; stated as covariance by default (state_fix_sigma)', ref: 'VALIDATION_STATUS.md, Night vision — fixes of 2026-10-22'}
   status: verified-PUB
@@ -961,7 +964,7 @@ requirements:
 - id: NAV-SAF-28
   category: SAF
   title: 'Day track consistency: no confident wrong fix believed alone'
-  text: 'A day fix further from the carried position than 3 x the two sigmas combined (strong fixes included) shall not be believed until a second fix agrees with it (within 6 s, 20 s while lost); a believed fix shall be averaged with the carried position by their sigmas when the carry has a heading (frame attitude or gyro) and the fix is not a re-acquisition; frames smeared by the camera rotation at the exposure or blurred may be refused (frame_max_blur_px, frame_sharp_rel; off by default); the heading search shall run when no heading is known or after local_heading_search_after frames without a match.'
+  text: 'A day fix further from the carried position than 3 x the two sigmas combined (strong fixes included) shall not be believed until a second fix agrees with it (within 6 s, 20 s while lost); a believed fix shall be averaged with the carried position by their sigmas when the carry has a heading (frame attitude or gyro) and the fix is not a re-acquisition — only the independent parts of the two errors (the error every fix shares, speed x the camera delay sigma and height x tan(the mount sigma), neither sets the weight nor shrinks in the stated sigma), the carry being made of the measured fixes, never of its own output; frames smeared by the camera rotation at the exposure or blurred may be refused (frame_max_blur_px, frame_sharp_rel; off by default); the heading search shall run when no heading is known or after local_heading_search_after frames without a match.'
   code:
     - day_pkg/day_pkg/fix_consistency.py::FixConsistency
     - day_pkg/day_pkg/frame_gate.py::FrameGate
@@ -977,6 +980,8 @@ requirements:
     - {level: BENCH, value: 'replay of the recorded real-camera runs (2026-10-19/20, 101 runs) and missions camp4-7 (29), gyro heading, 3 seeds: wind/shake measured outputs > 50 m 51 → 16, other conditions 57 → 13, missions 6 → 6; within 3σ 99.5–100 % with the 30 m floor', ref: 'VALIDATION_STATUS.md, Day: robustness fixes on recorded data'}
     - {level: BENCH, value: 'injected 100–650 m wrong matches (100–228 inliers): believed 16 → 3 of 579 (flights), 20 → 9 of 548 (missions); fewer right fixes refused', ref: 'VALIDATION_STATUS.md, Day: robustness fixes on recorded data'}
     - {level: PUB, value: 'heading search on UAV-VisLoc flight 04 (Esri map): heading 30–180° wrong or unknown 0/20 → 17–19/20 located, ~2.4 s per failed frame', ref: 'VALIDATION_STATUS.md, Day: robustness fixes on recorded data'}
+    - {level: SIM, value: 'F41 (2026-10-22): Isaac Sim copter flights replayed offline through the day node: with the carry fed its own output and the common error averaged, outputs lagged up to 100 m (pd_nomc_base 99 wrong, 43 % beyond 3σ); carry from the measured fix + independent parts: 0 wrong, 0–1 % beyond 3σ in 6 runs', ref: 'VALIDATION_STATUS.md, Isaac Sim closed loop: the overconfident copter sigma'}
+    - {level: BENCH, against: true, value: 'F41: with the carry made of measured fixes (as the node now does) the bench gain shrinks: wind measured outputs > 50 m 51 → 26 (was → 16), other conditions 57 → 29 (was → 13); in Isaac blending costs ~1.5 m median against none', ref: 'VALIDATION_STATUS.md, Isaac Sim closed loop: the overconfident copter sigma'}
     - {level: BENCH, against: true, value: 'rate gate (6 px) on the shake runs: wrong 16 → 9 but right fixes refused 15 → 185 of 540 — left off; two wrong matches in a row at the same place are still believed (D17 partly open)', ref: 'VALIDATION_STATUS.md, Day: robustness fixes on recorded data'}
   status: verified-BENCH
   note: 'offline replays only; the bench shook the scene, not the camera (no gyro at the exposure); repeat on a real vehicle (F20)'
@@ -1233,6 +1238,23 @@ requirements:
     - {level: UT, value: 'mount angles, lens file content, crop each change the id; a changed mount drops the stored calibration (sigma back to the 2 deg prior) and it is not reloaded by the next flight'}
   status: verified-UT
   note: 'F33 open item 4'
+
+- id: NAV-FUN-27
+  category: FUN
+  title: 'Camera mount learned only from what the GPS checks can separate'
+  text: 'A GPS-check match shall be a day-camera mount sample only while the camera delay is known (set by the camera or estimated and applied) and the frame dating error (ground speed x the delay sigma) is at most mount_cal_max_dating_m; an in-flight mount fit shall be used or persisted only once its samples span mount_cal_min_heading_span_deg of frame headings; without one, the mount prior sigma (mount_sigma_deg) stays in the stated accuracy.'
+  code:
+    - day_pkg/day_pkg/nodes/day_subscriber.py::DaySubscriber._mount_sample_refused
+    - day_pkg/day_pkg/mount_cal.py::heading_span_deg
+    - day_pkg/day_pkg/mount_cal.py::MountCalibration._enough
+  match:
+    - 'test_mount_place_fix\.py::test_no_mount_sample'
+    - 'test_mount_cal\.py::test_(heading_span|a_climb_on_one_heading)'
+  evidence:
+    - {level: UT, value: 'no sample with the delay unknown or 3 m dating error, a sample at 1 m; a 40-check climb on one heading not learned, a persisted prior kept, a circuit learned'}
+    - {level: SIM, value: 'F41 offline replay of Isaac runs: the learned mount (delay / one-heading map shift) made pd_h600 16.3 → 10.0 m median without it, pd_plane30 14.2 → 9.2 m (no blend)', ref: 'VALIDATION_STATUS.md, Isaac Sim closed loop: the overconfident copter sigma'}
+  status: verified-UT
+  note: 'F41; a copter whose delay is never learned (samples too slow / turning) keeps the 2 deg prior: fixes stated h x tan(2 deg) more'
 
 # ───────────────────────────── Timing ─────────────────────────────
 - id: NAV-TIM-01
