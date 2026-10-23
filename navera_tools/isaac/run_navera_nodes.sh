@@ -9,7 +9,7 @@
 #   isaac_link     the vehicle's sensors + camera from Isaac Sim, and the record
 #   vehicle_output (VEHICLE_OUT set: closed loop) NAVERA's position -> the autopilot as GPS_INPUT
 #
-# Environment: RUN (run name), DAY_ARGS (extra day_subscriber -p ...), CAM_ARGS (extra live_camera -p ...), GIMBAL (true: stabilised camera), VEHICLE_OUT (pymavlink URL of the autopilot), DEGRADED_SIGMA, MAX_SPEED (m/s), GROUND_ALT (site elevation m), LINK_ARGS
+# Environment: VEHICLE_LINK (pymavlink URL: vehicle_link reads the autopilot's velocity), RUN (run name), DAY_ARGS (extra day_subscriber -p ...), CAM_ARGS (extra live_camera -p ...), GIMBAL (true: stabilised camera), VEHICLE_OUT (pymavlink URL of the autopilot), DEGRADED_SIGMA, MAX_SPEED (m/s), GROUND_ALT (site elevation m), LINK_ARGS
 # (extra "-p name:=value" for isaac_link), MATCHER (auto = DISK+LightGlue on the GPU | local = SIFT).
 # HIL=1 (run_hil.sh, hardware in the loop): NAVERA runs on the real box, not here — only the link
 # (the vehicle's camera as an RTSP stream, its GPS as NMEA on TCP: LINK_ARGS) and the record.
@@ -53,6 +53,13 @@ if [ -n "${VEHICLE_OUT:-}" ]; then        # closed loop: NAVERA's position to th
       -p forward_degraded:=true -p degraded_sigma_m:=${DEGRADED_SIGMA:-30.0} \
       -p max_speed_mps:=${MAX_SPEED:-45.0}; do sleep 2; done ) >> $L/vehicle_output.log 2>&1 &   # until SITL is up
   pids+=($!)
+fi
+if [ -n "${VEHICLE_LINK:-}" ]; then      # the autopilot's own velocity for the day carry (open3); the
+  # link's other topics are moved aside: the camera's height and attitude stay the simulated sensors'
+  vl_r=""; for tp in imu altitude_agl relative_alt gps2 gps2_satellites gps1 gps1_satellites status system_time; do
+    vl_r="$vl_r -r /navera/vehicle/$tp:=/isaac_vlink/$tp"; done
+  ros2 run navera_output vehicle_link_node.py --ros-args -p mavlink_url:=$VEHICLE_LINK -p relay_port:=0 \
+    $vl_r > $L/vehicle_link.log 2>&1 & pids+=($!)
 fi
 python3 /ws/src/navera/navera_tools/isaac/isaac_link.py --ros-args -p run_dir:=/isaac/runs/$RUN \
   -p results:=/results -p lens_file:=/data/lens/hik_visible_lens.yaml $LINK_ARGS > $L/link.log 2>&1 &
