@@ -53,6 +53,16 @@ cleanup() {
   kill "${pids[@]}" 2>/dev/null
   docker stop navera_hil > /dev/null 2>&1
   sleep 1; kill -9 "${pids[@]}" 2>/dev/null
+  # an Isaac Sim that never reached its stop-file loop (failed start, hung) would hold its pose
+  # port and fail the next run on this instance: this run's kit.exe (by its --out) goes too
+  for i in $(seq 1 15); do
+    pid=$(/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe -NoProfile -Command \
+      "(Get-CimInstance Win32_Process -Filter \"Name='kit.exe'\" | Where-Object { \$_.CommandLine -like '*runs\\$name *' }).ProcessId" \
+      2>/dev/null | tr -d '\r' | head -1)
+    [ -n "$pid" ] || break
+    [ "$i" = 15 ] && { /mnt/c/Windows/System32/taskkill.exe /PID "$pid" /F > /dev/null 2>&1; echo "Isaac Sim $pid killed"; }
+    sleep 2
+  done
 }
 trap cleanup EXIT
 read -r lat0 lon0 zref < <(python3 -c "import json; s=json.load(open('$D/scenes/$scene/scene.json')); print(s['lat0'], s['lon0'], round(s['z_ref_m'], 1))")
@@ -158,6 +168,8 @@ for i in $(seq 1 600); do
   kill -0 $demo 2>/dev/null || { log "sitl_demo ended early"; exit 1; }
   sleep 1
 done
+[ -s "$res/stream.csv" ] && [ "$(wc -l < "$res/stream.csv")" -gt 5 ] || {
+  log "no camera stream after 600 s (Isaac Sim: $res/isaac.log, mediamtx: $res/mediamtx.log)"; exit 1; }
 touch "$res/streaming"
 log "camera stream up: waiting for the box (jetson_ready)"
 for i in $(seq 1 "$ready_timeout"); do [ -f "$res/jetson_ready" ] && break; sleep 1; done

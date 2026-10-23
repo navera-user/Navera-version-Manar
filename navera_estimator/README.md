@@ -37,6 +37,17 @@ Measured (`navera_tools/bench/replay_spoof_trend.py`, real screen-bench campaign
 per 2 s as the day node's GPS checks): no false refusal; a 3 m/s drift refused at ~70 m instead of
 ~120 m with the 30 m uncalibrated vision sigma — see docs/VALIDATION_STATUS.md.
 
+## Restart in flight (B23)
+
+systemd brings a crashed arbiter back in ~1 s (`RestartSec=1`). It reads back what its GPS gate
+knew (`state_store` `estimator_gps`, saved at once when the refusal changes, else at most once a
+second, reused within `gps_state_memory_s` = 600 s): a GPS refused for spoofing stays refused
+until an independent fix confirms it (`restart: GPS was refused (…) — it stays refused…`), and
+the jump gate starts from the last trusted fix. **No position is restored**: `/navera/position`
+only republishes a fresh estimate of a live source, so a restarted arbiter never publishes a
+stale position as fresh. Meanwhile the output bridges from what it last gave the autopilot
+(navera_output README).
+
 ## `compute_health_node` — compute health (hazard H-11)
 
 Started by `estimator.launch.py` next to the arbiter (respawned on failure, never stops it).

@@ -139,6 +139,28 @@ def test_restart_recovery_measured(tmp_path):
     assert k['position_back_after_s'] == pytest.approx(14.2)
     assert k['position_gap_s'] == pytest.approx(14.6)
     assert k['autopilot_gps'] == dict(lost_after_s=3.5, back_after_s=15.0)
+    assert k['output_max_gap_s'] is None                    # no /navera/fix record (older runs)
+
+
+def test_restart_gap_given_to_the_autopilot_measured(tmp_path):
+    """B23: hil_out.csv (/navera/fix, the output's decision) gives the longest time the autopilot
+    went without a position around each kill, and when it was first told "no fix"."""
+    import hil_summarise as hs
+    r = str(tmp_path)
+    json.dump(dict(t0_pc=0.0, pc_offset_s=0.0), open(os.path.join(r, 'hil_t0.json'), 'w'))
+    with open(os.path.join(r, 'hil_kills.jsonl'), 'w') as f:
+        f.write(json.dumps(dict(unit='navera-pipeline-day:day_subscriber', box=100.0, pid=1, node='day_subscriber.py',
+                                restarted=True, how='respawn', active_after_s=1.2)) + '\n')
+    _write(os.path.join(r, 'hil_pos.csv'), 'rx_box,header_box,sensor_box,source,mode,valid,frame',
+           [[99.6, 0, 0, 'day', 'measured', 1, 2], [108.4, 0, 0, 'day', 'measured', 1, 3]])
+    _write(os.path.join(r, 'sitl_gps.csv'), 'wall,t,lat,lon,fix_type,sats,eph', [[101.0, 0, 0, 0, 3, 0, 0]])
+    _write(os.path.join(r, 'hil_out.csv'), 'rx_box,fix,sigma_m',
+           [[99.6, 1, 12.0], [102.2, 1, 20.0], [103.2, 1, 25.0], [104.2, 1, 31.0], [108.5, 1, 12.0],
+            [150.0, 0, 'nan']])
+    k = hs.restarts(r, 0.0)[0]
+    assert k['output_max_gap_s'] == pytest.approx(4.3)      # 104.2 -> 108.5: bridged up to there
+    assert k['output_no_fix_after_s'] == pytest.approx(50.0)
+    assert k['back_how'] == 'respawn' and k['node'] == 'day_subscriber.py' and k['autopilot_gps'] is None
 
 
 STAGE_CHECK = os.path.join(REPO, 'deploy', 'stage_check.sh')

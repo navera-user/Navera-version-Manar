@@ -39,9 +39,14 @@ The vehicle's autopilot treats whatever NAVERA sends as a GPS. The rules:
   from where it was last seen. Past the bound, or once the grown accuracy exceeds
   max_forward_sigma_m, it is "no fix" again. Only a forwarded non-GNSS position is
   bridged — an estimate, or a vision fix whose accuracy is calibrated (the arbiter
-  says FIX for it) — never a GPS fix, only while the arbiter is alive. A vision FIX
+  says FIX for it) — never a GPS fix. A vision FIX
   left out of the bridge let one 8.7 s pipeline stall reach ArduPilot as "no fix":
   EKF3 timed its position out after 7 s and the copter landed (Isaac endur2, 2026-10-22).
+* The arbiter silent (navera_estimator crashed and restarting) or still initializing
+  (just restarted) is a gap like any other: the last forwarded vision position is
+  bridged across it, within the same bound. Sending "no fix" at once made a killed
+  estimator land the copter on the real box: its systemd restart took 15 s, the
+  autopilot lost its GPS after 2.3 s and its EKF failsafe landed (HIL base1, B23).
 """
 import json
 import math
@@ -53,6 +58,7 @@ from navera_common.covariance import horizontal_sigma
 from navera_common.geo import dead_reckon
 
 # navera_msgs NavStatus states (kept literal so this module needs no ROS).
+STATE_INITIALIZING = 0
 STATE_NO_FIX = 1
 STATE_FIX = 2
 STATE_DEGRADED = 3
@@ -175,10 +181,12 @@ def decide(cfg: Config, state: Optional[int], status_age_s: Optional[float],
         hand the autopilot (TrackVelocity.autopilot_velocity), or None. Sent with a non-GPS
         position; without it the velocity is stated unknown (0 +- max_speed_mps).
     """
+    # soft: no NEW position — a held vision position may be bridged across a restarting arbiter
     if state is None or status_age_s is None or status_age_s > cfg.nav_status_timeout_s:
-        return Output(KIND_NONE, "arbiter silent")
+        return Output(KIND_NONE, "arbiter silent", soft=True)
     if state not in (STATE_FIX, STATE_DEGRADED):
-        return Output(KIND_NONE, "no fix", soft=state == STATE_NO_FIX)
+        return Output(KIND_NONE, "no fix" if state == STATE_NO_FIX else "arbiter initializing",
+                      soft=state in (STATE_NO_FIX, STATE_INITIALIZING))
     if pos is None or pos_age_s is None or pos_age_s > cfg.position_timeout_s:
         return Output(KIND_NONE, "position not current", soft=True)
     if pos.source != active_source:

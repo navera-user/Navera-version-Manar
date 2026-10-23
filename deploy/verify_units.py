@@ -20,6 +20,9 @@ Changes nothing outside a temporary directory. For every deploy/systemd/navera-*
     enabled          (--root) the units --units names are enabled in the staged root
     conflicts        the day and night pipelines conflict with each other (one GPU pipeline)
     sudoers          visudo -c -f deploy/sudoers/navera-web; every unit it may restart exists
+    fast restart     (B23) critical and pipeline units: Restart=always, RestartSec <= 1 s,
+                     StartLimitIntervalSec=0, and the wrappers' navera_env runs the crash-loop
+                     backoff (navera_restart_backoff)
     memory           (F5 / H-11) every unit has a memory class: critical units OOMScoreAdjust <= -500
                      and never picked by systemd-oomd, vision pipelines below 0 and above the
                      critical ones, non-critical units above 0 with MemoryHigh / MemoryMax
@@ -236,6 +239,37 @@ def _int(vals, default=0):
         return default
 
 
+def seconds(text):
+    """A systemd time span ("1", "1s", "500ms", "2min") in seconds, None when not understood."""
+    m = re.fullmatch(r'\s*([0-9.]+)\s*(ms|s|sec|min|m)?\s*', text or '')
+    if not m:
+        return None
+    return float(m.group(1)) * {'ms': 1e-3, 'min': 60.0, 'm': 60.0}.get(m.group(2), 1.0)
+
+
+FAST_RESTART_MAX_S = 1.0     # a crashed unit back before the output's 10 s bridge ends (B23)
+
+
+def restart_findings(units, lib_text):
+    """(level, unit, what, detail) of the fast-restart checks (B23) over {file name: parsed unit}."""
+    out = []
+    for name, u in sorted(units.items()):
+        if name[:-len('.service')] not in CRITICAL_UNITS + PIPELINE_UNITS:
+            continue
+        rs = values(u, 'Service', 'RestartSec')
+        sec = seconds(rs[-1]) if rs else 0.1          # systemd's default is 100 ms
+        ok = (values(u, 'Service', 'Restart') == ['always'] and sec is not None and sec <= FAST_RESTART_MAX_S
+              and values(u, 'Unit', 'StartLimitIntervalSec') == ['0'])
+        out.append(('PASS' if ok else 'FAIL', name,
+                    f'fast restart: Restart=always, RestartSec <= {FAST_RESTART_MAX_S:g} s, StartLimitIntervalSec=0',
+                    f'RestartSec={",".join(rs) or "default"}'))
+    body = re.search(r'^navera_env\(\)\s*\{(.*?)^\}', lib_text, re.S | re.M)
+    ok = ('navera_restart_backoff()' in lib_text and body is not None
+          and 'navera_restart_backoff' in body.group(1))
+    out.append(('PASS' if ok else 'FAIL', 'navera_boot_lib.sh', 'navera_env runs the crash-loop backoff'))
+    return out
+
+
 def memory_findings(units):
     """(level, unit, what, detail) of the memory class checks (F5 / H-11) over {file name: parsed unit}."""
     out = []
@@ -332,6 +366,10 @@ def main(argv=None):
         report('PASS' if ok else 'FAIL', 'pipelines', 'day and night conflict (one GPU pipeline)')
 
     for f in memory_findings(by):
+        report(*f)
+    lib = os.path.join(REPO, 'deploy', 'systemd', 'navera_boot_lib.sh') if not root else \
+        os.path.join(root + HOME, 'navera_boot_lib.sh')
+    for f in restart_findings(by, open(lib).read() if os.path.isfile(lib) else ''):
         report(*f)
 
     sud = os.path.join(root + '/etc/sudoers.d' if root else os.path.join(REPO, 'deploy', 'sudoers'), 'navera-web')

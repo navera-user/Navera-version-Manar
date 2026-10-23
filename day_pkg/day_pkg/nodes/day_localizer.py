@@ -6,8 +6,9 @@ import torch
 import torch.nn as nn
 import cv2
 from math import radians, sin, cos, sqrt, atan2
-from torchvision import transforms
-from sklearn.metrics.pairwise import cosine_similarity
+# torchvision and scikit-learn are imported where the DINOv2 retrieval uses them, not here: the
+# local matcher (the default) never loads DINOv2, and the two imports cost 2.8 s of every day
+# pipeline (re)start on the Jetson (B23: a restart in flight must be back within the output's bridge)
 
 logger = logging.getLogger("day_localizer")
 
@@ -60,18 +61,28 @@ TOP5_N             = 5          # matches logged for diagnostics
 USE_FP16                  = False  # encode la requête en demi-précision (moins de VRAM)
 EMPTY_CACHE_AFTER_PREDICT = True   # libère le cache allocateur CUDA après chaque frame
 
-transform = transforms.Compose([
-    transforms.ToPILImage(),
-    transforms.Resize((224, 224)),
-    transforms.ToTensor(),
-    transforms.Normalize(mean=[0.485,0.456,0.406], std=[0.229,0.224,0.225])
-])
+_TRANSFORM = None
+
+
+def _transform():
+    """The DINOv2 input transform (torchvision imported on first use)."""
+    global _TRANSFORM
+    if _TRANSFORM is None:
+        from torchvision import transforms
+        _TRANSFORM = transforms.Compose([
+            transforms.ToPILImage(),
+            transforms.Resize((224, 224)),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485,0.456,0.406], std=[0.229,0.224,0.225])
+        ])
+    return _TRANSFORM
+
 
 def load_image_tensor(path_or_array):
     img = cv2.imread(path_or_array) if isinstance(path_or_array, str) else path_or_array
     if img is None:
         raise FileNotFoundError("Image not found")
-    return transform(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+    return _transform()(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
 
 class GeM(nn.Module):
     def __init__(self, p=3.0, eps=1e-6):
@@ -308,6 +319,7 @@ class DayLocalizer:
         else:
             cand = np.arange(len(self.dino_descs))
         # cosine DINOv2 against the candidates only
+        from sklearn.metrics.pairwise import cosine_similarity
         sims = cosine_similarity(q_dino.reshape(1, -1), self.dino_descs[cand])[0]
         order = np.argsort(sims)[::-1]
         top5 = []

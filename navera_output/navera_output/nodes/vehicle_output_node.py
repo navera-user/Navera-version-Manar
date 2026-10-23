@@ -64,6 +64,13 @@ Parameters:
                                  which then take height from the barometer; 2 = the
                                  literal label, which they ignore (mavlink_out)
 
+Restart (B23): the last forwarded vision position (and the velocity sent with it) is kept in
+the NAVERA state directory (navera_common.state_store "output_held", at most once a second). A
+restarted output (crash, watchdog) resumes the bridge from it at once when it is younger than
+bridge_max_s — the autopilot is given the carried position with its grown accuracy, not "no
+fix" — and the next vision positions are not held back for their velocity (policy.reacquire):
+the autopilot never timed its position out. A held position older than the bridge is never reused.
+
 Each position is sent ONCE, as soon as it arrives (a 1 Hz vision fix is not repeated
 5 times with fresh timestamps: an autopilot filter would read the repeats as
 "stopped, then jumped"). "No fix" is sent at rate_hz, so the autopilot always
@@ -78,8 +85,10 @@ import math
 import sys
 import time
 from datetime import datetime, timedelta, timezone
+from typing import Optional
 
 import rclpy
+from navera_common import state_store
 from navera_common.lifecycle import die_with_parent
 from navera_common.params import declare_float
 from navera_common.track import TrackVelocity
@@ -92,11 +101,43 @@ from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 
 from navera_output import mavlink_out, mavlink_url, nmea
-from navera_output.policy import (KIND_ESTIMATED, KIND_FIX, KIND_NONE, Config, bridge, bridgeable,
+from navera_output.policy import (KIND_ESTIMATED, KIND_FIX, KIND_NONE, Config, Held, bridge, bridgeable,
                                   decide, for_nmea, hold, reacquire)
 
 
 MAVLINK_MESSAGES = ("auto", "gps_input", "hil_gps")
+HELD_STATE = "output_held"        # state_store name of the last forwarded vision position
+HELD_SAVE_PERIOD_S = 1.0
+
+
+def held_to_state(held: Held, t_wall: float) -> dict:
+    """The held position as a state_store record; t_wall = the wall-clock instant of held.t."""
+    return dict(lat=held.lat, lon=held.lon, sigma_h_m=held.sigma_h_m, t_wall=t_wall,
+                ground_vel=list(held.ground_vel) if held.ground_vel is not None else None,
+                sent_vel=list(held.sent_vel) if held.sent_vel is not None else None)
+
+
+def held_from_state(d, now_mono: float, now_wall: float, max_age_s: float) -> Optional[Held]:
+    """The Held of a state_store record carried onto this process's monotonic clock, or None when
+    there is none, it is malformed, not finite, from the future or older than max_age_s.
+    """
+    if not isinstance(d, dict) or d.get("lat") is None:
+        return None
+    try:
+        lat, lon, sig, t_wall = (float(d["lat"]), float(d["lon"]), float(d["sigma_h_m"]),
+                                 float(d["t_wall"]))
+        vecs = []
+        for k in ("ground_vel", "sent_vel"):
+            v = d.get(k)
+            vecs.append(tuple(float(x) for x in v) if v is not None else None)
+    except (KeyError, TypeError, ValueError):
+        return None
+    age = now_wall - t_wall
+    if not (all(math.isfinite(x) for x in (lat, lon, sig, age)) and sig > 0 and 0.0 <= age <= max_age_s):
+        return None
+    if any(v is not None and (len(v) != 3 or not all(math.isfinite(x) for x in v)) for v in vecs):
+        return None
+    return Held(lat, lon, sig, now_mono - age, vecs[0], vecs[1])
 
 
 def message_for_autopilot(autopilot) -> str:
@@ -209,6 +250,8 @@ class VehicleOutputNode(Node):
         self._last_tx = None              # monotonic instant of the last position sent
         self._last_pos_tx = None          # same, kept across GPS fixes (policy.reacquire)
         self._bridging = False
+        self._held_saved_at = None        # monotonic instant of the last held position saved
+        self._restore_held()
         self._drift_alarm = float(self.get_parameter("drift_alarm_sigma_m").value)
         self._vel = None                  # (north, east) m/s from the GPS receiver
         self._vel_rx = None
@@ -321,6 +364,7 @@ class VehicleOutputNode(Node):
             self._sent_pos = self._pos
             self._held = hold(out, now, self._ground_velocity())
             self._bridging = False
+            self._save_held(now)
         if out.kind != KIND_NONE:
             self._last_tx = self._last_pos_tx = now
         self._check_drift(out)
@@ -368,6 +412,9 @@ class VehicleOutputNode(Node):
         for a gap that may be bridged).
         """
         if out.kind == KIND_FIX and out.gnss:
+            if self._held is not None:
+                state_store.save(HELD_STATE, {"lat": None})     # a restart must not bridge it either
+                self._held_saved_at = None
             self._held = self._last_tx = None
             self._bridging = False
             return out
@@ -392,6 +439,28 @@ class VehicleOutputNode(Node):
                                    f"(at most {self.cfg.bridge_max_s:.0f} s)")
         self._bridging = True
         return b
+
+    def _save_held(self, now) -> None:
+        """Persist the held position (at most once a second) for a restart of this node."""
+        if self._held is None or (self._held_saved_at is not None
+                                  and now - self._held_saved_at < HELD_SAVE_PERIOD_S):
+            return
+        self._held_saved_at = now
+        state_store.save(HELD_STATE, held_to_state(self._held, time.time() - (now - self._held.t)))
+
+    def _restore_held(self) -> None:
+        """Restarted in flight: bridge on from the last position this node gave the autopilot."""
+        if not self.cfg.forward_degraded or self.cfg.bridge_max_s <= 0:
+            return
+        held = held_from_state(state_store.load(HELD_STATE, self.cfg.bridge_max_s + 1.0),
+                               time.monotonic(), time.time(), self.cfg.bridge_max_s)
+        if held is None:
+            return
+        self._held = held
+        self._last_tx = self._last_pos_tx = held.t
+        self.get_logger().warn(f"restart: the last position given to the autopilot "
+                               f"{time.monotonic() - held.t:.1f} s ago (±{held.sigma_h_m:.0f} m) is "
+                               f"bridged on until new positions come (at most {self.cfg.bridge_max_s:.0f} s)")
 
     def _ground_velocity(self):
         """(east, north, sigma) m/s from the positions of the last 20 s, or None."""

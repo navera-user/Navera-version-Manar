@@ -9,7 +9,7 @@ navera_env
 navera_prune_logs
 if [ -z "${NAVERA_VEHICLE_MAVLINK_URL:-}" ]; then
     # no autopilot found at boot (navera-discover) nor configured: wait quietly instead of
-    # restarting every 10 s, until navera-hotplug finds one (or a reboot, or
+    # restarting in a loop, until navera-hotplug finds one (or a reboot, or
     # `systemctl restart navera-discover navera-vehicle-link`)
     navera_idle_until_discovered "no autopilot found or configured (NAVERA_VEHICLE_MAVLINK_URL): vehicle link idle"
 fi
