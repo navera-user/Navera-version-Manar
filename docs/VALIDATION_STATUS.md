@@ -1472,6 +1472,17 @@ The copter base is back to c3_base (13.7 vs 12.8 m median, one run each: within 
 stated honestly; the 600 m mount error is no longer corrected (never learned with the delay unknown,
 its 2° prior stated instead). Plane 30 m/s: no regression (0 wrong, 0 beyond 3σ).
 
+**The same cause on the real Jetson in the loop** (B23 runs hil_resil4/5, 2026-10-22: day fix error
+20–45 m after the GPS cut against 5–7 m in hil_base1 / hil_endur30, from before any kill; hil_base1
+and hil_endur30 ran code without blending or mount calibration). Replayed offline (stated time,
+med/p90/max; beyond 3σ): hil_resil5 bef4170 40.2/59.9/77.9 m, 1833/2919 → blend off 6.1/10.1/20.6 m,
+0 → with the fixes 4.6/8.5/18.6 m, 0/2919; hil_resil4 32.0/61.8/105.3 m, 140/287 → with the fixes
+15.6/26.8/31.7 m, 0/287 (its remaining 15 m is the camera delay, never learned in that run). Neither
+isaac_link's one frame per tick nor the learned 2.0 s delay (true 1.7 s) explains it: the fixes
+replayed with that same delay are 4.6 m. Note: the HIL summaries' exposure errors and "wrong fixes"
+(resil5: 1334) are unreliable — day.csv's `t_exposure` joined from the PC stream is off for part of
+the frames (e.g. 659 s for a fix stamped 140 s); judge HIL runs by the stated-time error.
+
 ### Long route (simulator, 2026-10-01)
 
 Paris → Tunisia, 1768 km, mapped as ≤ 10 km great-circle legs: 79 775 tiles generated in
