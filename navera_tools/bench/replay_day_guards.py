@@ -25,6 +25,8 @@ Python), the heading carried by a simulated gyro as the node does (GyroSim: the 
              scene did ('wind': screen_overlays._shake; 'vibration': its turn and blur): the rate a
              camera gyro would have measured is the overlay's own at the frame time (26 screen px/deg),
              over a 1/60 s exposure and the bench view (1200 px over 100 deg)
+  confirm_n  D17 (2026-10-23): a far-off fix on a good track is believed after 3 agreeing doubted
+             fixes in a row (2 until 10-22; 2 still while lost)
   inject     F16 fault injection: 5 % of the lost matches replaced by confident wrong ones (100-650 m,
              100-228 inliers, as the 2026-10-19 hand-tilt run), alone or two in a row (burst 2)
 
@@ -194,7 +196,8 @@ def run(frames, speed, variant, vmax=None, heading="none", seed=1):
     cons = None
     if variant.get("confirm"):
         cons = FixConsistency(strong_gate_k=variant.get("strong_k", 3.0),
-                              reacquire_check=variant.get("reacq", True))
+                              reacquire_check=variant.get("reacq", True),
+                              confirm_n=variant.get("confirm_n", 3), confirm_lost_n=variant.get("confirm_lost_n", 2))
     nav = VisionNavigator(max_speed_mps=vmax or 1.5 * speed, consistency=cons,
                           blend_fixes=variant.get("blend", False),
                           blend_below_inliers=variant.get("blend_below", 10 ** 9))
@@ -302,8 +305,9 @@ def replay(runs, variant, heading="gyro", seeds=(1, 2, 3), burst=0):
     return summary(rs), inj, inj_used
 
 
-BASE = dict(strong_k=6.0, confirm=True, reacq=False)
-PRODUCT = dict(confirm=True, reacq=False, blend=True)
+BASE = dict(strong_k=6.0, confirm=True, reacq=False, confirm_n=2)
+PRODUCT = dict(confirm=True, reacq=False, blend=True)              # confirm_n 3 since 2026-10-23 (D17)
+PRODUCT_22 = dict(PRODUCT, confirm_n=2)                             # the product of 2026-10-22
 
 
 def main():
@@ -321,7 +325,7 @@ def main():
     if a.part in ("all", "guards"):
         print("F20 / F16 / D17 — the guards, gyro-carried heading\n")
         print(HEADER)
-        variants = [("base", BASE), ("product", PRODUCT), ("product, sigma >= 30 m", dict(PRODUCT, sigma_floor=30.0)),
+        variants = [("base", BASE), ("product 10-22 (2 agreeing)", PRODUCT_22), ("product", PRODUCT), ("product, sigma >= 30 m", dict(PRODUCT, sigma_floor=30.0)),
                     ("product + reacq", dict(PRODUCT, reacq=True))]
         variants += [(f"product + rate {b} px", dict(PRODUCT, max_blur_px=b)) for b in (6.0, 10.0, 15.0)]
         for name, runs in sets:
@@ -345,7 +349,9 @@ def main():
         flights = [x for n, r in sets[:3] for x in r]
         for burst in (1, 2):
             for name, runs in (("flights", flights), ("missions", sets[3][1])):
-                for vn, v in (("base", BASE), ("strong 3 sigma", dict(BASE, strong_k=3.0)), ("product", PRODUCT),
+                for vn, v in (("base", BASE), ("strong 3 sigma", dict(BASE, strong_k=3.0)),
+                              ("product 10-22 (2 agreeing)", PRODUCT_22), ("product (3 agreeing, 2 lost)", PRODUCT),
+                              ("product, 3 agreeing lost too", dict(PRODUCT, confirm_lost_n=3)),
                               ("product + reacq", dict(PRODUCT, reacq=True))):
                     s, inj, used = replay(runs, v, burst=burst)
                     print(f"| {name} / {burst} / {vn} | {inj} | {used} " + fmt("", s)[3:])

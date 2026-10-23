@@ -348,9 +348,9 @@ class VisionNavigator:
                 if doubt is not None:
                     if not self.consistency.confirm(t, lat, lon, sig, self.vel, lost):
                         self.fails += 1
-                        self.last_reason = doubt + ": rejected (a second agreeing fix would confirm it)"
+                        self.last_reason = doubt + ": rejected (agreeing fixes in a row would confirm it)"
                         return False
-                    self.last_reason = doubt + ": confirmed by the previous fix — re-acquired"
+                    self.last_reason = doubt + ": confirmed by the previous fixes — re-acquired"
                     reacquired = True
             self.consistency.clear()
         elif not gps_valid and pred is not None:

@@ -194,6 +194,10 @@ class DaySubscriber(Node):
         # on the recorded missions it refused 2.6x more right fixes (availability 94 -> 90 %) for 7 fewer
         # injected wrong fixes believed. A doubted fix is confirmed within 6 s, 20 s when lost.
         self.declare_parameter("reacquire_confirm", False)
+        # D17 (2026-10-23): a doubted fix on a good track is believed after confirm_fixes doubted fixes
+        # in a row agree (carried by the velocity); confirm_fixes_lost while the position is lost
+        self.declare_parameter("confirm_fixes", 3)
+        self.declare_parameter("confirm_fixes_lost", 2)
         # a fix is averaged with the carried position, each weighted by its sigma (a Kalman update), when
         # the carry turns with a heading (frame attitude or gyro) and the fix is not a re-acquisition
         # (F20 / F23 / D17). Replay of the 2026-10-19/20 real-camera runs with the gyro-carried heading
@@ -438,7 +442,9 @@ class DaySubscriber(Node):
         self._gps_vo_h = None                   # (smoothed height m, t)
         self._vo_step = None
         self.consistency = FixConsistency(self.gate_k, self.strong_inliers, self.strong_gate_k,
-                                          reacquire_check=bool(p_("reacquire_confirm")))
+                                          reacquire_check=bool(p_("reacquire_confirm")),
+                                          confirm_n=int(p_("confirm_fixes")),
+                                          confirm_lost_n=int(p_("confirm_fixes_lost")))
         self.blend_fixes = bool(p_("blend_fixes"))
         self.frame_gate = FrameGate(float(p_("frame_max_blur_px")), float(p_("frame_exposure_s")),
                                     sharp_rel=float(p_("frame_sharp_rel")))
@@ -2464,14 +2470,14 @@ class DaySubscriber(Node):
         if doubt is None:
             self.consistency.clear()
             return lat, lon, None
-        # two doubted fixes agreeing with each other: the prediction is what is wrong
+        # doubted fixes in a row agreeing with each other (3 on a good track, 2 while lost: D17): the prediction is what is wrong
         now = time.time()
         v = self.track.velocity(now)
         if self.consistency.confirm(now, lat, lon, sig, (v[0], v[1]) if v is not None else None,
                                     pred[2] > self.consistency.lost_sigma_m):
             status["reacquired"] = doubt
             return lat, lon, None
-        return lat, lon, doubt + " — match rejected (a second agreeing fix would confirm it)"
+        return lat, lon, doubt + " — match rejected (agreeing fixes in a row would confirm it)"
 
     # ────────────────────────────────────────────────────────────
     # Camera mount (F33) and the pose-attitude guard's choice (F35)

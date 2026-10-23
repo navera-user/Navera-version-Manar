@@ -71,7 +71,9 @@ def test_check_local_fix_uses_the_consistency_rules(monkeypatch):
     _, _, why = n._check_local_fix(res, {}, *far, {})
     assert why is not None and "rejected" in why
     st = {}
-    _, _, why = n._check_local_fix(res, {}, *_move(far, 3.0, 0.0), st)   # the next one agrees
+    _, _, why = n._check_local_fix(res, {}, *_move(far, 3.0, 0.0), st)   # the next one agrees: 2 in a row
+    assert why is not None and "reacquired" not in st                  # D17: not yet on a good track
+    _, _, why = n._check_local_fix(res, {}, *_move(far, 6.0, 0.0), st)   # the third
     assert why is None and "reacquired" in st
     _, _, why = n._check_local_fix(res, {}, *_move(P0, 5.0, 0.0), {})
     assert why is None and n.consistency.pending is None
