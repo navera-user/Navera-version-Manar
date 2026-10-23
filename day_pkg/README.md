@@ -19,7 +19,11 @@ inliers **and** the fitted scale within `local_scale_tol` of the one the altitud
 - Without GPS, the search is limited to a 400–600 m circle around the prior (last GPS fix or
   last accepted match). Local matching widens it by `max_speed_mps` × the time since its last
   match, up to `local_max_radius_m`, instead of dropping the prior; retrieval needs a score
-  ≥ `conf_threshold`.
+  ≥ `conf_threshold`. After a gap the circle (3 σ of the carried position) can be far wider than
+  one window can match (a 600 m window: 0–11 matches where 150 m windows gave 90–170 inliers):
+  it is covered with small windows, nearest the carried position first, up to
+  `reacquire_max_radius_m` (re-acquisition, F32). Visual odometry that disagrees with the track's
+  velocity is used when two clear consecutive steps agree (the vehicle turned round or stopped).
 - Local matches are published with a stated accuracy of `local_sigma_m` (30 m, conservative
   until measured with the real camera); retrieval positions with an unknown one.
 - No match: dead-reckoning from measured heading/speed only, for at most `max_dead_reckon_s`
@@ -139,7 +143,12 @@ per-tile cache build (cosine ≥ 0.9996). Progress is printed as JSON lines.
 | `map_zoom_min_ratio` | 2 | an area with several zooms (`area.json` `zooms`): the finest zoom at least this many times coarser than the frame (`day_pkg/map_levels.py`), else the coarsest |
 | `local_scale_tol` | 0.15 | accepted deviation of the fitted scale from the altitude's |
 | `local_sigma_m` | 30 | stated accuracy (1 σ) of a local match |
-| `local_max_radius_m` | 1500 | largest search radius while widening after failed frames |
+| `local_max_radius_m` | 600 | largest search radius of one matcher window (re-acquisition windows off) |
+| `reacquire_windows` | true | a search circle wider than one window is covered with small windows (`day_pkg/reacquire.py`, F32): the carried position's first, then a scan going on frame to frame |
+| `reacquire_window_frac` | 0.65 | window radius = this × the frame's half diagonal on the ground (at least `local_min_radius_m`) |
+| `reacquire_windows_per_frame` | 4 | windows tried per frame (~0.25 s each on the Jetson, learned matcher) |
+| `reacquire_max_radius_m` | 1500 | largest circle covered (3 σ of the carried position); farther is not searched |
+| `reacquire_min_inliers` | 25 | a match in a window other than the carried position's needs this many |
 
 ## Camera delay (`navera_common.latency_cal`, `navera_common.delay_monitor`)
 A frame is dated `arrival - delay`; a wrong delay puts every fix speed × error along the track.

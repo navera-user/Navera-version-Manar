@@ -61,6 +61,7 @@ from day_pkg.gyro_heading import CourseReset, GyroHeading, heading_rate_dps
 from day_pkg.map_levels import area_zooms, choose_zoom
 from day_pkg.mount_cal import MountCalibration
 from day_pkg.local_matcher import LocalMatcher
+from day_pkg.reacquire import WindowScan, cover_windows
 from day_pkg.vision_nav import VisionNavigator, _en, _move, kinematic_margin_m
 
 # ── A priori spatial GPS-denied (fix matching cross-source) ─────────────────
@@ -133,7 +134,11 @@ class DaySubscriber(Node):
         # last measured fixes (turned by the IMU heading change) this long, while its stated
         # uncertainty stays under dead_reckon_max_sigma_m
         declare_float(self, "max_dead_reckon_s", 120.0)
-        declare_float(self, "dead_reckon_max_sigma_m", 500.0)
+        # 900 (was 500): below the vehicle output's max_forward_sigma_m (1000). A 60 s cloud bank at 10 m/s
+        # reached +-500 m 20 s before vision came back: NAVERA went silent and the autopilot's EKF failed safe
+        # 11 s later; with 900 it stayed aided (error 334 m at +-594 m) and the mission completed (Isaac Sim
+        # closed loop, GPS cut 20 s after reaching altitude, F32)
+        declare_float(self, "dead_reckon_max_sigma_m", 900.0)
         # unseen acceleration allowed for in the stated accuracy (1/2 a t^2). 0.25: outages
         # replayed on the real camera campaign's fixes (2026-10-19, 1606 per gap length, true
         # heading change given): still 100 % within 3 sigma at 5-60 s on a constant 900 m turn
@@ -341,6 +346,19 @@ class DaySubscriber(Node):
         # widens the search by max_speed_mps x the time since its last match, up to this
         # radius, instead of dropping it after max_consecutive_rejects (a retrieval-era rule).
         declare_float(self, "local_max_radius_m", 600.0)   # wider: memory and 30-60 s frames (campaign 3)
+        # Re-acquiring after a gap (day_pkg.reacquire, F32): a search circle wider than one window is
+        # covered with windows of reacquire_window_frac x the frame's half diagonal on the ground
+        # (at least local_min_radius_m), nearest the carried position first, reacquire_windows_per_frame
+        # of them a frame (the carried position's always), up to reacquire_max_radius_m; a match in a
+        # window other than the carried position's needs reacquire_min_inliers. One 600 m window found
+        # 0-11 matches where 150 m windows found 90-170 inliers (Isaac Sim frames, 2026-10-22).
+        self.declare_parameter("reacquire_windows", True)
+        declare_float(self, "reacquire_window_frac", 0.65)
+        self.declare_parameter("reacquire_windows_per_frame", 4)
+        declare_float(self, "reacquire_max_radius_m", 1500.0)
+        self.declare_parameter("reacquire_min_inliers", 25)
+        # a frame stops trying windows after this long (s): the carry must not go stale between frames
+        declare_float(self, "reacquire_budget_s", 2.5)
 
         self.conf_threshold = float(self.get_parameter("conf_threshold").value)
         image_topic   = self.get_parameter("image_topic").value
@@ -461,6 +479,13 @@ class DaySubscriber(Node):
         self._init_mount_cal()
         self._last_fix_sigma = self.local_sigma_m
         self.local_max_radius_m = float(self.get_parameter("local_max_radius_m").value)
+        self.reacquire_windows = bool(self.get_parameter("reacquire_windows").value)
+        self.reacquire_window_frac = float(self.get_parameter("reacquire_window_frac").value)
+        self.reacquire_per_frame = int(self.get_parameter("reacquire_windows_per_frame").value)
+        self.reacquire_max_radius_m = float(self.get_parameter("reacquire_max_radius_m").value)
+        self.reacquire_min_inliers = int(self.get_parameter("reacquire_min_inliers").value)
+        self.reacquire_budget_s = float(self.get_parameter("reacquire_budget_s").value)
+        self._scan = WindowScan()
         self.local_scale_tol_max = float(self.get_parameter("local_scale_tol_max").value)
         self.local_heading_tol_deg = float(self.get_parameter("local_heading_tol_deg").value)
         self.heading_search = bool(self.get_parameter("local_heading_search").value)
@@ -827,31 +852,26 @@ class DaySubscriber(Node):
                 if v is not None and self.vo._prev is not None:
                     dt = t_img - self.vo._prev[3]
                     pred = (v[0] * dt, v[1] * dt)
-                self._vo_step = self.vo.step(img, self._heading_for_match(meta), mpp, t_img, pred)
-                if self._vo_step is not None and v is not None:
-                    # odometry that disagrees with the velocity the map fixes measured is not
-                    # used (phase correlation can lock on what does not move in the image)
-                    de, dn, dt, _ = self._vo_step
-                    dv = math.hypot(de / dt - v[0], dn / dt - v[1])
-                    if dv > max(3.0 * v[2], 0.3 * math.hypot(v[0], v[1]), 3.0):
-                        self._vo_step = None
+                self._vo_step = self._vo_gate(self.vo.step(img, self._heading_for_match(meta), mpp, t_img, pred),
+                                              v, t_img, getattr(self.vo, "last_shift_px", None))
             if self.local is not None and center is not None and mpp is not None:
                 # after height_retry_after failures, 20 % lower and 25 % higher too
                 factors = [1.0] + ([0.8, 1.25] if self._rejects_in_row + 1 >= self.height_retry_after
                                    and not self._compute_degraded() else [])
                 for f in factors:
-                    result = self.local.locate(img, center, R, mpp * f, scale_tol=self._scale_tol(meta),
-                                               **self._match_heading_kw(meta), hfov_deg=self._hfov(meta),
-                                               expected_tilt_deg=self._expected_tilt(meta), **self._heading_search_kw())
+                    result = self._locate_search(img, center, R, mpp * f, meta, windows=f == 1.0)
                     if result.get("accepted"):
                         break
                 sc = float(result.get("scale_residual") or 1.0)
                 if result.get("accepted") and abs(sc - 1.0) > 0.05:
                     # the fitted scale answers only ~half of a height error (campaign 2: slope
                     # 0.45-0.6): match again at the corrected height, keep it if it holds
-                    again = self.local.locate(img, center, R, mpp * f * sc, scale_tol=self._scale_tol(meta),
+                    wc, wr = result.get("_window") or (center, R)
+                    again = self.local.locate(img, wc, wr, mpp * f * sc, scale_tol=self._scale_tol(meta),
                                               **self._match_heading_kw(meta), hfov_deg=self._hfov(meta),
                                               expected_tilt_deg=self._expected_tilt(meta), **self._heading_search_kw())
+                    if result.get("_window_off"):
+                        again = self._window_gate(dict(again, _window=result["_window"], _window_off=True))
                     if again.get("accepted") and int(again.get("inliers") or 0) >= int(result.get("inliers") or 0) // 2:
                         result, f = again, f * sc
                 result["_frame_shape"], result["_frame_mpp"] = img.shape, mpp * f
@@ -1307,12 +1327,79 @@ class DaySubscriber(Node):
                 # the carried position and k sigma of it: the window follows the uncertainty
                 # (a lost vehicle is searched for wider, a tracked one cheaply)
                 return (pred[0], pred[1]), min(max(self.search_k * pred[2], self.local_min_radius_m),
-                                               self.local_max_radius_m)
+                                               self._search_cap_m())
             if self._last_measured_time is not None:
                 # the vehicle may have gone this far since the last match: search that far
                 grown = R + self.max_speed_mps * max(0.0, time.time() - self._last_measured_time)
                 R = min(max(R, grown), max(R, self.local_max_radius_m))
         return (self._anchor_lat, self._anchor_lon), R
+
+    # ── re-acquiring after a gap (F32, day_pkg.reacquire) ──────────────────
+    def _search_cap_m(self) -> float:
+        """Widest search radius around the carried position: local_max_radius_m for one window,
+        reacquire_max_radius_m when wide circles are covered with several windows."""
+        if getattr(self, "reacquire_windows", False):
+            return max(self.local_max_radius_m, self.reacquire_max_radius_m)
+        return self.local_max_radius_m
+
+    def _reacquire_window_m(self, img, mpp: float) -> float:
+        """Radius of one search window: a fraction of the frame's half diagonal on the ground (the
+        matcher's margin; the map window is that plus this), never under local_min_radius_m. A small
+        frame against a wide window drowns in the map's features."""
+        margin = 0.5 * math.hypot(*img.shape[:2]) * mpp
+        return max(self.local_min_radius_m, self.reacquire_window_frac * margin)
+
+    def _window_gate(self, res: dict) -> dict:
+        """A match found in a window other than the carried position's: one try among several, so it
+        needs reacquire_min_inliers (more windows tried, more chances of an accidental match)."""
+        if res.get("accepted") and res.get("_window_off") and \
+                int(res.get("inliers") or 0) < self.reacquire_min_inliers:
+            res = dict(res, accepted=False, reason=f"{res.get('inliers')} inliers in a re-acquisition window "
+                                                   f"off the carried position (min {self.reacquire_min_inliers})")
+        return res
+
+    def _locate_search(self, img, center, R, mpp, meta, windows: bool = True) -> dict:
+        """locate() over the search circle (center, R): one window when R is at most ~one window wide
+        (or windows is False: only the carried position's), else the circle covered with windows
+        (cover_windows), this frame's share of them (WindowScan) tried nearest first until a match.
+        The result says the window it came from ("_window": (centre, radius)), "windows_tried" and
+        "radius_m" = R (the circle searched in all). The heading search, when on, runs in the carried
+        position's window only."""
+        hk = self._match_heading_kw(meta)
+        kw = dict(scale_tol=self._scale_tol(meta), **hk, hfov_deg=self._hfov(meta),
+                  expected_tilt_deg=self._expected_tilt(meta), **self._heading_search_kw())
+        w = self._reacquire_window_m(img, mpp)
+        if not getattr(self, "reacquire_windows", False) or R <= 1.25 * w:
+            self._scan.reset()
+            return self.local.locate(img, center, R, mpp, **kw)
+        if hk.get("heading_deg") is not None and "heading_search" in kw and not self.heading_search:
+            # re-acquiring: the frames fail for the position, not for a heading the frame states — the
+            # search after rejects in a row (local_heading_search_after) would try 12 headings in every
+            # window and height: 12-19 s a frame after a 60 s outage (Isaac Sim), the carry 10 s stale
+            kw["heading_search"] = False
+        if not windows:
+            res = self.local.locate(img, center, w, mpp, **kw)
+            return dict(res, _window=(center, w), radius_m=float(R))
+        cover = cover_windows(R, w)
+        best, tried, t0 = None, 0, time.monotonic()
+        for de, dn in self._scan.pick(cover, self.reacquire_per_frame):
+            if tried and time.monotonic() - t0 > self.reacquire_budget_s:
+                break                                   # the rest of the scan goes on next frame
+            c = _move(center, de, dn) if (de or dn) else center
+            # a heading search (12 headings) only in the carried position's window: in every window
+            # it would multiply the frame's time, and the chances of an accidental match, by 12
+            res = self.local.locate(img, c, w, mpp, **(dict(kw, heading_search=False) if (de or dn) and "heading_search" in kw else kw))
+            res = self._window_gate(dict(res, _window=(c, w), _window_off=bool(de or dn)))
+            tried += 1
+            if res.get("accepted"):
+                best = res
+                break
+            if best is None or int(res.get("inliers") or 0) > int(best.get("inliers") or 0):
+                best = res
+        best = dict(best, radius_m=float(R), windows_tried=tried, windows_cover=len(cover))
+        if not best.get("accepted"):
+            best["reason"] = f"{best.get('reason')} ({tried} of {len(cover)} windows of {w:.0f} m tried)"
+        return best
 
     def _predicted(self, meta):
         """(lat, lon, sigma_m) of the last measured fix carried to now along the track
@@ -1488,6 +1575,36 @@ class DaySubscriber(Node):
         self._emit_fix(now, seq_id, lat, lon, meta, status, "dead_reckon", score, None,
                        reason=f"{why}; carried {t_now - t_last:.0f} s, ±{sigma:.0f} m")
         return True
+
+    # visual odometry that disagrees with the track's velocity is believed when two consecutive steps
+    # agree with each other (VO_AGREE_MPS, or VO_AGREE_REL of the speed), each of quality >= VO_MIN_QUALITY
+    # and an image shift of at least VO_MIN_SHIFT_PX (not a lock on what is fixed in the image)
+    VO_AGREE_MPS, VO_AGREE_REL, VO_MIN_QUALITY, VO_MIN_SHIFT_PX, VO_MAX_GAP_S = 2.5, 0.25, 0.5, 4.0, 3.0
+
+    def _vo_gate(self, step, v, t, shift_px):
+        """The odometry step to use, or None. Agreeing with the velocity of the map fixes (v): used,
+        as before. Disagreeing: phase correlation may have locked on something fixed in the image —
+        or the track's velocity is stale: the vehicle turned round or stopped after its last map fix
+        (Isaac Sim hills 2026-10-21: an RTL turn-round 10 s into a dead-reckoning, carried straight on,
+        875 m off at +-488 m stated). It is then used only when this step and the previous one, both
+        clear (quality, image shift), measure the same velocity: a fixed lock gives no shift, and two
+        independent steps agreeing is the track's velocity being wrong, not the odometry."""
+        prev, self._vo_last = getattr(self, "_vo_last", None), None
+        if step is None:
+            return None
+        de, dn, dt, q = step
+        ve, vn = de / dt, dn / dt
+        clear = q >= self.VO_MIN_QUALITY and shift_px is not None and shift_px >= self.VO_MIN_SHIFT_PX
+        self._vo_last = (t, ve, vn) if clear else None
+        if v is None:
+            return step
+        if math.hypot(ve - v[0], vn - v[1]) <= max(3.0 * v[2], 0.3 * math.hypot(v[0], v[1]), 3.0):
+            return step
+        if clear and prev is not None and 0.0 < t - prev[0] <= self.VO_MAX_GAP_S and \
+                math.hypot(ve - prev[1], vn - prev[2]) <= max(self.VO_AGREE_MPS,
+                                                              self.VO_AGREE_REL * math.hypot(ve, vn)):
+            return step
+        return None
 
     ODOMETRY_MAX_UNSEEN_S = 0.5
 
@@ -2103,6 +2220,17 @@ class DaySubscriber(Node):
               else float(getattr(self, "mount_sigma_deg", 0.0)))
         return h * math.tan(math.radians(sd))
 
+    def _jump_margin_m(self, result, meta) -> float:
+        """The motion gate's allowance (beyond max_speed x elapsed) for a local match: the two
+        positions' uncertainty (gate_k sigma), at most gate_margin_m — or gate_k x the anchor's own
+        stated sigma when that is wider (a dead-reckoned anchor: its uncertainty IS how far the
+        vehicle may be from it). Capped at gate_margin_m alone, the right fixes after a 50 s
+        dead-reckoning (anchor +-430 m, 800-900 m off) were refused as 'implausible jumps' for
+        good (Isaac Sim hills, 2026-10-21); the k-sigma gate of _check_local_fix still applies."""
+        sig_a = float(self._anchor_sigma)
+        cap = max(self.gate_margin_m, self.gate_k * sig_a)
+        return kinematic_margin_m(self.gate_k, sig_a, self._fix_sigma(result, meta), cap)
+
     def _publish_result(self, seq_id, meta, result):
         now      = self.get_clock().now().to_msg()
         score    = float(result.get("score") or 0.0)
@@ -2177,10 +2305,7 @@ class DaySubscriber(Node):
             jump = haversine_m(self._anchor_lat, self._anchor_lon, float(raw_lat), float(raw_lon))
             margin = self.gate_margin_m
             if result.get("matcher") == "local" and self._anchor_sigma is not None:
-                # a local match is a position (not a ~250 m tile): the margin is the two
-                # positions' uncertainty, never more than gate_margin_m
-                margin = kinematic_margin_m(self.gate_k, self._anchor_sigma,
-                                            self._fix_sigma(result, meta), self.gate_margin_m)
+                margin = self._jump_margin_m(result, meta)
             reach = self.max_speed_mps * max(0.0, t_now - self._anchor_time) + margin
             if jump > reach:
                 measured = False

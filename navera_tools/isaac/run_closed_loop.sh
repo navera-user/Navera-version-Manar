@@ -15,6 +15,8 @@
 #   --isaac-args "..." (isaac_flight.py conditions) --link-args "-p k:=v ..." (isaac_link.py conditions)
 #   --day-args / --cam-args "-p k:=v ..." (day_subscriber / live_camera parameters)
 #   NAVERA_ISAAC_WS (env): the colcon build directory (default ~/.navera_isaac_ws; one per checkout)
+
+#   --area NAME  NAVERA's map ~/navera_data/isaac_NAME_area (default: the scene's, isaac_<scene>_area)
 #
 #   windows: "NAVERA - Isaac Sim flight" (the scene, chase view), MAVProxy map + console,
 #            "NAVERA - live error" (truth / NAVERA / autopilot EKF, map, camera, status)
@@ -25,7 +27,7 @@
 set -u
 name=closed_loop_$(date +%Y%m%d_%H%M%S); alt=250; radius=500; speed=8; cut_after=15; tod=10:30; sigma=30
 gate=""; hold=30; vehicle=copter; model=quad; scene=kalaa; legs=4; wind=4; wind_dir=290; turb=1.0
-isaac_extra=""; link_extra=""; gimbal=""; day_extra=""; cam_extra=""; endurance=0
+isaac_extra=""; link_extra=""; gimbal=""; day_extra=""; cam_extra=""; endurance=0; area=""
 while [ $# -gt 0 ]; do
   case $1 in
     --name) name=$2;; --alt) alt=$2;; --radius) radius=$2;; --speed) speed=$2;; --cut-after) cut_after=$2;;
@@ -33,6 +35,7 @@ while [ $# -gt 0 ]; do
     --vehicle) vehicle=$2;; --model) model=$2;; --scene) scene=$2;; --legs) legs=$2;; --wind) wind=$2;;
     --wind-dir) wind_dir=$2;; --turb) turb=$2;; --isaac-args) isaac_extra=$2;; --link-args) link_extra=$2;;
     --gimbal) gimbal=$2;; --day-args) day_extra=$2;; --cam-args) cam_extra=$2;; --endurance) endurance=$2;;
+    --area) area=$2;;
     *) echo "unknown option $1" >&2; exit 2;;
   esac; shift 2
 done
@@ -70,7 +73,7 @@ docker run -d --rm --name navera_isaac --gpus all --network host --user "$(id -u
   -e LINK_ARGS="-p truth_udp_port:=15501 -p delay_s:=1.3 -p scene_dir:=/isaac/scenes/$scene $link_extra" \
   -v "$repo":/ws/src/navera -v "$ws/build":/ws/build \
   -v "$ws/install":/ws/install -v "$ws/log":/ws/log \
-  -v "$D":/isaac -v "$HOME/navera_data/isaac_${scene}_area":/data/area -v "$HOME/navera_data/lens":/data/lens \
+  -v "$D":/isaac -v "$HOME/navera_data/isaac_${area:-$scene}_area":/data/area -v "$HOME/navera_data/lens":/data/lens \
   -v "$HOME/navera_data/torch_home":/torch_home -v "$res":/results \
   navera-humble bash /ws/src/navera/navera_tools/isaac/run_navera_nodes.sh > /dev/null || exit 1
 for i in $(seq 1 900); do

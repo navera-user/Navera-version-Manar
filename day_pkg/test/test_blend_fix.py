@@ -75,3 +75,13 @@ def test_check_local_fix_uses_the_consistency_rules(monkeypatch):
     assert why is None and "reacquired" in st
     _, _, why = n._check_local_fix(res, {}, *_move(P0, 5.0, 0.0), {})
     assert why is None and n.consistency.pending is None
+
+
+def test_the_track_gets_the_measured_fix_not_the_blended_output():
+    """Blended points fed back into the track's velocity fit made it decay towards the carry's own
+    (Isaac Sim, early GPS cut: output 40 m behind along the track)."""
+    import inspect
+    from day_pkg.nodes.day_subscriber import DaySubscriber
+    src = inspect.getsource(DaySubscriber._publish_result)
+    assert "self.track.add(t_fix, *track_fix)" in src
+    assert src.index("track_fix = (float(raw_lat), float(raw_lon), fix_sigma)") < src.index("fix_sigma = blended[2]")

@@ -60,6 +60,7 @@ CONDITIONS = {
     "terrain_hills": ("hills / relief", SHORT + " --scene hills"),
     "terrain_farms": ("farmland", SHORT + " --scene farms"),
     "h150": ("height 150 m", SHORT + " --alt 150"),
+    "h150_z18": ("height 150 m, map z17 + z18 (area.json zooms)", SHORT + " --alt 150 --area kalaa_z18"),
     "h600": ("height 600 m", SHORT + " --alt 600"),
     "h1200": ("height 1200 m", SHORT + " --alt 1200"),
     "wind": ("strong wind 12 m/s + gusts (turbulence 4)", SHORT + " --wind 12 --turb 4"),
@@ -102,7 +103,8 @@ def main():
     ap.add_argument("--out", default=os.path.expanduser("~/.navera_sim/isaac/campaign"))
     ap.add_argument("--list", action="store_true")
     ap.add_argument("--ws", default="", help="its colcon build directory on the PC (default ~/.navera_isaac_ws)")
-    ap.add_argument("--extra", default="", help="launcher arguments appended to every condition's")
+    ap.add_argument("--extra", default="", help="launcher arguments appended to every condition's "
+                    "(e.g. '--cut-after 20': the GPS lost soon after reaching altitude)")
     a = ap.parse_args()
     if a.list:
         for k, (what, args) in CONDITIONS.items():
@@ -112,6 +114,7 @@ def main():
     os.makedirs(a.out, exist_ok=True)
     for n in names:
         what, args = CONDITIONS[n]
+        args = (args + " " + a.extra).strip()
         run = a.prefix + n
         if a.notice:
             with open(a.notice, "a") as f:
