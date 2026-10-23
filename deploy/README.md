@@ -127,10 +127,11 @@ it that long:
 
 | what crashes | what the autopilot is given meanwhile | back after (Jetson Orin Nano) |
 |---|---|---|
-| `navera-estimator` | the output bridges its last vision position (carried along the velocity it sent, accuracy growing, at most 10 s) | systemd restart, ~4 s |
-| `navera-output` | nothing until it is back; it then resumes the bridge from its last position (state `output_held`) and its next vision positions are not held back | systemd restart, ~4 s |
-| `day_subscriber` | the output's bridge, then the new day node's first match (search around the saved `day_anchor`) | respawned alone, ~8 s |
-| the day camera | the day node's own dead reckoning (from 2.5 s), forwarded | respawned alone |
+| `navera-estimator` | the output bridges its last vision position (carried along the velocity it sent, accuracy growing, at most 10 s) | systemd restart, positions after ~5 s |
+| `navera-output` | nothing until it is back; it then resumes the bridge from its last position (state `output_held`) and its next vision positions are not held back | systemd restart: the autopilot went 4.7 s without a position |
+| `day_subscriber` | the output's bridge, then the new day node's first match (search around the saved `day_anchor`) | respawned alone, ready after ~7 s; **its first match is not guaranteed** (open, §4 of DEPLOYMENT_VALIDATION.md) |
+| the day camera | the day node's own dead reckoning (from 2.5 s), forwarded | respawned alone, ~2 s |
+| the whole day pipeline | the output's bridge (10 s), then "no fix" until the first match | systemd restart, day positions after ~12.5 s |
 
 The figures measured on the real box with `navera_tools/isaac/hil_flight.sh` are in
 `docs/certification/DEPLOYMENT_VALIDATION.md`. A restarted estimator never publishes a

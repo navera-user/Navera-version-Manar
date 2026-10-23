@@ -1306,8 +1306,10 @@ requirements:
   evidence:
     - {level: HW, against: true, value: 'B23 2026-10-22 box in the loop before the fix (RestartSec=10, arbiter silence = no fix, whole-pipeline restart): killed estimator -> /navera/position back after 15.4 s, autopilot GPS lost after 2.3 s, EKF failsafe LAND; killed day camera -> 25.5 s, LAND', ref: '~/.navera_sim/isaac/hil/hil_base1, hil_endur30'}
     - {level: UT, value: 'arbiter silent / initializing bridged; held position persisted (1/s), restored on a new monotonic clock only within bridge_max_s, cleared by a GPS fix; refused GPS still refused after a restart, nothing published; the camera re-sends on a new ready; the day node and camera respawn alone'}
+    - {level: SIM, value: 'B23 box in the loop 2026-10-23 (real Jetson, SITL copter, GPS denied): estimator killed twice -> autopilot gap 2.6 / 2.5 s, no failsafe; output killed -> gap 4.7 s, no failsafe; day camera killed -> gap 2.6 s; whole day pipeline unit -> positions after 12.5 s, bridged 10 s, no failsafe', ref: 'DEPLOYMENT_VALIDATION.md §4'}
+    - {level: SIM, against: true, value: 'B23 2026-10-23: day_subscriber killed alone -> ready 7.2 s after but no match in its 600 m restart search circle; bridge ended at 10 s, EKF failsafe LAND (hil_resil4)', ref: 'DEPLOYMENT_VALIDATION.md §4'}
   status: partial
-  note: 'box-in-the-loop with the fix: see DEPLOYMENT_VALIDATION.md (B23); not on a real vehicle'
+  note: 'open: a restarted day node must restore its track (velocity, heading, sigma), not only day_anchor, to match again inside the bridge (day_subscriber.py); not on a real vehicle'
 
 - id: NAV-DEP-02
   category: DEP
