@@ -1653,6 +1653,7 @@ class DaySubscriber(Node):
         h, h_sig = self._carry_heading(meta)
         t = self._frame_time(meta)
         ap = self._ap_predicted(t) if getattr(self, "apv", None) is not None else None
+        self._pred_how = "autopilot velocity" if ap is not None else "track"
         if ap is not None:
             return ap[:3]
         if h_sig > 0.0:
@@ -1875,7 +1876,7 @@ class DaySubscriber(Node):
         lat, lon, sigma = p
         now = self.get_clock().now().to_msg()
         reason = (f"no output for {t - self._last_out_wall:.1f} s (match in progress); carried "
-                  f"{t - snap.t_meas:.0f} s, ±{sigma:.0f} m")
+                  f"{t - snap.t_meas:.0f} s{' along the autopilot velocity' if snap.be is not None else ''}, ±{sigma:.0f} m")
         self._last_out_wall = t
         self.pub_status.publish(String(data=json.dumps({
             "frame_id": None, "success": True, "source": "dead_reckon", "watchdog": True,
@@ -2049,8 +2050,9 @@ class DaySubscriber(Node):
         self._set_carry(lat, lon, t_now, meta, sigma)
         self._anchor_lat, self._anchor_lon, self._anchor_time = lat, lon, t_now
         self._dr_sigma = self._anchor_sigma = sigma
+        how = " along the autopilot's velocity" if getattr(self, "_pred_how", None) == "autopilot velocity" else ""
         self._emit_fix(now, seq_id, lat, lon, meta, status, "dead_reckon", score, None,
-                       reason=f"{why}; carried {t_now - t_last:.0f} s, ±{sigma:.0f} m")
+                       reason=f"{why}; carried {t_now - t_last:.0f} s{how}, ±{sigma:.0f} m")
         return True
 
     # visual odometry that disagrees with the track's velocity is believed when two consecutive steps
