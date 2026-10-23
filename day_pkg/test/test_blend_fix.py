@@ -83,5 +83,5 @@ def test_the_track_gets_the_measured_fix_not_the_blended_output():
     import inspect
     from day_pkg.nodes.day_subscriber import DaySubscriber
     src = inspect.getsource(DaySubscriber._publish_result)
-    assert "self.track.add(t_fix, *track_fix)" in src
-    assert src.index("track_fix = (float(raw_lat), float(raw_lon), fix_sigma)") < src.index("fix_sigma = blended[2]")
+    assert "self.track.add(t_fix, float(raw_lat), float(raw_lon), meas_sigma)" in src   # the measured fix (F41)
+    assert "self.track.add(t_fix, blended" not in src
