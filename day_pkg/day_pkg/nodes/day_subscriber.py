@@ -999,6 +999,8 @@ class DaySubscriber(Node):
                     # three heights x 12 headings held one frame 58-93 s (Isaac Sim h1200)
                     result = self._locate_search(img, center, R, mpp * f, meta, windows=f == 1.0,
                                                  heading_search=f == 1.0)
+                    if not result.get("accepted"):
+                        result, f = self._rescaled_match(img, result, center, R, mpp, f, meta)
                     if result.get("accepted"):
                         break
                 sc = float(result.get("scale_residual") or 1.0)
@@ -1033,6 +1035,36 @@ class DaySubscriber(Node):
             # ALWAYS ack — known / accepted / rejected / error — so the camera never
             # hangs waiting for a frame whose outcome was "rejected" or "error".
             self._publish_done(seq_id)
+
+    def _rescaled_match(self, img, result, center, R, mpp, f, meta):
+        """(result, height factor). A strong match (>= strong_inliers) refused only for its fitted scale is
+        matched again at the height that scale implies (mpp x f x scale), when that height is within
+        local_scale_tol_max of the frame's own. Isaac Sim h1200: the frame failed at its own height (the
+        carry outside its circle), its 25 % higher retry loaded a wider map, found the place with 150-355
+        inliers at scale 0.81 — i.e. at the frame's own height (1.25 x 0.81 = 1.01) — and was refused as a
+        "wrong place" 9 frames in a row while the carry drifted 1-3 km. The match again must pass the
+        usual scale window (and every gate after it) at the corrected height."""
+        sc = result.get("scale_residual")
+        if not str(result.get("reason") or "").startswith("fitted scale") or sc is None or \
+                int(result.get("inliers") or 0) < getattr(self, "strong_inliers", 100):
+            return result, f
+        g = f * float(sc)
+        if not (math.isfinite(g) and abs(g - 1.0) <= getattr(self, "local_scale_tol_max", 0.35)):
+            return result, f
+        if result.get("predicted_lat") is None or result.get("predicted_lon") is None:
+            return result, f
+        # around the place it found (the frame's own circle had failed at that height), a small circle
+        wc = (float(result["predicted_lat"]), float(result["predicted_lon"]))
+        wr = max(getattr(self, "local_min_radius_m", 50.0), 50.0)
+        again = self.local.locate(img, wc, wr, mpp * g, scale_tol=self._scale_tol(meta),
+                                  **self._match_heading_kw(meta), hfov_deg=self._hfov(meta),
+                                  expected_tilt_deg=self._expected_tilt(meta))
+        if again.get("accepted") and int(again.get("inliers") or 0) >= getattr(self, "strong_inliers", 100):
+            self.get_logger().info(f"[day] frame matched again at the height its fitted scale implies "
+                                   f"(x{g:.2f}: {again.get('inliers')} inliers)")
+            return dict(again, rescaled_from=round(float(sc), 3), radius_m=result.get("radius_m", R),
+                        search_center_rescaled=list(wc)), g
+        return result, f
 
     def _log_top5(self, seq_id, result):
         """Diagnostic correctif #1 : top-5 des matches (DINOv2) pour les frames sans GPS."""
