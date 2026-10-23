@@ -65,9 +65,10 @@ def test_store_round_trip_age_and_key(tmp_path):
 def _node(refused):
     logs = []
     n = SimpleNamespace(calib_rollback_s=60.0, sigma_cal=_calibrated(t0=time.time() - 30.0),
-                        map_bias=VisionNavigator(), _gps_refused_flag=refused,
+                        map_bias=VisionNavigator(), _gps_refused_flag=refused, mount_cal=None,
                         get_logger=lambda: SimpleNamespace(info=logs.append))
     n._rollback_gps_learning = MethodType(DaySubscriber._rollback_gps_learning, n)
+    n._save_mount_cal = MethodType(DaySubscriber._save_mount_cal, n)
     return n, logs
 
 
