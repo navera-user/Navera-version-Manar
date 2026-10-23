@@ -677,6 +677,25 @@ the first wrong fix passes the 3σ gate while the carry is uncertain (σ 35–50
 second agrees with the track it moved. `reacquire_confirm` with the new rule: 21 / 24 believed,
 but right fixes refused 407 → 1000 (missions) — still off. D17 stays partly open.
 
+*2026-10-23 (D17, multi-hypothesis track):* `day_pkg/fix_hypotheses.py` (node parameter
+`fix_hypotheses`, **on by default**, replaces the confirmation rule). A doubted fix, or one far from
+the carried position while its sigma is 30–250 m (> 3 × its own sigma and > 80 m), no longer moves the
+track: it spawns an alternative (≤ 2, kept as offsets from the track, so carried by the same carry).
+An alternative becomes the track only when ≥ 3 fixes agree with it **and** it leads the others by a
+log-likelihood ratio (scored on the fixes since it appeared, with an outlier floor) — two agreeing
+fixes never move it; the third and later decide. It is pruned 20 s after its last agreeing fix or
+after 3 fixes believed on the track; while alive the published sigma reaches it at 3σ. Same replay
+(`replay_day_guards.py`, 5 % injected, 3 seeds), current rule → hypotheses: believed two-in-a-row
+missions **49 → 11** / 1029, flights **33 → 7** / 1151; single 9 → 4 / 5 → 2; output p95 35 → 29 m /
+36 → 32 m, max 1541 → 727 m / 839 → 270 m; any output > 50 m 451 → 334 / 542 → 446. Cost without
+injection: right fixes refused 282 → 336 / 9888 (missions), 97 → 156 / 14847 (flights: a doubted fix
+after a gap now needs 3, not 2), frames with an output 11216 → 11198 / 17460 → 17457, p95 24 → 25 m /
+29 → 30 m. At any sigma (`far_max_sigma_m` ∞) believed falls to **0** / 5 but right fixes refused
+282 → 553 and availability 94 → 91 % (missions): the re-acquisitions beyond 250 m (output unavailable
+past 300 m) are left to the old rule. Isaac fixtures (`replay_sigma_isaac`): identical with and without
+(pd_ref_base 3 / 353 beyond 3σ as before, pd_nomc_base and hil_resil4 0; 0 wrong). Offline replay only.
+D17 is closed for σ ≤ 250 m; a lost track (> 250 m) still re-acquires on two agreeing fixes.
+
 *Day node memory (2026-10-23):* PyTorch's CUDA cache (system memory on the Jetson) was emptied only
 after a > 300 m window; ordinary frames of varying size grew it to 2.5 GB reserved for ~90 MiB
 allocated (60-min soak: day_subscriber 2.9 GB RSS + 1.3 GB swap). It is now emptied when it holds

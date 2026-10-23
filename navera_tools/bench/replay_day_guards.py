@@ -27,6 +27,9 @@ Python), the heading carried by a simulated gyro as the node does (GyroSim: the 
              over a 1/60 s exposure and the bench view (1200 px over 100 deg)
   confirm_n  D17 (2026-10-23): a far-off fix on a good track is believed after 3 agreeing doubted
              fixes in a row (2 until 10-22; 2 still while lost)
+  hypotheses D17 (2026-10-23): day_pkg.fix_hypotheses instead of the confirmation rule — alternative
+             tracks; a far-off fix while the carried sigma is 30-250 m (or a doubted one) becomes the track
+             after 3+ agreeing fixes that lead (the node default since); 'far max inf': at any sigma
   inject     F16 fault injection: 5 % of the lost matches replaced by confident wrong ones (100-650 m,
              100-228 inliers, as the 2026-10-19 hand-tilt run), alone or two in a row (burst 2)
 
@@ -51,6 +54,7 @@ for p in (os.path.join(ROOT, "day_pkg"), HERE):
         sys.path.insert(0, p)
 
 from day_pkg.fix_consistency import FixConsistency  # noqa: E402
+from day_pkg.fix_hypotheses import FixHypotheses  # noqa: E402
 from day_pkg.gyro_heading import GyroHeading  # noqa: E402
 from day_pkg.image_quality import gyro_blur_px  # noqa: E402
 from day_pkg.local_matcher import fix_sigma_m  # noqa: E402
@@ -198,7 +202,10 @@ def run(frames, speed, variant, vmax=None, heading="none", seed=1):
         cons = FixConsistency(strong_gate_k=variant.get("strong_k", 3.0),
                               reacquire_check=variant.get("reacq", True),
                               confirm_n=variant.get("confirm_n", 3), confirm_lost_n=variant.get("confirm_lost_n", 2))
-    nav = VisionNavigator(max_speed_mps=vmax or 1.5 * speed, consistency=cons,
+    hyp = None
+    if cons is not None and variant.get("mht") is not None:
+        hyp = FixHypotheses(cons, **variant["mht"])
+    nav = VisionNavigator(max_speed_mps=vmax or 1.5 * speed, consistency=cons, hypotheses=hyp,
                           blend_fixes=variant.get("blend", False),
                           blend_below_inliers=variant.get("blend_below", 10 ** 9))
     gyro = GyroSim(seed) if heading == "gyro" else None
@@ -308,6 +315,7 @@ def replay(runs, variant, heading="gyro", seeds=(1, 2, 3), burst=0):
 BASE = dict(strong_k=6.0, confirm=True, reacq=False, confirm_n=2)
 PRODUCT = dict(confirm=True, reacq=False, blend=True)              # confirm_n 3 since 2026-10-23 (D17)
 PRODUCT_22 = dict(PRODUCT, confirm_n=2)                             # the product of 2026-10-22
+HYPOTHESES = dict(PRODUCT, mht={})                                   # D17, the node default since 2026-10-23
 
 
 def main():
@@ -326,7 +334,7 @@ def main():
         print("F20 / F16 / D17 — the guards, gyro-carried heading\n")
         print(HEADER)
         variants = [("base", BASE), ("product 10-22 (2 agreeing)", PRODUCT_22), ("product", PRODUCT), ("product, sigma >= 30 m", dict(PRODUCT, sigma_floor=30.0)),
-                    ("product + reacq", dict(PRODUCT, reacq=True))]
+                    ("product + reacq", dict(PRODUCT, reacq=True)), ("hypotheses", HYPOTHESES)]
         variants += [(f"product + rate {b} px", dict(PRODUCT, max_blur_px=b)) for b in (6.0, 10.0, 15.0)]
         for name, runs in sets:
             for vn, v in variants:
@@ -352,7 +360,8 @@ def main():
                 for vn, v in (("base", BASE), ("strong 3 sigma", dict(BASE, strong_k=3.0)),
                               ("product 10-22 (2 agreeing)", PRODUCT_22), ("product (3 agreeing, 2 lost)", PRODUCT),
                               ("product, 3 agreeing lost too", dict(PRODUCT, confirm_lost_n=3)),
-                              ("product + reacq", dict(PRODUCT, reacq=True))):
+                              ("product + reacq", dict(PRODUCT, reacq=True)), ("hypotheses", HYPOTHESES),
+                              ("hypotheses, far max inf", dict(PRODUCT, mht=dict(far_max_sigma_m=float("inf"))))):
                     s, inj, used = replay(runs, v, burst=burst)
                     print(f"| {name} / {burst} / {vn} | {inj} | {used} " + fmt("", s)[3:])
 

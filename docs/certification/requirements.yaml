@@ -977,15 +977,17 @@ requirements:
 - id: NAV-SAF-28
   category: SAF
   title: 'Day track consistency: no confident wrong fix believed alone'
-  text: 'A day fix further from the carried position than 3 x the two sigmas combined (strong fixes included) shall not be believed until a second fix agrees with it (within 6 s, 20 s while lost); a believed fix shall be averaged with the carried position by their sigmas when the carry has a heading (frame attitude or gyro) and the fix is not a re-acquisition — only the independent parts of the two errors (the error every fix shares, speed x the camera delay sigma and height x tan(the mount sigma), neither sets the weight nor shrinks in the stated sigma), the carry being made of the measured fixes, never of its own output; frames smeared by the camera rotation at the exposure or blurred may be refused (frame_max_blur_px, frame_sharp_rel; off by default); the heading search shall run when no heading is known or after local_heading_search_after frames without a match.'
+  text: 'A day fix further from the carried position than 3 x the two sigmas combined (strong fixes included) shall not be believed until later fixes agree with it (D17: an alternative track that 3+ agreeing fixes make lead, the published sigma covering it meanwhile; also for a fix far from an uncertain carried position, sigma 30–250 m); a believed fix shall be averaged with the carried position by their sigmas when the carry has a heading (frame attitude or gyro) and the fix is not a re-acquisition — only the independent parts of the two errors (the error every fix shares, speed x the camera delay sigma and height x tan(the mount sigma), neither sets the weight nor shrinks in the stated sigma), the carry being made of the measured fixes, never of its own output; frames smeared by the camera rotation at the exposure or blurred may be refused (frame_max_blur_px, frame_sharp_rel; off by default); the heading search shall run when no heading is known or after local_heading_search_after frames without a match.'
   code:
     - day_pkg/day_pkg/fix_consistency.py::FixConsistency
+    - day_pkg/day_pkg/fix_hypotheses.py::FixHypotheses
     - day_pkg/day_pkg/frame_gate.py::FrameGate
     - day_pkg/day_pkg/nodes/day_subscriber.py::DaySubscriber._check_local_fix
     - day_pkg/day_pkg/nodes/day_subscriber.py::DaySubscriber._blend_fix
     - day_pkg/day_pkg/nodes/day_subscriber.py::DaySubscriber._heading_search_kw
   match:
     - 'test_fix_consistency\.py::'
+    - 'test_fix_hypotheses\.py::'
     - 'test_frame_gate\.py::'
     - 'test_blend_fix\.py::'
     - 'test_heading_search_auto\.py::'
@@ -995,6 +997,8 @@ requirements:
     - {level: PUB, value: 'heading search on UAV-VisLoc flight 04 (Esri map): heading 30–180° wrong or unknown 0/20 → 17–19/20 located, ~2.4 s per failed frame', ref: 'VALIDATION_STATUS.md, Day: robustness fixes on recorded data'}
     - {level: SIM, value: 'F41 (2026-10-22): Isaac Sim copter flights replayed offline through the day node: with the carry fed its own output and the common error averaged, outputs lagged up to 100 m (pd_nomc_base 99 wrong, 43 % beyond 3σ); carry from the measured fix + independent parts: 0 wrong, 0–1 % beyond 3σ in 6 runs', ref: 'VALIDATION_STATUS.md, Isaac Sim closed loop: the overconfident copter sigma'}
     - {level: BENCH, against: true, value: 'F41: with the carry made of measured fixes (as the node now does) the bench gain shrinks: wind measured outputs > 50 m 51 → 26 (was → 16), other conditions 57 → 29 (was → 13); in Isaac blending costs ~1.5 m median against none', ref: 'VALIDATION_STATUS.md, Isaac Sim closed loop: the overconfident copter sigma'}
+    - {level: BENCH, value: 'D17 (2026-10-23) multi-hypothesis track (fix_hypotheses, default on): injected wrong pairs believed 49 → 11 of 1029 (missions), 33 → 7 of 1151 (flights), output p95 35 → 29 / 36 → 32 m; right fixes refused without injection 282 → 336 / 97 → 156; Isaac fixtures unchanged', ref: 'VALIDATION_STATUS.md, Day: robustness fixes on recorded data'}
+    - {level: BENCH, against: true, value: 'D17: a track lost beyond 250 m still re-acquires on two agreeing fixes (covering it too: believed 0 but availability 94 → 91 % on the missions)', ref: 'VALIDATION_STATUS.md, Day: robustness fixes on recorded data'}
     - {level: BENCH, against: true, value: 'rate gate (6 px) on the shake runs: wrong 16 → 9 but right fixes refused 15 → 185 of 540 — left off; two wrong matches in a row at the same place are still believed (D17 partly open)', ref: 'VALIDATION_STATUS.md, Day: robustness fixes on recorded data'}
   status: verified-BENCH
   note: 'offline replays only; the bench shook the scene, not the camera (no gyro at the exposure); repeat on a real vehicle (F20)'

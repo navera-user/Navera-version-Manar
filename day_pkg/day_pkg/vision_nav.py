@@ -60,7 +60,7 @@ class VisionNavigator:
                  gate_k: float = 3.0, strong_inliers: int = 100, min_spread: float = 0.25,
                  retry_after: int = 3, bias_radius_m: float = 3000.0, strong_gate_k: float = 6.0,
                  max_speed_mps: Optional[float] = None, blend_fixes: bool = False,
-                 blend_below_inliers: int = 10 ** 9, consistency=None):
+                 blend_below_inliers: int = 10 ** 9, consistency=None, hypotheses=None):
         self.max_dr_s, self.max_sigma_m, self.accel = max_dr_s, max_sigma_m, accel_mps2
         self.search_k, self.min_search_m, self.max_search_m = search_k, min_search_m, max_search_m
         self.gate_k, self.strong_inliers, self.min_spread = gate_k, strong_inliers, min_spread
@@ -74,6 +74,9 @@ class VisionNavigator:
         # day_pkg.fix_consistency.FixConsistency: the product's doubt / confirmation rules (F16, D17);
         # None: the rules below as they were before 2026-10-22 (the bench baseline)
         self.consistency = consistency
+        # day_pkg.fix_hypotheses.FixHypotheses (D17): alternative tracks instead of the confirmation
+        # rule — a far-off fix becomes the track only when 3+ fixes agree and lead; None: off
+        self.hypotheses = hypotheses
         self.kinematic_rejected = 0
         self.weak_inliers = 30        # fewer: the fix places the vehicle, not its velocity
         self.fix = None               # (lat, lon, t, sigma_m, heading_deg or None): last position measured
@@ -109,6 +112,8 @@ class VisionNavigator:
     def gps(self, t: float, lat: float, lon: float, sigma_m: float = 5.0,
             heading_deg: Optional[float] = None) -> None:
         """A trusted GPS position: it is the position (vision only checks it and learns the bias)."""
+        if self.hypotheses is not None:
+            self.hypotheses.clear()
         self._set_fix(t, lat, lon, sigma_m, heading_deg)
 
     def set_height(self, t: float, height_m: float, sigma_m: float, source: str) -> None:
@@ -341,7 +346,17 @@ class VisionNavigator:
                                     f"(max {reach:.0f} m at {self.max_speed_mps:.0f} m/s, {inl} inliers): rejected")
                 return False
         doubt, reacquired = None, False
-        if self.consistency is not None:
+        if self.hypotheses is not None and self.consistency is not None:
+            if not gps_valid and pred is not None:
+                ok, why, reacquired = self.hypotheses.judge(t, lat, lon, sig, inl, pred, self.vel)
+                if not ok:
+                    self.fails += 1
+                    self.last_reason = why
+                    return False
+                if why:
+                    self.last_reason = why
+            self.consistency.clear()
+        elif self.consistency is not None:
             if not gps_valid and pred is not None:
                 lost = pred[2] > self.consistency.lost_sigma_m
                 doubt = self.consistency.doubt(math.hypot(*_en((lat, lon), pred[:2])), pred[2], sig, inl)
@@ -402,6 +417,8 @@ class VisionNavigator:
             # MEASURED fix: fed the blended output it filtered itself (as day_subscriber, F41)
             self._set_fix(t, lat, lon, sig, heading_deg, velocity=inl >= self.weak_inliers)
             self._out = None if out is None else (t,) + out
+            if self.hypotheses is not None:
+                self.hypotheses.accepted()
         return True
 
     def _set_fix(self, t, lat, lon, sigma_m, heading_deg, velocity: bool = True):
@@ -447,6 +464,7 @@ class VisionNavigator:
         age = t - self.fix[2]
         if age > self.max_dr_s or p[2] > self.max_sigma_m:
             return None, None, p[2], "unavailable"
+        cover = self.hypotheses.cover_sigma if self.hypotheses is not None else (lambda _t, s: s)
         if age < 0.5 and self._out is not None and self._out[0] == self.fix[2]:
-            return self._out[1], self._out[2], self._out[3], "measured"
-        return p[0], p[1], p[2], ("measured" if age < 0.5 else "propagated")
+            return self._out[1], self._out[2], cover(t, self._out[3]), "measured"
+        return p[0], p[1], cover(t, p[2]), ("measured" if age < 0.5 else "propagated")

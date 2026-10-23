@@ -57,6 +57,7 @@ from day_pkg.nodes.day_localizer import IMAGES_DIR, DayLocalizer, haversine_m
 from day_pkg.fix_sigma import SigmaCalibration, day_fix_sigma_m
 from day_pkg.fix_sigma import load_stored as load_sigma_cal, save_stored as save_sigma_cal
 from day_pkg.fix_consistency import FixConsistency
+from day_pkg.fix_hypotheses import FixHypotheses
 from day_pkg.frame_gate import FrameGate, focal_px
 from day_pkg.frame_odometry import FrameOdometry
 from day_pkg.gyro_heading import CourseReset, GyroHeading, heading_rate_dps
@@ -198,6 +199,12 @@ class DaySubscriber(Node):
         # in a row agree (carried by the velocity); confirm_fixes_lost while the position is lost
         self.declare_parameter("confirm_fixes", 3)
         self.declare_parameter("confirm_fixes_lost", 2)
+        # D17 (2026-10-23): alternative tracks (day_pkg.fix_hypotheses) instead of the confirmation above: a
+        # far-off fix while the carried position is uncertain (sigma 30-250 m), or a doubted one, becomes the
+        # track only once 3+ fixes agree with it and it leads (log-likelihood); meanwhile the published sigma
+        # covers it. Replay (5 % injected wrong matches, 3 seeds): two-in-a-row believed 49 -> 11 (missions),
+        # 33 -> 7 (flights) for 0.5 % more right fixes refused (navera_tools/bench/replay_day_guards.py)
+        self.declare_parameter("fix_hypotheses", True)
         # a fix is averaged with the carried position, each weighted by its sigma (a Kalman update), when
         # the carry turns with a heading (frame attitude or gyro) and the fix is not a re-acquisition
         # (F20 / F23 / D17). Replay of the 2026-10-19/20 real-camera runs with the gyro-carried heading
@@ -445,6 +452,7 @@ class DaySubscriber(Node):
                                           reacquire_check=bool(p_("reacquire_confirm")),
                                           confirm_n=int(p_("confirm_fixes")),
                                           confirm_lost_n=int(p_("confirm_fixes_lost")))
+        self.hypotheses = FixHypotheses(self.consistency) if bool(p_("fix_hypotheses")) else None
         self.blend_fixes = bool(p_("blend_fixes"))
         self.frame_gate = FrameGate(float(p_("frame_max_blur_px")), float(p_("frame_exposure_s")),
                                     sharp_rel=float(p_("frame_sharp_rel")))
@@ -843,6 +851,8 @@ class DaySubscriber(Node):
             lt = self.track.last_time()
             if lt is None or t > lt:                # (an older point would read as a clock step back)
                 self.track.add(t, lat, lon, sigma)
+            if getattr(self, "hypotheses", None) is not None:
+                self.hypotheses.clear()             # GPS: one track again
             # the GPS now measures the track: a carried velocity from an earlier dead-reckoning
             # (e.g. at power-on, standing still) must not outlive it. It did: after the GPS loss
             # the carry went on with that velocity — 0 m/s for a copter at 8 m/s, 97 m off in 10 s
@@ -2374,6 +2384,8 @@ class DaySubscriber(Node):
             # without one); dead-reckoning: the anchor's plus the growth along the track
             sig = sigma_m or (details.get("sigma_m") if src == "local_match" else None) or \
                 (self.local_sigma_m if src == "local_match" else self._dr_sigma)
+            if getattr(self, "hypotheses", None) is not None:
+                sig = self.hypotheses.cover_sigma(time.time(), float(sig))   # D17: 3 sigma reach an alternative
             var = float(sig) ** 2
             est.position_covariance = [var, 0.0, 0.0, 0.0, var, 0.0, 0.0, 0.0, 0.0]
             est.position_covariance_type = PositionEstimate.COVARIANCE_TYPE_APPROXIMATED
@@ -2464,6 +2476,20 @@ class DaySubscriber(Node):
                               "poorly conditioned — match rejected")
         pred = self._predicted(meta)
         sig = self._fix_sigma(result, meta)
+        hyp = getattr(self, "hypotheses", None)
+        if hyp is not None:
+            # D17: the carried track and its alternatives (day_pkg.fix_hypotheses)
+            if pred is None:
+                hyp.clear()
+                return lat, lon, None
+            now = time.time()
+            v = self.track.velocity(now)
+            ok, why, switched = hyp.judge(now, lat, lon, sig, inl, pred, (v[0], v[1]) if v is not None else None)
+            if not ok:
+                return lat, lon, why
+            if switched:
+                status["reacquired"] = why
+            return lat, lon, None
         # the gate against the carried position and the confirmation of a doubted fix: day_pkg.fix_consistency
         doubt = None if pred is None else \
             self.consistency.doubt(math.hypot(*_en((lat, lon), pred[:2])), pred[2], sig, inl)
@@ -2861,6 +2887,8 @@ class DaySubscriber(Node):
                 # velocity fitted to smoothed points, its sigma shrinking, the fixes weighted down and
                 # the output lagging (Isaac Sim 2026-10-22: 100 m behind a copter, F41)
                 self.track.insert(t_fix, float(raw_lat), float(raw_lon), meas_sigma)
+                if getattr(self, "hypotheses", None) is not None:
+                    self.hypotheses.accepted()     # the alternatives are offsets from the track: moved back
                 self._gyro_reset(t_fix, result)
                 self._track_heading = self._carry_heading(meta)[0]
                 self._keep_carry_velocity(float(raw_lat), float(raw_lon), t_fix, meta, meas_sigma, t_vel)
