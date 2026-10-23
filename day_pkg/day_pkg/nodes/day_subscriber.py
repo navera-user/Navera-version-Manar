@@ -64,6 +64,8 @@ from day_pkg.map_levels import area_zooms, choose_zoom
 from day_pkg.mount_cal import MountCalibration
 from day_pkg.local_matcher import LocalMatcher
 from day_pkg.reacquire import WindowScan, cover_windows
+from day_pkg.carry_aids import (AttitudeYaw, VelocityRef, autopilot_sigma_growth, carry_autopilot,
+                                 carry_with_turns, yaw_of_quaternion)
 from day_pkg.carry_state import DrSnap, TRACK_STATE, restore_track, track_state, watchdog_carry
 from day_pkg.vision_nav import VisionNavigator, _en, _move, kinematic_margin_m
 
@@ -374,6 +376,16 @@ class DaySubscriber(Node):
         # (state "day_track") and restored by a day node restarted in flight: it carries on at once,
         # its uncertainty grown by the time elapsed, and searches around that (not a 600 m circle)
         self.declare_parameter("track_persist", True)
+        # the carry along the autopilot's own velocity (vehicle_link /navera/vehicle/velocity; open3,
+        # day_pkg.carry_aids): its EKF integrates its IMU (turns, speed changes), but without GPS it is
+        # corrected by NAVERA's positions — so a bias is fitted on this node's measured fixes of the last
+        # 20 s and the velocity refused when they do not lie on its path. "" = off. Its drift while NAVERA
+        # feeds the autopilot carried positions: 1/2 drift t^2 in the stated accuracy
+        self.declare_parameter("autopilot_velocity_topic", "/navera/vehicle/velocity")
+        declare_float(self, "autopilot_velocity_drift_mps2", 0.1)
+        # the IMU attitude's absolute yaw (orientation of the gyro's IMU message): the turn across a
+        # restart of this process, persisted with the snapshot (carry_aids.AttitudeYaw)
+        self.declare_parameter("attitude_yaw_carry", True)
 
         self.conf_threshold = float(self.get_parameter("conf_threshold").value)
         image_topic   = self.get_parameter("image_topic").value
@@ -450,6 +462,12 @@ class DaySubscriber(Node):
         # the last output and the velocity it moves with (DrSnap), for the watchdog thread; set by
         # the matching thread at each output and by the GPS thread while the GPS is trusted
         self._dr_snap = None
+        self.apv = VelocityRef() if str(self.get_parameter("autopilot_velocity_topic").value).strip() else None
+        self.ap_drift = float(self.get_parameter("autopilot_velocity_drift_mps2").value)
+        self.att_yaw = AttitudeYaw() if bool(self.get_parameter("attitude_yaw_carry").value) else None
+        self._ap_fit_cache = None               # ((t_last, n points), bias) of the last _ap_bias()
+        self._restored_bias = None              # (be, bn, sigma, t_ref) persisted with a restored snapshot
+        self._gps_ap_fit = (-math.inf, None)    # GPS thread: (t, bias) of its last fit
         self._last_out_wall = time.time()       # wall clock of the last output (position or "none")
         self.dr_watchdog_s = float(self.get_parameter("dr_watchdog_s").value)
         self.track_persist = bool(self.get_parameter("track_persist").value)
@@ -661,7 +679,11 @@ class DaySubscriber(Node):
                                history=HistoryPolicy.KEEP_LAST, depth=1)
         self.sub_start = self.create_subscription(
             Bool, self.get_parameter("start_topic").value, self.on_start_cmd, start_qos)
-        if self.gyro is not None:
+        if self.apv is not None:
+            from geometry_msgs.msg import TwistStamped
+            self.create_subscription(TwistStamped, str(self.get_parameter("autopilot_velocity_topic").value).strip(),
+                                     self.on_ap_velocity, 20, callback_group=MutuallyExclusiveCallbackGroup())
+        if self.gyro is not None or self.att_yaw is not None:
             # read in its own thread (main(): multi-threaded executor): a frame takes 0.5-1 s
             # and the gyro must not stop being integrated meanwhile
             imu_topic = str(self.get_parameter("gyro_imu_topic").value).strip()
@@ -710,8 +732,18 @@ class DaySubscriber(Node):
             return
         w, q = msg.angular_velocity, msg.orientation
         att = None if msg.orientation_covariance[0] == -1.0 else (q.x, q.y, q.z, q.w)
-        self.gyro.add_rate(t, heading_rate_dps((w.x, w.y, w.z), att))
+        if self.gyro is not None:
+            self.gyro.add_rate(t, heading_rate_dps((w.x, w.y, w.z), att))
+        if getattr(self, "att_yaw", None) is not None and att is not None:
+            self.att_yaw.add(t, yaw_of_quaternion(att))
         self.frame_gate.add_rate(t, (math.degrees(w.x), math.degrees(w.y), math.degrees(w.z)))
+
+    def on_ap_velocity(self, msg):
+        """The autopilot's velocity (TwistStamped ENU m/s, vehicle_link), by its stamp (else its arrival)."""
+        t = msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
+        if t <= 0:
+            t = time.time()
+        self.apv.add(t, float(msg.twist.linear.x), float(msg.twist.linear.y))
 
     def on_nav_status(self, msg: NavStatus):
         self._gps_prior.arbiter(msg.active_source == NavStatus.SOURCE_GPS
@@ -769,7 +801,21 @@ class DaySubscriber(Node):
         snap = self._dr_snap
         if snap is None or t >= snap.t:
             g = self.gyro.at(t) if getattr(self, "gyro", None) is not None else None
-            self._dr_snap = DrSnap(lat, lon, t, sigma, v[0], v[1], v[2], 0.0, t, g[0] if g else None)
+            ay = getattr(self, "att_yaw", None)
+            yaw = ay.yaw(t) if ay is not None else None
+            # along the autopilot's velocity when it draws the GPS track (its bias fitted at most twice a second)
+            apv, b = getattr(self, "apv", None), None
+            if apv is not None:
+                tf, b = self._gps_ap_fit
+                if t - tf >= 0.5:
+                    b = apv.fit_bias(list(gv._pts), t)
+                    self._gps_ap_fit = (t, b)
+            va = apv.v(t) if b is not None else None
+            if va is not None:
+                self._dr_snap = DrSnap(lat, lon, t, sigma, va[0] + b[0], va[1] + b[1], b[2], 0.0, t,
+                                       g[0] if g else None, yaw, b[0], b[1])
+            else:
+                self._dr_snap = DrSnap(lat, lon, t, sigma, v[0], v[1], v[2], 0.0, t, g[0] if g else None, yaw)
 
     def _drain_gps(self) -> None:
         """Under _busy_lock: the pending GPS points become the anchor and the track (at their own times)."""
@@ -1574,6 +1620,9 @@ class DaySubscriber(Node):
             return None
         h, h_sig = self._carry_heading(meta)
         t = self._frame_time(meta)
+        ap = self._ap_predicted(t) if getattr(self, "apv", None) is not None else None
+        if ap is not None:
+            return ap[:3]
         if h_sig > 0.0:
             p = self._gyro_carry(t, t_last, h_sig)
             if p is not None:
@@ -1582,20 +1631,33 @@ class DaySubscriber(Node):
         if c is not None and c[2] >= t_last:
             lat, lon, tc, hc, ve, vn, sig = c
             dt = max(0.0, t - tc)
-            turn = (h - hc + 180.0) % 360.0 - 180.0 if h is not None and hc is not None else 0.0
+            v = self.track.velocity(t_last + 1e-3)
+            sig_v = v[2] if v is not None else 3.0
+            since_v = tc - (self._vel_epoch if self._vel_epoch is not None else t_last)
+            ay = getattr(self, "att_yaw", None)
+            tr = ay.turn(tc, t) if ay is not None else None
+            if tr is not None:
+                # along the path the IMU attitude's yaw draws, sample by sample (the frames' headings give the
+                # turn's total only, taken at a constant rate: a restart's carry 66 m off 9 s after a corner).
+                # Measured turns: no half-turn term, but for the turn inside a gap (across a restart, from the
+                # yaw persisted with the snapshot) and the yaw's drift
+                speed = math.hypot(ve, vn)
+                plat, plon, _, _ = carry_with_turns(lat, lon, tc, ve, vn, t,
+                                                    lambda s_: (ay.turn(tc, s_) or (None,))[0])
+                bias = self.gyro.bias if getattr(self, "gyro", None) is not None else 0.1
+                return (plat, plon, sig + self.track.sigma_growth(sig_v, speed, dt, max(0.0, since_v))
+                        + 0.5 * math.radians(tr[2]) * speed * tr[1] + 0.5 * math.radians(bias * dt) * speed * dt)
+            turn = (h - hc + 180.0) % 360.0 - 180.0 if h is not None and hc is not None else DaySubscriber._imu_turn(self, tc, t)
             steps = max(1, int(abs(turn) / 5.0))
             de = dn = 0.0
             for i in range(steps):
                 a = math.radians(turn * (i + 0.5) / steps)
                 de += (ve * math.cos(a) + vn * math.sin(a)) * dt / steps
                 dn += (-ve * math.sin(a) + vn * math.cos(a)) * dt / steps
-            v = self.track.velocity(t_last + 1e-3)
-            sig_v = v[2] if v is not None else 3.0
             speed = math.hypot(ve, vn)
             p = _move((lat, lon), de, dn)
             # the unseen acceleration grows with the time since the last MEASURED fix (not
             # of each 1 s step: that sum is linear and was 5x too small after 100 s)
-            since_v = tc - (self._vel_epoch if self._vel_epoch is not None else t_last)
             return (p[0], p[1], sig + self.track.sigma_growth(sig_v, speed, dt, max(0.0, since_v), turn)
                     + 0.5 * math.radians(h_sig) * speed * dt)
         turn, hv = 0.0, self._velocity_heading(h_sig)
@@ -1643,6 +1705,57 @@ class DaySubscriber(Node):
         return (p[0], p[1], sig + self.track.sigma_growth(sig_v, speed, dt, max(0.0, since_v))
                 + 0.5 * math.radians(h_sig) * speed * dt)
 
+    def _imu_turn(self, t0, t1) -> float:
+        """The vehicle's turn (deg) from t0 to t1 when the frames give no heading: the IMU attitude's yaw
+        (across a restart too: seeded with the persisted yaw), else the gyro's integrated rate, else 0."""
+        ay = getattr(self, "att_yaw", None)
+        r = ay.turn(t0, t1) if ay is not None else None
+        if r is not None:
+            return r[0]
+        gyro = getattr(self, "gyro", None)
+        d = gyro.turn(t0, t1) if gyro is not None else None
+        return d if d is not None else 0.0
+
+    def _ap_bias(self):
+        """(be, bn, sigma m/s, t_ref) to add to the autopilot's velocity so that it draws the track's
+        measured points up to the last one (t_ref), or None (no autopilot velocity, too few points
+        covered, or the points off its path: carry_aids.VelocityRef.fit_bias). Cached per track state;
+        after a restart (no velocity samples under the restored points) the persisted bias."""
+        apv = getattr(self, "apv", None)
+        last = self.track.last_fix()
+        if apv is None or last is None:
+            return None
+        key = (last[0], len(self.track._pts))
+        cache = getattr(self, "_ap_fit_cache", None)
+        if cache is not None and cache[0] == key:
+            return cache[1]
+        b = apv.fit_bias(list(self.track._pts), last[0])
+        r = None if b is None else (b[0], b[1], b[2], last[0])
+        rb = getattr(self, "_restored_bias", None)
+        if r is None and rb is not None and abs(rb[3] - last[0]) < 1e-6:
+            r = rb
+        self._ap_fit_cache = (key, r)
+        return r
+
+    def _ap_predicted(self, t):
+        """(lat, lon, sigma_m, ve, vn) carried to t along the autopilot's velocity + its fitted bias, from
+        the carried position (if carrying) else the last measured point; None when it cannot be."""
+        b = self._ap_bias()
+        if b is None:
+            return None
+        be, bn, sig_b, t_ref = b
+        c, last = self._carry, self.track.last_fix()
+        if c is not None and c[2] >= last[0]:
+            lat, lon, t0, sig0, ve0, vn0 = c[0], c[1], c[2], c[6], c[4], c[5]
+        else:
+            (t0, lat, lon, sig0), ve0, vn0 = last, None, None
+        r = carry_autopilot(lat, lon, t0, t, self.apv, (be, bn), ve0, vn0)
+        if r is None:
+            return None
+        lat, lon, ve, vn, gap, dvg = r
+        sigma = sig0 + autopilot_sigma_growth(sig_b, t - t0, t0 - t_ref, self.ap_drift, gap, dvg, self.track.accel)
+        return lat, lon, sigma, ve, vn
+
     def _keep_carry_velocity(self, lat, lon, t, meta, sigma, t_vel) -> None:
         """A point was just added to the track. A point after a gap of more than 5 s leaves the track
         alone with it: no velocity across a gap (a chord is no velocity), so the next frame that
@@ -1666,10 +1779,18 @@ class DaySubscriber(Node):
         if v is not None:
             self._vel_epoch = None
         h, h_sig = self._carry_heading(meta)
+        b = self._ap_bias() if getattr(self, "apv", None) is not None else None
+        va = self.apv.v(t) if b is not None else None
+        if va is not None:                          # the autopilot's velocity now (carry_aids)
+            self._carry = (lat, lon, t, h, va[0] + b[0], va[1] + b[1], sigma)
+            return
         hc = self._carry[3] if self._carry is not None else self._velocity_heading(h_sig)
         ve, vn = (self._carry[4], self._carry[5]) if self._carry is not None else (v[0], v[1])
         if h is not None and hc is not None:
             a = math.radians((h - hc + 180.0) % 360.0 - 180.0)
+            ve, vn = ve * math.cos(a) + vn * math.sin(a), -ve * math.sin(a) + vn * math.cos(a)
+        elif self._carry is not None:
+            a = math.radians(DaySubscriber._imu_turn(self, self._carry[2], t))
             ve, vn = ve * math.cos(a) + vn * math.sin(a), -ve * math.sin(a) + vn * math.cos(a)
         self._carry = (lat, lon, t, h, ve, vn, sigma)
 
@@ -1713,13 +1834,10 @@ class DaySubscriber(Node):
         # the turn since the snapshot, integrated by the gyro (no heading reference needed): a copter at
         # a waypoint corner turns 90 deg in a few seconds (Isaac Sim fin_base: carried straight, 46-50 m
         # off at +-17 m); without it the snapshot's velocity goes straight on
-        turn, h_sig = 0.0, 0.0
-        gyro = getattr(self, "gyro", None)
-        if gyro is not None:
-            d = gyro.turn(snap.t, t)
-            if d is not None:
-                turn, h_sig = d, gyro.bias * max(0.0, t - snap.t)
-        p, why = watchdog_carry(snap, t, self.track, self.max_dead_reckon_s, self.dr_max_sigma_m, turn, h_sig)
+        # (carry_snap_aided: along the autopilot's velocity when the snapshot has its bias, else turned by
+        # the attitude's yaw, else by the gyro's turn, else straight)
+        p, why = watchdog_carry(snap, t, self.track, self.max_dead_reckon_s, self.dr_max_sigma_m,
+                                aids=DaySubscriber._carry_aids(self))
         if p is None:
             return False
         lat, lon, sigma = p
@@ -1736,12 +1854,28 @@ class DaySubscriber(Node):
         self.get_logger().info(f"[day] 🧭 DR watchdog lat={lat:+.5f} lon={lon:+.5f} ({reason})")
         return True
 
+    def _carry_aids(self) -> dict:
+        """carry_state.carry_snap_aided's aids (the autopilot's velocity, the attitude yaw, the gyro)."""
+        gyro = getattr(self, "gyro", None)
+        return {"apv": getattr(self, "apv", None), "yaw": getattr(self, "att_yaw", None), "gyro": gyro,
+                "drift_mps2": getattr(self, "ap_drift", 0.1), "gyro_bias_dps": gyro.bias if gyro is not None else 0.1}
+
     def _snapshot_output(self, lat, lon, t, sigma, meta) -> None:
         """Matching thread, at each output: the snapshot the watchdog carries — this position and the
         velocity the next carry would use (the carried one, else the track's)."""
         t_last = self.track.last_time()
         if t_last is None:
             self._dr_snap = None
+            return
+        ay = getattr(self, "att_yaw", None)
+        yaw = ay.yaw(t) if ay is not None else None
+        b = self._ap_bias() if getattr(self, "apv", None) is not None else None
+        va = self.apv.v(t) if b is not None else None
+        if va is not None:
+            # along the autopilot's velocity: sig_v is its bias's error, since_v counts from the fit
+            h = self._carry_heading(meta)[0]
+            self._dr_snap = DrSnap(lat, lon, t, sigma, va[0] + b[0], va[1] + b[1], b[2], max(0.0, t - b[3]),
+                                   t_last, h, yaw, b[0], b[1])
             return
         c = self._carry
         if c is not None and c[2] >= t_last:
@@ -1765,7 +1899,7 @@ class DaySubscriber(Node):
         if h is None and getattr(self, "gyro", None) is not None:
             g = self.gyro.at(t)
             h = g[0] if g is not None else None
-        self._dr_snap = DrSnap(lat, lon, t, sigma, ve, vn, sig_v, max(0.0, since_v), t_last, h)
+        self._dr_snap = DrSnap(lat, lon, t, sigma, ve, vn, sig_v, max(0.0, since_v), t_last, h, yaw)
 
     def _remember_track(self) -> None:
         """Persist the track for a restart in flight (state "day_track", at most once a second)."""
@@ -1795,6 +1929,7 @@ class DaySubscriber(Node):
             self._frame_headings.append(h)
         self._dr_snap = r["snap"]
         self._last_measured_time = r["last_measured"]
+        self._continue_snapshot(r["snap"])
         p = self._predicted({})
         if p is None or p[2] > self.dr_max_sigma_m:
             if r["anchor"] is None:
@@ -1806,6 +1941,38 @@ class DaySubscriber(Node):
         self._anchor_sigma = self._dr_sigma = p[2]
         self.get_logger().warn(f"[day] restart: track restored, last measured fix {now - r['pts'][-1][0]:.1f} s ago; "
                                f"carried on at ±{p[2]:.0f} m (search around it)")
+        return True
+
+    def _continue_snapshot(self, snap) -> bool:
+        """Restarted: carry on from a persisted snapshot newer than the restored carry (the last output
+        of the killed process, or the early bridge's carry to the moment this node starts: day_entry),
+        its velocity, the autopilot bias it moved with and its IMU yaw (the turn across the restart).
+        True if taken."""
+        t_last = self.track.last_time()
+        if snap is None or t_last is None or snap.t < t_last or \
+                (self._carry is not None and snap.t < self._carry[2]):
+            return False
+        self._carry = (snap.lat, snap.lon, snap.t, snap.heading, snap.ve, snap.vn, snap.sigma)
+        self._vel_epoch = snap.t - snap.since_v
+        self._dr_snap = snap
+        self._restored_bias = (snap.be, snap.bn, snap.sig_v, t_last) if snap.be is not None else None
+        self._ap_fit_cache = None
+        ay = getattr(self, "att_yaw", None)
+        if ay is not None and snap.yaw is not None:
+            ay.seed(snap.t, snap.yaw)
+        return True
+
+    def take_early_bridge(self) -> bool:
+        """day_entry, once the early bridge stopped and before spinning: its last carried snapshot (it
+        went on carrying while this node loaded its matcher) continues here. True if taken."""
+        if not getattr(self, "track_persist", False):
+            return False
+        r = restore_track(state_store.load(TRACK_STATE, self.max_dead_reckon_s + 5.0), time.time(),
+                          self.max_dead_reckon_s)
+        if r is None or r["snap"] is None or not self._continue_snapshot(r["snap"]):
+            return False
+        self.get_logger().warn(f"[day] restart: the early bridge's carry taken over "
+                               f"({time.time() - r['snap'].t_meas:.0f} s after the last measured fix, ±{r['snap'].sigma:.0f} m)")
         return True
 
     def _dead_reckon(self, now, seq_id, meta, status, score, why) -> bool:
@@ -2714,6 +2881,7 @@ def main(args=None, init: bool = True, before_spin=None):
         finally:
             if before_spin is not None:
                 before_spin()
+        node.take_early_bridge()
         # the gyro, the GPS (with the arbiter's decision) and the dead-reckoning watchdog in their own
         # callback groups, run while a frame is matched; every other callback stays in the node's
         # default (mutually exclusive) group, serial as before
