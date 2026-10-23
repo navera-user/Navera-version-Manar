@@ -45,6 +45,11 @@ def _env_overrides():
             out[param] = float(env[key])
     if (env.get('NAVERA_MAVLINK_SYSID') or '').strip().isdigit():
         out['mavlink_system_id'] = int(env['NAVERA_MAVLINK_SYSID'])     # the autopilot's own id
+    msg = (env.get('NAVERA_MAVLINK_MESSAGE') or '').strip().lower()
+    if msg:
+        if msg not in ('auto', 'gps_input', 'hil_gps'):
+            raise ValueError(f"NAVERA_MAVLINK_MESSAGE={msg!r}: expected auto, gps_input or hil_gps")
+        out['mavlink_message'] = msg
     if (env.get('NAVERA_ROS_FIX_FRAME_ID') or '').strip():
         out['ros_fix_frame_id'] = env['NAVERA_ROS_FIX_FRAME_ID'].strip()
     if 'NAVERA_ROS_FIX_TOPIC' in env:                  # set but empty: no ROS output

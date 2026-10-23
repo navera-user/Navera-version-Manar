@@ -19,7 +19,11 @@ inliers **and** the fitted scale within `local_scale_tol` of the one the altitud
 - Without GPS, the search is limited to a 400–600 m circle around the prior (last GPS fix or
   last accepted match). Local matching widens it by `max_speed_mps` × the time since its last
   match, up to `local_max_radius_m`, instead of dropping the prior; retrieval needs a score
-  ≥ `conf_threshold`.
+  ≥ `conf_threshold`. After a gap the circle (3 σ of the carried position) can be far wider than
+  one window can match (a 600 m window: 0–11 matches where 150 m windows gave 90–170 inliers):
+  it is covered with small windows, nearest the carried position first, up to
+  `reacquire_max_radius_m` (re-acquisition, F32). Visual odometry that disagrees with the track's
+  velocity is used when two clear consecutive steps agree (the vehicle turned round or stopped).
 - Local matches are published with a stated accuracy of `local_sigma_m` (30 m, conservative
   until measured with the real camera); retrieval positions with an unknown one.
 - No match: dead-reckoning from measured heading/speed only, for at most `max_dead_reckon_s`
@@ -129,12 +133,22 @@ per-tile cache build (cosine ≥ 0.9996). Progress is printed as JSON lines.
 | `gyro_heading_bias_dps` / `gyro_heading_noise_dps_rthz` | 0.1 / 0.02 | gyro bias left after calibration, rate noise density: the carried heading's growing σ |
 | `gyro_heading_reset_sigma_deg` / `gyro_heading_max_sigma_deg` | 2 / 10 | σ of a vision heading; beyond the max (~100 s after the last good fix) no heading |
 | `gyro_heading_min_inliers` | 20 | inliers of a fix whose rotation restarts the carried heading |
+| `strong_gate_k_sigma` | 3 | a fix with ≥ `strong_inliers` further than this × the two sigmas from the carried position waits for a second agreeing fix (`day_pkg/fix_consistency.py`; was 6, F16) |
+| `reacquire_confirm` | false | while the carried position is lost (σ > 50 m), a fix further from it than 3 × its own σ also waits for confirmation (costs availability: off) |
+| `blend_fixes` | true | a fix is averaged with the carried position by their sigmas when the carry has a heading (attitude or gyro) and the fix is not a re-acquisition (F20, F23, D17) |
+| `frame_max_blur_px` / `frame_exposure_s` / `frame_sharp_rel` | 0 / 1/60 / 0 | `day_pkg/frame_gate.py`: frames smeared beyond this by the gyro rate at the exposure, or less sharp than this × the flight's median, are not matched (0 = off; F20) |
+| `local_heading_search` / `local_heading_search_after` | false / 3 | heading search always / automatically when no heading is known or after this many frames in a row without a match (D18; 0 = never) |
 | `gyro_course_reset` | true | while GPS is trusted, reset the gyro heading from the GPS course (2 s chord, steady course) |
 | `gyro_course_min_speed_mps` / `gyro_course_crab_sigma_deg` | 5 / 5 | slower: no course; σ of the camera's offset from the course when it comes from the meta's `mount_yaw_deg` (nose first) instead of vision |
 | `map_zoom_min_ratio` | 2 | an area with several zooms (`area.json` `zooms`): the finest zoom at least this many times coarser than the frame (`day_pkg/map_levels.py`), else the coarsest |
 | `local_scale_tol` | 0.15 | accepted deviation of the fitted scale from the altitude's |
 | `local_sigma_m` | 30 | stated accuracy (1 σ) of a local match |
-| `local_max_radius_m` | 1500 | largest search radius while widening after failed frames |
+| `local_max_radius_m` | 600 | largest search radius of one matcher window (re-acquisition windows off) |
+| `reacquire_windows` | true | a search circle wider than one window is covered with small windows (`day_pkg/reacquire.py`, F32): the carried position's first, then a scan going on frame to frame |
+| `reacquire_window_frac` | 0.65 | window radius = this × the frame's half diagonal on the ground (at least `local_min_radius_m`) |
+| `reacquire_windows_per_frame` | 4 | windows tried per frame (~0.25 s each on the Jetson, learned matcher) |
+| `reacquire_max_radius_m` | 1500 | largest circle covered (3 σ of the carried position); farther is not searched |
+| `reacquire_min_inliers` | 25 | a match in a window other than the carried position's needs this many |
 
 ## Camera delay (`navera_common.latency_cal`, `navera_common.delay_monitor`)
 A frame is dated `arrival - delay`; a wrong delay puts every fix speed × error along the track.

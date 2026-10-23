@@ -30,7 +30,7 @@ Wiring and autopilot parameters: [docs/ARDUPILOT_INTEGRATION.md](../docs/ARDUPIL
 | in | `/navera/sensors/gps_vel` | `geometry_msgs/TwistStamped` | receiver velocity sent with a GPS position |
 | in | `/navera/vehicle/status` | `std_msgs/String` (JSON) | only when `mavlink_url` is the local relay (`udpout:127.0.0.1:…`) |
 | out | `ros_fix_topic` (default `/navera/fix`; empty = off) | `sensor_msgs/NavSatFix` | |
-| out | serial `nmea_port` / MAVLink `mavlink_url` | NMEA GGA + RMC / `GPS_INPUT` | not ROS topics |
+| out | serial `nmea_port` / MAVLink `mavlink_url` | NMEA GGA + RMC / `GPS_INPUT` (ArduPilot) or `HIL_GPS` (PX4) | not ROS topics |
 
 `vehicle_link_node` publishes the `/navera/vehicle/*` topics listed in
 [vehicle_link_node](#vehicle_link_node) (`/navera/vehicle/imu` depth 50, the others depth 10)
@@ -54,7 +54,7 @@ overrides below and the vehicle's maximum speed (`NAVERA_MAX_SPEED_KMH`).
 | FIX (GPS; or a source with a stated σ ≤ 25 m) | GGA quality 1, HDOP = σ/2 m, satellites, altitude; RMC status A, mode A, speed and course from the receiver | fix_type 3, horiz/vert accuracy = σ, horizontal velocity from the receiver with `speed_accuracy` = `gnss_speed_sigma_mps` (none current: stated unknown, below) | status FIX, `service` GPS, covariance from σ |
 | FIX without altitude (vision / celestial) | GGA quality 1, no altitude | fix_type 3 with the altitude flagged ignored (`fix_type_without_alt`), velocity as for DEGRADED | status FIX (no vision source reaches FIX today) |
 | DEGRADED (vision, celestial, dead-reckoned; a GPS "in doubt") | **no fix** — even with `forward_degraded`, unless `nmea_forward_degraded`: then quality 6 (estimated), HDOP from the accuracy, RMC mode E | **no fix by default**; with `forward_degraded`: accuracy = the worse of `degraded_sigma_m` and the source's own, plus the lag; 0 satellites; NAVERA's own velocity with its accuracy, or "unknown" (below); held back after a gap until that velocity is known | **sent by default** (`ros_forward_degraded`): status FIX, `service` 0, the stated accuracy plus the lag in the covariance — only when an accuracy is stated (else no fix) |
-| NO_FIX; arbiter silent > 2 s; no new position for 5 s; measured more than `max_measurement_age_s` ago; coarser than `max_forward_sigma_m` | GGA quality 0 with empty position, RMC status V | fix_type 1, no position | STATUS_NO_FIX, NaN position |
+| NO_FIX; arbiter silent > 2 s (bridged first, see below); no new position for 5 s; measured more than `max_measurement_age_s` ago; coarser than `max_forward_sigma_m` | GGA quality 0 with empty position, RMC status V | fix_type 1, no position | STATUS_NO_FIX, NaN position |
 
 Today **every vision and celestial position is DEGRADED** (the estimator gives FIX only with
 a stated σ ≤ `fix_max_sigma_m` = 25 m; day vision states 30 m until measured with NAVERA's
@@ -117,9 +117,18 @@ about once a second (`bridge_period_s`), its accuracy growing with the gap: velo
 t + 5° heading error × distance + ½ × `bridge_accel_mps2` × t² (without a velocity: the position
 stays and the accuracy grows by `max_speed_mps` × t). After `bridge_max_s` (10 s), or when the
 grown accuracy exceeds `max_forward_sigma_m`, it is "no fix" again and the autopilot's own
-failsafe acts. Only a forwarded estimate is bridged — never a GPS fix, never while the arbiter is
-silent — and the bridge never claims better than it knows. `bridge_max_s = 0` disables it.
+failsafe acts. Only a forwarded vision / celestial position is bridged — never a GPS fix — and
+the bridge never claims better than it knows. `bridge_max_s = 0` disables it.
 Log lines: `no new position for 2.6 s: bridging along the last one`, `bridge ended: …`.
+
+**A crash of NAVERA is a gap like any other (B23).** The arbiter silent (navera-estimator
+crashed, systemd restarting it in ~1 s) or initializing (just restarted) is bridged the same way:
+on the real box a killed estimator used to give "no fix" at once and the copter landed. The
+output itself keeps its last forwarded position and the velocity sent with it on disk
+(`state_store` `output_held`, at most once a second; a GPS fix clears it): restarted, it
+resumes the bridge at once (`restart: the last position given to the autopilot … is bridged on`)
+and does not hold the next vision positions back for their velocity — the autopilot never timed
+out. A held position older than `bridge_max_s` is never reused.
 
 **Carried to the present.** A vision position describes where its photo was taken, 1–2.5 s
 before it reaches the output; sent as it was, a plane at 40 m/s was 83 m off with a stated
@@ -176,7 +185,8 @@ On the box: `/etc/navera/navera.env`, read by `navera-output.service` and
 |---|---|---|---|
 | `NAVERA_NMEA_PORT` / `NAVERA_NMEA_BAUD` | `nmea_port` / `nmea_baud` | "" / 9600 | serial device to the autopilot's GPS input; "" = off |
 | `NAVERA_MAVLINK_URL` | `mavlink_url` | "" | MAVLink address (below); "" or `off` (also `none`, `false`, `0`) = off. navera-discover fills an empty one with the relay `udpout:127.0.0.1:14650` when it finds an autopilot |
-| `NAVERA_MAVLINK_SYSID` | `mavlink_system_id` | 1 | the autopilot's own system id (written by navera-discover) |
+| `NAVERA_MAVLINK_SYSID` | `mavlink_system_id` | 1 | the autopilot's own system id (written by navera-discover); PX4 reads `HIL_GPS` only from it |
+| `NAVERA_MAVLINK_MESSAGE` | `mavlink_message` | auto | `gps_input` (ArduPilot) / `hil_gps` (PX4) / `auto`: `HIL_GPS` once the autopilot's heartbeat says PX4 (heard on the node's own link or in `/navera/vehicle/status`), else `GPS_INPUT`. navera-discover writes `hil_gps` for PX4 |
 | — | `mavlink_component_id` | 191 | this box's MAVLink component (onboard computer) |
 | `NAVERA_ROS_FIX_TOPIC` | `ros_fix_topic` | `/navera/fix` | NavSatFix output; set but empty = off |
 | `NAVERA_ROS_FIX_FRAME_ID` | `ros_fix_frame_id` | `navera` | `header.frame_id` of the NavSatFix: a frame of the vehicle's TF tree for `navsat_transform` |
@@ -238,6 +248,7 @@ configured (NAVERA_VEHICLE_MAVLINK_URL): vehicle link idle"). Publishes, stamped
 | `/navera/vehicle/relative_alt` | geometry_msgs/PointStamped | z = height above home (barometer) |
 | `/navera/vehicle/gps2` | sensor_msgs/NavSatFix | the autopilot's **second** GPS (`GPS2_RAW`, 3D fix or better) — the GPS for `NAVERA_GPS_SOURCE=vehicle`. Altitude above the ellipsoid (`alt_ellipsoid`) when sent, else above mean sea level with a warning ("set NAVERA_GROUND_ALTITUDE_M as MSL too"); covariance from the receiver's `h_acc` / `v_acc` (none without `h_acc`) |
 | `/navera/vehicle/gps1` (+ `gps1_satellites`) | sensor_msgs/NavSatFix | only with `read_gps1` (`NAVERA_GPS_SOURCE=vehicle_gps1`): the autopilot's **first** GPS (`GPS_RAW_INT`, always instance 1 in ArduPilot), published only while the autopilot's `GPS_TYPE` / `GPS1_TYPE` — re-read at every connection and every 30 s — is known and not 0, 14 (NAVERA's `GPS_INPUT`) or 5 while NAVERA's NMEA output is on (`navera_nmea_output`); `/navera/vehicle/status` then says `gps1_read` and why |
+| `/navera/vehicle/system_time` | sensor_msgs/TimeReference | the autopilot's `SYSTEM_TIME.time_unix_usec` (`time_ref`, `source` "autopilot"; `header.stamp` = system clock at receipt), only once the autopilot has a real time (ArduPilot sets it from its GPS and keeps it while powered). cn_subscriber uses it after the GPS anchor and cross-checks the anchor with it (> 1 s apart: no star fix) — `navera_common/trusted_time.py` |
 | `/navera/vehicle/status` | std_msgs/String (JSON) | link, autopilot, armed, message rates, relayed packets — the armed state locks the `/mission` page; the output's relay check reads `link` |
 
 It waits for a heartbeat **from an autopilot** (heartbeats from a ground station, another
@@ -272,7 +283,9 @@ parameter table and what is verified in ArduPilot SITL only. Key points found in
 - With `forward_degraded`, DEGRADED positions are sent with 0 satellites: arming checks that
   require satellites must be adapted by the integrator, knowingly.
 - **NMEA:** no accuracy field: GPS pass-through only (above).
-- **PX4:** not tested; it ignores `GPS_INPUT` (docs/PX4_INTEGRATION.md).
+- **PX4:** it has no `GPS_INPUT` handler; the node sends `HIL_GPS` instead (`mavlink_message`
+  auto / hil_gps, `MAV_USEHILGPS = 1` on PX4), verified in PX4 v1.15.4 SITL only
+  (docs/PX4_INTEGRATION.md, `navera_tools/tests/sitl_px4.py`).
 
 Measured in SITL, drone at 120 m, 10–15 m/s, GPS jammed in flight, vision at the *target*
 accuracy (15 m σ, simulated): the autopilot kept flying the mission on NAVERA's position with

@@ -10,6 +10,7 @@ import pytest
 rclpy = pytest.importorskip("rclpy")
 from builtin_interfaces.msg import Time   # noqa: E402
 from cn_pkg.nodes import cn_subscriber as cs   # noqa: E402
+from navera_msgs.msg import NavStatus, SourceHealth   # noqa: E402
 from sensor_msgs.msg import TimeReference   # noqa: E402
 from std_msgs.msg import String   # noqa: E402
 
@@ -85,18 +86,60 @@ def test_a_valid_rtc_gives_the_exposure_its_time(node):
     d = json.loads(est.details_json)
     assert d["utc_source"] == "rtc" and "attitude" in est.reason
     rtc_utc = time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime(meta["image_stamp_ns"] / 1e9 + 7200.0))
-    assert d["utc"] == rtc_utc
+    assert d["utc"][:19] == rtc_utc and d["utc_sigma_s"] == 1.0
 
 
-def test_gnss_time_vouches_and_a_clock_step_withdraws_it(node):
+def _nav_status(gps_contributing):
+    st = NavStatus()
+    h = SourceHealth(source=SourceHealth.SOURCE_GPS, alive=True, contributing=gps_contributing)
+    st.sources = [h]
+    return st
+
+
+def _gnss(n, offset_s):
     m = TimeReference()
     now = time.time()
-    m.header.stamp, m.time_ref = _stamp(now), _stamp(now - 0.3)
-    node._on_gnss_time(m)
-    assert json.loads(_process(node, _live_meta(11)).details_json)["utc_source"] == "gnss"
+    m.header.stamp, m.time_ref = _stamp(now), _stamp(now + offset_s)
+    n._on_gnss_time(m)
+
+
+def test_gnss_time_anchors_only_while_the_estimator_elects_the_gps(node):
+    _gnss(node, -0.3)                                 # no nav_status yet: GPS not trusted
+    assert "no trusted time" in _process(node, _live_meta(11)).reason
+    node._on_nav_status(_nav_status(False))           # GPS refused (suspected spoofing)
+    _gnss(node, -0.3)
+    assert "no trusted time" in _process(node, _live_meta(12)).reason
+    node._on_nav_status(_nav_status(True))
+    _gnss(node, -0.3)
+    d = json.loads(_process(node, _live_meta(13)).details_json)
+    assert d["utc_source"] == "gnss" and d["utc_sigma_s"] == 0.5
+
+
+def test_the_gps_anchor_survives_a_clock_step_after_the_settle_time(node):
+    node._on_nav_status(_nav_status(True))
+    _gnss(node, 0.0)
     node.clock._wall_minus_mono -= 3600.0             # the wall clock just stepped +1 h (NTP after a boot)
-    est = _process(node, _live_meta(12))
+    est = _process(node, _live_meta(14))
     assert not est.valid and "stepped" in est.reason
+    node.clock._step_mono -= 61.0                     # 61 s later
+    assert node.clock.offset()[1] == "gnss"
+
+
+def test_autopilot_time_is_used_and_cross_checks_the_anchor(node):
+    m = TimeReference()
+    now = time.time()
+    m.header.stamp, m.time_ref = _stamp(now), _stamp(now + 2.0)
+    node._on_autopilot_time(m)
+    assert json.loads(_process(node, _live_meta(15)).details_json)["utc_source"] == "autopilot"
+    node._on_nav_status(_nav_status(True))
+    _gnss(node, 4.0)                                  # 2 s from SYSTEM_TIME: one of them lies
+    est = _process(node, _live_meta(16))
+    assert not est.valid and "disagree" in est.reason
+    sent = []
+    node.pub_time_status.publish = sent.append
+    node._time_tick()
+    st = json.loads(sent[-1].data)
+    assert st["trusted"] is False and st["anchor"]["minus_autopilot_s"] == 2.0
 
 
 def test_a_stated_time_is_used_as_given(node):

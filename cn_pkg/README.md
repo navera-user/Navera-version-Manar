@@ -75,11 +75,21 @@ The solve is anchored at the image centre with a 4th-order fit (`--crpix-center
 ## Inputs that must be real
 - **Time:** a `frame_meta.utc_time` stated by a replay / the simulator, else parameter
   `utc_time`, else the exposure on a **trusted** clock (`navera_common/trusted_time.py`, hazard
-  H-08): the DS3231 (`rtc_time` + `rtc_status` valid, not lost_power), a GNSS time received within
-  `gnss_time_max_age_s` (300 s, `/navera/sensors/gnss_time` from gps_node) or NTP, with no
-  wall-clock step since and none in the last 60 s. Otherwise **no solve**: the estimate is invalid
-  with the reason `no trusted time: ...`. live_camera's `utc_time` (system clock,
-  `utc_source: system_clock`) is never trusted by itself.
+  H-08), in this order: the **GPS anchor** (a GNSS UTC from `/navera/sensors/gnss_time`, taken
+  only while `/navera/nav_status` says the GPS contributes — the estimator neither refuses nor
+  suspects it — then carried by the monotonic clock for the rest of the flight; a later GPS time
+  off the first anchor by more than 0.5 s + the drift is ignored and logged), the **autopilot's
+  SYSTEM_TIME** (`/navera/vehicle/system_time`, vehicle_link), the **DS3231** (`rtc_time` +
+  `rtc_status` valid, not lost_power) or **NTP**. The anchor and SYSTEM_TIME must agree within
+  1 s, else no solve. Every source has a stated 1-sigma (`time_drift_ppm` 20, `gnss_time_sigma_s`
+  0.5 s, SYSTEM_TIME 0.2 s, DS3231 1 s, NTP 0.1 s, growing at the drift since the sample; > 5 s:
+  not used); each frame's status carries `utc_source` and `utc_sigma_s`, and
+  `/navera/time_status` (1 Hz JSON) the choice, the anchor's age / jumps and anchor minus
+  SYSTEM_TIME. A wall-clock step does not touch the anchor, but no stamp is converted for 60 s
+  after it. The anchor is **not kept across a reboot** (no battery clock): after a mid-flight
+  reboot with the GPS denied, SYSTEM_TIME or the DS3231 takes over. Otherwise **no solve**: the
+  estimate is invalid with the reason `no trusted time: ...`. live_camera's `utc_time` (system
+  clock, `utc_source: system_clock`) is never trusted by itself.
 - **Attitude:** `tilt`, `azimuth` from frame_meta; else from the IMU **at the frame's
   exposure** (`/navera/sensors/imu`, nearest sample to the image stamp) with the camera mounting
   (`camera_mount_elevation_deg` 90 = pointing up, `camera_mount_azimuth_deg`) and the
@@ -109,6 +119,9 @@ the 360 mode's `allsky.py`, `allsky_mount.py`, `allsky_locator.py`, `sky360.py` 
 | in | `/navera/sensors/rtc_time` (`rtc_topic`) | `sensor_msgs/TimeReference` | depth 10 |
 | in | `/navera/sensors/rtc_status` (`rtc_status_topic`) | `std_msgs/String` (JSON) | depth 10 |
 | in | `/navera/sensors/gnss_time` (`gnss_time_topic`) | `sensor_msgs/TimeReference` | depth 10 |
+| in | `/navera/nav_status` (`nav_status_topic`) | `navera_msgs/NavStatus` (GPS trusted = its row contributing, within `gps_trust_max_age_s` 2 s) | depth 10 |
+| in | `/navera/vehicle/system_time` (`autopilot_time_topic`) | `sensor_msgs/TimeReference` | depth 10 |
+| out | `/navera/time_status` (`time_status_topic`) | `std_msgs/String` (JSON, 1 Hz: trusted, source, sigma_s, anchor) | depth 10 |
 | out | `/navera/estimate/cn` | `navera_msgs/PositionEstimate` (the estimator's contract) | depth 10 |
 | out | `/cn/position_estimate` (`fix_topic`) | `sensor_msgs/NavSatFix` | depth 10 |
 | out | `/cn/cn_status` (`status_topic`) | `std_msgs/String` (JSON) | depth 10 |

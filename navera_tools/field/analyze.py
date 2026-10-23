@@ -245,9 +245,11 @@ def drive_measurements(frames: List[dict], phone: List[dict], events: List[dict]
                       "temp_c": _med([(f.get("host") or {}).get("temp_c") for f in fr360], 1)}
     out["time_source"] = _count(f.get("time_source") for f in fr360 if f.get("time_source"))
     out["rtc_minus_phone_s"] = _med([f.get("rtc_minus_phone_s") for f in fr360], 3)
+    out["time_sigma_s"] = _med([f.get("time_sigma_s") for f in fr360], 3)
     health = [f.get("cam_health") or {} for f in fr360]
     out["camera"] = {"reconnects": max([h.get("reconnects") or 0 for h in health] or [0]),
                      "imu_restarts": max([h.get("imu_restarts") or 0 for h in health] or [0]),
+                     "usb_resets": max([h.get("usb_resets") or 0 for h in health] or [0]),
                      "events": _count(e.get("kind") for e in events if e.get("kind") in
                                       ("camera_lost", "camera_back", "clock_jump", "tilt_calibrated", "tilt_fit_refused"))}
     return out

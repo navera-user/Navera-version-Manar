@@ -146,3 +146,34 @@ cat /sys/fs/cgroup/system.slice/navera-web.service/memory.max          # 2147483
 journalctl -u navera-pipeline-day -b | grep -i swap                    # no "WARNING: only ... swap"
 sudo reboot                                    # then deploy/check_boot.sh: the swap line says OK
 ```
+
+## 4. Crash in flight without GPS — box in the loop, 2026-10-22/23 (B23)
+
+The real Jetson as deployed (staged product units, `navera_tools/isaac/hil_flight.sh`), flying
+an ArduPilot SITL copter in Isaac Sim (PC) at 250 m, 10 m/s, GPS jammed from the cut on. A node
+is killed with SIGKILL in GPS-denied flight; "autopilot gap" = the longest time the autopilot
+was given no position (`/navera/fix` = its GPS_INPUT, `hil_out.csv`). SIMULATION feeding the
+real box: the box's timing and restarts are real, the world and the vehicle are not.
+
+| killed (GPS denied) | before (hil_base1 / hil_endur30, RestartSec=10) | after (hil_resil4 / hil_resil5) |
+|---|---|---|
+| `navera-estimator` | `/navera/position` back after 15.4 s; output "no fix" at once, autopilot GPS lost after 2.3 s → **EKF failsafe LAND** | systemd back in 1.7 s, positions after 5.2 s / 4.8 s; output bridged: autopilot gap **2.6 s / 2.5 s**, GPS never lost, mission went on |
+| `navera-output` | — | systemd back in 1.4 s; autopilot gap **4.7 s** (GPS lost 4.1 → 4.8 s), resumed bridging from `output_held`; no failsafe |
+| day live camera | whole pipeline restarted: position back after 25.5 s → **LAND** | respawned alone in 2.3 s; day node dead-reckoned through it: autopilot gap **2.6 s**, positions never stopped |
+| whole `navera-pipeline-day` unit (its launch) | — | systemd back in 3.0 s, day positions after **12.5 s**; bridged 10 s then "no fix" 2.5 s (autopilot GPS lost 10.3 → 12.5 s); **no failsafe**, mission went on |
+| `day_subscriber` alone | — | respawned in 1.7 s, ready (`localizer_ready`) **7.2 s** after the kill (was ~25 s: imports 7.5 → 3.9 s, no camera reopen, the camera re-sends at once); but it **did not match again**: its restart search circle was 600 m (80 m before the kill), frames took 10 s each and failed (6–10 inliers, "scale 0.81"), the bridge ended at 10 s → **EKF failsafe LAND** (hil_resil4) |
+
+Fixed 2026-10-23 (`day_pkg/carry_state.py`, `day_pkg/nodes/day_entry.py`): the day node persists its
+track (measured points, carried velocity, headings, last output; state `day_track`, at most once a
+second); a restarted process first publishes that carry from a light node, before its heavy imports
+and its matcher, then the node restores the track at its original times (sigma grown by the time
+elapsed, never a fresh fix) and searches k sigma around it. Isaac Sim endurance with `day_subscriber`
+killed (SIGKILL) 45 min into GPS-denied flight, respawned by the flight script 1 s later (PC under
+Isaac Sim load, not the Jetson): before the early bridge (fin_endur_2h try 1, ad88f5d) the restored node
+published 21 s after the kill, the output's bridge ended at 10 s → EKF failsafe LAND; with it
+(fin_endur_2h, 3b95ab5) the carried position was published again 7.0 s after the kill (the output
+bridged the gap, never "no fix"), the node was ready 17.6 s after it (±123 m restored), no failsafe.
+Also seen, not caused by the kills: in hil_resil4/5 the day fix error after the cut grew to
+20–45 m (5–7 m in hil_base1 / hil_endur30) — already before the first kill; the exposure join
+of `hil_summarise` is wrong after a camera restart (frame numbers restart). Results:
+`~/.navera_sim/isaac/hil/hil_resil4`, `hil_resil5`.

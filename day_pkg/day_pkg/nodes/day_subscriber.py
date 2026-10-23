@@ -28,6 +28,7 @@ import logging
 import math
 import threading
 import time
+from collections import deque
 
 import cv2
 
@@ -55,10 +56,15 @@ from navera_msgs.msg import NavStatus, PositionEstimate
 from day_pkg.nodes.day_localizer import IMAGES_DIR, DayLocalizer, haversine_m
 from day_pkg.fix_sigma import SigmaCalibration, day_fix_sigma_m
 from day_pkg.fix_sigma import load_stored as load_sigma_cal, save_stored as save_sigma_cal
+from day_pkg.fix_consistency import FixConsistency
+from day_pkg.frame_gate import FrameGate, focal_px
 from day_pkg.frame_odometry import FrameOdometry
 from day_pkg.gyro_heading import CourseReset, GyroHeading, heading_rate_dps
 from day_pkg.map_levels import area_zooms, choose_zoom
+from day_pkg.mount_cal import MountCalibration
 from day_pkg.local_matcher import LocalMatcher
+from day_pkg.reacquire import WindowScan, cover_windows
+from day_pkg.carry_state import DrSnap, TRACK_STATE, restore_track, track_state, watchdog_carry
 from day_pkg.vision_nav import VisionNavigator, _en, _move, kinematic_margin_m
 
 # ── A priori spatial GPS-denied (fix matching cross-source) ─────────────────
@@ -131,7 +137,11 @@ class DaySubscriber(Node):
         # last measured fixes (turned by the IMU heading change) this long, while its stated
         # uncertainty stays under dead_reckon_max_sigma_m
         declare_float(self, "max_dead_reckon_s", 120.0)
-        declare_float(self, "dead_reckon_max_sigma_m", 500.0)
+        # 900 (was 500): below the vehicle output's max_forward_sigma_m (1000). A 60 s cloud bank at 10 m/s
+        # reached +-500 m 20 s before vision came back: NAVERA went silent and the autopilot's EKF failed safe
+        # 11 s later; with 900 it stayed aided (error 334 m at +-594 m) and the mission completed (Isaac Sim
+        # closed loop, GPS cut 20 s after reaching altitude, F32)
+        declare_float(self, "dead_reckon_max_sigma_m", 900.0)
         # unseen acceleration allowed for in the stated accuracy (1/2 a t^2). 0.25: outages
         # replayed on the real camera campaign's fixes (2026-10-19, 1606 per gap length, true
         # heading change given): still 100 % within 3 sigma at 5-60 s on a constant 900 m turn
@@ -172,8 +182,30 @@ class DaySubscriber(Node):
         declare_float(self, "search_k_sigma", 3.0)
         declare_float(self, "gate_k_sigma", 3.0)
         self.declare_parameter("strong_inliers", 100)
-        declare_float(self, "strong_gate_k_sigma", 6.0)
+        # 3 since 2026-10-22 (was 6: a confident wrong fix 3-6 sigma off was believed at once, F16): replay of
+        # the recorded bench runs with 100-650 m wrong matches injected: believed 16 -> 5 of 579 (flights),
+        # 20 -> 9 of 548 (missions), fewer right fixes refused (navera_tools/bench/replay_day_guards.py)
+        declare_float(self, "strong_gate_k_sigma", 3.0)
         declare_float(self, "min_inlier_spread", 0.25)
+        # day_pkg.fix_consistency (F16 / D17): while the carried position is lost (sigma > 50 m) a fix
+        # further from it than 3 x its own sigma waits for a second agreeing fix (reacquire_confirm). Off:
+        # on the recorded missions it refused 2.6x more right fixes (availability 94 -> 90 %) for 7 fewer
+        # injected wrong fixes believed. A doubted fix is confirmed within 6 s, 20 s when lost.
+        self.declare_parameter("reacquire_confirm", False)
+        # a fix is averaged with the carried position, each weighted by its sigma (a Kalman update), when
+        # the carry turns with a heading (frame attitude or gyro) and the fix is not a re-acquisition
+        # (F20 / F23 / D17). Replay of the 2026-10-19/20 real-camera runs with the gyro-carried heading
+        # (3 seeds): measured outputs > 50 m wind 51 -> 16, other conditions 57 -> 13, missions 6 -> 6; without
+        # a heading it lagged in turns (other conditions 63 -> 75, F23), so it is not applied then.
+        self.declare_parameter("blend_fixes", True)
+        # day_pkg.frame_gate (F20): a frame smeared beyond frame_max_blur_px by the camera's rotation during
+        # the exposure (gyro |w| at the frame time x frame_exposure_s x the focal length), or less sharp than
+        # frame_sharp_rel x the flight's running median, is not matched. 0 = off (the default: on the
+        # recorded shake runs neither removed wrong fixes beyond what blending does, and both refused
+        # right ones — to be tried on a real vehicle).
+        declare_float(self, "frame_max_blur_px", 0.0)
+        declare_float(self, "frame_exposure_s", 1.0 / 60.0)
+        declare_float(self, "frame_sharp_rel", 0.0)
         self.declare_parameter("height_retry_after", 3)
         declare_float(self, "camera_hfov_deg", float("nan"))   # day camera horizontal field of view
         # With camera_hfov_deg the position is the point under the camera from the matched pose
@@ -198,6 +230,10 @@ class DaySubscriber(Node):
         # matcher searches the heading (every 30 deg) when the IMU's fails — simulation
         # 2026-10-19, 300 m: heading 45 deg wrong 0/30 -> 30/30 located, 0 wrong
         self.declare_parameter("local_heading_search", False)
+        # D18: the search is otherwise switched on frame by frame when the heading is uncertain — no frame
+        # attitude heading and no gyro-carried one, or local_heading_search_after frames in a row without
+        # a match while a heading was given (it may be wrong: the IRIS kit has no magnetometer). 0: never.
+        self.declare_parameter("local_heading_search_after", 3)
         # frames without a heading in their meta (no attitude at the exposure): the carry between
         # fixes turns with the heading the vision measured on the last good fix (the matcher's
         # rotation, >= gyro_heading_min_inliers) carried on by the gyro's rate about the vertical
@@ -276,10 +312,68 @@ class DaySubscriber(Node):
         # when GPS stops being trusted, the sigma calibration and the map bias forget what they
         # learned in the last calib_rollback_s, so the drift is not kept as "vision error" or "map shift"
         declare_float(self, "calib_rollback_s", 60.0)
+        # The camera's boresight (mount roll/pitch) error, learned while GPS is trusted from the GPS-check
+        # matches (day_pkg.mount_cal: per position kind, a map shift and a residual delay fitted beside it)
+        # and removed from the fixes after the loss; forgotten like the map bias (calib_rollback_s). Until
+        # it is learned every fix states height x tan(mount_sigma_deg) more (Isaac Sim 2026-10-21: a 4 deg
+        # mount error 14 m at the exposure instead of 6-7 m at 250 m; 600 m: 16 outputs beyond 3 sigma).
+        self.declare_parameter("mount_cal", True)
+        declare_float(self, "mount_sigma_deg", 2.0)
+        self.declare_parameter("mount_cal_min_samples", 12)
+        # F41: a GPS check is a mount sample only while its dating error (ground speed x the camera delay's
+        # sigma) is at most mount_cal_max_dating_m and the delay is known (set by the camera or estimated
+        # and applied): with the delay unknown its offset along the track was learned as a mount pitch
+        # (Isaac Sim 2026-10-22). An in-flight fit is used once its samples span mount_cal_min_heading_span_deg
+        # of frame headings: on one heading the mount offset is a map shift (600 m climb: 10 -> 16 m).
+        declare_float(self, "mount_cal_max_dating_m", 2.0)
+        declare_float(self, "mount_cal_min_heading_span_deg", 90.0)
+        # GPS may be good for the take-off only: the main source of the mount error is a PERSISTED
+        # calibration — mount_cal_file (a ground/bench measurement or a chosen flight's: JSON {"frame
+        # centre": {top_deg, right_deg, sigma_deg}, "camera pose": {...}}), else the last one learned in
+        # flight (state file day_mount, written every mount_cal_save_period_s from GPS checks older than
+        # calib_rollback_s, and at a GPS loss). Its sigma is at least mount_cal_persisted_min_sigma_deg
+        # (the camera may have been knocked since). Without any, mount_sigma_deg stays in the stated sigma.
+        self.declare_parameter("mount_cal_file", "")
+        self.declare_parameter("mount_cal_persist", True)
+        declare_float(self, "mount_cal_persisted_min_sigma_deg", 0.5)
+        declare_float(self, "mount_cal_save_period_s", 30.0)
+        # A consistent camera pose whose tilt disagrees with the attitude's (pose_tilt_guard_deg): the
+        # frame centre and the point under the camera are both candidates — the one nearer the carried
+        # position is taken and the fix states half their distance more (or the carried sigma, if less).
+        # Beyond pose_guard_refuse_deg the match is refused: the frame is not where the attitude says (or
+        # the match is wrong). Isaac Sim plane 30 m/s 2026-10-21: guarded frame centres 30-75 m off
+        # (attitude 1.3 s stale in roll changes) and one 258 m (pose 32 deg) — the wrong fixes.
+        self.declare_parameter("pose_guard_choose", True)
+        declare_float(self, "pose_guard_refuse_deg", 15.0)
         # Local matching keeps its last position when frames fail (uniform ground, blur) and
         # widens the search by max_speed_mps x the time since its last match, up to this
         # radius, instead of dropping it after max_consecutive_rejects (a retrieval-era rule).
         declare_float(self, "local_max_radius_m", 600.0)   # wider: memory and 30-60 s frames (campaign 3)
+        # Re-acquiring after a gap (day_pkg.reacquire, F32): a search circle wider than one window is
+        # covered with windows of reacquire_window_frac x the frame's half diagonal on the ground
+        # (at least local_min_radius_m), nearest the carried position first, reacquire_windows_per_frame
+        # of them a frame (the carried position's always), up to reacquire_max_radius_m; a match in a
+        # window other than the carried position's needs reacquire_min_inliers. One 600 m window found
+        # 0-11 matches where 150 m windows found 90-170 inliers (Isaac Sim frames, 2026-10-22).
+        self.declare_parameter("reacquire_windows", True)
+        declare_float(self, "reacquire_window_frac", 0.65)
+        self.declare_parameter("reacquire_windows_per_frame", 4)
+        declare_float(self, "reacquire_max_radius_m", 1500.0)
+        self.declare_parameter("reacquire_min_inliers", 25)
+        # a frame stops trying windows after this long (s): the carry must not go stale between frames
+        declare_float(self, "reacquire_budget_s", 2.5)
+        # a frame that failed at its own height tries 20 % lower and 25 % higher only while it has
+        # spent less than this (s) — the carried position must not wait for one frame
+        declare_float(self, "frame_budget_s", 6.0)
+        # the carried position is also published by a watchdog in its own thread (day_pkg.carry_state):
+        # when no output for dr_watchdog_s (a match stalled: 5.7 s in the endurance flight endur2, 7-10 s
+        # at 1200 m), checked every dr_watchdog_period_s. 0: off (only the matching thread publishes)
+        declare_float(self, "dr_watchdog_s", 2.0)
+        declare_float(self, "dr_watchdog_period_s", 0.5)
+        # B23: the track (measured points, carried velocity, headings) persisted at most once a second
+        # (state "day_track") and restored by a day node restarted in flight: it carries on at once,
+        # its uncertainty grown by the time elapsed, and searches around that (not a 600 m circle)
+        self.declare_parameter("track_persist", True)
 
         self.conf_threshold = float(self.get_parameter("conf_threshold").value)
         image_topic   = self.get_parameter("image_topic").value
@@ -296,7 +390,6 @@ class DaySubscriber(Node):
         self._track_heading = None             # frame heading (IMU) at the last measured fix
         # the frames' attitude headings by their exposure time: the heading the track velocity was
         # measured at (its fit time) — GPS points and odometry steps have none of their own
-        from collections import deque
         self._frame_headings = deque(maxlen=600)
         self.gyro = None                        # GyroHeading when gyro_heading is on
         if bool(self.get_parameter("gyro_heading").value):
@@ -328,7 +421,11 @@ class DaySubscriber(Node):
         self._gps_vo_t = None                   # stamp of the last frame given to it
         self._gps_vo_h = None                   # (smoothed height m, t)
         self._vo_step = None
-        self._doubted = None                    # (t, lat, lon, sigma): a fix a gate doubted
+        self.consistency = FixConsistency(self.gate_k, self.strong_inliers, self.strong_gate_k,
+                                          reacquire_check=bool(p_("reacquire_confirm")))
+        self.blend_fixes = bool(p_("blend_fixes"))
+        self.frame_gate = FrameGate(float(p_("frame_max_blur_px")), float(p_("frame_exposure_s")),
+                                    sharp_rel=float(p_("frame_sharp_rel")))
         # the position carried frame by frame since the last fix (lat, lon, t, heading,
         # ve, vn, sigma): one turn from the fix's heading to the present folded a 180 deg
         # turn or a lap into a small one (bench campaign 4: 3-3.8 km off on the coast)
@@ -350,7 +447,22 @@ class DaySubscriber(Node):
         # without frames at all (camera failed, unplugged), the measured track is still
         # carried on (1 Hz) — the case dead-reckoning matters most for
         self._last_frame = (time.time(), {})
-        self.create_timer(1.0, self._dead_reckon_without_frames)
+        # the last output and the velocity it moves with (DrSnap), for the watchdog thread; set by
+        # the matching thread at each output and by the GPS thread while the GPS is trusted
+        self._dr_snap = None
+        self._last_out_wall = time.time()       # wall clock of the last output (position or "none")
+        self.dr_watchdog_s = float(self.get_parameter("dr_watchdog_s").value)
+        self.track_persist = bool(self.get_parameter("track_persist").value)
+        self._track_saved_at = 0.0
+        # GPS messages are read in their own thread (a 10 s match must not hold them back: their
+        # points came in bursts, the track had no velocity at the GPS loss — F32 h1200); the
+        # matching state is updated from them under _busy_lock (_drain_gps)
+        self._gps_pending = deque()
+        self._gps_vel = TrackVelocity()         # GPS thread only: the velocity of the GPS snapshot
+        self._cb_gps = MutuallyExclusiveCallbackGroup()
+        period = float(self.get_parameter("dr_watchdog_period_s").value)
+        self.create_timer(period if period > 0 else 1.0, self._watchdog,
+                          callback_group=MutuallyExclusiveCallbackGroup())
         self._memory_trim_init()
         self._pairer       = FramePairer()   # image/meta matched on the image stamp
         self._frame_count   = 0
@@ -372,6 +484,8 @@ class DaySubscriber(Node):
             self._anchor_time = self._last_measured_time = float(saved["saved_at"])
             self.get_logger().warn(f"[day] restart: last known position {time.time() - saved['saved_at']:.0f} s "
                                    f"ago reused as the search centre")
+        if self.track_persist:
+            self._restore_track()
 
         # ── Banner (PRE-load) ──────────────────────────────────
         self.get_logger().info("=" * 60)
@@ -395,11 +509,21 @@ class DaySubscriber(Node):
                                           int(self.get_parameter("sigma_cal_min_samples").value))
         self.calib_rollback_s = float(self.get_parameter("calib_rollback_s").value)
         self._sigma_store_init()
+        self._init_mount_cal()
         self._last_fix_sigma = self.local_sigma_m
         self.local_max_radius_m = float(self.get_parameter("local_max_radius_m").value)
+        self.reacquire_windows = bool(self.get_parameter("reacquire_windows").value)
+        self.reacquire_window_frac = float(self.get_parameter("reacquire_window_frac").value)
+        self.reacquire_per_frame = int(self.get_parameter("reacquire_windows_per_frame").value)
+        self.reacquire_max_radius_m = float(self.get_parameter("reacquire_max_radius_m").value)
+        self.reacquire_min_inliers = int(self.get_parameter("reacquire_min_inliers").value)
+        self.reacquire_budget_s = float(self.get_parameter("reacquire_budget_s").value)
+        self.frame_budget_s = float(self.get_parameter("frame_budget_s").value)
+        self._scan = WindowScan()
         self.local_scale_tol_max = float(self.get_parameter("local_scale_tol_max").value)
         self.local_heading_tol_deg = float(self.get_parameter("local_heading_tol_deg").value)
         self.heading_search = bool(self.get_parameter("local_heading_search").value)
+        self.heading_search_after = int(self.get_parameter("local_heading_search_after").value)
         self.alt_min_inliers = int(self.get_parameter("altitude_min_inliers").value)
         self._alt_candidate = None             # (height, time) of the last strong match
         self._check_fix = None                 # (lat, lon, time) of the last GPS-check match
@@ -422,6 +546,7 @@ class DaySubscriber(Node):
             self.get_logger().info(f"[day] camera delay: {self.latency_cal.reason}")
         self._learned_delay = self.latency_cal.correction() if self.auto_latency else 0.0
         self._latency_applied = None
+        self._init_camera_delay_pub()
         self._last_calib = 0.0
         self.local = None
         # the map's zooms (area.json; an area without it: 17), coarsest first: the matcher of the
@@ -517,12 +642,14 @@ class DaySubscriber(Node):
         )
         self._gps_prior = GpsPrior(float(self.get_parameter("gps_prior_timeout_s").value))
         # The arbiter's decision: GPS is the prior only while it is the source in use.
-        self.create_subscription(NavStatus, "/navera/nav_status", self.on_nav_status, 10)
+        self.create_subscription(NavStatus, "/navera/nav_status", self.on_nav_status, 10,
+                                 callback_group=self._cb_gps)
         self.shadow_mode = bool(self.get_parameter("shadow_mode").value)
         if self.shadow_mode:
             self.get_logger().warn("SHADOW MODE: vision runs while GPS is valid (test flights)")
         self.sub_gps = self.create_subscription(
-            PositionEstimate, self.get_parameter("gps_topic").value, self.on_gps, 10)
+            PositionEstimate, self.get_parameter("gps_topic").value, self.on_gps, 10,
+            callback_group=self._cb_gps)
         # a start position entered by the operator (page /mission) when there is no GPS:
         # where to search first — never published as a position (latched: heard on restart)
         self.create_subscription(
@@ -584,6 +711,7 @@ class DaySubscriber(Node):
         w, q = msg.angular_velocity, msg.orientation
         att = None if msg.orientation_covariance[0] == -1.0 else (q.x, q.y, q.z, q.w)
         self.gyro.add_rate(t, heading_rate_dps((w.x, w.y, w.z), att))
+        self.frame_gate.add_rate(t, (math.degrees(w.x), math.degrees(w.y), math.degrees(w.z)))
 
     def on_nav_status(self, msg: NavStatus):
         self._gps_prior.arbiter(msg.active_source == NavStatus.SOURCE_GPS
@@ -597,32 +725,74 @@ class DaySubscriber(Node):
         message the arbiter refuses (spoofed, implausible) never reaches it. Taken
         from the raw GPS, the first spoofed fix of an attack became the search
         centre, 2 km off (mission simulator). Any other source is ignored.
-        In shadow mode it only seeds a missing anchor."""
+        In shadow mode it only seeds a missing anchor.
+
+        Read in its own thread (main(): multi-threaded executor): here only what is thread-safe —
+        the prior, the GPS history, the delay calibration, the gyro course and the watchdog's GPS
+        snapshot; the track and the anchor are updated under _busy_lock (_drain_gps: now if no
+        frame is being matched, else before the next frame), each point at its own time."""
         if msg.source != PositionEstimate.SOURCE_GPS:
             return
-        if self._gps_prior.update(msg.latitude, msg.longitude, msg.valid,
-                                  msg.mode == PositionEstimate.MODE_MEASURED):
-            st = msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
-            if st > 0:
-                self._gps_hist.add(st, (float(msg.latitude), float(msg.longitude)))
-                self.latency_cal.add_gps(st, float(msg.latitude), float(msg.longitude))
-                if getattr(self, "course", None) is not None:
-                    self.course.maybe_reset(self.gyro, self._gps_hist, st, getattr(self, "_mount_yaw", None))
+        if not self._gps_prior.update(msg.latitude, msg.longitude, msg.valid,
+                                      msg.mode == PositionEstimate.MODE_MEASURED):
+            return
+        rx = time.time()
+        st = msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
+        if st > 0:
+            self._gps_hist.add(st, (float(msg.latitude), float(msg.longitude)))
+            self.latency_cal.add_gps(st, float(msg.latitude), float(msg.longitude))
+            if getattr(self, "course", None) is not None:
+                self.course.maybe_reset(self.gyro, self._gps_hist, st, getattr(self, "_mount_yaw", None))
+        # the point's time: the arbiter's stamp (the frames' time base), the arrival if it is far off
+        t = st if st > 0 and abs(st - rx) <= 2.0 else rx
+        cov = list(msg.position_covariance)
+        sigma = math.sqrt(max(cov[0], cov[4])) if cov[0] > 0 else 5.0
+        self._gps_snapshot(t, float(msg.latitude), float(msg.longitude), sigma)
+        self._gps_pending.append((t, rx, float(msg.latitude), float(msg.longitude), sigma))
+        if self._busy_lock.acquire(blocking=False):
+            try:
+                self._drain_gps()
+            finally:
+                self._busy_lock.release()
+
+    def _gps_snapshot(self, t, lat, lon, sigma) -> None:
+        """GPS thread: the trusted GPS position and its velocity (a GPS-only track) as the watchdog's
+        snapshot — at a GPS loss during a long match the carried position starts from the last GPS
+        point at once (F32 h1200: 13 s without a position after the cut)."""
+        gv = getattr(self, "_gps_vel", None)
+        if gv is None:
+            return
+        gv.add(t, lat, lon, sigma)
+        v = gv.velocity(t)
+        if v is None:
+            return
+        snap = self._dr_snap
+        if snap is None or t >= snap.t:
+            g = self.gyro.at(t) if getattr(self, "gyro", None) is not None else None
+            self._dr_snap = DrSnap(lat, lon, t, sigma, v[0], v[1], v[2], 0.0, t, g[0] if g else None)
+
+    def _drain_gps(self) -> None:
+        """Under _busy_lock: the pending GPS points become the anchor and the track (at their own times)."""
+        pending = getattr(self, "_gps_pending", None)
+        while pending:
+            t, rx, lat, lon, sigma = pending.popleft()
             if self.shadow_mode and self._anchor_lat is not None:
-                return
-            self._anchor_lat, self._anchor_lon = msg.latitude, msg.longitude
-            self._anchor_time = time.time()
-            self._last_measured_time = self._anchor_time
+                continue
+            self._anchor_lat, self._anchor_lon = lat, lon
+            self._anchor_time = rx
+            self._last_measured_time = rx
             self._rejects_in_row = 0
-            self._remember_anchor()
-            cov = list(msg.position_covariance)
-            self._anchor_sigma = math.sqrt(max(cov[0], cov[4])) if cov[0] > 0 else 5.0
-            self.track.add(self._anchor_time, msg.latitude, msg.longitude, self._anchor_sigma)
+            self._anchor_sigma = sigma
+            lt = self.track.last_time()
+            if lt is None or t > lt:                # (an older point would read as a clock step back)
+                self.track.add(t, lat, lon, sigma)
             # the GPS now measures the track: a carried velocity from an earlier dead-reckoning
             # (e.g. at power-on, standing still) must not outlive it. It did: after the GPS loss
             # the carry went on with that velocity — 0 m/s for a copter at 8 m/s, 97 m off in 10 s
             # with a stated +-28 m (Isaac Sim closed loop 2026-10-21, low clouds at the GPS loss)
             self._carry, self._vel_epoch = None, None
+            self._remember_anchor()
+            self._remember_track()
 
     def on_operator_position(self, msg: PositionEstimate):
         """The operator's start position: the search centre while no GPS is trusted, the
@@ -651,6 +821,8 @@ class DaySubscriber(Node):
         if self.gyro is not None:
             self.gyro.clear()
         state_store.save("day_anchor", {"lat": None, "lon": None})   # forgotten too
+        self._carry, self._vel_epoch, self._dr_snap = None, None, None
+        state_store.save(TRACK_STATE, {"pts": []})
         self._rejects_in_row = 0
         self.get_logger().info("[day] mission rewind — tracking state reset")
 
@@ -679,6 +851,7 @@ class DaySubscriber(Node):
             self._publish_done(seq_id)
             return
         self._camera_set_delay(meta)
+        self._check_mount_id(meta)
         # camera delay hook: date the frame by the estimated delay (raw stamp kept in the meta)
         latency_cal.shift_meta(meta, self.latency_cal.correction() if self.auto_latency else 0.0)
         self._frame_count += 1
@@ -696,6 +869,7 @@ class DaySubscriber(Node):
 
     def _process_frame(self, seq_id, img, meta):
         try:
+            self._drain_gps()
             # GPS connu (CSV lat/lon réelles) → naviguer vers CE point, SANS prédire.
             # (la paire img/meta est déjà consommée dans _dispatch ; le finally
             #  ci-dessous release _busy_lock → la frame suivante est traitée normalement)
@@ -751,6 +925,8 @@ class DaySubscriber(Node):
                 return
             else:
                 self.get_logger().info(f"[day] 🔎 localizing frame={seq_id}… (pas d'anchor → recherche globale)")
+            if self._frame_refused(seq_id, img, meta):
+                return
             mpp, why_not = self._frame_m_per_px(img, meta)
             self._vo_step = None
             if mpp is not None:
@@ -761,31 +937,34 @@ class DaySubscriber(Node):
                 if v is not None and self.vo._prev is not None:
                     dt = t_img - self.vo._prev[3]
                     pred = (v[0] * dt, v[1] * dt)
-                self._vo_step = self.vo.step(img, self._heading_for_match(meta), mpp, t_img, pred)
-                if self._vo_step is not None and v is not None:
-                    # odometry that disagrees with the velocity the map fixes measured is not
-                    # used (phase correlation can lock on what does not move in the image)
-                    de, dn, dt, _ = self._vo_step
-                    dv = math.hypot(de / dt - v[0], dn / dt - v[1])
-                    if dv > max(3.0 * v[2], 0.3 * math.hypot(v[0], v[1]), 3.0):
-                        self._vo_step = None
+                self._vo_step = self._vo_gate(self.vo.step(img, self._heading_for_match(meta), mpp, t_img, pred),
+                                              v, t_img, getattr(self.vo, "last_shift_px", None))
             if self.local is not None and center is not None and mpp is not None:
                 # after height_retry_after failures, 20 % lower and 25 % higher too
                 factors = [1.0] + ([0.8, 1.25] if self._rejects_in_row + 1 >= self.height_retry_after
                                    and not self._compute_degraded() else [])
+                t_frame0, budget, result = time.monotonic(), getattr(self, "frame_budget_s", 6.0), {}
                 for f in factors:
-                    result = self.local.locate(img, center, R, mpp * f, scale_tol=self._scale_tol(meta),
-                                               **self._match_heading_kw(meta), hfov_deg=self._hfov(meta),
-                                               expected_tilt_deg=self._expected_tilt(meta), **self._heading_search_kw())
+                    if f != 1.0 and time.monotonic() - t_frame0 > budget:
+                        result["reason"] = (f"{result.get('reason')}; other heights not tried "
+                                            f"(frame budget {budget:.0f} s)")
+                        break
+                    # the heading search (12 headings) only at the frame's own height: at 1200 m the
+                    # three heights x 12 headings held one frame 58-93 s (Isaac Sim h1200)
+                    result = self._locate_search(img, center, R, mpp * f, meta, windows=f == 1.0,
+                                                 heading_search=f == 1.0)
                     if result.get("accepted"):
                         break
                 sc = float(result.get("scale_residual") or 1.0)
                 if result.get("accepted") and abs(sc - 1.0) > 0.05:
                     # the fitted scale answers only ~half of a height error (campaign 2: slope
                     # 0.45-0.6): match again at the corrected height, keep it if it holds
-                    again = self.local.locate(img, center, R, mpp * f * sc, scale_tol=self._scale_tol(meta),
+                    wc, wr = result.get("_window") or (center, R)
+                    again = self.local.locate(img, wc, wr, mpp * f * sc, scale_tol=self._scale_tol(meta),
                                               **self._match_heading_kw(meta), hfov_deg=self._hfov(meta),
                                               expected_tilt_deg=self._expected_tilt(meta), **self._heading_search_kw())
+                    if result.get("_window_off"):
+                        again = self._window_gate(dict(again, _window=result["_window"], _window_off=True))
                     if again.get("accepted") and int(again.get("inliers") or 0) >= int(result.get("inliers") or 0) // 2:
                         result, f = again, f * sc
                 result["_frame_shape"], result["_frame_mpp"] = img.shape, mpp * f
@@ -822,7 +1001,57 @@ class DaySubscriber(Node):
                 f"lat={c['lat']:+.5f} lon={c['lon']:+.5f}"
             )
 
+    # ── frame quality and fix blending (F20, F23, D17) ──────────────────
+    def _frame_refused(self, seq_id, img, meta) -> bool:
+        """A frame day_pkg.frame_gate refuses (turning fast at the exposure, or blurred): not matched, the
+        position carried (or 'no position') with the reason. False when the frame is to be matched."""
+        g = self.frame_gate
+        if g.max_blur_px <= 0 and g.sharp_rel <= 0:
+            return False
+        ns = meta.get("image_stamp_ns")
+        q = g.check(int(ns) / 1e9 if ns else None, img if g.sharp_rel > 0 else None,
+                    focal_px(img.shape[1], self._hfov(meta) or 0.0))
+        if q["refuse"] is None:
+            return False
+        if not self._dead_reckon(self.get_clock().now().to_msg(), seq_id, meta, dict(frame_quality=q), 0.0,
+                                 q["refuse"]):
+            self._publish_no_fix(self.get_clock().now().to_msg(), seq_id, meta, {"frame_id": seq_id}, 0.0,
+                                 q["refuse"] + "; " + self._dr_why)
+        return True
+
+    def _blend_fix(self, lat, lon, result, meta, status):
+        """(lat, lon, sigma) of a local fix averaged with the carried position by their sigmas, or None
+        (blend_fixes off, a re-acquisition, no carried position, or a carry without a heading: it lags in
+        turns, F23). A fix with few inliers is noisy, not biased: averaged, its error is shared with the
+        carry's; a confident wrong one that passed the gate pulls the output part of the way only.
+
+        Only the fix's independent error is averaged (F41). The carry is made of the earlier fixes (the
+        track holds the measured fixes, not this output), so the errors common to all of them — the
+        unknown camera delay (speed x its sigma, along the track) and the camera mount's (height x
+        tan(its sigma)) — are in the carry too: they set neither the weight nor shrink in the stated
+        sigma, hypot(sqrt(k) x the independent part, the common part). Counted as independent, they
+        were averaged down frame after frame: Isaac Sim closed loop 2026-10-22 (copter, delay unknown)
+        stated 5-9 m for 13-20 m errors, 146 of 356 outputs beyond 3 sigma, and with the carry fed its
+        own output it lagged 100 m behind (90 wrong fixes without the mount calibration)."""
+        if not self.blend_fixes or status.get("reacquired") or self._carry_heading(meta)[0] is None:
+            return None
+        pred = self._predicted(meta)
+        if pred is None:
+            return None
+        sig = self._fix_sigma(result, meta)
+        common = min(sig, self._fix_sigma_common(result, meta))
+        r2 = max(sig * sig - common * common, 0.0)               # the fix's own error
+        q2 = max(float(pred[2]) ** 2 - common * common, 0.0)     # the carry's own (beyond the common part)
+        k = q2 / (q2 + r2) if q2 + r2 > 0.0 else 1.0
+        de, dn = _en((lat, lon), pred[:2])
+        p = _move(pred[:2], k * de, k * dn)
+        out_sig = math.hypot(math.sqrt(k * r2), common)
+        status["blend"] = {"weight": round(k, 3), "fix_sigma_m": round(sig, 1), "carry_sigma_m": round(pred[2], 1),
+                           "common_sigma_m": round(common, 1)}
+        return p[0], p[1], out_sig
+
     def _publish_done(self, seq_id):
+        self._publish_camera_delay()            # before the ack: the next frame is straightened with it
         try:
             fid = int(seq_id)
         except (TypeError, ValueError):
@@ -907,13 +1136,17 @@ class DaySubscriber(Node):
         # the sigma samples only after a REFUSAL (a slow spoof is trusted until refused); a GPS simply
         # lost keeps them: right after take-off they are all there is (Isaac endurance 2026-10-22: GPS
         # lost 12 s after reaching altitude, the 24 samples of the climb forgotten, F39). A drift
-        # learned as vision error could only make the stated sigma larger.
+        # learned as vision error could only make the stated sigma larger. The map bias and the camera
+        # mount (a spoof's drift would be learned as a mount error) are rolled back at any loss.
         refused = getattr(self, "_gps_refused_flag", True)
         n_sig = self.sigma_cal.rollback(since) if refused else 0
         n_bias = self.map_bias.rollback_bias(since)
-        if n_sig or n_bias:
+        n_mount = self.mount_cal.rollback(since) if getattr(self, "mount_cal", None) is not None else 0
+        self._save_mount_cal()
+        if n_sig or n_bias or n_mount:
             self.get_logger().info(f"[day] GPS no longer trusted: forgot the last {self.calib_rollback_s:.0f} s of "
-                                   f"GPS-learned samples (sigma calibration {n_sig}, map bias {n_bias})")
+                                   f"GPS-learned samples (sigma calibration {n_sig}, map bias {n_bias}, "
+                                   f"camera mount {n_mount})")
         if not refused and self.sigma_cal.samples:
             self.get_logger().info(f"[day] GPS lost (not refused): the sigma calibration keeps its "
                                    f"{self.sigma_cal.samples} samples")
@@ -1000,6 +1233,11 @@ class DaySubscriber(Node):
             ns = meta.get("image_stamp_ns")
             self._gyro_reset(int(ns) / 1e9 if ns else time.time(), res)   # heading known at the GPS loss
             g = self._gps_hist.at(int(ns) / 1e9) if ns else None
+            placed = self._mount_check_fix(res, meta, g)
+            if placed is None:                      # refused (pose far from the attitude): no sample
+                return
+            self._check_fix = (placed[0], placed[1], self._check_fix[2])
+            res["predicted_lat"], res["predicted_lon"] = placed
             if g is not None:                       # no GPS at the frame's instant: no sample
                 self.map_bias.bias_sample(self._check_fix[:2], g, self._heading_for_match(meta), t=self._check_fix[2])
                 # this flight's real vision error, the map bias removed as it will be after a GPS loss
@@ -1121,8 +1359,10 @@ class DaySubscriber(Node):
             return
         self._learned_delay = d
         n_sig, n_bias = self.sigma_cal.rollback(float("-inf")), self.map_bias.rollback_bias(float("-inf"))
-        self.get_logger().info(f"[day] camera delay moved {d - ref:+.2f} s: forgot {n_bias} map-bias and {n_sig} "
-                               "sigma-calibration samples dated by the old delay")
+        mc = getattr(self, "mount_cal", None)
+        n_mount = mc.rollback(float("-inf")) if mc is not None else 0
+        self.get_logger().info(f"[day] camera delay moved {d - ref:+.2f} s: forgot {n_bias} map-bias, {n_sig} "
+                               f"sigma-calibration and {n_mount} camera-mount samples dated by the old delay")
 
     def _latency_sample(self, meta):
         """A GPS-check match is a camera-delay sample (its arrival = raw stamp + the camera's delay)."""
@@ -1155,9 +1395,22 @@ class DaySubscriber(Node):
         margin = 0.5 * math.hypot(*img.shape[:2]) * mpp
         self.local.tiles.prefetch(self._anchor_lat, self._anchor_lon, R + margin)
 
-    def _heading_search_kw(self) -> dict:
-        """locate() keywords: the heading search when enabled and the matcher has it."""
-        if self.heading_search and hasattr(self.local, "heading_search_deg"):
+    def _heading_search_kw(self, meta=None) -> dict:
+        """locate() keywords: the heading search when the matcher has it and it is enabled, or when this
+        frame's heading is uncertain (D18, local_heading_search_after): none known (no frame attitude
+        heading, no gyro-carried one), or that many frames in a row without a match. meta: the frame's
+        (default: the frame being processed)."""
+        if not hasattr(self.local, "heading_search_deg"):
+            return {}
+        if self.heading_search:
+            return {"heading_search": True}
+        n = getattr(self, "heading_search_after", 0)
+        if n <= 0:
+            return {}
+        if meta is None:
+            last = getattr(self, "_last_frame", None)
+            meta = last[1] if last else {}
+        if self._match_heading_kw(meta)["heading_deg"] is None or self._rejects_in_row >= n:
             return {"heading_search": True}
         return {}
 
@@ -1237,12 +1490,81 @@ class DaySubscriber(Node):
                 # the carried position and k sigma of it: the window follows the uncertainty
                 # (a lost vehicle is searched for wider, a tracked one cheaply)
                 return (pred[0], pred[1]), min(max(self.search_k * pred[2], self.local_min_radius_m),
-                                               self.local_max_radius_m)
+                                               self._search_cap_m())
             if self._last_measured_time is not None:
                 # the vehicle may have gone this far since the last match: search that far
                 grown = R + self.max_speed_mps * max(0.0, time.time() - self._last_measured_time)
                 R = min(max(R, grown), max(R, self.local_max_radius_m))
         return (self._anchor_lat, self._anchor_lon), R
+
+    # ── re-acquiring after a gap (F32, day_pkg.reacquire) ──────────────────
+    def _search_cap_m(self) -> float:
+        """Widest search radius around the carried position: local_max_radius_m for one window,
+        reacquire_max_radius_m when wide circles are covered with several windows."""
+        if getattr(self, "reacquire_windows", False):
+            return max(self.local_max_radius_m, self.reacquire_max_radius_m)
+        return self.local_max_radius_m
+
+    def _reacquire_window_m(self, img, mpp: float) -> float:
+        """Radius of one search window: a fraction of the frame's half diagonal on the ground (the
+        matcher's margin; the map window is that plus this), never under local_min_radius_m. A small
+        frame against a wide window drowns in the map's features."""
+        margin = 0.5 * math.hypot(*img.shape[:2]) * mpp
+        return max(self.local_min_radius_m, self.reacquire_window_frac * margin)
+
+    def _window_gate(self, res: dict) -> dict:
+        """A match found in a window other than the carried position's: one try among several, so it
+        needs reacquire_min_inliers (more windows tried, more chances of an accidental match)."""
+        if res.get("accepted") and res.get("_window_off") and \
+                int(res.get("inliers") or 0) < self.reacquire_min_inliers:
+            res = dict(res, accepted=False, reason=f"{res.get('inliers')} inliers in a re-acquisition window "
+                                                   f"off the carried position (min {self.reacquire_min_inliers})")
+        return res
+
+    def _locate_search(self, img, center, R, mpp, meta, windows: bool = True, heading_search: bool = True) -> dict:
+        """locate() over the search circle (center, R): one window when R is at most ~one window wide
+        (or windows is False: only the carried position's), else the circle covered with windows
+        (cover_windows), this frame's share of them (WindowScan) tried nearest first until a match.
+        The result says the window it came from ("_window": (centre, radius)), "windows_tried" and
+        "radius_m" = R (the circle searched in all). The heading search, when on, runs in the carried
+        position's window only."""
+        hk = self._match_heading_kw(meta)
+        kw = dict(scale_tol=self._scale_tol(meta), **hk, hfov_deg=self._hfov(meta),
+                  expected_tilt_deg=self._expected_tilt(meta), **self._heading_search_kw())
+        if not heading_search and "heading_search" in kw:
+            kw["heading_search"] = False
+        w = self._reacquire_window_m(img, mpp)
+        if not getattr(self, "reacquire_windows", False) or R <= 1.25 * w:
+            self._scan.reset()
+            return self.local.locate(img, center, R, mpp, **kw)
+        if hk.get("heading_deg") is not None and "heading_search" in kw and not self.heading_search:
+            # re-acquiring: the frames fail for the position, not for a heading the frame states — the
+            # search after rejects in a row (local_heading_search_after) would try 12 headings in every
+            # window and height: 12-19 s a frame after a 60 s outage (Isaac Sim), the carry 10 s stale
+            kw["heading_search"] = False
+        if not windows:
+            res = self.local.locate(img, center, w, mpp, **kw)
+            return dict(res, _window=(center, w), radius_m=float(R))
+        cover = cover_windows(R, w)
+        best, tried, t0 = None, 0, time.monotonic()
+        for de, dn in self._scan.pick(cover, self.reacquire_per_frame):
+            if tried and time.monotonic() - t0 > self.reacquire_budget_s:
+                break                                   # the rest of the scan goes on next frame
+            c = _move(center, de, dn) if (de or dn) else center
+            # a heading search (12 headings) only in the carried position's window: in every window
+            # it would multiply the frame's time, and the chances of an accidental match, by 12
+            res = self.local.locate(img, c, w, mpp, **(dict(kw, heading_search=False) if (de or dn) and "heading_search" in kw else kw))
+            res = self._window_gate(dict(res, _window=(c, w), _window_off=bool(de or dn)))
+            tried += 1
+            if res.get("accepted"):
+                best = res
+                break
+            if best is None or int(res.get("inliers") or 0) > int(best.get("inliers") or 0):
+                best = res
+        best = dict(best, radius_m=float(R), windows_tried=tried, windows_cover=len(cover))
+        if not best.get("accepted"):
+            best["reason"] = f"{best.get('reason')} ({tried} of {len(cover)} windows of {w:.0f} m tried)"
+        return best
 
     def _predicted(self, meta):
         """(lat, lon, sigma_m) of the last measured fix carried to now along the track
@@ -1359,19 +1681,132 @@ class DaySubscriber(Node):
         ns = meta.get("image_stamp_ns")
         return int(ns) / 1e9 if ns else time.time()
 
-    def _dead_reckon_without_frames(self):
-        t_frame, meta = self._last_frame
-        if time.time() - t_frame < 2.5 or self._gps_prior.fresh() is not None:
+    def _watchdog(self):
+        """Its own thread (dr_watchdog_period_s): while the GPS is not trusted, the carried position
+        goes on being published. No camera frame for 2.5 s and no frame being matched: carried by
+        the matching state itself (_dead_reckon, as before). A frame being matched (or none yet)
+        and no output for dr_watchdog_s: the last output's snapshot carried to now (read-only —
+        the matching thread's state is not touched; day_pkg.carry_state)."""
+        if self._gps_prior.fresh() is not None:
             return
-        if not self._busy_lock.acquire(blocking=False):
-            return                                          # a frame is being processed
-        try:
-            m = dict(meta)
-            m.pop("image_stamp_ns", None)                   # this is no frame: stamped now
-            self._dead_reckon(self.get_clock().now().to_msg(), m.get("frame_id", -1), m, {}, 0.0,
-                              f"no camera frame for {time.time() - t_frame:.0f} s")
-        finally:
-            self._busy_lock.release()
+        t_frame, meta = self._last_frame
+        if time.time() - t_frame >= 2.5 and time.time() - self._last_out_wall >= 1.0 and \
+                self._busy_lock.acquire(blocking=False):
+            try:
+                self._drain_gps()
+                m = dict(meta)
+                m.pop("image_stamp_ns", None)                   # this is no frame: stamped now
+                self._dead_reckon(self.get_clock().now().to_msg(), m.get("frame_id", -1), m, {}, 0.0,
+                                  f"no camera frame for {time.time() - t_frame:.0f} s")
+            finally:
+                self._busy_lock.release()
+            return
+        if self.dr_watchdog_s > 0 and time.time() - self._last_out_wall >= self.dr_watchdog_s:
+            self._watchdog_publish()
+
+    def _watchdog_publish(self) -> bool:
+        """Publish the snapshot (DrSnap) carried to now, turned by the gyro if it measured the turn;
+        True if published."""
+        snap, t = self._dr_snap, time.time()
+        if snap is None:
+            return False
+        # the turn since the snapshot, integrated by the gyro (no heading reference needed): a copter at
+        # a waypoint corner turns 90 deg in a few seconds (Isaac Sim fin_base: carried straight, 46-50 m
+        # off at +-17 m); without it the snapshot's velocity goes straight on
+        turn, h_sig = 0.0, 0.0
+        gyro = getattr(self, "gyro", None)
+        if gyro is not None:
+            d = gyro.turn(snap.t, t)
+            if d is not None:
+                turn, h_sig = d, gyro.bias * max(0.0, t - snap.t)
+        p, why = watchdog_carry(snap, t, self.track, self.max_dead_reckon_s, self.dr_max_sigma_m, turn, h_sig)
+        if p is None:
+            return False
+        lat, lon, sigma = p
+        now = self.get_clock().now().to_msg()
+        reason = (f"no output for {t - self._last_out_wall:.1f} s (match in progress); carried "
+                  f"{t - snap.t_meas:.0f} s, ±{sigma:.0f} m")
+        self._last_out_wall = t
+        self.pub_status.publish(String(data=json.dumps({
+            "frame_id": None, "success": True, "source": "dead_reckon", "watchdog": True,
+            "lat": lat, "lon": lon, "sigma_m": round(sigma, 1), "reason": reason})))
+        self._publish_estimate(now, -1, "dead_reckon", lat, lon, {}, score=0.0,
+                               details={"src": "dead_reckon", "watchdog": True, "reason": reason},
+                               sigma_m=sigma)
+        self.get_logger().info(f"[day] 🧭 DR watchdog lat={lat:+.5f} lon={lon:+.5f} ({reason})")
+        return True
+
+    def _snapshot_output(self, lat, lon, t, sigma, meta) -> None:
+        """Matching thread, at each output: the snapshot the watchdog carries — this position and the
+        velocity the next carry would use (the carried one, else the track's)."""
+        t_last = self.track.last_time()
+        if t_last is None:
+            self._dr_snap = None
+            return
+        c = self._carry
+        if c is not None and c[2] >= t_last:
+            v = self.track.velocity(t_last + 1e-3)
+            ve, vn, sig_v = c[4], c[5], (v[2] if v is not None else 3.0)
+            since_v = t - (self._vel_epoch if self._vel_epoch is not None else t_last)
+        else:
+            v = self.track.velocity(t)
+            if v is None:
+                self._dr_snap = None            # nothing to carry: an older snapshot must not outlive this output
+                return
+            ve, vn, sig_v = v
+            since_v = t - t_last
+            # the fit is the chord of its window: turned to this output's heading, as the carry is
+            h, h_sig = self._carry_heading(meta)
+            hv = self._velocity_heading(h_sig)
+            if h is not None and hv is not None:
+                a = math.radians((h - hv + 180.0) % 360.0 - 180.0)
+                ve, vn = ve * math.cos(a) + vn * math.sin(a), -ve * math.sin(a) + vn * math.cos(a)
+        h = self._carry_heading(meta)[0]
+        if h is None and getattr(self, "gyro", None) is not None:
+            g = self.gyro.at(t)
+            h = g[0] if g is not None else None
+        self._dr_snap = DrSnap(lat, lon, t, sigma, ve, vn, sig_v, max(0.0, since_v), t_last, h)
+
+    def _remember_track(self) -> None:
+        """Persist the track for a restart in flight (state "day_track", at most once a second)."""
+        if not getattr(self, "track_persist", False) or time.time() - self._track_saved_at < 1.0:
+            return
+        self._track_saved_at = time.time()
+        anchor = None
+        if self._anchor_lat is not None and self._anchor_time is not None:
+            anchor = (self._anchor_lat, self._anchor_lon, self._anchor_time,
+                      self._anchor_sigma if self._anchor_sigma is not None else self.local_sigma_m)
+        state_store.save(TRACK_STATE, track_state(
+            self.track._pts, self._carry, self._vel_epoch, self._track_heading, self._frame_headings,
+            anchor, self._last_measured_time, self._dr_snap))
+
+    def _restore_track(self) -> bool:
+        """Restarted in flight: the persisted track carried on (its original times: the uncertainty
+        grows with the time elapsed, never a fresh fix); the anchor = that carry now. True if restored."""
+        now = time.time()
+        r = restore_track(state_store.load(TRACK_STATE, self.max_dead_reckon_s + 5.0), now, self.max_dead_reckon_s)
+        if r is None:
+            return False
+        self.track.reset()
+        for p in r["pts"]:
+            self.track.add(*p)
+        self._carry, self._vel_epoch, self._track_heading = r["carry"], r["vel_epoch"], r["track_heading"]
+        for h in r["headings"]:
+            self._frame_headings.append(h)
+        self._dr_snap = r["snap"]
+        self._last_measured_time = r["last_measured"]
+        p = self._predicted({})
+        if p is None or p[2] > self.dr_max_sigma_m:
+            if r["anchor"] is None:
+                return False
+            lat, lon, ta, sig = r["anchor"]
+            sig = sig + self.max_speed_mps * max(0.0, now - ta)       # no velocity: as far as it can go
+            p = (lat, lon, sig)
+        self._anchor_lat, self._anchor_lon, self._anchor_time = p[0], p[1], now
+        self._anchor_sigma = self._dr_sigma = p[2]
+        self.get_logger().warn(f"[day] restart: track restored, last measured fix {now - r['pts'][-1][0]:.1f} s ago; "
+                               f"carried on at ±{p[2]:.0f} m (search around it)")
+        return True
 
     def _dead_reckon(self, now, seq_id, meta, status, score, why) -> bool:
         """No measurement this frame: publish the last measured position carried along the
@@ -1396,7 +1831,7 @@ class DaySubscriber(Node):
             sigma = self._dr_sigma + self._odometry_rel_error(meta) * math.hypot(de, dn) + 1.0
             if sigma <= self.dr_max_sigma_m:
                 t_vel = self.track.last_time()
-                self.track.add(t_now, lat, lon, sigma)
+                self.track.insert(t_now, lat, lon, sigma)
                 self._keep_carry_velocity(lat, lon, t_now, meta, sigma, t_vel)
                 self._anchor_lat, self._anchor_lon, self._anchor_time = lat, lon, t_now
                 self._dr_sigma = self._anchor_sigma = sigma
@@ -1418,6 +1853,36 @@ class DaySubscriber(Node):
         self._emit_fix(now, seq_id, lat, lon, meta, status, "dead_reckon", score, None,
                        reason=f"{why}; carried {t_now - t_last:.0f} s, ±{sigma:.0f} m")
         return True
+
+    # visual odometry that disagrees with the track's velocity is believed when two consecutive steps
+    # agree with each other (VO_AGREE_MPS, or VO_AGREE_REL of the speed), each of quality >= VO_MIN_QUALITY
+    # and an image shift of at least VO_MIN_SHIFT_PX (not a lock on what is fixed in the image)
+    VO_AGREE_MPS, VO_AGREE_REL, VO_MIN_QUALITY, VO_MIN_SHIFT_PX, VO_MAX_GAP_S = 2.5, 0.25, 0.5, 4.0, 3.0
+
+    def _vo_gate(self, step, v, t, shift_px):
+        """The odometry step to use, or None. Agreeing with the velocity of the map fixes (v): used,
+        as before. Disagreeing: phase correlation may have locked on something fixed in the image —
+        or the track's velocity is stale: the vehicle turned round or stopped after its last map fix
+        (Isaac Sim hills 2026-10-21: an RTL turn-round 10 s into a dead-reckoning, carried straight on,
+        875 m off at +-488 m stated). It is then used only when this step and the previous one, both
+        clear (quality, image shift), measure the same velocity: a fixed lock gives no shift, and two
+        independent steps agreeing is the track's velocity being wrong, not the odometry."""
+        prev, self._vo_last = getattr(self, "_vo_last", None), None
+        if step is None:
+            return None
+        de, dn, dt, q = step
+        ve, vn = de / dt, dn / dt
+        clear = q >= self.VO_MIN_QUALITY and shift_px is not None and shift_px >= self.VO_MIN_SHIFT_PX
+        self._vo_last = (t, ve, vn) if clear else None
+        if v is None:
+            return step
+        if math.hypot(ve - v[0], vn - v[1]) <= max(3.0 * v[2], 0.3 * math.hypot(v[0], v[1]), 3.0):
+            return step
+        if clear and prev is not None and 0.0 < t - prev[0] <= self.VO_MAX_GAP_S and \
+                math.hypot(ve - prev[1], vn - prev[2]) <= max(self.VO_AGREE_MPS,
+                                                              self.VO_AGREE_REL * math.hypot(ve, vn)):
+            return step
+        return None
 
     ODOMETRY_MAX_UNSEEN_S = 0.5
 
@@ -1599,6 +2064,10 @@ class DaySubscriber(Node):
         status["altitude_measured_m"] = round(alt, 1)
 
     def _emit_fix(self, now, seq_id, lat, lon, meta, status, src, score, jump_m, reason=None):
+        self._last_out_wall = time.time()
+        self._snapshot_output(lat, lon, self._frame_time(meta),
+                              self._dr_sigma if src == "dead_reckon" else self._last_fix_sigma, meta)
+        self._remember_track()
         status["source"], status["lat"], status["lon"] = src, lat, lon
         status["jump_m"], status["reason"] = jump_m, reason
         status["sigma_cal"] = self.sigma_cal.state()
@@ -1647,7 +2116,7 @@ class DaySubscriber(Node):
         except (TypeError, ValueError):
             return -1
 
-    def _publish_estimate(self, now, seq_id, src, lat, lon, meta, score, details):
+    def _publish_estimate(self, now, seq_id, src, lat, lon, meta, score, details, sigma_m=None):
         """Additive: emit the typed source contract on /navera/estimate/day.
 
         One PositionEstimate per NavSatFix, same lat/lon. `mode` is the honesty
@@ -1671,7 +2140,7 @@ class DaySubscriber(Node):
         if src in ("local_match", "dead_reckon") and valid:
             # local match: its stated sigma (details["sigma_m"], see _fix_sigma; local_sigma_m
             # without one); dead-reckoning: the anchor's plus the growth along the track
-            sig = (details.get("sigma_m") if src == "local_match" else None) or \
+            sig = sigma_m or (details.get("sigma_m") if src == "local_match" else None) or \
                 (self.local_sigma_m if src == "local_match" else self._dr_sigma)
             var = float(sig) ** 2
             est.position_covariance = [var, 0.0, 0.0, 0.0, var, 0.0, 0.0, 0.0, 0.0]
@@ -1710,6 +2179,16 @@ class DaySubscriber(Node):
                 s = math.hypot(s, sd * math.hypot(v[0], v[1]))
         return s
 
+    def _fix_sigma_common(self, result, meta) -> float:
+        """The part of a local fix's stated sigma that every fix of this flight shares (F41): the camera
+        delay's (speed x its sigma, the frame-time sigma when it is known) and the camera mount's (height x
+        tan(its sigma)), in quadrature. Averaging fixes does not reduce it."""
+        v = self.track.velocity(time.time())
+        speed = math.hypot(v[0], v[1]) if v is not None else 0.0
+        sd = self._unknown_delay_sigma_s()
+        d = speed * (sd if sd > 0.0 else float(getattr(self, "frame_time_sigma_s", 0.0)))
+        return math.hypot(d, self._mount_term_m(result, meta))
+
     def _unknown_delay_sigma_s(self) -> float:
         """The camera delay's uncertainty while it is neither set (camera_latency_s) nor estimated
         (auto_latency): the frame time can be off by that much, the fix by speed x that along the
@@ -1733,9 +2212,10 @@ class DaySubscriber(Node):
             return self.local_sigma_m
         v = self.track.velocity(time.time())
         alt = meta.get("altitude_m")
-        return day_fix_sigma_m(result.get("sigma_m"), self.local_sigma_floor_m,
-                               math.hypot(v[0], v[1]) if v else None, self.frame_time_sigma_s,
-                               float(alt) if alt is not None else None, self.attitude_sigma_deg)
+        s = day_fix_sigma_m(result.get("sigma_m"), self.local_sigma_floor_m,
+                            math.hypot(v[0], v[1]) if v else None, self.frame_time_sigma_s,
+                            float(alt) if alt is not None else None, self.attitude_sigma_deg)
+        return self._mount_sigma(s, result, meta)
 
     def _check_local_fix(self, result, meta, lat, lon, status):
         """A local match before it is believed: the map bias removed, then the quality gates.
@@ -1752,34 +2232,286 @@ class DaySubscriber(Node):
                               "poorly conditioned — match rejected")
         pred = self._predicted(meta)
         sig = self._fix_sigma(result, meta)
-        doubt = None
-        if pred is not None and inl >= self.strong_inliers:
-            d = math.hypot(*_en((lat, lon), pred[:2]))
-            lim = self.strong_gate_k * math.hypot(pred[2], sig)
-            if d > lim:
-                doubt = f"strong fix ({inl} inliers) {d:.0f} m from the carried position (> {lim:.0f} m)"
-        elif pred is not None:
-            d = math.hypot(*_en((lat, lon), pred[:2]))
-            lim = self.gate_k * math.hypot(pred[2], sig)
-            if d > lim:
-                doubt = f"{d:.0f} m from the carried position (> {lim:.0f} m, {inl} inliers)"
-            elif pred[2] > 50.0 and inl < 40:
-                doubt = f"weak fix ({inl} inliers) while the position is uncertain (±{pred[2]:.0f} m)"
+        # the gate against the carried position and the confirmation of a doubted fix: day_pkg.fix_consistency
+        doubt = None if pred is None else \
+            self.consistency.doubt(math.hypot(*_en((lat, lon), pred[:2])), pred[2], sig, inl)
         if doubt is None:
-            self._doubted = None
+            self.consistency.clear()
             return lat, lon, None
-        # two doubted fixes in a row agreeing with each other: the prediction is what is wrong
-        now, prev, self._doubted = time.time(), self._doubted, (time.time(), lat, lon, sig)
-        if prev is not None and 0 < now - prev[0] <= 6.0:
-            v = self.track.velocity(now)
-            ve, vn = (v[0], v[1]) if v is not None else (0.0, 0.0)
-            carried = _move(prev[1:3], ve * (now - prev[0]), vn * (now - prev[0]))
-            gap = math.hypot(*_en((lat, lon), carried))
-            if gap <= max(3.0 * math.hypot(sig, prev[3]), 15.0) + 0.3 * math.hypot(ve, vn) * (now - prev[0]):
-                self._doubted = None
-                status["reacquired"] = doubt
-                return lat, lon, None
+        # two doubted fixes agreeing with each other: the prediction is what is wrong
+        now = time.time()
+        v = self.track.velocity(now)
+        if self.consistency.confirm(now, lat, lon, sig, (v[0], v[1]) if v is not None else None,
+                                    pred[2] > self.consistency.lost_sigma_m):
+            status["reacquired"] = doubt
+            return lat, lon, None
         return lat, lon, doubt + " — match rejected (a second agreeing fix would confirm it)"
+
+    # ────────────────────────────────────────────────────────────
+    # Camera mount (F33) and the pose-attitude guard's choice (F35)
+    # ────────────────────────────────────────────────────────────
+    def _init_mount_cal(self):
+        """The mount calibration and the guard parameters (mount_cal, pose_guard_*)."""
+        p_ = lambda n: self.get_parameter(n).value               # noqa: E731
+        self.mount_sigma_deg = float(p_("mount_sigma_deg"))
+        self.mount_cal = (MountCalibration(prior_deg=self.mount_sigma_deg,
+                                           min_samples=int(p_("mount_cal_min_samples")),
+                                           min_heading_span_deg=float(p_("mount_cal_min_heading_span_deg")))
+                          if bool(p_("mount_cal")) else None)
+        self.mount_cal_max_dating_m = float(p_("mount_cal_max_dating_m"))
+        self.pose_guard_choose = bool(p_("pose_guard_choose"))
+        self.pose_guard_refuse_deg = float(p_("pose_guard_refuse_deg"))
+        self.mount_cal_persist = bool(p_("mount_cal_persist"))
+        self.mount_cal_save_period_s = float(p_("mount_cal_save_period_s"))
+        self._mount_saved_at = time.time()
+        if self.mount_cal is not None:
+            self._load_mount_cal(str(p_("mount_cal_file")).strip(), float(p_("mount_cal_persisted_min_sigma_deg")))
+
+    MOUNT_STATE = "day_mount"
+
+    def _load_mount_cal(self, path: str, min_sigma_deg: float) -> None:
+        """The persisted mount calibration: mount_cal_file, else the last one learned in flight."""
+        data, where = None, path
+        if path:
+            try:
+                with open(path) as f:
+                    data = json.load(f)
+            except (OSError, ValueError) as e:
+                self.get_logger().error(f"[day] mount_cal_file {path} unreadable ({e}): no persisted mount calibration")
+        else:
+            data, where = state_store.load(self.MOUNT_STATE, float("inf")), "the last flight's (state day_mount)"
+        self._mount_loaded_id = (data or {}).get("mount_id") if isinstance(data, dict) else None
+        n = self.mount_cal.load(data, min_sigma_deg) if data else 0
+        if n:
+            self.get_logger().info(f"[day] camera mount calibration from {where}: "
+                                   f"{json.dumps(self.mount_cal.state())}")
+        else:
+            self.get_logger().warn(f"[day] no camera mount calibration: every fix states height x tan("
+                                   f"{self.mount_sigma_deg:g} deg) more until GPS checks measure it")
+
+    def _save_mount_cal(self, before_t=None) -> None:
+        """Persist the mount calibration learned in flight (samples taken before before_t only)."""
+        if self.mount_cal is None or not getattr(self, "mount_cal_persist", False):
+            return
+        ex = self.mount_cal.export(before_t, self._delay_known_sigma_s())
+        if not ex:
+            return
+        old = state_store.load(self.MOUNT_STATE, float("inf")) or {}
+        mid = getattr(self, "_mount_id", None)
+        same = old.get("mount_id") == mid or old.get("mount_id") is None   # an older mount's kinds are not carried
+        data = {k: v for k, v in old.items() if k in ("frame centre", "camera pose") and same}
+        data.update(ex)
+        if mid:
+            data["mount_id"] = mid
+        data["source"] = "in-flight GPS checks " + time.strftime("%Y-%m-%d %H:%M")
+        if state_store.save(self.MOUNT_STATE, data):
+            self.get_logger().info(f"[day] camera mount calibration saved: {json.dumps(ex)}")
+
+    def _check_mount_id(self, meta) -> None:
+        """The frames' camera mount settings (live_camera mount_id: mount angles, lens file, crop): a mount
+        calibration learned or stored with other settings is dropped, and the stored one with it (F33
+        open item 4: a re-fitted or re-calibrated camera has another boresight error)."""
+        from day_pkg.mount_cal import stale_reason
+        mid = meta.get("mount_id")
+        mc = getattr(self, "mount_cal", None)
+        prev = getattr(self, "_mount_id", None)
+        if not mid or mc is None or mid == prev:
+            return
+        self._mount_id = mid
+        why = stale_reason(prev or getattr(self, "_mount_loaded_id", None), mid)
+        if why is None:
+            return
+        mc.reset()
+        self._mount_loaded_id = None
+        if getattr(self, "mount_cal_persist", False) and \
+                (state_store.load(self.MOUNT_STATE, float("inf")) or {}).get("mount_id") not in (None, mid):
+            state_store.save(self.MOUNT_STATE, {"mount_id": mid, "source": "dropped: " + why})
+        self.get_logger().error(f"[day] camera mount calibration dropped ({why}): every fix states height x "
+                                f"tan({self.mount_sigma_deg:g} deg) more until GPS checks measure it again")
+
+    def _init_camera_delay_pub(self) -> None:
+        """camera_delay_topic: the camera-delay estimate for live_camera, which takes the attitude it
+        straightens a frame with at the same instant the frame is dated (latency_cal.delay_message):
+        a body-fixed camera on a banked plane straightened with the attitude 1.3 s stale put the frame
+        centre 50-272 m off (Isaac Sim F35)."""
+        topic = str(self.declare_parameter("camera_delay_topic", "/day/camera_delay").value)
+        self.pub_cam_delay = self.create_publisher(String, topic, QoSProfile(
+            depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL, reliability=ReliabilityPolicy.RELIABLE,
+            history=HistoryPolicy.KEEP_LAST))
+        self._cam_delay_sent = None
+        self._publish_camera_delay()
+
+    def _publish_camera_delay(self) -> None:
+        """Publish the delay estimate when its correction changed (latched)."""
+        pub, lc = getattr(self, "pub_cam_delay", None), getattr(self, "latency_cal", None)
+        if pub is None or lc is None:
+            return
+        d = latency_cal.delay_message(lc, bool(getattr(self, "auto_latency", False)))
+        key = (d["correction_s"], d["auto"])
+        if key != self._cam_delay_sent:
+            self._cam_delay_sent = key
+            pub.publish(String(data=json.dumps(d)))
+
+    def _delay_known_sigma_s(self) -> float:
+        """The frame time's uncertainty for the mount fit's residual-delay term: the frame-time sigma
+        when the camera delay is set or estimated, else unknown_delay_sigma_s."""
+        sd = self._unknown_delay_sigma_s()
+        return sd if sd > 0.0 else float(getattr(self, "frame_time_sigma_s", 0.05))
+
+    @staticmethod
+    def _fix_kind(result) -> str:
+        return "camera pose" if result.get("position_from") == "camera pose" else "frame centre"
+
+    @staticmethod
+    def _fix_heading(result, meta):
+        """The azimuth of the frame top: the matcher's fitted rotation (vision), else the frame's."""
+        for v in (result.get("rotation_deg"), meta.get("heading_deg")):
+            try:
+                if v is not None and math.isfinite(float(v)):
+                    return float(v)
+            except (TypeError, ValueError):
+                pass
+        return None
+
+    @staticmethod
+    def _fix_height(meta):
+        try:
+            h = float(meta.get("altitude_m"))
+        except (TypeError, ValueError):
+            return None
+        return h if math.isfinite(h) and h > 5.0 else None
+
+    def _mount_corrected(self, kind, lat, lon, result, meta):
+        """(lat, lon, (east, north) m) of a vision position of this kind with the learned mount error removed."""
+        mc = getattr(self, "mount_cal", None)
+        if mc is None:
+            return lat, lon, (0.0, 0.0)
+        de, dn = mc.correction(kind, self._fix_heading(result, meta), self._fix_height(meta),
+                               self._delay_known_sigma_s())
+        if de or dn:
+            lat, lon = _move((lat, lon), de, dn)
+        return lat, lon, (de, dn)
+
+    def _pose_guard_refusal(self, result, meta):
+        """Why a match whose consistent pose is pose_guard_refuse_deg or more from the attitude's tilt
+        is refused (None: not refused)."""
+        if not result.get("pose_guard") or self.pose_guard_refuse_deg <= 0:
+            return None
+        try:
+            d = abs(float(result.get("pose_tilt_deg")) - self._expected_tilt(meta))
+        except (TypeError, ValueError):
+            return None
+        if d < self.pose_guard_refuse_deg:
+            return None
+        return (f"pose tilt {float(result['pose_tilt_deg']):.0f} deg vs {self._expected_tilt(meta):.0f} deg by the "
+                f"attitude (>= {self.pose_guard_refuse_deg:g}): the frame is not where the attitude says, or the "
+                "match is wrong — match rejected")
+
+    def _place_fix(self, result, meta, status, pred=None):
+        """Where a local match puts the vehicle, before the gates: the pose guard's candidates (the frame
+        centre and the point under the camera) resolved, then the learned camera mount error removed.
+        Sets result predicted_lat/lon, position_from and _guard_sigma_m; returns (lat, lon, why refused)."""
+        lat, lon = float(result["predicted_lat"]), float(result["predicted_lon"])
+        why = self._pose_guard_refusal(result, meta)
+        if why is not None:
+            return lat, lon, why
+        cands = [(self._fix_kind(result), lat, lon)]
+        if result.get("pose_guard") and result.get("pose_lat") is not None and self.pose_guard_choose:
+            cands.append(("camera pose", float(result["pose_lat"]), float(result["pose_lon"])))
+        placed = [(k,) + self._mount_corrected(k, la, lo, result, meta) for k, la, lo in cands]
+        k, lat, lon, corr = placed[0]
+        if len(placed) == 2:
+            sep = math.hypot(*_en(placed[0][1:3], placed[1][1:3]))
+            if pred is None:
+                pred = self._predicted(meta)
+            if pred is not None:
+                d = [math.hypot(*_en(c[1:3], pred[:2])) for c in placed]
+                k, lat, lon, corr = placed[int(d[1] < d[0])]
+                result["_guard_sigma_m"] = min(0.5 * sep, float(pred[2]))
+            else:
+                result["_guard_sigma_m"] = 0.5 * sep
+            status["pose_guard_choice"] = {"took": k, "apart_m": round(sep, 1),
+                                           "guard_sigma_m": round(result["_guard_sigma_m"], 1)}
+            result["position_from"] = k
+        if corr[0] or corr[1]:
+            status["mount_corr_m"] = [round(corr[0], 1), round(corr[1], 1)]
+        if getattr(self, "mount_cal", None) is not None:
+            status["mount_cal"] = self.mount_cal.state(self._delay_known_sigma_s()).get(k)
+        result["predicted_lat"], result["predicted_lon"] = lat, lon
+        status["lat"], status["lon"], status["position_from"] = lat, lon, result.get("position_from")
+        return lat, lon, None
+
+    def _mount_check_fix(self, res, meta, g):
+        """A GPS-check match: its candidates are mount samples against the GPS at the frame's instant g
+        (lat, lon; None: no sample), then it is placed like a fix (the GPS is the carried position).
+        Returns (lat, lon) placed, or None when refused."""
+        mc = getattr(self, "mount_cal", None)
+        ns = meta.get("image_stamp_ns")
+        vel = None
+        if mc is not None and g is not None and ns is not None:
+            g0 = self._gps_hist.at(int(ns) / 1e9 - 1.0)
+            vel = _en(g, g0) if g0 is not None else None
+        if mc is not None and g is not None and ns is not None and self._mount_sample_refused(vel) is None:
+            hd, h = self._fix_heading(res, meta), self._fix_height(meta)
+            seen = set()
+            for kind, la, lo in (("frame centre", res.get("centre_lat"), res.get("centre_lon")),
+                                 ("camera pose", res.get("pose_lat"), res.get("pose_lon"))):
+                if la is not None and lo is not None:
+                    mc.add(kind, _en(g, (float(la), float(lo))), hd, h, t=time.time(), vel_en=vel)
+                    seen.add(kind)
+            if not seen:                         # a matcher without the candidates: its own position
+                mc.add(self._fix_kind(res), _en(g, (float(res["predicted_lat"]), float(res["predicted_lon"]))),
+                       hd, h, t=time.time(), vel_en=vel)
+        if mc is not None and time.time() - getattr(self, "_mount_saved_at", 0.0) >= \
+                getattr(self, "mount_cal_save_period_s", 30.0) and hasattr(self, "get_logger"):
+            self._mount_saved_at = time.time()
+            self._save_mount_cal(before_t=time.time() - self.calib_rollback_s)
+        pred = (g[0], g[1], 5.0) if g is not None else None
+        lat, lon, why = self._place_fix(res, meta, {}, pred=pred)
+        return None if why else (lat, lon)
+
+    def _mount_sample_refused(self, vel):
+        """Why a GPS check now gives no mount sample (None: it does): the camera delay unknown, or the
+        frame's dating error (ground speed x the delay's sigma) above mount_cal_max_dating_m (F41)."""
+        lc = getattr(self, "latency_cal", None)
+        if lc is None:
+            return None
+        sd = lc.delay_sigma() if getattr(self, "auto_latency", False) else \
+            (lc.nominal_sigma if lc.nominal != 0.0 else None)
+        if sd is None:
+            return "camera delay unknown"
+        if vel is None:
+            return "ground speed unknown"
+        err = math.hypot(vel[0], vel[1]) * math.hypot(float(sd), float(getattr(self, "_delay_change_s", 0.0)))
+        lim = float(getattr(self, "mount_cal_max_dating_m", 2.0))
+        return None if err <= lim else f"frame dating error {err:.1f} m > {lim:g} m"
+
+    def _mount_sigma(self, s: float, result, meta) -> float:
+        """The model sigma s with the camera mount's uncertainty (height x tan(its sigma: the prior until
+        learned)) and the guard's (_guard_sigma_m) added in quadrature."""
+        s = math.hypot(s, self._mount_term_m(result, meta))
+        return math.hypot(s, float(result.get("_guard_sigma_m") or 0.0))
+
+    def _mount_term_m(self, result, meta) -> float:
+        """height x tan(the camera mount's sigma) of a fix of this kind (0 without a height)."""
+        mc = getattr(self, "mount_cal", None)
+        h = self._fix_height(meta)
+        if h is None:
+            return 0.0
+        sd = (mc.sigma_deg(self._fix_kind(result), self._delay_known_sigma_s()) if mc is not None
+              else float(getattr(self, "mount_sigma_deg", 0.0)))
+        return h * math.tan(math.radians(sd))
+
+    def _jump_margin_m(self, result, meta) -> float:
+        """The motion gate's allowance (beyond max_speed x elapsed) for a local match: the two
+        positions' uncertainty (gate_k sigma), at most gate_margin_m — or gate_k x the anchor's own
+        stated sigma when that is wider (a dead-reckoned anchor: its uncertainty IS how far the
+        vehicle may be from it). Capped at gate_margin_m alone, the right fixes after a 50 s
+        dead-reckoning (anchor +-430 m, 800-900 m off) were refused as 'implausible jumps' for
+        good (Isaac Sim hills, 2026-10-21); the k-sigma gate of _check_local_fix still applies."""
+        sig_a = float(self._anchor_sigma)
+        cap = max(self.gate_margin_m, self.gate_k * sig_a)
+        return kinematic_margin_m(self.gate_k, sig_a, self._fix_sigma(result, meta), cap)
 
     def _publish_result(self, seq_id, meta, result):
         now      = self.get_clock().now().to_msg()
@@ -1846,16 +2578,16 @@ class DaySubscriber(Node):
         measured = (not err) and accepted and not spatial_empty and is_finite_latlon(raw_lat, raw_lon)
         gated = None
         if measured and result.get("matcher") == "local":
+            raw_lat, raw_lon, gated = self._place_fix(result, meta, status)
+            measured = gated is None
+        if measured and result.get("matcher") == "local":
             raw_lat, raw_lon, gated = self._check_local_fix(result, meta, float(raw_lat), float(raw_lon), status)
             measured = gated is None
         if measured and self._anchor_lat is not None and self._anchor_time is not None:
             jump = haversine_m(self._anchor_lat, self._anchor_lon, float(raw_lat), float(raw_lon))
             margin = self.gate_margin_m
             if result.get("matcher") == "local" and self._anchor_sigma is not None:
-                # a local match is a position (not a ~250 m tile): the margin is the two
-                # positions' uncertainty, never more than gate_margin_m
-                margin = kinematic_margin_m(self.gate_k, self._anchor_sigma,
-                                            self._fix_sigma(result, meta), self.gate_margin_m)
+                margin = self._jump_margin_m(result, meta)
             reach = self.max_speed_mps * max(0.0, t_now - self._anchor_time) + margin
             if jump > reach:
                 measured = False
@@ -1866,6 +2598,11 @@ class DaySubscriber(Node):
             # Accepted match: in spatial mode it lies within R of the anchor by
             # construction; in global mode (no anchor) it passed conf_threshold.
             out_lat, out_lon = float(raw_lat), float(raw_lon)
+            meas_sigma = self._fix_sigma(result, meta) if result.get("matcher") == "local" else self.local_sigma_m
+            blended = self._blend_fix(out_lat, out_lon, result, meta, status) \
+                if result.get("matcher") == "local" else None
+            if blended is not None:
+                out_lat, out_lon = blended[0], blended[1]
             jump_m = (haversine_m(self._anchor_lat, self._anchor_lon, out_lat, out_lon)
                       if self._anchor_lat is not None else None)
             src = ("local_match" if result.get("matcher") == "local" else
@@ -1877,7 +2614,9 @@ class DaySubscriber(Node):
                                      mpp=result.get("_frame_mpp"))
             self._anchor_lat, self._anchor_lon, self._anchor_time = out_lat, out_lon, t_now
             self._last_measured_time = t_now
-            fix_sigma = self._fix_sigma(result, meta) if src == "local_match" else self.local_sigma_m
+            fix_sigma = meas_sigma
+            if blended is not None:
+                fix_sigma = blended[2]
             self._dr_sigma = self._anchor_sigma = fix_sigma
             self._last_fix_sigma = fix_sigma
             self._rejects_in_row = 0
@@ -1885,10 +2624,14 @@ class DaySubscriber(Node):
             if src == "local_match":
                 ns = meta.get("image_stamp_ns")         # the photo's instant, not the processing's
                 t_vel, t_fix = self.track.last_time(), (int(ns) / 1e9 if ns else t_now)
-                self.track.add(t_fix, out_lat, out_lon, fix_sigma)
+                # the track (the carry's velocity and start) holds the MEASURED fix with its own sigma,
+                # never the blended output: fed its own output the carry was a filter of itself — its
+                # velocity fitted to smoothed points, its sigma shrinking, the fixes weighted down and
+                # the output lagging (Isaac Sim 2026-10-22: 100 m behind a copter, F41)
+                self.track.insert(t_fix, float(raw_lat), float(raw_lon), meas_sigma)
                 self._gyro_reset(t_fix, result)
                 self._track_heading = self._carry_heading(meta)[0]
-                self._keep_carry_velocity(out_lat, out_lon, t_fix, meta, self._dr_sigma, t_vel)
+                self._keep_carry_velocity(float(raw_lat), float(raw_lon), t_fix, meta, meas_sigma, t_vel)
             else:
                 self._carry, self._vel_epoch = None, None
             if src == "local_match":
@@ -1925,6 +2668,7 @@ class DaySubscriber(Node):
     def _publish_no_fix(self, now, seq_id, meta, status, score, reason):
         """Declare a frame that produced no position (valid=False, NaN) — never a guess."""
         self._reject_count += 1
+        self._last_out_wall = time.time()
         status.update({"success": False, "rejected": True, "reason": reason,
                        "lat": None, "lon": None, "source": "none"})
         self.pub_status.publish(String(data=json.dumps(status)))
@@ -1949,28 +2693,33 @@ class DaySubscriber(Node):
         self.get_logger().warn(f"[day] ✗ frame={seq_id} no position: {reason}")
 
 
-def main(args=None):
+def main(args=None, init: bool = True, before_spin=None):
     """Entry point. Exits cleanly (code 0) on SIGINT and SIGTERM.
 
     rclpy installs handlers for both signals and shuts the context down itself,
     so spin() returns with the context already closed — an unconditional
     rclpy.shutdown() here would then raise RCLError. Hence the rclpy.ok() guard.
+    init False: rclpy is already initialised (day_entry: the early bridge ran first);
+    before_spin(): called once the node is constructed (or failed to be), before spinning.
     """
-    # The localizer libraries log through the standard logging module.
-    logging.basicConfig(level=logging.INFO, format="[%(levelname)s] [%(name)s]: %(message)s")
-    die_with_parent()  # orphan guard: die if our launcher/systemd unit is killed
-    rclpy.init(args=args)
+    if init:
+        # The localizer libraries log through the standard logging module.
+        logging.basicConfig(level=logging.INFO, format="[%(levelname)s] [%(name)s]: %(message)s")
+        die_with_parent()  # orphan guard: die if our launcher/systemd unit is killed
+        rclpy.init(args=args)
     node = None
     try:
-        node = DaySubscriber()   # may abort if a signal lands during model load
-        if node.gyro is not None:
-            # the gyro in its own callback group, read while a frame is processed; every other
-            # callback stays in the node's default (mutually exclusive) group, serial as before
-            ex = MultiThreadedExecutor(num_threads=2)
-            ex.add_node(node)
-            ex.spin()
-        else:
-            rclpy.spin(node)
+        try:
+            node = DaySubscriber()   # may abort if a signal lands during model load
+        finally:
+            if before_spin is not None:
+                before_spin()
+        # the gyro, the GPS (with the arbiter's decision) and the dead-reckoning watchdog in their own
+        # callback groups, run while a frame is matched; every other callback stays in the node's
+        # default (mutually exclusive) group, serial as before
+        ex = MultiThreadedExecutor(num_threads=4)
+        ex.add_node(node)
+        ex.spin()
     except (KeyboardInterrupt, ExternalShutdownException):
         pass
     finally:

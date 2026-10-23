@@ -139,19 +139,23 @@ requirements:
 - id: NAV-FUN-07
   category: FUN
   title: 'Day vision bounded dead-reckoning between matches'
-  text: 'Between matches day vision shall carry its last measured position along the measured track (IMU heading change), published PROPAGATED with a stated sigma that grows with time, for at most max_dead_reckon_s (120 s node default) / 300 m sigma, then stop.'
+  text: 'Between matches day vision shall carry its last measured position along the measured track (IMU heading change), published PROPAGATED with a stated sigma that grows with time, for at most max_dead_reckon_s (120 s) while the stated sigma stays within dead_reckon_max_sigma_m (900 m, about 80 s at 10 m/s), then stop; positions resume as soon as a frame matches. The carried position shall go on being published while a match is in progress (a watchdog in its own thread, after dr_watchdog_s = 2 s without an output), and from the last trusted GPS position at a GPS loss during a match.'
   code:
     - day_pkg/day_pkg/vision_nav.py::VisionNavigator.predict
     - day_pkg/day_pkg/nodes/day_subscriber.py::DaySubscriber._dead_reckon
+    - day_pkg/day_pkg/nodes/day_subscriber.py::DaySubscriber._watchdog
+    - day_pkg/day_pkg/carry_state.py::watchdog_carry
     - navera_common/navera_common/track.py::TrackVelocity.propagate
   match:
     - 'test_vision_nav\.py::test_(straight_gap|turn_is_followed|a_turn_grows|a_full_lap|no_velocity_chord|velocity_from_before)'
+    - 'test_day_track_restart\.py::test_(the_watchdog|gps_handover|carry_state)'
     - 'test_dead_reckon_sigma\.py::'
     - 'test_track\.py::'
     - 'test_gyro_heading\.py::'
   evidence:
     - {level: SIM, value: 'land route: error median 10 m, max 33 m; 90 s over sea stating ±300 m, true error ≤ 146 m', ref: 'VALIDATION_STATUS.md, Dead-reckoning'}
     - {level: SIM, value: '1606 replayed outages: 100 % within 3σ; 60 s sigma 628 m vs 15 m real (conservative, D16)', ref: 'problems doc D16'}
+    - {level: UT, value: '2026-10-23: a 5.7 s stalled match (endur2) -> the watchdog publishes the carried position at 2 s, within 3 sigma, matching state untouched; GPS cut during a 10 s match (F32 h1200) -> carried from the last GPS point at once (+-<30 m), the GPS points timed by their stamps give the track its velocity, search radius < 150 m (was 600 m)'}
   status: verified-SIM
   note: 'no real IMU, no real camera; not inertial navigation (NAV-FUN-21)'
 
@@ -167,6 +171,7 @@ requirements:
   evidence:
     - {level: PUB, value: 'UAV-VisLoc 8 flights, 2599 fixes: > 100 m 70 → 1 (bench artefact); within 3σ 0.999 (30 m floor) / 0.993 (self-cal)', ref: 'VALIDATION_STATUS.md, Day: real drone flights'}
     - {level: PUB, against: true, value: 'Esri map, 2026-10-22: 3 fixes > 100 m (04_0439, 04_0663, 05_0149) are poses whose tilt agrees within 4° with the tilted, unstraightened bench photo; in the product the IMU-straightened frame (expected tilt 0) would refuse these poses', ref: 'VALIDATION_STATUS.md, Day: more public flights, on NAVERA''s own map source'}
+    - {level: PUB, value: 'the 3 photos replayed straightened by their attitude, expected tilt 0 (8 priors each): no fix > 100 m (04_0439, 05_0149 not accepted; 04_0663 21–58 m, guard 3/8)', ref: 'VALIDATION_STATUS.md, Day: robustness fixes on recorded data'}
   status: verified-PUB
 
 - id: NAV-FUN-09
@@ -386,7 +391,7 @@ requirements:
     - {level: SIM, value: 'land route: no failsafe, median 10 m / max 33 m; 90 s over the sea stating +-300 m, true error at most 146 m', ref: 'VALIDATION_STATUS.md, summary "Day vision dead-reckoning"'}
     - {level: PUB, value: 'MARS-LVIG real flight replayed: dead-reckoning alone 4 / 12 m (median / max) over 70 s after two fixes; screen bench turn: 264 m straight on -> 35.7 m with the gyro heading', ref: 'VALIDATION_STATUS.md, "Day: a real flight replayed"; gyro_heading.py docstring'}
   status: verified-PUB
-  note: 'Replaces the original FEAT-2 text ("integrate the IMU into a position with a growing sigma"), NOT PURSUED: double-integrating a low-cost MEMS IMU (BNO085-class, the Insta360 One R IMU) drifts by hundreds of metres within a minute (an accelerometer bias of ~10 mg alone gives 0.5 x 0.1 m/s^2 x t^2 = 180 m at 60 s), far beyond the vision gaps it was meant to bridge; a tactical-grade IMU is out of the product''s cost and size. The IMU is used for attitude (frame straightening), the gyro heading carried between fixes, and liveness. Limits: the product launch (day_pipeline.launch.py) sets max_dead_reckon_s = 30 s, the node default (and the simulator) 120 s.'
+  note: 'Replaces the original FEAT-2 text ("integrate the IMU into a position with a growing sigma"), NOT PURSUED: double-integrating a low-cost MEMS IMU (BNO085-class, the Insta360 One R IMU) drifts by hundreds of metres within a minute (an accelerometer bias of ~10 mg alone gives 0.5 x 0.1 m/s^2 x t^2 = 180 m at 60 s), far beyond the vision gaps it was meant to bridge; a tactical-grade IMU is out of the product''s cost and size. The IMU is used for attitude (frame straightening), the gyro heading carried between fixes, and liveness. Limits: max_dead_reckon_s 120 s (node default and product launch day_pipeline.launch.py since F32), while the stated sigma stays within dead_reckon_max_sigma_m 900 m.'
 
 - id: NAV-FUN-21
   category: FUN
@@ -443,6 +448,7 @@ requirements:
     - navera_tools/tests/test_perf_day_vision.py::test_perf_day_screen_mission_no_wrong_fix
   evidence:
     - {level: BENCH, value: 'campaign 4 table; 18 min city run no drift; wind/shake 12–20 m median with 2–7 wrong fixes per run (F20)', ref: 'VALIDATION_STATUS.md, screen bench; problems doc F20'}
+    - {level: BENCH, value: 'replay of those runs with the 2026-10-22 defaults (blend with the gyro heading, strong fixes at 3σ): wind/shake outputs > 50 m 51 → 16 (3 seeds), median 12.0 → 10.5 m', ref: 'VALIDATION_STATUS.md, Day: robustness fixes on recorded data'}
     - {level: BENCH, value: 'regression benchmark 2026-10-22 (product learned matcher, offline): 80 recorded real Insta360 screen frames (same-date imagery) 80/80 located, median 2.8–3.9 m, p95 7–13 m, 0 wrong', ref: 'VALIDATION_STATUS.md, screen bench — offline regression benchmark'}
     - {level: SIM, value: 'campaign 4 mission replayed without screen/camera (other-date terrain cut at the camera geometry), 5 terrains: land median 0.9–2.0 m, coast 3.2–3.5 m, availability 100 %, 0 wrong', ref: 'VALIDATION_STATUS.md, screen bench — offline regression benchmark'}
   status: verified-BENCH
@@ -522,8 +528,10 @@ requirements:
   code:
     - day_pkg/day_pkg/fix_sigma.py::SigmaCalibration
     - day_pkg/day_pkg/fix_sigma.py::day_fix_sigma_m
+    - day_pkg/day_pkg/nodes/day_subscriber.py::DaySubscriber._fix_sigma_common
     - night_pkg/night_pkg/nodes/night_localizer.py::fix_sigma_m
   match:
+    - 'test_isaac_sigma_replay\.py::'
     - 'test_day_fix_sigma\.py::'
     - 'test_fix_sigma_rollback\.py::'
     - 'test_evaluate_session\.py'
@@ -531,6 +539,7 @@ requirements:
     - 'test_stated_sigma\.py::'
   evidence:
     - {level: PUB, value: 'model alone 0.65–0.71 (unsafe); self-cal + floor + guard 0.993 / 0.999', ref: 'VALIDATION_STATUS.md, verdict on the stated sigma'}
+    - {level: SIM, against: true, value: 'F41: Isaac Sim copter with the camera delay unknown (bef4170): 146/356 outputs beyond 3σ (stated 5–9 m, error 13–20 m) — the blend and the mount calibration; fixed: offline replay of 6 runs 0–1 % beyond 3σ (regression test on 2 of them); Isaac flights after the fix: base 0/315, mount_cal off 0/301, 600 m 0/276, plane 30 m/s 0/170, 0 wrong', ref: 'VALIDATION_STATUS.md, Isaac Sim closed loop: the overconfident copter sigma'}
     - {level: PUB, value: 'Esri map, 2026-10-22: UAV-VisLoc 10 flights 0.997 (30 m floor) / 0.995 (self-cal), 5 fixes > 50 m beyond 3σ; AerialVL 1.000 / 1.000; model alone 0.70–0.73', ref: 'VALIDATION_STATUS.md, Day: more public flights, on NAVERA''s own map source'}
     - {level: PUB, value: 'night (D3 / D22): hypot(10 m + 1 % above 400 m, two-centre gap) 100 % of 444 real-thermal fixes within 3σ in every camera / height (max 2.47σ nominal, 2.98σ with a 15° heading error), 493 synthetic 100 %; stated as covariance by default (state_fix_sigma)', ref: 'VALIDATION_STATUS.md, Night vision — fixes of 2026-10-22'}
   status: verified-PUB
@@ -644,7 +653,7 @@ requirements:
     - {level: BENCH, against: true, value: 'F27 (2026-10-21): no DS3231 on bus 1 of the field Jetson — booted 16 h off until NTP', ref: 'problems doc F27'}
     - {level: UT, value: 'field server (2026-10-22): a wired DS3231 is a trusted star time without phone or internet (rtc_clock.py, raw I2C, tick-synced); lost power / unset / local time / clock step refused (fake RTC)', ref: 'navera_tools/tests/test_field_rtc.py'}
   status: partial
-  note: 'a box can still lack the DS3231 (F27): RTC mandatory in the install (O-16/O-17); GPS_INPUT / NMEA time still from the system clock'
+  note: 'the DS3231 is optional since 2026-10-22 (celestial time from the GPS anchor and SYSTEM_TIME, NAV-SAF-20); GPS_INPUT / NMEA time still from the system clock'
 
 - id: NAV-SAF-06
   category: SAF
@@ -701,7 +710,7 @@ requirements:
 - id: NAV-SAF-10
   category: SAF
   title: 'Bounded gap bridging'
-  text: 'A gap in forwarded vision positions shall be bridged from 2.5 s, once a second, for at most bridge_max_s (10 s) and only while the grown sigma ≤ max_forward_sigma_m; a GPS fix is never bridged.'
+  text: 'A gap in forwarded vision positions — including a silent or initializing arbiter (a restarting estimator, B23) — shall be bridged from 2.5 s, once a second, for at most bridge_max_s (10 s) and only while the grown sigma ≤ max_forward_sigma_m; a GPS fix is never bridged.'
   code:
     - navera_output/navera_output/policy.py::bridge
     - navera_output/navera_output/policy.py::hold
@@ -856,27 +865,37 @@ requirements:
 
 - id: NAV-SAF-20
   category: SAF
-  title: 'Celestial solves only on a trusted time'
-  text: 'cn_subscriber (geoloc and allsky360 modes) shall solve a live frame only on a trusted time: the exposure on the system clock vouched for by the DS3231 (rtc_time within 5 s and rtc_status valid, not lost_power), a GNSS time received within gnss_time_max_age_s (300 s) or NTP synchronisation, with no wall-clock step (wall minus monotonic > 1 s) since that evidence and none in the last 60 s; otherwise it shall publish no position with the reason "no trusted time: ...". gps_node shall publish the receiver UTC (RMC status A) on /navera/sensors/gnss_time.'
+  title: 'Celestial solves only on a trusted time (GPS-anchored, no hardware clock required)'
+  text: 'cn_subscriber (geoloc and allsky360 modes) and the field server shall solve a live frame only on a trusted time, taken in this order: (1) the GPS anchor: a receiver UTC the receiver vouches for (UBX NAV-PVT validDate+validTime+fullyResolved with a fix, NMEA RMC status A, ZDA within 2 s of a valid fix) received while the GPS is trusted (cn: nav_status shows the GPS contributing; field: a satellite fix within 2 km of the phone GPS), held as UTC minus the monotonic clock for the rest of the boot, refreshed only by a later trusted sample within 0.5 s + the drift of the first anchor (others counted and reported as jumps); (2) the autopilot SYSTEM_TIME (vehicle_link /navera/vehicle/system_time, within 5 s); (3) the DS3231 (rtc_time within 5 s and rtc_status valid, not lost_power); (4, field server only) the phone clock; (5) NTP synchronisation. Each source has a stated 1-sigma growing at time_drift_ppm (20 ppm) since its sample and is not used beyond 5 s; the GPS anchor and SYSTEM_TIME more than 1 s apart give no trusted time; a wall-clock step does not discard the anchor but no frame stamp is converted for 60 s after it. Otherwise no position, with the reason "no trusted time: ...". The source and its 1-sigma shall be published (/navera/time_status, frame status utc_source / utc_sigma_s, the field page "Star time"). The anchor is not persisted: after a reboot it is gone until a trusted GPS fix.'
   code:
     - navera_common/navera_common/trusted_time.py::TrustedClock
+    - navera_common/navera_common/gnss.py::rmc_utc_epoch
+    - navera_common/navera_common/gnss.py::zda_utc_epoch
+    - navera_common/navera_common/gnss.py::pvt_fix
     - cn_pkg/cn_pkg/nodes/cn_subscriber.py::CNSubscriber._utc_for
     - cn_pkg/cn_pkg/nodes/cn_subscriber.py::CNSubscriber._utc_now
-    - gps_pkg/gps_pkg/nodes/gps_node.py::rmc_utc_epoch
+    - cn_pkg/cn_pkg/nodes/cn_subscriber.py::CNSubscriber._on_gnss_time
+    - cn_pkg/cn_pkg/nodes/cn_subscriber.py::CNSubscriber._on_nav_status
+    - cn_pkg/cn_pkg/nodes/cn_subscriber.py::CNSubscriber._time_tick
     - gps_pkg/gps_pkg/nodes/gps_node.py::GPSNode._publish_time
+    - navera_output/navera_output/nodes/vehicle_link_node.py::system_time_reference
     - navera_tools/field/rtc_clock.py::RtcClock
-    - navera_tools/field/server.py::Field.star_time
+    - navera_tools/field/time_feeds.py::GnssTimeParser
+    - navera_tools/field/time_feeds.py::AutopilotTimeFeed
+    - navera_tools/field/server.py::Field.star_time_sigma
   match:
     - 'test_trusted_time\.py::'
-    - 'test_cn_gates\.py::test_(no_star_solve|an_rtc_that_lost|a_valid_rtc|gnss_time_vouches|a_stated_time|allsky360_mode)'
+    - 'test_cn_gates\.py::test_(no_star_solve|an_rtc_that_lost|a_valid_rtc|gnss_time_anchors|the_gps_anchor|autopilot_time|a_stated_time|allsky360_mode)'
     - 'test_gnss_time\.py::'
+    - 'test_vehicle_link\.py::test_system_time'
     - 'test_field_rtc\.py::'
     - 'test_field_clock\.py::'
+    - 'test_field_time_feeds\.py::'
   evidence:
-    - {level: UT, value: 'no RTC / GNSS time / NTP → no solve; RTC lost_power → no solve; RTC 2 h ahead of the system clock → exposure solved on the RTC time; +1 h wall-clock step → no solve (same rule as the field server, db2f95c)'}
+    - {level: UT, value: 'GPS anchor held 3 h without GPS (sigma 0.5 -> 0.716 s at 20 ppm) and through a +16 h wall-clock step; untrusted (refused) GPS never anchors; a 30 s time jump is logged once and the anchor kept; 0.4 s steps cannot walk the anchor (stays within 0.5 s); anchor vs SYSTEM_TIME 1.7-2 s apart -> no solve; order gnss > autopilot > rtc > phone > ntp; reboot (no anchor) -> SYSTEM_TIME; no source -> no solve'}
     - {level: BENCH, against: true, value: 'F27 (2026-10-21): the field Jetson had no DS3231 and booted 16 h off — the gate now refuses instead of solving thousands of km off', ref: 'problems doc F27'}
   status: verified-UT
-  note: 'GNSS time is as trustworthy as the GNSS (a spoofer controls it too); not yet run on the box with the DS3231 removed'
+  note: 'decision 2026-10-22: no hardware clock required (GPS good at take-off); the 20 ppm drift and the 0.5 s GNSS-message latency are stated, not measured (time_status anchor minus SYSTEM_TIME measures the drift in flight); not yet run with a real GPS + autopilot on the box; NAVERA''s own GPS_INPUT / NMEA output still stamps with the system clock'
 
 - id: NAV-SAF-21
   category: SAF
@@ -908,7 +927,7 @@ requirements:
   evidence:
     - {level: SIM, value: "car drive simulation (13 profiles + seeds): glass road, 'stopped' frames with 'up' > 0.3 deg off 106 → 1 (max 7.4 → 0.48 deg), 4 seeds 394 → 2; no at-rest frame lost on any profile; through the field server trusted fixes p90 265 → 9.3 km, max 825 → 22 km, within 3 sigma 56/72 → 30/30", ref: 'VALIDATION_STATUS.md, Celestial: field-test readiness fixes'}
   status: verified-SIM
-  note: 'a steady gentle acceleration lasting > 10 s is not separable from rest by an IMU (stated); camera_pkg insta360 node to use standstill.judge for frame_meta stopped; real drive 31 Oct'
+  note: 'a steady gentle acceleration lasting > 10 s is not separable from rest by an IMU (stated); the camera_pkg insta360 node publishes no frame_meta and no all-sky frame yet, so the product has no frame_meta stopped to set (standstill.judge to be wired where the all-sky frame is produced); real drive 31 Oct'
 
 - id: NAV-SAF-26
   category: SAF
@@ -924,6 +943,52 @@ requirements:
   evidence:
     - {level: UT, value: '1 deg tilt, 12 samples with 1-4 bad ones 1.5-8 deg off: plain fit 0.30-0.91 deg (33-101 km), robust 0.007-0.021 deg (0.8-2.4 km); clean samples unchanged'}
   status: verified-UT
+
+- id: NAV-SAF-27
+  category: SAF
+  title: 'Insta360 IMU feed recovered when it goes silent (F14)'
+  text: 'While the Insta360 video goes on and its IMU feed is silent (no IMU packet for 1.5 s, after a 4 s warm-up), the driver (field insta360_usb and camera_pkg UsbImuSource) shall re-send StartLiveStream at most every 2 s and, after 3 such restarts in vain, reset the USB device and start the stream again (~8 s after the silence began); the field server shall reopen the camera only when the IMU stays silent 10 s and no USB reset happened in the last 6 s. Restarts, resets and reopenings shall be counted in the camera health. The field driver shall keep 20 s of IMU rows, readable through imu_rows().'
+  code:
+    - navera_common/navera_common/insta360_protocol.py::ImuWatchdog
+    - navera_tools/field/insta360_usb.py::Insta360Usb.reset_usb
+    - navera_tools/field/insta360_usb.py::Insta360Usb.imu_rows
+    - camera_pkg/camera_pkg/insta360_imu.py::UsbImuSource.reset_usb
+    - navera_tools/field/server.py::Camera360._watch_once
+  match:
+    - 'test_insta360_watchdog\.py::'
+    - 'test_insta360_usb_driver\.py::'
+    - 'test_insta360_imu\.py::test_silent_imu'
+    - 'test_field_stillness\.py::test_silent_imu'
+  evidence:
+    - {level: UT, value: 'fake USB: 3 restarts at 2 s intervals then one USB reset (re-claimed, sync + start re-sent); the server does not reopen within 6 s of the reset, does after; 20 s of 500 Hz rows kept'}
+    - {level: BENCH, against: true, value: 'F14 (2026-10-19): the IMU feed stopped after its first packet on the first starts after power-on; a restart brought it back', ref: 'problems doc F14'}
+  status: verified-UT
+  note: 'the USB reset is not yet tried on the real camera (it is held by navera-field); whether the One R re-enumerates after a reset is unknown (the driver finds it again either way)'
+
+- id: NAV-SAF-28
+  category: SAF
+  title: 'Day track consistency: no confident wrong fix believed alone'
+  text: 'A day fix further from the carried position than 3 x the two sigmas combined (strong fixes included) shall not be believed until a second fix agrees with it (within 6 s, 20 s while lost); a believed fix shall be averaged with the carried position by their sigmas when the carry has a heading (frame attitude or gyro) and the fix is not a re-acquisition — only the independent parts of the two errors (the error every fix shares, speed x the camera delay sigma and height x tan(the mount sigma), neither sets the weight nor shrinks in the stated sigma), the carry being made of the measured fixes, never of its own output; frames smeared by the camera rotation at the exposure or blurred may be refused (frame_max_blur_px, frame_sharp_rel; off by default); the heading search shall run when no heading is known or after local_heading_search_after frames without a match.'
+  code:
+    - day_pkg/day_pkg/fix_consistency.py::FixConsistency
+    - day_pkg/day_pkg/frame_gate.py::FrameGate
+    - day_pkg/day_pkg/nodes/day_subscriber.py::DaySubscriber._check_local_fix
+    - day_pkg/day_pkg/nodes/day_subscriber.py::DaySubscriber._blend_fix
+    - day_pkg/day_pkg/nodes/day_subscriber.py::DaySubscriber._heading_search_kw
+  match:
+    - 'test_fix_consistency\.py::'
+    - 'test_frame_gate\.py::'
+    - 'test_blend_fix\.py::'
+    - 'test_heading_search_auto\.py::'
+  evidence:
+    - {level: BENCH, value: 'replay of the recorded real-camera runs (2026-10-19/20, 101 runs) and missions camp4-7 (29), gyro heading, 3 seeds: wind/shake measured outputs > 50 m 51 → 16, other conditions 57 → 13, missions 6 → 6; within 3σ 99.5–100 % with the 30 m floor', ref: 'VALIDATION_STATUS.md, Day: robustness fixes on recorded data'}
+    - {level: BENCH, value: 'injected 100–650 m wrong matches (100–228 inliers): believed 16 → 3 of 579 (flights), 20 → 9 of 548 (missions); fewer right fixes refused', ref: 'VALIDATION_STATUS.md, Day: robustness fixes on recorded data'}
+    - {level: PUB, value: 'heading search on UAV-VisLoc flight 04 (Esri map): heading 30–180° wrong or unknown 0/20 → 17–19/20 located, ~2.4 s per failed frame', ref: 'VALIDATION_STATUS.md, Day: robustness fixes on recorded data'}
+    - {level: SIM, value: 'F41 (2026-10-22): Isaac Sim copter flights replayed offline through the day node: with the carry fed its own output and the common error averaged, outputs lagged up to 100 m (pd_nomc_base 99 wrong, 43 % beyond 3σ); carry from the measured fix + independent parts: 0 wrong, 0–1 % beyond 3σ in 6 runs', ref: 'VALIDATION_STATUS.md, Isaac Sim closed loop: the overconfident copter sigma'}
+    - {level: BENCH, against: true, value: 'F41: with the carry made of measured fixes (as the node now does) the bench gain shrinks: wind measured outputs > 50 m 51 → 26 (was → 16), other conditions 57 → 29 (was → 13); in Isaac blending costs ~1.5 m median against none', ref: 'VALIDATION_STATUS.md, Isaac Sim closed loop: the overconfident copter sigma'}
+    - {level: BENCH, against: true, value: 'rate gate (6 px) on the shake runs: wrong 16 → 9 but right fixes refused 15 → 185 of 540 — left off; two wrong matches in a row at the same place are still believed (D17 partly open)', ref: 'VALIDATION_STATUS.md, Day: robustness fixes on recorded data'}
+  status: verified-BENCH
+  note: 'offline replays only; the bench shook the scene, not the camera (no gyro at the exposure); repeat on a real vehicle (F20)'
 
 - id: NAV-SAF-30
   category: SAF
@@ -1044,7 +1109,7 @@ requirements:
   evidence:
     - {level: SIM, value: 'ArduCopter 4.5.7 SITL: 3D fix at the NAVERA position, fix lost after NAVERA no fix', ref: 'ARDUPILOT_INTEGRATION.md §3'}
   status: verified-SIM
-  note: 'no real autopilot connected; PX4 ignores GPS_INPUT (D7)'
+  note: 'no real autopilot connected; PX4 ignores GPS_INPUT (D7): it gets HIL_GPS (NAV-IF-11)'
 
 - id: NAV-IF-02
   category: IF
@@ -1145,6 +1210,24 @@ requirements:
   status: verified-SIM
   note: 'flying on NAVERA as the autopilot''s GPS 2 (GPS_AUTO_SWITCH) is not verified'
 
+- id: NAV-IF-11
+  category: IF
+  title: 'PX4 output: MAVLink HIL_GPS'
+  text: 'To a PX4 autopilot (heartbeat MAV_AUTOPILOT_PX4) NAVERA shall send its output as MAVLink HIL_GPS from the autopilot''s own system id, chosen automatically (navera-discover NAVERA_MAVLINK_MESSAGE=hil_gps; the output node on a PX4 heartbeat): fix type 3 with the stated eph for a position, 1 for no fix; for a non-GNSS position 0 satellites, the last GNSS altitude held with epv unknown (never a vision height), velocity 0 with vel / cog unknown when not known; navera-discover shall report the PX4 parameters that break it (MAV_USEHILGPS, EKF2_GPS_CTRL, EKF2_HGT_REF, EKF2_GPS_CHECK, EKF2_GPS_V_GATE, SYS_HAS_GPS; with forwarding COM_POS_FS_EPH, EKF2_NOAID_NOISE).'
+  code:
+    - navera_output/navera_output/mavlink_out.py::hil_gps_fields
+    - navera_output/navera_output/nodes/vehicle_output_node.py::message_for_autopilot
+    - navera_common/navera_common/discovery.py::px4_param_checks
+    - navera_common/navera_common/discovery.py::px4_param_int
+  match:
+    - 'test_output\.py::test_(hil_gps|message_for_autopilot)'
+    - 'test_discovery\.py::test_px4'
+    - 'sitl_px4\.py'
+  evidence:
+    - {level: SIM, value: '2026-10-22 PX4 v1.15.4 SITL (SIH quad, no simulated GPS, replayed real vision errors): AUTO mission done on HIL_GPS, EKF error on the GPS-denied legs median 14.8 m / p90 50 m; NAVERA silent -> PX4 failsafe in ~5 s; output restarted -> mission resumed; MAV_USEHILGPS 0 -> no position, no arming', ref: 'PX4_INTEGRATION.md §4'}
+  status: verified-SIM
+  note: 'PX4 SITL only (v1.15.4, multicopter, no wind); landing on vision alone failed in 2 of 3 completed runs (86-109 m from home); no PX4 vehicle'
+
 - id: NAV-IF-05
   category: IF
   title: 'Vehicle link (autopilot → NAVERA)'
@@ -1184,6 +1267,40 @@ requirements:
     - {level: UT, value: 'stage check: /health answers 200 on the staged bridge', ref: 'docs/certification/DEPLOYMENT_VALIDATION.md'}
   status: verified-UT
 
+- id: NAV-FUN-26
+  category: FUN
+  title: 'Camera mount calibration bound to the camera settings'
+  text: 'A learned or stored day-camera mount (boresight) calibration shall be dropped, and the stored copy overwritten, when the frames carry a different mount_id (live_camera: mount roll/pitch/yaw, lens calibration file content, crop) than the one it was learned with; a calibration without a mount_id is kept.'
+  code:
+    - navera_common/navera_common/camera_model.py::mount_identity
+    - day_pkg/day_pkg/mount_cal.py::stale_reason
+    - day_pkg/day_pkg/mount_cal.py::MountCalibration.reset
+    - day_pkg/day_pkg/nodes/day_subscriber.py::DaySubscriber._check_mount_id
+  match:
+    - 'test_mount_identity\.py::'
+    - 'test_mount_id_and_camera_delay\.py::test_(stale_reason|a_stored|a_changed|a_mount_changed|a_calibration_without)'
+  evidence:
+    - {level: UT, value: 'mount angles, lens file content, crop each change the id; a changed mount drops the stored calibration (sigma back to the 2 deg prior) and it is not reloaded by the next flight'}
+  status: verified-UT
+  note: 'F33 open item 4'
+
+- id: NAV-FUN-27
+  category: FUN
+  title: 'Camera mount learned only from what the GPS checks can separate'
+  text: 'A GPS-check match shall be a day-camera mount sample only while the camera delay is known (set by the camera or estimated and applied) and the frame dating error (ground speed x the delay sigma) is at most mount_cal_max_dating_m; an in-flight mount fit shall be used or persisted only once its samples span mount_cal_min_heading_span_deg of frame headings; without one, the mount prior sigma (mount_sigma_deg) stays in the stated accuracy.'
+  code:
+    - day_pkg/day_pkg/nodes/day_subscriber.py::DaySubscriber._mount_sample_refused
+    - day_pkg/day_pkg/mount_cal.py::heading_span_deg
+    - day_pkg/day_pkg/mount_cal.py::MountCalibration._enough
+  match:
+    - 'test_mount_place_fix\.py::test_no_mount_sample'
+    - 'test_mount_cal\.py::test_(heading_span|a_climb_on_one_heading)'
+  evidence:
+    - {level: UT, value: 'no sample with the delay unknown or 3 m dating error, a sample at 1 m; a 40-check climb on one heading not learned, a persisted prior kept, a circuit learned'}
+    - {level: SIM, value: 'F41 offline replay of Isaac runs: the learned mount (delay / one-heading map shift) made pd_h600 16.3 → 10.0 m median without it, pd_plane30 14.2 → 9.2 m (no blend)', ref: 'VALIDATION_STATUS.md, Isaac Sim closed loop: the overconfident copter sigma'}
+  status: verified-UT
+  note: 'F41; a copter whose delay is never learned (samples too slow / turning) keeps the 2 deg prior: fixes stated h x tan(2 deg) more'
+
 # ───────────────────────────── Timing ─────────────────────────────
 - id: NAV-TIM-01
   category: TIM
@@ -1215,6 +1332,26 @@ requirements:
     - {level: BENCH, value: 'Insta360 USB 360 stream 1.71 s delay: uncompensated 39.8 m at 80 m/s, compensated 3.3 m (F9); webcam 0.14 s', ref: 'problems doc F9'}
   status: verified-BENCH
 
+- id: NAV-TIM-04
+  category: TIM
+  title: 'Attitude at the exposure with an in-flight camera delay'
+  text: 'A frame shall be straightened with the attitude at the instant the day node dates it (arrival minus the set delay minus the in-flight correction, published on /day/camera_delay and applied by live_camera), never twice the set delay; a staged (not yet stable) delay estimate shall be applied only while ground speed x its sigma is at most latency_partial_max_error_m (10 m).'
+  code:
+    - navera_common/navera_common/latency_cal.py::delay_message
+    - navera_common/navera_common/latency_cal.py::attitude_shift_s
+    - navera_common/navera_common/latency_cal.py::LatencyCalibrator._apply_posterior
+    - camera_pkg/camera_pkg/nodes/live_camera.py::LiveCamera._on_delay
+    - day_pkg/day_pkg/nodes/day_subscriber.py::DaySubscriber._publish_camera_delay
+  match:
+    - 'test_latency_cal\.py::test_(the_staged_delay_is_not_applied_when_speed_times_its_sigma_is_too_large|a_stable_delay_is_applied_whatever_the_speed|a_contradicted_stored_delay_is_not_kept_when_the_staged_one_is_capped|the_camera_takes_the_attitude_at_the_day_nodes_dating)'
+    - 'test_mount_id_and_camera_delay\.py::test_the_delay_estimate_is_published_for_the_camera_when_it_changes'
+    - 'test_live_camera\.py::<script>'
+  evidence:
+    - {level: UT, value: 'plane 30 m/s staged 1.11 +- 0.38 s (11 m) not applied, copter 10 m/s applied; live_camera with a 1 s delay message straightens with the attitude of 1 s before the stamp, stamp unchanged'}
+    - {level: SIM, value: 'Isaac Sim plane 30 m/s, delay learned in flight only: wrong fixes 6 -> 0, matched 83 -> 98 %, 13 m median at the stated time (hand-set delay 9 m)', ref: 'VALIDATION_STATUS.md, F35b'}
+  status: verified-SIM
+  note: 'Isaac Sim closed-loop result in VALIDATION_STATUS.md (F35b); not run with a real camera on a plane'
+
 - id: NAV-TIM-03
   category: TIM
   title: 'Output latency to the autopilot'
@@ -1232,19 +1369,57 @@ requirements:
 - id: NAV-DEP-01
   category: DEP
   title: 'Automatic start and restart'
-  text: 'Every NAVERA unit shall start at boot without a login, restart 10 s after any exit (Restart=always, StartLimitIntervalSec=0) because ros2 launch exits 0 when a node dies, and a driver without its device shall idle instead of restart-looping.'
+  text: 'Every NAVERA unit shall start at boot without a login and restart after any exit, forever (Restart=always, StartLimitIntervalSec=0) because ros2 launch exits 0 when a node dies: the critical units (estimator, output, vehicle link, GPS, IMU, RTC) and the pipelines (day, night, celestial, Insta360) after 1 s (RestartSec=1), the others after 10 s; a unit failing at every start shall back off (past 5 starts in 60 s: 2, 4, 8... s, at most 30 s) instead of restart-looping, and a driver without its device shall idle.'
   code:
     - deploy/systemd/navera-estimator.service::Restart
     - deploy/systemd/navera_boot_lib.sh::navera_env
+    - deploy/systemd/navera_boot_lib.sh::navera_restart_backoff
+    - deploy/verify_units.py::restart_findings
     - deploy/systemd/navera_boot_imu.sh
   tests:
     - deploy/verify_units.py
     - deploy/stage_check.sh
+  match:
+    - 'test_fast_restart\.py::'
   evidence:
+    - {level: UT, value: 'B23 2026-10-22: verify_units fast-restart check PASS on all 10 critical / pipeline units; a 10 s RestartSec, a start limit or a library without the backoff FAIL; the 3rd start within the window waits (free 2, cap 1 s in the test), another workspace counts apart, a broken record never blocks', ref: 'deploy/test/test_fast_restart.py'}
     - {level: HW, value: 'reboot validation 2026-07-15 (6 units, previous restart mechanism)', ref: 'CLAUDE.md §8'}
     - {level: UT, value: 'staged user units 2026-10-21: killed estimator and GPS nodes restarted by systemd, check_boot PASS again', ref: 'docs/certification/DEPLOYMENT_VALIDATION.md'}
   status: partial
   note: 'DEP-14 — reboot of a deployed unit with today''s mechanism still to do (commands in DEPLOYMENT_VALIDATION.md)'
+
+- id: NAV-DEP-07
+  category: DEP
+  title: 'A crash in flight does not end the mission'
+  text: 'With GPS lost (for the whole flight if need be), the crash of any one NAVERA service shall not leave the autopilot without a position longer than its failsafe delay: the critical units restart within 1 s; the day pipeline respawns a crashed day node or camera alone (the other goes on, the camera re-sends as soon as the new localizer is ready); the output bridges its last forwarded vision position across a silent or initializing arbiter (bounded by bridge_max_s, accuracy growing) and, restarted itself, resumes that bridge from its persisted last position without holding the next positions back; a restarted estimator restores its GPS-gate state (a refused GPS stays refused) and never a position.'
+  code:
+    - navera_output/navera_output/policy.py::decide
+    - navera_output/navera_output/nodes/vehicle_output_node.py::held_from_state
+    - navera_output/navera_output/nodes/vehicle_output_node.py::VehicleOutputNode._restore_held
+    - navera_estimator/navera_estimator/nodes/estimator_node.py::EstimatorNode._restore_gps_state
+    - camera_pkg/camera_pkg/nodes/live_camera.py::LiveCamera._on_ready
+    - simulation_web/simulation_web/launch/day_pipeline.launch.py
+    - navera_tools/isaac/hil_flight.sh
+    - day_pkg/day_pkg/nodes/day_subscriber.py::DaySubscriber._restore_track
+    - day_pkg/day_pkg/carry_state.py::restore_track
+    - day_pkg/day_pkg/nodes/day_entry.py::EarlyBridge
+  match:
+    - 'test_bridge_flow\.py::test_(a_restarted|no_restore|the_held_position)'
+    - 'test_day_track_restart\.py::test_a_(restarted|stale)'
+    - 'test_day_early_bridge\.py::'
+    - 'test_output\.py::test_the_soft_no_fix'
+    - 'test_estimator_rules\.py::test_(a_restart|an_old_gps_gate)'
+    - 'test_localizer_restart\.py::'
+    - 'test_day_pipeline_respawn\.py::'
+    - 'test_hil\.py::test_restart_gap'
+  evidence:
+    - {level: HW, against: true, value: 'B23 2026-10-22 box in the loop before the fix (RestartSec=10, arbiter silence = no fix, whole-pipeline restart): killed estimator -> /navera/position back after 15.4 s, autopilot GPS lost after 2.3 s, EKF failsafe LAND; killed day camera -> 25.5 s, LAND', ref: '~/.navera_sim/isaac/hil/hil_base1, hil_endur30'}
+    - {level: UT, value: 'arbiter silent / initializing bridged; held position persisted (1/s), restored on a new monotonic clock only within bridge_max_s, cleared by a GPS fix; refused GPS still refused after a restart, nothing published; the camera re-sends on a new ready; the day node and camera respawn alone'}
+    - {level: SIM, value: 'B23 box in the loop 2026-10-23 (real Jetson, SITL copter, GPS denied): estimator killed twice -> autopilot gap 2.6 / 2.5 s, no failsafe; output killed -> gap 4.7 s, no failsafe; day camera killed -> gap 2.6 s; whole day pipeline unit -> positions after 12.5 s, bridged 10 s, no failsafe', ref: 'DEPLOYMENT_VALIDATION.md §4'}
+    - {level: SIM, against: true, value: 'B23 2026-10-23: day_subscriber killed alone -> ready 7.2 s after but no match in its 600 m restart search circle; bridge ended at 10 s, EKF failsafe LAND (hil_resil4)', ref: 'DEPLOYMENT_VALIDATION.md §4'}
+    - {level: SIM, value: '2026-10-23 Isaac Sim 2-hour GPS-denied copter, day_subscriber SIGKILLed at 45 min and respawned: persisted carry published again after 7.0 s (early bridge), track restored at 17.6 s, output never no fix, no failsafe, mission completed (fin_endur_2h, 3b95ab5); before the early bridge: 21 s silent, EKF failsafe (fin_endur_2h_try1)', ref: 'VALIDATION_STATUS.md, 2 hours without GPS'}
+  status: partial
+  note: 'a restarted day node restores its track (state day_track: measured points, carried velocity, headings, at their own times; sigma grown by the time elapsed) since 2026-10-23 (unit-tested; Isaac endurance kill: see VALIDATION_STATUS.md); not on a real vehicle'
 
 - id: NAV-DEP-02
   category: DEP

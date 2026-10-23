@@ -6,6 +6,9 @@ vehicle_output:
     nmea_baud: 9600
     # MAVLink GPS_INPUT ("" = disabled), e.g. "serial:/dev/ttyTHS2:921600" or "udpout:127.0.0.1:14550"
     mavlink_url: ""
+    # MAVLink position message: gps_input (ArduPilot) | hil_gps (PX4, MAV_USEHILGPS = 1) |
+    # auto (HIL_GPS once the autopilot's heartbeat says PX4, else GPS_INPUT)
+    mavlink_message: "auto"
     mavlink_system_id: 1
     mavlink_component_id: 191
     # DEGRADED positions (vision / celestial) are withheld unless enabled here,

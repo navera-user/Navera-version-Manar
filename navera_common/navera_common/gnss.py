@@ -305,6 +305,35 @@ def fix2_fix(m) -> Fix:
                details=details)
 
 
+# ── NMEA time (pynmea2 messages; validity rules shared by gps_node and the field tools) ──
+def rmc_utc_epoch(msg):
+    """UTC epoch seconds of a valid RMC sentence (status A, date and time present), else None."""
+    if getattr(msg, "status", None) != "A":
+        return None
+    d, t = getattr(msg, "datestamp", None), getattr(msg, "timestamp", None)
+    if not isinstance(d, datetime.date) or not isinstance(t, datetime.time):
+        return None
+    return datetime.datetime.combine(d, t.replace(tzinfo=None), tzinfo=datetime.timezone.utc).timestamp()
+
+
+def zda_utc_epoch(msg):
+    """UTC epoch seconds of a ZDA sentence with a time and a date from 2020 on, else None. ZDA has no
+    validity flag: the caller accepts it only next to a valid fix.
+    """
+    t = getattr(msg, "timestamp", None)
+    try:
+        y, mo, d = int(msg.year), int(msg.month), int(msg.day)
+    except (TypeError, ValueError, AttributeError):
+        return None
+    if not isinstance(t, datetime.time) or y < 2020:
+        return None
+    try:
+        day = datetime.date(y, mo, d)
+    except ValueError:
+        return None
+    return datetime.datetime.combine(day, t.replace(tzinfo=None), tzinfo=datetime.timezone.utc).timestamp()
+
+
 # ── where the GPS bytes come from ────────────────────────────────────────
 def parse_stream_url(url: str) -> Tuple[str, str, int]:
     """("serial", device, baud) | ("tcp", host, port) | ("udp", bind address, port).

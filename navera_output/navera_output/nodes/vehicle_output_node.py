@@ -6,7 +6,8 @@ an autopilot understands as a GPS:
 
   * NMEA 0183 (GGA + RMC) on a serial port — any system that takes a GPS
     receiver (drones, boats, ground robots);
-  * MAVLink GPS_INPUT — PX4 / ArduPilot with GPS_TYPE = MAV;
+  * MAVLink GPS_INPUT — ArduPilot with GPS_TYPE = MAV — or HIL_GPS — PX4 with
+    MAV_USEHILGPS = 1 (PX4 ignores GPS_INPUT; mavlink_out.hil_gps_fields);
   * ROS: sensor_msgs/NavSatFix on ros_fix_topic (default /navera/fix), for vehicles
     whose software runs on ROS — the same decision, accuracy as the covariance.
 
@@ -21,7 +22,12 @@ Parameters:
     nmea_baud            (9600)
     mavlink_url          ("")    e.g. "serial:/dev/ttyTHS2:921600" (navera_output.mavlink_url) or
                                  "udpout:127.0.0.1:14550"; "" = disabled
-    mavlink_system_id    (1)     MAVLink ids of this box (companion computer)
+    mavlink_message      ("auto") gps_input (ArduPilot) | hil_gps (PX4) | auto: hil_gps once the
+                                 autopilot's heartbeat says PX4 (MAV_AUTOPILOT_PX4 = 12, heard on
+                                 this node's own link or in navera-vehicle-link's status), else
+                                 gps_input
+    mavlink_system_id    (1)     MAVLink ids of this box (companion computer); PX4 reads HIL_GPS
+                                 only from its own system id (NAVERA_MAVLINK_SYSID)
     mavlink_component_id (191)
     ros_fix_topic        ("/navera/fix")  "" = disabled
     forward_degraded     (False) send DEGRADED positions as "estimated"
@@ -35,6 +41,7 @@ Parameters:
                                  (the last one carried along its velocity, sent about once a
                                  second with an accuracy growing with the gap), then "no fix".
                                  0 = never. Only with forward_degraded; never for a GPS fix
+                                 (a vision FIX is bridged like an estimate)
     bridge_after_s       (2.5)   the bridge starts when nothing was sent for this long
     bridge_period_s      (1.0)   and repeats at this period
     bridge_accel_mps2    (0.5)   unseen acceleration of the vehicle in the accuracy growth
@@ -60,6 +67,13 @@ Parameters:
                                  which then take height from the barometer; 2 = the
                                  literal label, which they ignore (mavlink_out)
 
+Restart (B23): the last forwarded vision position (and the velocity sent with it) is kept in
+the NAVERA state directory (navera_common.state_store "output_held", at most once a second). A
+restarted output (crash, watchdog) resumes the bridge from it at once when it is younger than
+bridge_max_s — the autopilot is given the carried position with its grown accuracy, not "no
+fix" — and the next vision positions are not held back for their velocity (policy.reacquire):
+the autopilot never timed its position out. A held position older than the bridge is never reused.
+
 Each position is sent ONCE, as soon as it arrives (a 1 Hz vision fix is not repeated
 5 times with fresh timestamps: an autopilot filter would read the repeats as
 "stopped, then jumped"). "No fix" is sent at rate_hz, so the autopilot always
@@ -74,8 +88,10 @@ import math
 import sys
 import time
 from datetime import datetime, timedelta, timezone
+from typing import Optional
 
 import rclpy
+from navera_common import state_store
 from navera_common.lifecycle import die_with_parent
 from navera_common.params import declare_float
 from navera_common.track import TrackVelocity
@@ -89,8 +105,50 @@ from rclpy.node import Node
 
 from navera_output import mavlink_out, mavlink_url, nmea
 from navera_output.map_guard import MapGuard
-from navera_output.policy import (KIND_ESTIMATED, KIND_FIX, KIND_NONE, Config, bridge, decide,
-                                  for_nmea, hold, reacquire)
+from navera_output.policy import (KIND_ESTIMATED, KIND_FIX, KIND_NONE, Config, Held, bridge, bridgeable,
+                                  decide, for_nmea, hold, reacquire)
+
+
+MAVLINK_MESSAGES = ("auto", "gps_input", "hil_gps")
+HELD_STATE = "output_held"        # state_store name of the last forwarded vision position
+HELD_SAVE_PERIOD_S = 1.0
+
+
+def held_to_state(held: Held, t_wall: float) -> dict:
+    """The held position as a state_store record; t_wall = the wall-clock instant of held.t."""
+    return dict(lat=held.lat, lon=held.lon, sigma_h_m=held.sigma_h_m, t_wall=t_wall,
+                ground_vel=list(held.ground_vel) if held.ground_vel is not None else None,
+                sent_vel=list(held.sent_vel) if held.sent_vel is not None else None)
+
+
+def held_from_state(d, now_mono: float, now_wall: float, max_age_s: float) -> Optional[Held]:
+    """The Held of a state_store record carried onto this process's monotonic clock, or None when
+    there is none, it is malformed, not finite, from the future or older than max_age_s.
+    """
+    if not isinstance(d, dict) or d.get("lat") is None:
+        return None
+    try:
+        lat, lon, sig, t_wall = (float(d["lat"]), float(d["lon"]), float(d["sigma_h_m"]),
+                                 float(d["t_wall"]))
+        vecs = []
+        for k in ("ground_vel", "sent_vel"):
+            v = d.get(k)
+            vecs.append(tuple(float(x) for x in v) if v is not None else None)
+    except (KeyError, TypeError, ValueError):
+        return None
+    age = now_wall - t_wall
+    if not (all(math.isfinite(x) for x in (lat, lon, sig, age)) and sig > 0 and 0.0 <= age <= max_age_s):
+        return None
+    if any(v is not None and (len(v) != 3 or not all(math.isfinite(x) for x in v)) for v in vecs):
+        return None
+    return Held(lat, lon, sig, now_mono - age, vecs[0], vecs[1])
+
+
+def message_for_autopilot(autopilot) -> str:
+    """The position message an autopilot takes: HIL_GPS for PX4 (MAV_AUTOPILOT_PX4 = 12), which has no
+    GPS_INPUT handler; GPS_INPUT for ArduPilot and any other.
+    """
+    return "hil_gps" if autopilot == 12 else "gps_input"
 
 
 class VehicleOutputNode(Node):
@@ -100,6 +158,7 @@ class VehicleOutputNode(Node):
         self.declare_parameter("nmea_port", "")
         self.declare_parameter("nmea_baud", 9600)
         self.declare_parameter("mavlink_url", "")
+        self.declare_parameter("mavlink_message", "auto")
         self.declare_parameter("mavlink_system_id", 1)
         self.declare_parameter("mavlink_component_id", 191)
         self.declare_parameter("forward_degraded", False)
@@ -163,6 +222,11 @@ class VehicleOutputNode(Node):
             self._serial = serial.Serial(port, int(self.get_parameter("nmea_baud").value),
                                          timeout=1, write_timeout=1)
         self._mav = None
+        self._msg_mode = str(self.get_parameter("mavlink_message").value).strip().lower() or "auto"
+        if self._msg_mode not in MAVLINK_MESSAGES:
+            raise ValueError(f"mavlink_message must be one of {', '.join(MAVLINK_MESSAGES)} (got {self._msg_mode!r})")
+        self._msg = "gps_input" if self._msg_mode == "auto" else self._msg_mode
+        self._held_alt_msl = math.nan     # the last GNSS altitude sent (HIL_GPS needs one)
         url = str(self.get_parameter("mavlink_url").value)
         if url:
             if url.startswith("udpout:127.0.0.1:") or url.startswith("udpout:localhost:"):
@@ -172,6 +236,8 @@ class VehicleOutputNode(Node):
                 self.create_timer(5.0, self._check_relay)
             self._mav = mavlink_url.connect(url, int(self.get_parameter("mavlink_system_id").value),
                                             int(self.get_parameter("mavlink_component_id").value))
+            if self._msg_mode == "auto":
+                self.create_timer(1.0, self._poll_heartbeat)      # a direct link hears the autopilot
         topic = str(self.get_parameter("ros_fix_topic").value)
         self._pub_fix = self.create_publisher(NavSatFix, topic, 10) if topic else None
         if self._serial is None and self._mav is None and self._pub_fix is None:
@@ -188,6 +254,8 @@ class VehicleOutputNode(Node):
         self._last_tx = None              # monotonic instant of the last position sent
         self._last_pos_tx = None          # same, kept across GPS fixes (policy.reacquire)
         self._bridging = False
+        self._held_saved_at = None        # monotonic instant of the last held position saved
+        self._restore_held()
         self._drift_alarm = float(self.get_parameter("drift_alarm_sigma_m").value)
         self._vel = None                  # (north, east) m/s from the GPS receiver
         self._vel_rx = None
@@ -198,7 +266,8 @@ class VehicleOutputNode(Node):
         self.create_subscription(TwistStamped, "/navera/sensors/gps_vel", self._on_gps_vel, 10)
         self.create_timer(1.0 / rate, self._tick)
         self.get_logger().info(
-            f"vehicle output: nmea={port or 'off'} mavlink={url or 'off'} ros={topic or 'off'} rate={rate:.1f}Hz "
+            f"vehicle output: nmea={port or 'off'} mavlink={url or 'off'}"
+            f"{' (' + self._msg_mode + ')' if url else ''} ros={topic or 'off'} rate={rate:.1f}Hz "
             f"forward_degraded={self.cfg.forward_degraded}")
         self._nmea_degraded = bool(self.get_parameter("nmea_forward_degraded").value)
         if self._serial is not None and self.cfg.forward_degraded:
@@ -211,10 +280,36 @@ class VehicleOutputNode(Node):
 
     def _on_link_status(self, msg) -> None:
         try:
-            if json.loads(msg.data).get("link"):
+            st = json.loads(msg.data)
+            if st.get("link"):
                 self._relay_link_rx = time.monotonic()
+                self._set_autopilot(12 if st.get("autopilot") == "PX4" else None)
         except (ValueError, AttributeError):
             pass
+
+    def _poll_heartbeat(self) -> None:
+        """mavlink_message auto on a direct link: the autopilot's heartbeats say which message it takes."""
+        try:
+            while True:
+                hb = self._mav.recv_match(type="HEARTBEAT", blocking=False)
+                if hb is None:
+                    return
+                if hb.autopilot != 8:                     # not MAV_AUTOPILOT_INVALID (a GCS)
+                    self._set_autopilot(hb.autopilot)
+        except Exception as e:     # a link without input (udpout before the first reply...)
+            self.get_logger().debug(f"heartbeat poll: {e}")
+
+    def _set_autopilot(self, autopilot) -> None:
+        """mavlink_message auto: HIL_GPS for PX4 (MAV_AUTOPILOT_PX4 = 12), GPS_INPUT otherwise."""
+        if self._msg_mode != "auto":
+            return
+        msg = message_for_autopilot(autopilot)
+        if msg != self._msg:
+            self._msg = msg
+            self.get_logger().warn(f"MAVLink output: the autopilot is {'PX4' if msg == 'hil_gps' else 'not PX4'} "
+                                   f"— sending {msg.upper()}"
+                                   + (" (PX4 needs MAV_USEHILGPS = 1 and the EKF2 settings of "
+                                      "docs/PX4_INTEGRATION.md)" if msg == "hil_gps" else ""))
 
     def _check_relay(self) -> None:
         rx = self._relay_link_rx
@@ -282,6 +377,7 @@ class VehicleOutputNode(Node):
             self._sent_pos = self._pos
             self._held = hold(out, now, self._ground_velocity())
             self._bridging = False
+            self._save_held(now)
         if out.kind != KIND_NONE:
             self._last_tx = self._last_pos_tx = now
         self._check_drift(out)
@@ -297,8 +393,13 @@ class VehicleOutputNode(Node):
                 self._serial.write((nmea.gga(nmea_out, t_utc) + nmea.rmc(nmea_out, t_utc, spd, crs))
                                    .encode("ascii"))
             if self._mav is not None:
-                self._mav.mav.gps_input_send(**mavlink_out.gps_input_fields(
-                    out, t_utc, self._fix_type_without_alt))
+                if out.gnss and math.isfinite(out.alt_msl_m):
+                    self._held_alt_msl = out.alt_msl_m
+                if self._msg == "hil_gps":
+                    self._mav.mav.hil_gps_send(**mavlink_out.hil_gps_fields(out, t_utc, self._held_alt_msl))
+                else:
+                    self._mav.mav.gps_input_send(**mavlink_out.gps_input_fields(
+                        out, t_utc, self._fix_type_without_alt))
             if self._pub_fix is not None:
                 self._pub_fix.publish(self._navsatfix(self._ros_output(out)))
         except Exception as e:     # serial unplugged, socket error...
@@ -323,11 +424,15 @@ class VehicleOutputNode(Node):
         or None to wait (a bridge is pending: nothing is sent yet, the autopilot is not told "no fix"
         for a gap that may be bridged).
         """
-        if out.kind == KIND_FIX:
+        if out.kind == KIND_FIX and out.gnss:
+            if self._held is not None:
+                state_store.save(HELD_STATE, {"lat": None})     # a restart must not bridge it either
+                self._held_saved_at = None
             self._held = self._last_tx = None
             self._bridging = False
             return out
-        pending = (out.kind == KIND_ESTIMATED and self._pos is self._sent_pos) or (out.kind == KIND_NONE and out.soft)
+        # a vision FIX (calibrated accuracy) is bridged like an estimate: its gaps are the camera's
+        pending = (bridgeable(out) and self._pos is self._sent_pos) or (out.kind == KIND_NONE and out.soft)
         if not pending or self._held is None or self.cfg.bridge_max_s <= 0 or self._last_tx is None:
             if self._bridging and out.kind == KIND_NONE:
                 self._bridging = False
@@ -347,6 +452,28 @@ class VehicleOutputNode(Node):
                                    f"(at most {self.cfg.bridge_max_s:.0f} s)")
         self._bridging = True
         return b
+
+    def _save_held(self, now) -> None:
+        """Persist the held position (at most once a second) for a restart of this node."""
+        if self._held is None or (self._held_saved_at is not None
+                                  and now - self._held_saved_at < HELD_SAVE_PERIOD_S):
+            return
+        self._held_saved_at = now
+        state_store.save(HELD_STATE, held_to_state(self._held, time.time() - (now - self._held.t)))
+
+    def _restore_held(self) -> None:
+        """Restarted in flight: bridge on from the last position this node gave the autopilot."""
+        if not self.cfg.forward_degraded or self.cfg.bridge_max_s <= 0:
+            return
+        held = held_from_state(state_store.load(HELD_STATE, self.cfg.bridge_max_s + 1.0),
+                               time.monotonic(), time.time(), self.cfg.bridge_max_s)
+        if held is None:
+            return
+        self._held = held
+        self._last_tx = self._last_pos_tx = held.t
+        self.get_logger().warn(f"restart: the last position given to the autopilot "
+                               f"{time.monotonic() - held.t:.1f} s ago (±{held.sigma_h_m:.0f} m) is "
+                               f"bridged on until new positions come (at most {self.cfg.bridge_max_s:.0f} s)")
 
     def _ground_velocity(self):
         """(east, north, sigma) m/s from the positions of the last 20 s, or None."""

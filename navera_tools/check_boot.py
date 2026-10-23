@@ -91,14 +91,30 @@ def unit_props(unit):
     return dict(line.split('=', 1) for line in out.splitlines() if '=' in line)
 
 
-def is_idle(pid):
-    """Return True when the unit's main process is `sleep` (boot wrapper idling by design)."""
+def _argv0(pid):
     try:
         with open(f'/proc/{int(pid)}/cmdline', 'rb') as f:
-            argv0 = f.read().split(b'\0')[0].decode(errors='replace')
+            return os.path.basename(f.read().split(b'\0')[0].decode(errors='replace'))
     except (OSError, ValueError):
-        return False
-    return os.path.basename(argv0) == 'sleep'
+        return None
+
+
+def _children(pid):
+    out = subprocess.run(['ps', '-o', 'pid=', '--ppid', str(int(pid))], capture_output=True, text=True).stdout
+    return [int(k) for k in out.split()]
+
+
+def is_idle(pid):
+    """Return True when the unit's main process idles by design: `sleep` itself (exec sleep
+    infinity), or the boot wrapper's shell waiting in navera_idle_until_discovered (its only
+    children are the `sleep` of its polling loop)."""
+    name = _argv0(pid)
+    if name == 'sleep':
+        return True
+    if name in ('bash', 'sh'):
+        kids = _children(pid)
+        return bool(kids) and all(_argv0(k) == 'sleep' for k in kids)
+    return False
 
 
 def read_env_files():

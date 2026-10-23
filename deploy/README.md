@@ -34,8 +34,8 @@ discovery-based, and the camera ↔ localizer handshake uses latched topics).
 | `navera-pipeline-night` | `navera_boot_pipeline_night.sh` | Thermal camera + STHN night vision (GPU) | Night operation, **instead of** day |
 | `navera-pipeline-cn` | `navera_boot_pipeline_cn.sh` | Celestial pipeline (astrometry.net, CPU) | See §10 — as shipped it replays a bundled sky image |
 | `navera-imu` | `navera_boot_imu.sh` | Box IMU (BNO085, I²C bus 1 @ 0x4A) → `/navera/sensors/imu`; idle when navera-discover found no BNO085 (`NAVERA_BOX_IMU=0`) | `NAVERA_SENSOR_SOURCE=box` and a BNO085 fitted (enabling it elsewhere is harmless) |
-| `navera-insta360` | `navera_boot_insta360.sh` | The Insta360 kit: the One R in USB "Android" mode (one process owns it) → straight-down day view `/navera/sensors/insta360/nadir/image_raw` (stamped at exposure) and attitude `/navera/sensors/insta360/imu` (sensor_msgs/Imu with orientation, 100 Hz), status `/navera/sensors/insta360/status`; exits when the camera is lost (restart 5 s); idle unless `NAVERA_SENSOR_SOURCE` or `NAVERA_CAMERA_INPUT` is `insta360` | The IRIS kit (Insta360 as camera and IMU; enabling it elsewhere is harmless) |
-| `navera-rtc` | `navera_boot_rtc.sh` | Real-time clock (DS3231, I²C bus 1 @ 0x68) → `/navera/sensors/rtc_time`; idle when no DS3231 was found (`NAVERA_BOX_RTC=0`) | A DS3231 is fitted (the reference box has one) |
+| `navera-insta360` | `navera_boot_insta360.sh` | The Insta360 kit: the One R in USB "Android" mode (one process owns it) → straight-down day view `/navera/sensors/insta360/nadir/image_raw` (stamped at exposure) and attitude `/navera/sensors/insta360/imu` (sensor_msgs/Imu with orientation, 100 Hz), status `/navera/sensors/insta360/status`; exits when the camera is lost (restart 1 s); idle unless `NAVERA_SENSOR_SOURCE` or `NAVERA_CAMERA_INPUT` is `insta360` | The IRIS kit (Insta360 as camera and IMU; enabling it elsewhere is harmless) |
+| `navera-rtc` | `navera_boot_rtc.sh` | Real-time clock (DS3231, I²C bus 1 @ 0x68) → `/navera/sensors/rtc_time`; idle when no DS3231 was found (`NAVERA_BOX_RTC=0`) | Optional: a DS3231 is fitted. Star time comes first from the GPS anchor and the autopilot (§10); the DS3231 helps only after a reboot with the GPS denied and no autopilot |
 | `navera-vehicle-link` | `navera_boot_vehicle_link.sh` | Reads the autopilot over MAVLink → `/navera/vehicle/*` (attitude, rangefinder, barometric height, 2nd GPS, armed state), and relays NAVERA's MAVLink output to it (local UDP 14650); idle when no autopilot is found or configured | `NAVERA_SENSOR_SOURCE=vehicle`, `NAVERA_GPS_SOURCE=vehicle`, or a MAVLink output through its relay; also recommended with any MAVLink autopilot, so that `/mission` knows when the vehicle is armed |
 | `navera-output` | `navera_boot_output.sh` | Output to the vehicle: NMEA, MAVLink `GPS_INPUT`, ROS `NavSatFix` on `/navera/fix` | NAVERA feeds the autopilot or a ROS consumer |
 | `navera-web` | `navera_boot_web.sh` | Web bridge on port 8181: operator view `/operator`, dashboard `/`, mission preparation `/mission` | Always |
@@ -64,7 +64,8 @@ At power-on systemd starts each enabled unit as user `navera`. Each wrapper:
 4. deletes ROS log folders (`~/.ros/log`) older than 7 days (a restart loop would otherwise fill the disk);
 5. (pipelines) checks its data exists: day `NAVERA_MBTILES` and `DAY_DATASET_DIR`; night
    `NAVERA_MBTILES`, `NAVERA_STHN_DIR`, `NAVERA_STHN_WEIGHTS`. If the data disk is not
-   mounted yet, the wrapper exits and systemd retries 10 s later: a pipeline never runs half-blind;
+   mounted yet, the wrapper exits and systemd retries (after 1 s, backing off to 30 s while it
+   keeps failing): a pipeline never runs half-blind;
 6. `exec`s its `ros2 launch` / `ros2 run` command, which becomes the unit's main process
    (clean stop and restart).
 
@@ -85,9 +86,18 @@ last boot's choices never look written.
 would never restart anything. Instead:
 
 - every node of the boot launch files has `on_exit=Shutdown`: if **one** node dies, the
-  whole launch stops (a camera is never left waiting for a dead localizer);
-- every unit has `Restart=always`, `RestartSec=10` and `StartLimitIntervalSec=0`: systemd
-  restarts it 10 s after any exit, forever. A deliberate `systemctl stop` is not undone;
+  whole launch stops and systemd restarts the unit — except the day pipeline (below);
+- the critical units (estimator, output, vehicle link, GPS, IMU, RTC) and the pipelines
+  (day, night, celestial, Insta360) have `Restart=always`, `RestartSec=1` and
+  `StartLimitIntervalSec=0`: systemd restarts them **1 s** after any exit, forever (the web
+  page and hotplug: 10 s). A deliberate `systemctl stop` is not undone. A unit that fails at
+  every start (data disk missing, bad setting) does not spin: past 5 starts in 60 s its wrapper
+  waits 2, 4, 8… s, at most 30 s, before starting (`navera_restart_backoff`, journal line
+  "restart loop: …");
+- the **day pipeline** restarts a crashed node alone: `day_subscriber` and the live camera are
+  respawned by the launch (after 1 s / 2 s) while the other goes on — the camera keeps its
+  stream open and sends the next frame as soon as the new day node says it is ready, the day
+  node dead-reckons through a camera restart (B23: a whole-pipeline restart took 25 s in flight);
 - nodes that lose their hardware exit on purpose so this cycle retries: `gps_node` when the
   serial port is missing or disconnects, `vehicle_output` when an output cannot be opened or
   written, the live camera when the camera cannot be opened or stops sending frames.
@@ -110,6 +120,22 @@ The journal is capped at 1 GB with 2 GB kept free (`/etc/systemd/journald.conf.d
 
 A restart in flight does not start from scratch: the ground altitude and day vision's last
 position are kept on disk (§9).
+
+**A crash in flight without GPS (B23).** The autopilot takes NAVERA's output as its GPS; with
+no position for ~7 s ArduPilot's EKF failsafe lands (PX4: ~5 s). So no single crash may silence
+it that long:
+
+| what crashes | what the autopilot is given meanwhile | back after (Jetson Orin Nano) |
+|---|---|---|
+| `navera-estimator` | the output bridges its last vision position (carried along the velocity it sent, accuracy growing, at most 10 s) | systemd restart, positions after ~5 s |
+| `navera-output` | nothing until it is back; it then resumes the bridge from its last position (state `output_held`) and its next vision positions are not held back | systemd restart: the autopilot went 4.7 s without a position |
+| `day_subscriber` | the output's bridge, then the restarted process's own carried position (persisted track `day_track`, published before its heavy imports, accuracy grown by the time elapsed), then its first match (searched around that carry) | respawned alone; Isaac Sim endurance (PC under load): carried position again 7 s after the kill, node ready after ~18 s, no failsafe (§4 of DEPLOYMENT_VALIDATION.md) |
+| the day camera | the day node's own dead reckoning (from 2.5 s), forwarded | respawned alone, ~2 s |
+| the whole day pipeline | the output's bridge (10 s), then "no fix" until the first match | systemd restart, day positions after ~12.5 s |
+
+The figures measured on the real box with `navera_tools/isaac/hil_flight.sh` are in
+`docs/certification/DEPLOYMENT_VALIDATION.md`. A restarted estimator never publishes a
+saved position: only what its GPS gate knew (a GPS refused for spoofing stays refused).
 
 > **Validation status.** The split into services was validated by a reboot on the Jetson
 > on 2026-07-15 (services up, bridge answering HTTP 200 on `:8181`, nodes running). That
@@ -365,7 +391,7 @@ sudo install -d -o navera -g navera /data/navera /data/navera/areas
 ```
 
 With `nofail` a missing disk does not stop the boot: the day / night pipelines then find
-their files missing, log `… does not exist (data disk not mounted?)` and retry every 10 s
+their files missing, log `… does not exist (data disk not mounted?)` and retry (1 s, backing off to every 30 s)
 (§2); `check_box.py` reports FAIL for each missing file.
 
 **What goes on it** (paths of `navera.env.example`; copy the files delivered by IRIS
@@ -543,10 +569,12 @@ connection and every 30 s, stopping at once if it becomes 14 (`NAVERA_GPS_MONITO
 position over MAVLink, as the autopilot's companion (its system id), on the same link,
 relayed by `navera-vehicle-link` (local UDP 14650), no mavlink-router needed
 (`NAVERA_MAVLINK_URL=off` to never send it). **A PX4 autopilot is recognised** (heartbeat
-`MAV_AUTOPILOT_PX4`): PX4 ignores `GPS_INPUT`, so with `NAVERA_MAVLINK_URL` empty the output
-is left off and the report says "CHECK output: the autopilot is PX4 …" — nothing to set by
-hand; do not write an address there on a PX4 vehicle
-([PX4_INTEGRATION.md](../docs/PX4_INTEGRATION.md)); `NAVERA_MAVLINK_SYSID` is
+`MAV_AUTOPILOT_PX4`): PX4 has no `GPS_INPUT` handler, so NAVERA sends it `HIL_GPS` instead
+(`NAVERA_MAVLINK_MESSAGE=hil_gps`, written by discovery; the output also switches by itself on a
+PX4 heartbeat), through the same relay; discovery reads PX4's `MAV_USEHILGPS`, `EKF2_GPS_CTRL`,
+`EKF2_HGT_REF`, `EKF2_GPS_CHECK` and `SYS_HAS_GPS` and reports a CHECK line for each value that
+would make PX4 ignore or misuse it — set them on the autopilot as in
+[PX4_INTEGRATION.md](../docs/PX4_INTEGRATION.md) §2 (PX4 SITL only so far); `NAVERA_MAVLINK_SYSID` is
 set to the autopilot's system id, used by both MAVLink nodes; a ROS vehicle →
 `/navera/fix`. A ROS vehicle is used only when it is on NAVERA's ROS domain with
 `ROS_LOCALHOST_ONLY` not 1, or with `ROS_DOMAIN_ID=auto` (NAVERA then joins it, §6);
@@ -746,7 +774,7 @@ on `/navera/fix` (`NAVERA_ROS_FIX_TOPIC` sets another name; set but empty turns 
 | Setting | Output |
 |---|---|
 | `NAVERA_NMEA_PORT`, `NAVERA_NMEA_BAUD` | NMEA 0183 GGA + RMC on a serial port |
-| `NAVERA_MAVLINK_URL` | MAVLink `GPS_INPUT` (ArduPilot; **PX4 ignores this message**), e.g. `serial:/dev/ttyTHS2:921600`; `udpout:127.0.0.1:14650` = through `navera-vehicle-link`'s relay on the one autopilot link; `off` = never |
+| `NAVERA_MAVLINK_URL` | MAVLink `GPS_INPUT` (ArduPilot) or `HIL_GPS` (PX4, `NAVERA_MAVLINK_MESSAGE`), e.g. `serial:/dev/ttyTHS2:921600`; `udpout:127.0.0.1:14650` = through `navera-vehicle-link`'s relay on the one autopilot link; `off` = never |
 | `NAVERA_ROS_FIX_TOPIC` | ROS NavSatFix (default `/navera/fix`, §6) |
 
 **Vision positions are DEGRADED, and DEGRADED positions are not sent to the autopilot by
@@ -873,12 +901,13 @@ reported: inside them day vision has nothing to match.
 **Terrain warning.** At planning, the page estimates the stretches of the route without
 landmarks (uniform tiles of the map files: sea, lakes, uniform ground) and says so; the
 figure is measured again when the map is generated. Over those stretches vision has
-nothing to match: NAVERA carries on along its measured course for up to 2 minutes (its
-stated accuracy growing, at most 500 m), then gives no position and the vehicle relies on
-its own navigation. Prefer a route along the coast or over varied ground.
+nothing to match: NAVERA carries on along its measured course for up to 2 minutes and only
+while its stated accuracy stays within 900 m (about 80 s at 10 m/s), then gives no
+position and the vehicle relies on its own navigation; vision keeps searching around the
+carried position and gives positions again as soon as a frame matches. Prefer a route along the coast or over varied ground.
 
 **Boats and low cameras.** Day vision needs land with texture in the camera's footprint.
-At sea there are no landmarks: away from the coast a boat gets at most the 2 minutes of
+At sea there are no landmarks: away from the coast a boat gets at most the 2 minutes / 900 m of
 dead-reckoning above, then nothing. A camera only a few metres above the water sees a
 small, oblique footprint, which the straight-down matching against a satellite map is not
 designed for; NAVERA has **not** been tested on a boat with a real camera (the boat results
@@ -960,11 +989,16 @@ camera when switching to day:
 #NAVERA_CAMERA_CALIBRATION=/etc/navera/camera.yaml
 # --- thermal camera (e.g. an RTSP camera; a USB thermal core: usb + its by-id device) ---
 NAVERA_CAMERA_INPUT=gst
-NAVERA_CAMERA_GST_PIPELINE="rtspsrc location=rtsp://<user>:<password>@<camera-ip>:554/Streaming/Channels/201 latency=0 ! decodebin ! videoconvert ! video/x-raw,format=BGR ! appsink name=sink drop=true max-buffers=1 sync=false"
+NAVERA_CAMERA_GST_PIPELINE="rtspsrc location=rtsp://<user>:<password>@<camera-ip>:554/Streaming/Channels/201 latency=0 ! rtph264depay ! video/x-h264,stream-format=byte-stream,alignment=au ! nvv4l2decoder ! nvvidconv ! video/x-raw,format=BGRx ! videoconvert ! video/x-raw,format=BGR ! appsink name=sink drop=true max-buffers=1 sync=false"
 NAVERA_CAMERA_SIZE=1280x720
 NAVERA_CAMERA_CALIBRATION=/etc/navera/thermal.yaml
 NAVERA_CAMERA_LATENCY_S=1.0          # measured for this camera (Hikvision bench unit: ~1.0 s)
 ```
+
+The box decodes H.264 / H.265 in hardware (`nvv4l2decoder`) and has no `h264parse` or software
+decoder, so a pipeline with `decodebin` finds no decoder for an RTSP camera and never delivers a
+frame (measured 2026-10-22 in the hardware-in-the-loop test). Keep the byte-stream caps shown;
+an H.265 camera: `rtph265depay ! video/x-h265,stream-format=byte-stream,alignment=au ! nvv4l2decoder`.
 
 - Write `NAVERA_CAMERA_INPUT` explicitly: with `auto`, navera-discover picks the USB
   camera it finds (the day camera), and it never finds an RTSP camera.
@@ -991,8 +1025,8 @@ arbiter uses it after them (GPS > day > night > celestial). It has two modes, ch
 - **`NAVERA_STAR_CAMERA_INPUT` set — a live star camera.** The live camera is read with the
   `NAVERA_STAR_CAMERA_*` settings (same keys as the day camera, prefix `NAVERA_STAR_CAMERA_`:
   `_INPUT`, `_DEVICE`, `_SIZE`, `_FPS`, `_CALIBRATION`, `_HFOV_DEG`, `_GST_PIPELINE`); the
-  attitude comes from the IMU at each exposure (no IMU: no position), the time from the
-  clock (DS3231 / system clock), the prior from NAVERA's last position. Mounting:
+  attitude comes from the IMU at each exposure (no IMU: no position), the time from a
+  trusted source (below), the prior from NAVERA's last position. Mounting:
   `NAVERA_STAR_CAMERA_ELEVATION_DEG`, `NAVERA_STAR_CAMERA_AZIMUTH_DEG`; accuracy:
   `NAVERA_ATTITUDE_SIGMA_DEG`; `NAVERA_MAGNETIC_DECLINATION_DEG` only for an attitude source
   in magnetic north (see `navera.env.example`). A star camera on USB is never taken as the
@@ -1002,6 +1036,29 @@ arbiter uses it after them (GPS > day > night > celestial). It has two modes, ch
   sky image with launch-time attitude, time and operating-area constants (Sousse); its
   camera waits for a mission start from the celestial bridge (`NAVERA_PIPELINE=cn`). This
   is not navigation.
+
+**Time for the stars (no hardware clock required, 2026-10-22).** 1 s of clock error is ~0.5 km.
+The Jetson has no battery clock: it boots on its last saved time and steps when NTP reaches
+the internet. cn_subscriber (`navera_common/trusted_time.py`) uses, in this order:
+
+1. the **GPS time anchor**: the receiver's UTC (`/navera/sensors/gnss_time`: UBX NAV-PVT valid
+   and fully resolved, RMC status A, ZDA next to a fix), taken only while `/navera/nav_status`
+   shows the GPS contributing (the estimator neither refuses nor suspects it), then carried by
+   the monotonic clock: it holds through hours of GPS loss and through a system clock step.
+   Stated 1-sigma 0.5 s + 20 ppm of the time since (`time_drift_ppm`, `gnss_time_sigma_s`). A
+   later GPS time off the first anchor is ignored and logged (spoofing);
+2. the **autopilot's SYSTEM_TIME** (`navera-vehicle-link` → `/navera/vehicle/system_time`; ArduPilot
+   sets it from its GPS and keeps it while powered). It also cross-checks the anchor: more than
+   1 s apart → no star fix, logged;
+3. the **DS3231** (`navera-rtc`), optional;
+4. **NTP** (the system clock when synchronised).
+
+The anchor is **not valid across a reboot** and is never stored: there is no battery clock
+to carry the monotonic clock through a power-off. A Jetson that reboots in flight with the GPS
+denied therefore relies on SYSTEM_TIME (fit `navera-vehicle-link` with a MAVLink autopilot) or
+a DS3231; with neither, the celestial pipeline publishes "no trusted time" until the GPS is
+back. `/navera/time_status` (JSON, 1 Hz) shows the source, its 1-sigma, the anchor's age and
+jumps, and the anchor minus SYSTEM_TIME (a measure of the Jetson clock's drift).
 
 ## 11. Checks
 

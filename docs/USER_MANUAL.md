@@ -65,7 +65,7 @@ NAVERA knows where the vehicle is.
   Star camera ---+--> celestial ----->|           |                                 (operator view)  |
   (experimental) |                    +-----------+                                                  |
   IMU / attitude-+--> straightens the pictures, carries the heading                                    |
-  Clock (DS3231)-+--> correct time with no network                                                   |
+  GPS time ------+--> trusted time for the stars (kept by the box after the GPS is lost)            |
                  +-----------------------------------------------------------------------------------+
 ```
 
@@ -79,8 +79,9 @@ vision > celestial**. A good GPS always wins. When GPS is lost or refused, visio
    origin. (Where there is no GPS at all, see "Start without GPS", section 7.5.)
 2. **After take-off, NAVERA keeps navigating if GPS is jammed or spoofed** — for as long as the
    camera keeps matching the map, possibly for the whole flight. Between matches it carries the
-   last position along the measured track for **at most 2 minutes / 500 m**, then it says "no
-   position". It does **not** integrate the IMU into a position (no inertial navigation).
+   last position along the measured track for **at most 120 s, while the stated accuracy stays
+   within 900 m (about 80 s at 10 m/s)**; positions resume as soon as a frame matches. Past that it
+   says "no position". It does **not** integrate the IMU into a position (no inertial navigation).
 3. **NAVERA is fully offline in flight.** The map package of the route is prepared **before
    departure** (section 7). No internet, no network link is needed in the air.
 4. **Autopilots:** ArduPilot is supported (verified in simulation only). PX4: only as a plain
@@ -96,7 +97,9 @@ vision > celestial**. A good GPS always wins. When GPS is lost or refused, visio
   needs the camera to match; over sea or uniform ground a slow spoof is not caught.
 - **Detects its own sensors at boot** and chooses the sources by itself (section 3.2).
 - **Restarts by itself.** Every part is a separate service. A part that crashes, or loses its
-  camera or GPS, is restarted 10 s later, forever.
+  camera or GPS, is restarted 1 s later, forever (a part that keeps failing is retried less
+  often, at most every 30 s). In flight without GPS, the autopilot keeps being given a position
+  while a part restarts (section 10.1, "a NAVERA service crashed in flight").
 - **Shows its state** on a web page (operator view) on port 8181.
 
 ---
@@ -121,7 +124,7 @@ NAVERA's own sensors, fitted to the box:
 | IMU (IRIS kit) | the **Insta360 ONE R's own IMU** (gyroscope + accelerometer, ~500 Hz, measured gyro noise 0.003 °/s/√Hz), read over the camera's USB link by the same program as its picture (`navera-insta360`) | USB (camera in "Android" USB mode) | The IRIS kit's IMU: gives the **attitude** (roll / pitch from gyro + accelerometer; heading from the gyro, set by the GPS course and vision — **no magnetometer**), section 3.1 |
 | IMU (optional / legacy) | **Bosch BNO085** (I²C, address 0x4A or 0x4B) | I²C bus 1 (pins 27/28) or bus 7 (pins 3/5), 3.3 V | Optional. Still supported and still detected automatically; no longer part of the IRIS kit |
 | Attitude for the vision | one source giving roll, pitch and heading: the Insta360 kit's own IMU, the autopilot (MAVLink), the vehicle's ROS IMU, or a BNO085 | — | **Required for a fixed camera** (see 3.1); with a gimbal, a gyro is enough |
-| Clock | **Maxim DS3231** real-time clock **with its coin cell fitted** | I²C, address 0x68 | **Required on the IRIS kit** (keeps the time with no network; the star navigation refuses to work on a wrong clock) |
+| Clock | **Maxim DS3231** real-time clock with its coin cell fitted | I²C, address 0x68 | **Optional** (2026-10-22). The star navigation's time comes from the **GPS at take-off**, kept by the box afterwards, cross-checked with the autopilot's time; a DS3231 only helps after a box reboot with the GPS denied and no autopilot time (section 6.6) |
 | Thermal camera | any LWIR camera NAVERA can read (USB, RTSP) | USB / Ethernet | Optional — needed only for night |
 | Star camera | a USB camera pointing up | USB | Optional — experimental |
 
@@ -403,7 +406,7 @@ writes to a port once it has identified an autopilot there.
 | **Attitude** (`NAVERA_SENSOR_SOURCE`) | box IMU (BNO085, if fitted) | autopilot | ROS IMU topic, then the Insta360 kit's own IMU | warning: pictures unusable |
 | **GPS** (`NAVERA_GPS_SOURCE`) | box GPS receiver | the autopilot's **second** GPS, only if it is a real receiver | ROS GPS topic | GPS service idle; NAVERA needs a GPS fix at start |
 | **Camera** (`NAVERA_CAMERA_INPUT`) | the Insta360 kit (One R in Android mode) | USB, then CSI | ROS image topic | warning |
-| **Output** | an autopilot found → NAVERA's position over MAVLink on the same link (not for PX4) | a ROS vehicle found → `/navera/fix` | — | message: set `NAVERA_NMEA_PORT` for an NMEA GPS input |
+| **Output** | an autopilot found → NAVERA's position over MAVLink on the same link (`HIL_GPS` for PX4) | a ROS vehicle found → `/navera/fix` | — | message: set `NAVERA_NMEA_PORT` for an NMEA GPS input |
 
 More rules:
 
@@ -414,8 +417,9 @@ More rules:
   a camera points.
 - **The autopilot's second GPS** is used only if the autopilot's `GPS_TYPE2` says it is a real
   receiver. It is never type 14 (the MAVLink GPS that NAVERA itself feeds — that would be a loop).
-- **PX4 autopilot found:** NAVERA does not send its position over MAVLink (PX4 ignores that
-  message) and says so in the report.
+- **PX4 autopilot found:** NAVERA sends its position as `HIL_GPS` (PX4 ignores `GPS_INPUT`) and
+  the report checks the PX4 parameters it needs (section 5.6): a "CHECK PX4 …" line names each
+  one to change on the autopilot.
 - **Detection runs once per boot.** A device plugged in later, or a vehicle computer that boots
   after NAVERA, is not seen. Reboot, or:
   ```bash
@@ -823,7 +827,7 @@ them with your ground station, then reboot the autopilot.
 |---|---|---|
 | `GPS_TYPE` (`GPS1_TYPE`) | **14** (MAV) | NAVERA is GPS 1 |
 | `SERIALn_PROTOCOL` | **2** (MAVLink 2) | on the TELEM port wired to NAVERA |
-| `SERIALn_BAUD` | the NAVERA baud: 921 = 921600, 115 = 115200 | |
+| `SERIALn_BAUD` | **921** (921 600 baud, as in `serial:/dev/ttyTHS2:921600`) | the same baud on both ends; 115 (115 200) only if the wiring cannot carry 921 600 — NAVERA sends a position 5 times a second plus the messages it asks for |
 | `GPS_AUTO_CONFIG` | **0** | no receiver configuration sent to a "GPS" that is NAVERA |
 | `EK3_SRC1_POSXY` | 3 (GPS, default) | position from NAVERA |
 | `EK3_SRC1_VELXY` | **0** | do not fuse NAVERA's velocity as a measurement (see the cost below) |
@@ -831,7 +835,7 @@ them with your ground station, then reboot the autopilot.
 | `EK3_SRC1_POSZ` | 1 (barometer, default) — **never 3** | vision positions carry no altitude; 3 would pull the height to 0 m (simulation: hundreds of metres of error) |
 | `EK3_OGN_HGT_MASK` | 0 (default) — **never set** | same reason |
 | `GPS_DELAY_MS` | 0 (default) | NAVERA already carries its vision positions to the present |
-| `EK3_GLITCH_RAD` | **100 on Copter** (default 25); **default on Plane** | see 5.3 |
+| `EK3_GLITCH_RAD` | **100 on Copter — required** (default 25); **default on Plane** | see 5.3; the 2-hour endurance flight was flown without it and ended in an EKF failsafe after 60 min (simulation, finding F38) |
 | `FS_EKF_ACTION` / `FS_EKF_THRESH` | defaults (1 = LAND, 0.8) | LAND is the safe outcome of a long vision outage on a copter |
 | `AHRS_OPTIONS`, `ARSPD_OPTIONS` (Plane) | defaults | changing them made outages worse in simulation |
 
@@ -852,7 +856,7 @@ stream rates are needed: NAVERA asks for its messages itself.
 
 | | Copter | Plane (with airspeed sensor) |
 |---|---|---|
-| `EK3_GLITCH_RAD` | **100** — with the default 25 m the autopilot resets onto almost every vision position and drifts (simulation: landings 136–290 m from home → 4–21 m with 100) | default (25) |
+| `EK3_GLITCH_RAD` | **100, required** — with the default 25 m the autopilot resets onto almost every vision position and drifts (simulation: landings 136–290 m from home → 4–21 m with 100). Endurance finding F38 (Isaac Sim, 2 h GPS-denied, 2026-10-22): flown with the default 25, the autopilot's own velocity drifted in growing episodes, flew the copter off the map after 60 min and its EKF failed safe (LAND) while NAVERA's fixes stayed at ~15 m | default (25) |
 | `NAVERA_BRIDGE_MAX_S` (NAVERA side) | **10** (default) — NAVERA bridges a gap in vision positions for 10 s | **0** — the plane dead-reckons better on its airspeed than NAVERA carries a position |
 | Longest vision gap survived (simulation) | about **25 s**: then the autopilot stops aiding and **LANDs where it is** | 60 s outages flown (after the 2026-10-21 velocity fix) |
 
@@ -871,6 +875,16 @@ A copter **cannot** fly a GPS-denied gap longer than about 25 s: do not raise
 
 **An autopilot does not resume its mission by itself after a failsafe**, even when NAVERA has
 positions again. The safety pilot takes over.
+
+**`NAVERA_FORWARD_DEGRADED` must be `true` for a flight to go on without GPS.** It is `false` by
+default: NAVERA then gives the autopilot the GPS only, and the moment GPS is lost or refused the
+autopilot receives **"no fix"** — whatever vision knows — and its own failsafe acts (Copter LAND
+after its EKF failsafe delay, ~1–10 s; Plane and Rover per their settings). With `true`, the
+vision positions (and the dead-reckoned position between matches, at most 120 s while its stated
+accuracy stays within 900 m) go to the autopilot with their stated accuracy, and the mission goes
+on. Every GPS-denied flight in this manual's results (simulation, box in the loop) was flown with
+it `true`. Leave it `false` only while you have not yet recorded vision working on your vehicle
+and route (section 9.3): then a GPS loss ends the mission by design.
 
 **To send vision positions to the autopilot** (only after recording flights showed vision
 working, section 9.3):
@@ -908,17 +922,34 @@ With NMEA the port carries no MAVLink: the vehicle link needs its own port.
 
 ### 5.6 PX4
 
-**Not tested with NAVERA.** What is possible today:
+**Tested in PX4 SITL only (v1.15.4).** PX4 does not read `GPS_INPUT`: NAVERA sends it the same
+position as **`HIL_GPS`**. Detection does this by itself when it sees a PX4 autopilot
+(`NAVERA_MAVLINK_MESSAGE=hil_gps`); you set the PX4 side:
 
-| Function | With PX4 |
-|---|---|
-| MAVLink output (`GPS_INPUT`) | **Does not work** — PX4 ignores this message. Detection leaves it off for PX4; if you write `NAVERA_MAVLINK_URL`, write `off` |
-| NMEA output | GPS pass-through only: `GPS_1_CONFIG` = the port, `GPS_1_PROTOCOL = 6` (NMEA), `SER_xxx_BAUD` = `NAVERA_NMEA_BAUD`. Whether PX4's GPS quality checks accept NAVERA's sentences has not been checked: test on the bench first |
-| Vision positions to PX4 | **Not supported yet** (no supported path) |
-| Vehicle link | probably usable, not verified |
-| Operator view, `/navera/fix` | available |
+| PX4 parameter | Value | Why |
+|---|---|---|
+| `MAV_USEHILGPS` | 1 | PX4 reads NAVERA's position only then |
+| `EKF2_GPS_CTRL` | 1 | position only: no velocity, no height from NAVERA |
+| `EKF2_HGT_REF` | 0 | height from the barometer (reboot) |
+| `EKF2_GPS_CHECK` | 240 | a vision position has no satellites and a 10–30 m accuracy |
+| `EKF2_GPS_V_GATE` | 100 | else PX4 may declare "Navigation failure" during the take-off |
+| `COM_POS_FS_EPH` | 25 | else PX4 declares a vision-fed position invalid at 12.5 m |
+| `EKF2_NOAID_NOISE` | ≥ `NAVERA_DEGRADED_SIGMA_M` | else PX4 trusts a vision position more than stated |
+| `NAV_ACC_RAD` (multicopter) | 25 | waypoint radius larger than the vision error |
+| `MAV_n_CONFIG` / `SER_TELn_BAUD` | the TELEM port wired to NAVERA / 921600 | the MAVLink instance NAVERA talks to (`MAV_n_MODE` Normal or Onboard) |
+| `COM_POS_FS_DELAY` | default (1 s) | how long PX4 waits after a position is invalid before its failsafe |
 
-When NAVERA reports "no fix", PX4 sees its GPS lose the fix and its own failsafe acts.
+On PX4 too, NAVERA sends vision positions only with `NAVERA_FORWARD_DEGRADED=true` (5.4).
+
+The detection report (`check_box.py`) shows a **CHECK PX4 …** line for each wrong value it can
+read. NAVERA uses the autopilot's own system id (written by detection): PX4 ignores `HIL_GPS` from
+any other id.
+
+When NAVERA has no position for about 5 s (GPS lost with vision withheld, a vision gap, the output
+service restarting), PX4 declares its position invalid and starts **its own failsafe** (a
+multicopter in a mission descends without position control): configure it. When NAVERA's
+positions return, PX4 resumes the mission. NMEA output to PX4: GPS pass-through only (its
+sentences carry no accuracy). Details and the simulation results: docs/PX4_INTEGRATION.md.
 
 ### 5.7 Checks after wiring
 
@@ -931,7 +962,7 @@ sudo systemctl start navera-gps     # back to 3D fix
 ```
 
 In the logs (appendix B): `journalctl -u navera-vehicle-link -n 20` shows
-"connected to ArduPilot (system 1)"; `journalctl -u navera-output -n 20 | grep -i nothing` must be
+"connected to ArduPilot (system 1)" (or PX4); `journalctl -u navera-output -n 20 | grep -i nothing` must be
 empty (otherwise the autopilot receives nothing from NAVERA).
 
 Details: `docs/ARDUPILOT_INTEGRATION.md`, `docs/PX4_INTEGRATION.md`.
@@ -1037,8 +1068,13 @@ check your camera's own URL). Keep the quotes:
 
 ```
 NAVERA_CAMERA_INPUT=gst
-NAVERA_CAMERA_GST_PIPELINE="rtspsrc location=rtsp://<user>:<password>@<camera-ip>:554/Streaming/Channels/201 latency=0 ! decodebin ! videoconvert ! video/x-raw,format=BGR ! appsink name=sink drop=true max-buffers=1 sync=false"
+NAVERA_CAMERA_GST_PIPELINE="rtspsrc location=rtsp://<user>:<password>@<camera-ip>:554/Streaming/Channels/201 latency=0 ! rtph264depay ! video/x-h264,stream-format=byte-stream,alignment=au ! nvv4l2decoder ! nvvidconv ! video/x-raw,format=BGRx ! videoconvert ! video/x-raw,format=BGR ! appsink name=sink drop=true max-buffers=1 sync=false"
 ```
+
+The box decodes H.264 / H.265 in hardware (`nvv4l2decoder`) and has no `h264parse` or software
+decoder, so a pipeline with `decodebin` finds no decoder for an RTSP camera and never delivers a
+frame (measured 2026-10-22 in the hardware-in-the-loop test). Keep the byte-stream caps shown;
+an H.265 camera: `rtph265depay ! video/x-h265,stream-format=byte-stream,alignment=au ! nvv4l2decoder`.
 
 Other camera settings: `NAVERA_CAMERA_SIZE` (default 1920x1080; must be a mode the camera
 delivers), `NAVERA_CAMERA_FPS` (pictures offered per second, default 1).
@@ -1068,7 +1104,22 @@ hold the camera: not with IRIS's field tools, and not in webcam mode.
 
 - Without a star camera configured, the celestial service plays a **sample sky** (demonstration).
 - A real star camera: set `NAVERA_STAR_CAMERA_INPUT` and the other `NAVERA_STAR_CAMERA_*` settings
-  (appendix A). It needs the clock (DS3231) and the IMU.
+  (appendix A). It needs the IMU and a **trusted time** (1 s of clock error = ~0.5 km).
+- **Time for the stars** (no battery clock needed). Operating rule: the GPS is good at take-off.
+  NAVERA then takes the GPS receiver's UTC (only while the arbiter trusts the GPS: not refused,
+  not suspected of spoofing) and keeps it with the box's own steady clock for the rest of the
+  flight, however long the GPS is lost; its stated uncertainty grows slowly (0.5 s + 20 ppm of the
+  time since: ~0.7 s after 3 h). In order, NAVERA uses: this **GPS time anchor** > the
+  **autopilot's time** (MAVLink `SYSTEM_TIME`, which ArduPilot sets from its GPS) > a **DS3231**
+  if fitted > the network time (NTP). The GPS anchor and the autopilot's time must agree within
+  1 s; otherwise no star fix is made (one of them is wrong — a spoofed GPS can fake the time too)
+  and the log says so. A later GPS time that jumps away from the anchor is ignored and logged.
+  Without any of them, no star fix: never on a guessed clock. `/navera/time_status` shows the
+  source and its uncertainty.
+- **If the box reboots in flight with the GPS denied**, the GPS anchor is lost (it is not kept
+  across a reboot: there is no battery clock to carry it). NAVERA then uses the autopilot's
+  time (the autopilot keeps it while powered), or the DS3231 if one is fitted; with neither, the
+  star navigation stays off until the GPS comes back.
 - Accuracy: kilometres (24–119 km with a BNO085-class IMU in simulation). Never sent to the
   autopilot (coarser than 1 km).
 
@@ -1209,7 +1260,7 @@ The web page is **not needed** for NAVERA to work: NAVERA runs on its own from p
 |---|---|---|
 | **FIX** | a fresh measured position with a stated accuracy of 25 m or better. **Today only GPS reaches it** | flies on the GPS that NAVERA passes through |
 | **DEGRADED** | a position exists, but it comes from vision or stars, or is carried between matches, or its accuracy is unknown or above 25 m, or the GPS is "in doubt" (vision disagrees with it) | **by default receives "no fix" for vision positions → its own failsafe** (Copter LAND, Rover/boat HOLD). With forwarding on: flies on NAVERA's vision positions with their stated accuracy. A GPS in doubt is still passed on, with a worse accuracy |
-| **NO FIX** | nothing usable (no GPS, no match, dead-reckoning limit of 2 min / 500 m reached) | "no fix" → failsafe |
+| **NO FIX** | nothing usable (no GPS, no match, dead-reckoning limit reached: 120 s, or a stated accuracy beyond 900 m — about 80 s at 10 m/s) | "no fix" → failsafe |
 | **STARTING** | NAVERA is starting | — |
 | **OFFLINE / LINK LOST** | the web page cannot reach NAVERA (not the vehicle's state) | unaffected by the web page |
 
@@ -1217,7 +1268,8 @@ The web page is **not needed** for NAVERA to work: NAVERA runs on its own from p
 
 - **Jammed (lost):** vision takes over at once (DEGRADED). The position follows the camera's
   matches; between matches it is carried along the track, its accuracy growing, for at most
-  2 minutes / 500 m.
+  120 s while the stated accuracy stays within 900 m (about 80 s at 10 m/s); positions resume as
+  soon as a frame matches.
 - **Spoofed by a jump:** a GPS position the vehicle could not reach (`NAVERA_MAX_SPEED_KMH`) is
   refused at once.
 - **Spoofed slowly:** when vision disagrees with the GPS, NAVERA first marks it **in doubt**, then
@@ -1293,7 +1345,7 @@ First run `python3 navera_tools/check_box.py` (NAVERA shell). Then look at the s
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| Vision service restarts every 10 s, "cannot open the camera" | wrong device (number changed), camera not in webcam mode, unplugged, or held by another program | use the `/dev/v4l/by-id/` name; set the camera to USB webcam mode; stop the vision service before calibrating |
+| Vision service keeps restarting, "cannot open the camera" | wrong device (number changed), camera not in webcam mode, unplugged, or held by another program | use the `/dev/v4l/by-id/` name; set the camera to USB webcam mode; stop the vision service before calibrating |
 | "set NAVERA_CAMERA_CALIBRATION … or at least NAVERA_CAMERA_HFOV_DEG" | no lens information | calibrate (6.2) |
 | "calibration … was made with camera usb-A…, this one is usb-B…" | another camera plugged in | calibrate this camera |
 | "calibration is for 1280x720, the camera is set to 1920x1080" | resolution changed | calibrate at `NAVERA_CAMERA_SIZE` |
@@ -1317,7 +1369,9 @@ First run `python3 navera_tools/check_box.py` (NAVERA shell). Then look at the s
 | Web page: "control disabled: set NAVERA_WEB_TOKEN" | no access code configured | set it, `sudo systemctl restart navera-web` |
 | "too many wrong codes from this address" | 5 wrong codes in 60 s | wait 60 s |
 | A service "activating (auto-restart)" with "could not convert string to float: ''" | a number setting left empty | give it a value or comment it out |
-| "… does not exist (data disk not mounted?)" | data disk missing | mount `/data`; the service retries every 10 s |
+| "… does not exist (data disk not mounted?)" | data disk missing | mount `/data`; the service retries (every 30 s after a few tries) |
+| "restart loop: N starts in 60 s — waiting …" | a service fails at every start | its journal says why (`journalctl -u <service> -n 100`); it keeps retrying by itself |
+| A NAVERA service crashed in flight (journal: "process has died", "respawning", "restart: …") | a bug or the memory killer | nothing to do: it is back within seconds. Meanwhile the output keeps giving the autopilot the last vision position carried along its velocity, its accuracy growing ("bridging", at most 10 s); a restarted output resumes from what it last sent; a GPS refused for spoofing stays refused. A restarted day vision service resumes its carried position (saved once a second) before it is fully loaded, then searches around it (simulation: 7 s after the kill, no failsafe). If the restarts repeat, report the journal |
 | ROS topics invisible | the shell is not on NAVERA's domain; `ROS_LOCALHOST_ONLY=1`; different domain or ROS version on the vehicle | open the NAVERA shell; Way C settings (3.3) |
 | A sensor plugged in after boot is not used | detection runs once per boot | `sudo systemctl restart navera-discover`, then the services |
 
@@ -1333,7 +1387,7 @@ First run `python3 navera_tools/check_box.py` (NAVERA shell). Then look at the s
 | **Coarse maps** (worse than 2 m) | 10 m imagery does not work; 5 m is marginal |
 | **Night without a thermal camera** | The day camera sees nothing in the dark: no vision position. Night vision needs a thermal camera and is not flown yet |
 | **Stars** | Experimental, accuracy in kilometres, never sent to the autopilot |
-| **No inertial navigation** | Without matches, at most 2 minutes / 500 m of dead-reckoning |
+| **No inertial navigation** | Without matches, dead-reckoning for at most 120 s while the stated accuracy stays within 900 m (about 80 s at 10 m/s); positions resume as soon as a frame matches |
 | **Copter vision gaps** | About 25 s without positions → the autopilot lands where it is |
 | **Fixed camera on a fast multirotor** | Pictures too tilted: fit a gimbal |
 | **One vision pipeline at a time** | Day or night, not both (8 GB memory) |

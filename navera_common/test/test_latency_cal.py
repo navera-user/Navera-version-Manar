@@ -351,3 +351,50 @@ def test_set_nominal_from_the_camera_replaces_the_unknown_prior_and_a_stored_sta
 def test_set_nominal_refused_once_samples_exist():
     cal = fly(LatencyCalibrator(), leg_turn_leg(), 1.3, 30.0, noise=4.0)
     assert cal.samples and not cal.set_nominal(1.3) and cal.nominal == 0.0
+
+
+def test_the_staged_delay_is_not_applied_when_speed_times_its_sigma_is_too_large():
+    """A plane at 30 m/s whose staged estimate is 1.11 +- 0.38 s (11 m along the track) keeps the
+    unknown delay (Isaac Sim m1_plane30: 0.58 +- 0.44 s staged for 1.3 s, 6 wrong fixes); without the
+    cap the same samples are applied. A copter at 10 m/s with a like sigma (3 m) applies it."""
+    capped = fly(LatencyCalibrator(), circle(30.0, 600.0), 1.3, 30.0, noise=8.0)
+    assert not capped.stable and capped.applied is None and "not applied: 30 m/s" in capped.reason
+    assert capped.delay_sigma() is None                # still unknown: the stated sigma keeps the prior
+    free = fly(LatencyCalibrator(partial_max_error_m=0.0), circle(30.0, 600.0), 1.3, 30.0, noise=8.0)
+    assert free.applied is not None and free.applied_sigma > 10.0 / 30.0
+    copter = fly(LatencyCalibrator(), circle(10.0, 200.0), 1.3, 40.0, noise=3.0)
+    assert not copter.stable and copter.applied is not None and 10.0 * copter.applied_sigma <= 10.0
+    assert abs(copter.applied - 1.3) < 2 * copter.applied_sigma
+
+
+def test_a_stable_delay_is_applied_whatever_the_speed():
+    cal = fly(LatencyCalibrator(partial_max_error_m=1.0), circle(60.0, 900.0), 1.0, 60.0)
+    assert cal.stable and abs(cal.applied - 1.0) < 0.05
+
+
+def test_a_contradicted_stored_delay_is_not_kept_when_the_staged_one_is_capped():
+    cal = LatencyCalibrator()
+    assert cal.set_prior(0.2, 0.15, "stored")
+    fly(cal, circle(30.0, 600.0), 1.3, 30.0, noise=8.0)
+    assert cal.prior_source == "unknown delay" and "not applied" in cal.reason     # the stored 0.2 s dropped
+    assert cal.applied is None and cal.delay() == 0.0
+
+
+def test_the_camera_takes_the_attitude_at_the_day_nodes_dating():
+    from navera_common.latency_cal import attitude_shift_s, delay_message
+    cal = fly(LatencyCalibrator(), circle(60.0, 900.0), 1.0, 60.0)
+    msg = delay_message(cal, True)
+    assert msg["auto"] and abs(msg["correction_s"] - 1.0) < 0.05 and msg["stable"]
+    assert attitude_shift_s(msg, 0.0) == msg["correction_s"]
+    assert delay_message(cal, False)["correction_s"] == 0.0 and attitude_shift_s(delay_message(cal, False), 0.0) == 0.0
+    # the camera already subtracted 0.4 s: the day node's correction is relative to it (no double subtraction)
+    cal2 = LatencyCalibrator()
+    assert cal2.set_nominal(0.4)
+    fly(cal2, circle(60.0, 900.0), 1.0, 60.0)
+    assert abs(delay_message(cal2, True)["correction_s"] - 0.6) < 0.05
+    # never an exposure after the arrival, never beyond the bound, nothing from garbage
+    assert attitude_shift_s({"auto": True, "correction_s": -1.0}, 0.4) == -0.4
+    assert attitude_shift_s({"auto": True, "correction_s": 9.0}, 0.0, 3.0) == 3.0
+    assert attitude_shift_s({"auto": True, "correction_s": "x"}, 0.0) == 0.0
+    assert attitude_shift_s({"auto": True, "correction_s": float("nan")}, 0.0) == 0.0
+    assert attitude_shift_s(None, 0.0) == 0.0

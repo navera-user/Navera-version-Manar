@@ -274,8 +274,8 @@ def ground_mask(shape, up, step: int = 8) -> np.ndarray:
 class Stillness:
     """The vehicle at rest at a frame's exposure: the camera driver's stopped() (exposure window steady) AND the
     long-window test of cn_pkg.standstill (D8/D12: 'up' must not have moved without the camera turning over the
-    last LONG_S s, |a| at its value at rest). The driver keeps 7 s of IMU, too short for the long window, so the
-    history is extended on each new driver (extend_history). g_ref is |a| at rest, learned from the windows the
+    last LONG_S s, |a| at its value at rest). The driver keeps insta360_usb.IMU_HISTORY_S (20 s) of IMU rows;
+    extend_history only matters for an older driver object that keeps less. g_ref is |a| at rest, learned from the windows the
     driver calls still (median of the last 60), 1.0 until then (6-position calibrated accelerometer)."""
 
     HISTORY_S = 20.0
@@ -287,7 +287,7 @@ class Stillness:
 
     @staticmethod
     def extend_history(drv, seconds: float = HISTORY_S):
-        """Keep `seconds` of the driver's IMU rows (its own deque holds 7 s at 500 Hz)."""
+        """Keep at least `seconds` of the driver's IMU rows (the driver itself keeps IMU_HISTORY_S = 20 s)."""
         n = int(seconds * 500)
         lock = getattr(drv, "_lock", None)
         if lock is None or not hasattr(drv, "_imu") or (drv._imu.maxlen or 0) >= n:
@@ -301,8 +301,8 @@ class Stillness:
         if not self.LONG_CHECK or not st.get("stopped"):
             return st
         back = standstill.LONG_S + standstill.RUN_EXTRA_S + 0.5
-        rows = drv._rows(back, at_ms, standstill.AFTER_S) if at_ms is not None \
-            else drv._rows(back + standstill.AFTER_S, None)
+        rows = drv.imu_rows(back, at_ms, standstill.AFTER_S) if at_ms is not None \
+            else drv.imu_rows(back + standstill.AFTER_S, None)
         if not rows:
             return {**st, "stopped": False, "why": "no sensor data"}
         arr = np.array([r[1:8] for r in rows], float)
@@ -339,6 +339,7 @@ class Camera360:
         self.stillness = Stillness()
         self.reconnects: list = []                    # [{"t", "why"}] of every reconnect (F14)
         self.imu_restarts_total = 0                   # the driver's IMU stream restarts, summed over reconnects
+        self.usb_resets_total = 0                     # the driver's USB resets (ImuWatchdog), summed over reconnects
         self._open()
         threading.Thread(target=self._watch, daemon=True).start()
 
@@ -383,7 +384,9 @@ class Camera360:
         f, t = self.cam.latest() if self.cam else (None, 0.0)
         if self.cam is not None and time.time() - self.opened_at < 20.0:
             return None                               # the decoder waits for the stream's next key frame
-        imu_dead = self.cam is not None and self.cam.imu_age() > 10.0   # restarting the stream did not bring it back
+        # restarting the stream and the driver's USB reset (ImuWatchdog, ~9 s) did not bring it back
+        imu_dead = self.cam is not None and self.cam.imu_age() > 10.0 \
+            and time.time() - (getattr(self.cam, "last_reset_t", 0.0) or 0.0) > 6.0
         if not (f is None or time.time() - t > 8.0 or imu_dead):
             return None
         why = "no camera"
@@ -391,6 +394,7 @@ class Camera360:
             why = "camera IMU silent for 10 s" if imu_dead else (self.cam.error or "no frame for 8 s")
             self.error = f"{why}: reconnecting"
             self.imu_restarts_total += int(getattr(self.cam, "imu_restarts", 0) or 0)
+            self.usb_resets_total = getattr(self, "usb_resets_total", 0) + int(getattr(self.cam, "usb_resets", 0) or 0)
             self.reconnects.append({"t": round(time.time(), 1), "why": str(why)[:120]})
             del self.reconnects[:-50]
             try:
@@ -408,7 +412,7 @@ class Camera360:
         if drv is None:
             return None
         at = self.frame_ms if at_frame else None
-        rows = drv._rows(2.0, at, 0.5) if at is not None else drv._rows(2.5, None)
+        rows = drv.imu_rows(2.0, at, 0.5) if at is not None else drv.imu_rows(2.5, None)
         if not rows:
             return None
         arr = np.array([r[2:8] for r in rows], float)
@@ -417,7 +421,9 @@ class Camera360:
     def health(self) -> dict:
         """Camera stream health for the frame records (F14/F19): reconnects so far and the IMU stream restarts."""
         cur = int(getattr(self.cam, "imu_restarts", 0) or 0) if self.cam else 0
+        resets = int(getattr(self.cam, "usb_resets", 0) or 0) if self.cam else 0
         return {"reconnects": len(self.reconnects), "imu_restarts": self.imu_restarts_total + cur,
+                "usb_resets": getattr(self, "usb_resets_total", 0) + resets,
                 "imu_age_s": _round(self.cam.imu_age(), 2) if self.cam else None}
 
     def latest(self):
@@ -464,6 +470,15 @@ class Field:
         if os.environ.get("NAVERA_FIELD_RTC", "1") not in ("0", "off", "no"):
             from navera_tools.field.rtc_clock import RtcClock
             self.rtc = RtcClock(int(os.environ.get("NAVERA_FIELD_RTC_BUS", "1"))).start()
+        # the product's time order (navera_common.trusted_time): GPS anchor > autopilot > DS3231 > phone > NTP;
+        # NAVERA's GPS and the autopilot are read only when their address is set (time_feeds.py)
+        self.time_feeds = {}
+        from navera_tools.field import time_feeds
+        if os.environ.get("NAVERA_FIELD_GPS"):
+            self.time_feeds["gps"] = time_feeds.GnssTimeFeed(os.environ["NAVERA_FIELD_GPS"], self.on_gps_time).start()
+        if os.environ.get("NAVERA_FIELD_MAVLINK"):
+            self.time_feeds["autopilot"] = time_feeds.AutopilotTimeFeed(os.environ["NAVERA_FIELD_MAVLINK"],
+                                                                        self.on_autopilot_time).start()
         self.speeds = collections.deque(maxlen=120)       # (server time, phone GPS speed m/s): the stopped flag's referee
         self.live: dict = {}
         self.preview: bytes = b""
@@ -551,22 +566,73 @@ class Field:
         (no phone clock, no valid DS3231 and the Jetson not synchronised): a solve then would be thousands of km off."""
         return self.star_time()[0]
 
-    def star_time(self):
-        """(offset to subtract from the Jetson time, source) for a star solve: the phone's clock (GPS/network time,
-        the test's reference), else the DS3231 battery clock when one is wired and valid (F27: what the product
-        relies on offline), else the Jetson clock when NTP-synchronised; (None, why) when nothing vouches."""
-        off = self.clock_offset_s()
-        if off is not None:
-            return off, "phone"
+    def _tclock(self):
+        """The product's trusted clock (navera_common.trusted_time), made on first use; call with _time_lock."""
+        tc = getattr(self, "_tc", None)
+        if tc is None:
+            from navera_common.trusted_time import TrustedClock
+            tc = self._tc = TrustedClock(phone_max_age_s=5.0, ntp_synced=self.ntp_synced, on_event=self._time_event)
+        return tc
+
+    @property
+    def _time_lock(self):
+        lk = getattr(self, "_tlock", None)
+        if lk is None:
+            lk = self._tlock = threading.Lock()
+        return lk
+
+    def _time_event(self, kind, text):
+        log(f"time: {text}")
+        if getattr(self, "session", None) is not None:
+            self.session.event("time_" + kind, text=text)
+
+    def on_gps_time(self, utc, sys_t, lat, lon):
+        """NAVERA's GPS time (time_feeds.GnssTimeFeed): anchors while the GPS is trusted (here: near the phone)."""
+        from navera_tools.field.time_feeds import phone_trust
+        ok, why = phone_trust(dict(self.phone), time.time() - self.phone_recv, lat, lon)
+        with self._time_lock:
+            self._tclock().add_gnss(utc, sys_t, trusted=ok, why_untrusted=why)
+
+    def on_autopilot_time(self, utc, sys_t):
+        """The autopilot's SYSTEM_TIME (time_feeds.AutopilotTimeFeed)."""
+        with self._time_lock:
+            self._tclock().add_autopilot(utc, sys_t)
+
+    def star_time_sigma(self):
+        """(offset to subtract from the Jetson time, source, 1-sigma s) for a star solve, in the product's order:
+        NAVERA's GPS anchor, the autopilot's SYSTEM_TIME, the DS3231 battery clock (F27), the phone's clock (GPS /
+        network time, the test's reference), the Jetson clock when NTP-synchronised; (None, why, None) when nothing
+        vouches."""
+        now = time.time()
         rtc = getattr(self, "rtc", None)
-        why_rtc = "no DS3231"
+        r_off = None
         if rtc is not None:
-            r_off, why_rtc = rtc.offset()
+            r_off, _ = rtc.offset()
+        p_off = self.clock_offset_s()
+        with self._time_lock:
+            tc = self._tclock()
+            tc.add_rtc_status(r_off is not None, False)       # the DS3231 vouches only while RtcClock does
             if r_off is not None:
-                return -r_off, "rtc"
-        if self.ntp_synced():
-            return 0.0, "ntp"
-        return None, f"no trusted time yet (no phone clock; {why_rtc}; Jetson clock not NTP-synchronised)"
+                tc.add_rtc(now + r_off, now)
+            if p_off is not None:
+                tc.add_phone(now - p_off, now)
+            off, src, sigma = tc.offset_sigma()
+        if off is None:
+            return None, src, None
+        return -off, src, sigma
+
+    def star_time(self):
+        """(offset to subtract from the Jetson time, source) or (None, why): see star_time_sigma."""
+        off, src, _ = self.star_time_sigma()
+        return off, src
+
+    def time_status(self):
+        """The time the next star solve would use, for the page and the session (trusted_time status)."""
+        self.star_time_sigma()
+        with self._time_lock:
+            st = self._tclock().status()
+        st["feeds"] = {k: dict(f.last) for k, f in getattr(self, "time_feeds", {}).items()}
+        return st
 
     def rtc_minus_phone_s(self):
         """DS3231 time minus the phone's time (s) when both are known: the battery clock's error in the field."""
@@ -660,6 +726,12 @@ class Field:
         else:
             add("clock", "Phone clock matches Jetson", "wait" if off is None else ("ok" if abs(off) <= 1.0 else "bad"),
                 "" if off is None else f"{off:+.2f} s")
+        ts = self.time_status()
+        add("star_time", "Star time", "ok" if ts["trusted"] else "bad",
+            f"{ts['source']} (1-sigma {ts['sigma_s']:.2f} s)" if ts["trusted"] else ts["reason"][:120])
+        for k, f in ts["feeds"].items():
+            add("time_" + k, "NAVERA GPS time" if k == "gps" else "Autopilot time (SYSTEM_TIME)",
+                "ok" if f.get("ok") else "wait", f.get("why") or f"{f.get('samples', 0)} samples")
         rtc = getattr(self, "rtc", None)
         if rtc is not None:
             st = rtc.last
@@ -1033,13 +1105,14 @@ class Field:
                     return
             if self.cat is None:
                 self.cat = allsky.Catalogue(limit_mag=4.0)
-            off, tsrc = self.star_time()
+            off, tsrc, tsig = self.star_time_sigma()
             rec["time_source"] = tsrc if off is not None else None
+            rec["time_sigma_s"] = _round(tsig, 3)
             rec["rtc_minus_phone_s"] = self.rtc_minus_phone_s()
             if off is None:
                 rec["why"] = tsrc
                 return
-            utc = datetime.fromtimestamp(texp - off, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+            utc = datetime.fromtimestamp(texp - off, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
             t0 = time.time()
             r = allsky.locate(img, up, utc, self.cat, f_scales=F_SCALE_SEARCH if self.f_scale is None else (self.f_scale,))
             rec.update(solve_s=round(time.time() - t0, 1), utc_used=utc, prior=None, spots=r.get("spots"))
@@ -1119,13 +1192,14 @@ class Field:
         import base64
         try:
             from cn_pkg.nodes.solver import solve_image_b64_geoloc
-            off, tsrc = self.star_time()
+            off, tsrc, tsig = self.star_time_sigma()
             rec["time_source"] = tsrc if off is not None else None
+            rec["time_sigma_s"] = _round(tsig, 3)
             if off is None:
                 rec["why"] = tsrc
                 return
-            utc_epoch = texp - off                    # phone time = Jetson time - offset
-            utc = datetime.fromtimestamp(utc_epoch, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+            utc_epoch = texp - off                    # trusted UTC = Jetson time - offset
+            utc = datetime.fromtimestamp(utc_epoch, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
             p = self.phone
             # Near the zenith the sky gives ONE position, so no prior is needed and none is given: the
             # solver accepts a fix only within 2 degrees of its prior, which would hide big errors
@@ -1273,6 +1347,7 @@ class Field:
                 "done": self.last_done, "disk_error": bool(s and s.io_error), "server_time_ms": int(time.time() * 1000),
                 "raw": self.camera.raw_stats() if hasattr(self.camera, "raw_stats") else None,
                 "rtc": dict(self.rtc.last) if getattr(self, "rtc", None) else None,
+                "time": self.time_status(),
                 "live_params": {k: _jsonable(v) if k in ("active", "refused") else v for k, v in self.live_params.items()}}
 
 

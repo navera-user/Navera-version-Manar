@@ -9,7 +9,9 @@ Image input (parameter `input`):
     insta360  the Insta360 kit's straight-down view (camera_pkg insta360_node, which owns the
           camera in USB Android mode): an image topic stamped at the exposure, an ideal lens
 
-For each frame published, at the instant it was taken (grab time - capture_latency_s):
+For each frame published, at the instant it was taken (grab time - capture_latency_s, and the
+day node's in-flight delay estimate on top of it, `delay_topic`: the delay learned against the GPS
+also dates the attitude, so a banked plane is straightened with the attitude at the exposure):
     attitude   from `imu_topic` (sensor_msgs/Imu, body ENU): NAVERA's BNO085, or the
                vehicle's IMU relayed by vehicle_link / remapped from the vehicle's ROS
     altitude   height above ground (navera_common.altitude): `altitude_topic`
@@ -91,6 +93,11 @@ class LiveCamera(Node):
         self.declare_parameter("height", 1080)
         declare_float(self, "fps", 1.0)                         # frames offered to the localizer, max
         declare_float(self, "capture_latency_s", 0.0)           # exposure → grab delay (measure it)
+        # the day node's camera-delay estimate (navera_common.latency_cal.delay_message): the attitude,
+        # altitude and rotation rate are taken correction_s before the stamp. "auto": /day/camera_delay
+        # for a day camera, none otherwise; "none": off
+        self.declare_parameter("delay_topic", "auto")
+        declare_float(self, "max_attitude_shift_s", 3.0)
         self.declare_parameter("calibration_file", "")
         declare_float(self, "camera_hfov_deg", float("nan"))    # ideal lens when no calibration file
         declare_float(self, "mount_roll_deg", 0.0)
@@ -146,6 +153,7 @@ class LiveCamera(Node):
         self.cw, self.ch = (self.crop[2], self.crop[3]) if self.crop else (self.w, self.h)
         self.period = 1.0 / max(float(p("fps")), 1e-3)
         self.latency_s = float(p("capture_latency_s"))
+        self.att_shift_s, self.max_att_shift_s = 0.0, float(p("max_attitude_shift_s"))
         from navera_common.delay_monitor import DelayChangeMonitor
         self.delay_mon = DelayChangeMonitor()
         cam = self._camera_model(p("calibration_file"), float(p("camera_hfov_deg")))
@@ -153,6 +161,9 @@ class LiveCamera(Node):
                                     float(p("max_tilt_deg")), p("camera_type"), bool(p("gimbal")),
                                     bool(p("require_attitude")), float(p("max_rate_dps")))
         self.attitude_source, self.frame_id = p("attitude_source"), p("frame_id")
+        from navera_common.camera_model import mount_identity
+        self.mount_ident = mount_identity((p("mount_roll_deg"), p("mount_pitch_deg"), p("mount_yaw_deg")),
+                                          p("calibration_file"), cam.out_hfov_deg, self.crop)
         self.measured_sigma_m = float(p("measured_altitude_sigma_m"))
         self.att = History(maxlen=4000, max_gap_s=0.2, interp=slerp)
         self.yaw_sigma = History(maxlen=4000, max_gap_s=0.2)    # deg, from orientation_covariance
@@ -195,13 +206,18 @@ class LiveCamera(Node):
         self.create_subscription(PositionEstimate, p("position_topic"), self._on_position, 10,
                                  callback_group=sensors)
         self.create_subscription(Int32, p("ack_topic"), self._on_ack, 10)
+        dtopic = str(p("delay_topic")).strip()
+        if dtopic == "auto":
+            dtopic = "/day/camera_delay" if p("camera_type") == "day" else "none"
+        if dtopic not in ("", "none"):
+            self.create_subscription(String, dtopic, self._on_delay, LATCHED)
         self._ready = threading.Event()
         self._go = threading.Event()
         if not bool(p("wait_for_ready")):
             self._ready.set()
         if not bool(p("start_paused")):
             self._go.set()
-        self.create_subscription(Bool, p("ready_topic"), lambda m: self._ready.set() if m.data else None, LATCHED)
+        self.create_subscription(Bool, p("ready_topic"), self._on_ready, LATCHED)
         self.create_subscription(Bool, "start", lambda m: self._go.set() if m.data else self._go.clear(), LATCHED)
         self.ack_timeout_s = float(p("ack_timeout_s"))
         self._awaiting, self._acked = None, threading.Event()
@@ -303,6 +319,30 @@ class LiveCamera(Node):
         cov = list(m.position_covariance)
         st = m.sensor_stamp if (m.sensor_stamp.sec or m.sensor_stamp.nanosec) else m.header.stamp
         self.alt.add_position(stamp_s(st), m.latitude, m.longitude, math.sqrt(max(cov[0], cov[4], 0.0)))
+
+    def _on_delay(self, m: String):
+        """The day node's camera-delay estimate: the attitude is taken correction_s before the stamp."""
+        from navera_common.latency_cal import attitude_shift_s
+        try:
+            d = json.loads(m.data)
+        except ValueError:
+            return
+        shift = attitude_shift_s(d, self.latency_s, self.max_att_shift_s)
+        if abs(shift - self.att_shift_s) >= 0.05:
+            self.get_logger().info(f"attitude taken {shift:+.2f} s before the frame stamp (the day node's camera "
+                                   f"delay {d.get('delay_s')} +- {d.get('sigma_s')} s)")
+        self.att_shift_s = shift
+
+    def _on_ready(self, m: Bool):
+        """The localizer is ready. Heard again while a frame waits for its ack: the localizer was
+        restarted (respawned alone, B23) and that frame is lost with it — the next one goes at once
+        instead of after ack_timeout_s."""
+        if not m.data:
+            return
+        if self._ready.is_set() and self._awaiting is not None and not self._acked.is_set():
+            self.get_logger().warn(f"the localizer restarted: frame {self._awaiting} dropped, sending the next")
+            self._acked.set()
+        self._ready.set()
 
     def _on_ack(self, m: Int32):
         if self._awaiting is not None and m.data == self._awaiting:
@@ -429,15 +469,21 @@ class LiveCamera(Node):
             frozen = self._check_frozen(raw, t)
             if self._stop.is_set():
                 break
-            out, meta = self.builder.build(raw, self.count, int(t * 1e9), self.att.at(t), self.attitude_source,
-                                           self.alt.estimate(t), self.gps.at(t),
+            # the exposure by the day node's delay estimate: the attitude to straighten with is then
+            # (the stamp stays the camera's: the day node moves it by the same correction)
+            shift = self.att_shift_s
+            te = t - shift
+            out, meta = self.builder.build(raw, self.count, int(t * 1e9), self.att.at(te), self.attitude_source,
+                                           self.alt.estimate(te), self.gps.at(t),
                                            time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(t)),
-                                           self._rate_dps(t))
+                                           self._rate_dps(te))
             msg = bridge.cv2_to_imgmsg(np.ascontiguousarray(out), "bgr8")
             msg.header.stamp.sec, msg.header.stamp.nanosec = int(t), int((t % 1) * 1e9)
             meta["image_stamp_ns"] = msg.header.stamp.sec * 1_000_000_000 + msg.header.stamp.nanosec
-            self._check_heading(meta, t)
+            self._check_heading(meta, te)
             meta["capture_latency_s"] = self.latency_s          # already subtracted: the localizers' set delay
+            meta["attitude_delay_s"] = round(shift, 4)          # attitude taken this long before the stamp
+            meta.update(self.mount_ident)                       # what a learned mount calibration belongs to
             meta["delay_monitor"] = self.delay_mon.state()     # the delay's change since start (no GPS needed)
             if self.delay_mon.significant:
                 self.get_logger().warn(f"camera delay changed by {self.delay_mon.change_s:+.3f} s since the start "

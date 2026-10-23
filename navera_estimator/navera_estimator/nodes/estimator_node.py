@@ -74,6 +74,16 @@ Scope: honest single-winner arbitration across the LIVE sources.
     same estimate re-stamped at every tick (a filter downstream would fuse it
     many times over).
 
+Restart (B23): what the GPS gate knows is kept in the NAVERA state directory
+(navera_common.state_store "estimator_gps": the last trusted GPS fix, and the refusal reason
+while GPS is refused), saved when the refusal changes and at most once a second otherwise. A
+restarted arbiter (crash, watchdog — systemd brings it back in ~1 s) reads it back when younger
+than gps_state_memory_s: a GPS refused for spoofing stays refused until an independent source
+confirms it (a restart is no way in for a spoofer), and the jump gate starts from the last
+trusted fix. NO POSITION is restored: /navera/position only ever republishes a fresh estimate
+of a live source, so a restarted arbiter cannot publish a stale position as fresh; the output
+(navera_output) bridges the restart gap from what it last gave the autopilot.
+
 State machine:
   INITIALIZING  no watched message has EVER arrived (transient, since boot).
   NO_FIX        running, but no source is currently usable. First-class.
@@ -127,6 +137,7 @@ from collections import deque
 from typing import Optional
 
 import rclpy
+from navera_common import state_store
 from navera_common.covariance import covariance_sane, horizontal_sigma
 from navera_common.geo import is_finite_latlon
 from navera_common.gps_crosscheck import STREAK_N, GpsCrossCheck, GpsDriftTrend
@@ -177,6 +188,10 @@ _MODE_NAME = {
 DOUBT_MAX_M = 500.0
 # a stated horizontal accuracy below this is not one (0 = "not filled"); RTK is ~1 cm
 MIN_STATED_SIGMA_M = 0.01
+# state_store name of what the GPS gate knows (survives a restart of this node)
+GPS_STATE = "estimator_gps"
+GPS_STATE_SAVE_PERIOD_S = 1.0
+
 # STREAK_N (navera_common.gps_crosscheck): distinct independent fixes in a row beyond 3 sigma that
 # refuse GPS. For a 2-D error P(r > 3 sigma) = exp(-4.5) = 1.1 % per fix, so a false streak of 5 is
 # 1.7e-10 (the former "< 1e-12" was the 1-D figure, 0.27 % per fix)
@@ -227,6 +242,8 @@ class EstimatorNode(Node):
         self.declare_parameter("map_images_dir", "")
         declare_float(self, "map_edge_warn_m", 500.0, "closer to the map's edge than this: NEAR_EDGE (m)")
         declare_float(self, "map_hold_s", 60.0, "the last position keeps the map flag this long (s)")
+        # a restart reads back the GPS gate's state (refusal, last trusted fix) saved this recently
+        declare_float(self, "gps_state_memory_s", 600.0)
         rate = float(self.get_parameter("publish_rate_hz").value)
         if rate <= 0.0:
             raise ValueError(f"publish_rate_hz must be > 0 (got {rate})")
@@ -314,6 +331,8 @@ class EstimatorNode(Node):
         self.pub_pos = self.create_publisher(PositionEstimate, "/navera/position", 10)
         self.pub_status = self.create_publisher(NavStatus, "/navera/nav_status", 10)
 
+        self._gps_state_saved = (None, None)      # (suspect, monotonic s) of the last save
+        self._restore_gps_state(float(self.get_parameter("gps_state_memory_s").value))
         self.create_timer(1.0 / rate, self._tick)
         # Exactly one arbiter may speak on a ROS network: a second one (another
         # box on the same domain, a leftover test or demo) interleaves two
@@ -326,6 +345,50 @@ class EstimatorNode(Node):
             f"night_timeout={self._night_timeout:.1f}s cn_timeout={self._cn_timeout:.1f}s "
             f"imu_timeout={self._imu_timeout:.1f}s"
         )
+
+    # ---------- restart: the GPS gate's state (B23) ----------
+
+    def _save_gps_state(self) -> None:
+        """Persist the GPS gate's state: at once when the refusal changes, else at most once a second."""
+        suspect, at = self._gps_state_saved
+        mono = time.monotonic()
+        changed = suspect != self._gps_suspect
+        if not changed and (self._gps_trusted is None or (at is not None and mono - at < GPS_STATE_SAVE_PERIOD_S)):
+            return
+        trusted = None
+        if self._gps_trusted is not None:
+            lat, lon, stamp = self._gps_trusted
+            trusted = dict(lat=lat, lon=lon, t=stamp.nanoseconds / 1e9)
+        state_store.save(GPS_STATE, dict(suspect=self._gps_suspect, trusted=trusted))
+        self._gps_state_saved = (self._gps_suspect, mono)
+
+    def _restore_gps_state(self, memory_s: float) -> None:
+        """Restarted: a GPS refused before stays refused until an independent fix (or 120 s without
+        any) clears it; the jump gate starts from the last trusted fix. Never a position."""
+        d = state_store.load(GPS_STATE, memory_s) if memory_s > 0 else None
+        if not isinstance(d, dict):
+            return
+        now = self.get_clock().now()
+        tr = d.get("trusted")
+        try:
+            if isinstance(tr, dict) and is_finite_latlon(tr.get("lat"), tr.get("lon")):
+                t = float(tr["t"])
+                stamp = Time(nanoseconds=int(t * 1e9), clock_type=now.clock_type)
+                if 0.0 <= (now - stamp).nanoseconds / 1e9 <= memory_s:
+                    self._gps_trusted = (float(tr["lat"]), float(tr["lon"]), stamp)
+                    self._trusted_hist.append(self._gps_trusted)
+        except (KeyError, TypeError, ValueError):
+            pass
+        suspect = d.get("suspect")
+        if isinstance(suspect, str) and suspect:
+            self._gps_suspect = suspect if suspect.startswith("(before a restart)") \
+                else f"(before a restart) {suspect}"
+            self._confirm_needed_since = now
+            self.get_logger().error(f"restart: GPS was refused ({suspect}) — it stays refused until an "
+                                    f"independent source confirms it")
+        self._gps_state_saved = (self._gps_suspect, None)
+        if self._gps_trusted is not None or self._gps_suspect:
+            self.get_logger().warn("restart: GPS gate state read back (no position is restored)")
 
     # ---------- inputs (store only; all decisions happen in _tick) ----------
 
@@ -761,6 +824,7 @@ class EstimatorNode(Node):
 
     def _tick(self) -> None:
         now = self.get_clock().now()
+        self._save_gps_state()
 
         gps_alive, gps_eligible, gps_age = self._eval_source(
             now, self._gps_last, self._gps_timeout)

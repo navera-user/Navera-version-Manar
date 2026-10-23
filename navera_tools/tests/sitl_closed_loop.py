@@ -72,7 +72,8 @@ from navera_common.gps_crosscheck import STREAK_N, GpsCrossCheck, GpsDriftTrend 
 from navera_common.track import TrackVelocity                                   # noqa: E402
 from navera_output import mavlink_out                                           # noqa: E402
 from navera_output.policy import (KIND_ESTIMATED, KIND_FIX, KIND_NONE, STATE_DEGRADED,  # noqa: E402
-                                  STATE_FIX, STATE_NO_FIX, Config, bridge, decide, hold, reacquire)
+                                  STATE_FIX, STATE_NO_FIX, Config, bridge, bridgeable, decide, hold,
+                                  reacquire)
 
 HOME = sv.HOME
 SOURCE_GPS, SOURCE_DAY = 1, 2
@@ -276,11 +277,11 @@ class Output:
         return out
 
     def _bridged(self, out, t):
-        if out.kind == KIND_FIX:
+        if out.kind == KIND_FIX and out.gnss:
             self.held = self.last_tx = None
             self.bridging = False
             return out
-        pending = (out.kind == KIND_ESTIMATED and self.pos is self.sent_pos) or (out.kind == KIND_NONE and out.soft)
+        pending = (bridgeable(out) and self.pos is self.sent_pos) or (out.kind == KIND_NONE and out.soft)
         if not pending or self.held is None or self.cfg.bridge_max_s <= 0 or self.last_tx is None:
             if self.bridging and out.kind == KIND_NONE:
                 self.bridging = False

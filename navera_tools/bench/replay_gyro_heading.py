@@ -20,10 +20,12 @@ Per run and arm: frames after GPS loss with an output, output error median / p90
 measured fixes, wrong ones (> 50 m), outputs outside 3 sigma.
 """
 import argparse
+import collections
 import json
 import math
 import os
 import sys
+import threading
 import time as _time
 from types import SimpleNamespace
 
@@ -130,6 +132,7 @@ def make_node(matcher, gyro: bool, est_sink):
                                     correction=lambda: 0.0, nominal=0.0, state=lambda: {"applied_s": None})
     n.auto_latency, n._latency_applied, n.latency_rollback_s = False, None, 0.0
     n._dr_why = ""
+    n._gps_pending, n._busy_lock = collections.deque(), threading.Lock()   # GPS read in its own thread
     return n
 
 

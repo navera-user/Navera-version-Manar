@@ -20,6 +20,7 @@ been measured. Open engineering items are tracked in
 | Day vision — stated sigma on real drone flights (UAV-VisLoc, 8 flights, 2026-10-20) | **Model alone unsafe (65 % within 3σ); self-calibration + 30 m floor safe with the pose–attitude guard, in the product since 2026-10-20 (VL-1, `pose_tilt_guard_deg`): median 16 m, p90 34 m, 1 of 2599 fixes > 100 m, 0.999 (floor) / 0.993 (self-cal) within 3σ. Without the guard (code before VL-1): 70 fixes 100–325 m off** | below: "Day: real drone flights" |
 | Day vision — a real flight replayed through the whole chain: IMU straightening, tracking, estimator (MARS-LVIG, 2026-10-21) | **Real drone camera and IMU replayed (not NAVERA's camera, 80–130 m, one valley flight + 55 s of another):** GPS cut after 120 s, 310 s without: fixes 6–7 m median, never over 17 m, 100 % within 3σ, 0 over 50 m in 1 493; 36 % of frames matched at z17 (54 % at z18); dead-reckoning alone 4 / 12 m (median / max) over 70 s after two fixes of this branch | below: "Day: a real flight replayed" |
 | Day vision — real drone imagery against NAVERA's map source (Esri World Imagery, as a mission prepares it; UAV-VisLoc 10 flights + AerialVL 4 sequences, 2026-10-22) | **Other vehicles' cameras, single frames, not flown; map 1–9 years newer than the photos** | UAV-VisLoc 1461/4251 frames located (34 %; 54 % → 33 % on the same photos vs the dataset's own map), median 19 m, p90 38 m, 3 fixes > 100 m; AerialVL (Qingdao, March, 210–250 m, incl. sunset) 561/1152 (49 %), 18 m raw / 3–8 m after the labels' 2–2.75 s lag; within 3σ (floor / self-cal) 0.997–1.000; below: "Day: more public flights" |
+| Day vision — guards on recorded real-camera runs (shake, confident wrong fixes, blending, coast, heading search; 2026-10-22) | **Offline replay of bench logs and real drone photos; not flown** | wind/shake runs: outputs > 50 m 51 → 16 (3 seeds), right fixes kept; injected 100–650 m wrong matches believed 16 → 3 (flights) / 20 → 9 (missions); blending with the gyro heading: other conditions 57 → 13; coast failed frame 6–20 s → 0.5–1.4 s; heading search: wrong/unknown heading 0/20 → 17–19/20 located; below: "Day: robustness fixes on recorded data" |
 | Day vision — DINOv2 tile retrieval (former method, fallback) | **Not accurate enough to replace GPS** | Median 442 m on labelled replay frames |
 | Night vision (STHN homography) | Frames scaled and turned north-up from altitude, camera field of view and heading; motion gate; **not flown. Real aerial thermal (2026-10-21, orthomosaic frames, below): night LWIR 28–38 % of frames give a position at 700–1000 m, 10–12 m median, 0 wrong accept with a 640 px camera; a 160 px camera made wrong accepts through the retries (0 since the retry gate). 2026-10-22: every hypothesis needs consistency ≥ 0.97 (0 wrong on 940 real-thermal frames incl. a 15° heading error), stated sigma refitted on real thermal (100 % within 3σ) and published by default** | 8–13 m median on synthetic frames (250–600 m, any heading); simulated night mission, GPS jammed, vehicle barometer (2026-10-07): 10 m median, 21 m max, stated accuracy (simulator-calibrated) 100 % within 3 sigma; **needs an independent height (barometer) after GPS loss** |
 | Night vision on real recorded night thermal frames (Thermal-UAV, DJI M4T 35.5°, ~300 m, 2026-10-22) | **Outside the envelope: footprint 5–12 % of the reference** | 0/262 positions, 0 wrong (all refused "fly higher"; with coverage gates off still 0 accepted, 0 wrong; raw STHN 140/146 wrong): needs ≥ ~900 m or a wider lens; below: "Night vision on REAL recorded night thermal frames" |
@@ -27,9 +28,10 @@ been measured. Open engineering items are tracked in
 | Celestial (astrometry.net) | Run end to end on simulated star fields; **coarse: bounded by the IMU attitude (~111 km per degree); simulator only — not run on a real sky**. Compass-free when the camera's full mount is known (B11, 2026-10-22, unit-tested on synthetic plate solutions only) | 5.5–6.5 km with a perfect attitude; 24–119 km with a BNO085-class IMU; simulated night mission without barometer (2026-10-07): 29 km median, 40 km max, 100 % within its stated sigma; compass error 1/5/10° → 51/256/516 km with the compass method, 0.24 km with the zenith method |
 | Celestial 360 in a car: trusted ('stopped') fixes and the learned tilt of 'up' (2026-10-22) | **Simulation only (car drive: synthetic IMU and sky)**; real drive planned from 31 Oct | glass road: 'stopped' frames with 'up' > 0.3° off 106 → 1 (4 seeds: 394 → 2), no stop lost on 13 profiles; trusted fixes through the server p90 265 → 9.3 km, max 825 → 22 km; tilt fit with 1–4 bad samples in 12: 33–101 km → 0.8–2.4 km; below: "Celestial: field-test readiness fixes" |
 | Day vision dead-reckoning along the measured track (no match: sea, uniform ground, frame unusable) | Implemented 2026-10-02; **simulator only** | Land route: no failsafe, error median 10 m, max 33 m; across the bay: carried 90 s over the sea stating ±300 m, true error at most 146 m |
+| Isaac Sim closed loop, final code 2026-10-23 (copter, 2 h GPS-denied with the day node killed at 45 min; base / 600 m / plane 30 m/s / 60 s cloud bank / 1200 m) | **Simulation only** | 2 h: mission completed, fix 6.5 m median, 0 wrong, 0/8375 beyond 3σ; kill: carried position again after 7 s, no failsafe (770 m excursion: the kill fell on a corner); base/600 m/plane: as before (0 wrong); 60 s cloud bank 2 of 4 completed (the code before: 0 of 1 today); 1200 m not completed (matching while the copter accelerates); below: "final verification" and "2 hours without GPS" |
 | Vision position carried to the present (output, operator view) | Implemented; unit tests and simulator only | 1.5 s old photo at 40 m/s: moved 60 m, stated ±31.5 m |
 | Inertial navigation (integrating the IMU) | **Not implemented** — the IMU gives attitude and heading changes | — |
-| Vehicle outputs | ArduPilot SITL only; **PX4 not tested** (and PX4 ignores `GPS_INPUT`) | below; PX4_INTEGRATION.md |
+| Vehicle outputs | ArduPilot SITL; **PX4 v1.15.4 SITL** (`HIL_GPS`: PX4 ignores `GPS_INPUT`); no real autopilot | below; PX4_INTEGRATION.md §4 |
 
 ## Position output contract
 
@@ -552,7 +554,8 @@ Flight 02 on its own dataset map, for comparison: 272/1071, 14.8 / 32 / 104 m, 3
   the VL-1 guard lets them through because the bench photos are not straightened; in the product
   the IMU straightens the frame first (expected tilt 0) and these poses would be refused, leaving
   the frame centre (48 m / 57 m off). 04_0663 (58 inliers, pose 13°, photo 7–10° tilted) is the
-  same case. With the 30 m floor / self-calibration, 0.997 / 0.995 of the fixes are within 3σ;
+  same case. Replayed straightened (2026-10-22, "Day: robustness fixes on recorded data"): no fix
+  > 100 m — two photos not accepted at all, 04_0663 21–58 m. With the 30 m floor / self-calibration, 0.997 / 0.995 of the fixes are within 3σ;
   5 fixes > 50 m (2 > 100 m) are beyond the self-calibrated 3σ. Flights that match rarely on
   this map (01, 05, 06, 08, 10) never calibrate and publish the 30 m floor.
 
@@ -593,6 +596,150 @@ Flight 02 on its own dataset map, for comparison: 272/1071, 14.8 / 32 / 104 m, 3
 - Limits: still another vehicle's camera and not a NAVERA flight; frames one by one from a
   perturbed prior (no tracking, no IMU straightening); AerialVL's height and lens fitted;
   public labels with their own errors (AerialVL lag, UAV-VisLoc 06).
+
+### Day: robustness fixes on recorded data — shake, confident wrong fixes, blending, coast, heading search (2026-10-22)
+
+Branch `work/day-robust-2026-10-22`. Problems F20, F16 / D17, F23, F4, D18 and the three UAV-VisLoc
+fixes > 100 m on the Esri map. **Everything here is an offline replay of recorded data** (real-camera
+screen-bench logs, recorded missions, real drone photos); nothing was flown.
+
+**Data.** The 76-run real-camera campaign of 2026-10-19 (`~/navera-field/day_real_2026-10-19`) kept
+its per-frame CSV logs only — **no frames were recorded** — plus the re-check and day-image sets of
+2026-10-19/20 (25 runs, 10 of them with every frame recorded) and campaigns 4-7's screen missions
+(29 runs, every matcher result). `navera_tools/bench/replay_day_guards.py` rebuilds each run's truth
+(the bench circuit / the mission's integrated heading), puts each logged match at truth + its logged
+error and replays the GPS-lost part through `VisionNavigator` (the node's rules, pure Python) with
+the heading carried by a simulated gyro as the node carries it (true turn rate + 0.1 deg/s bias +
+noise, reset at fixes ±2°), 3 seeds. Limits: the live gate had already refused some matches (their
+vectors were not logged), so a replay can refuse more but never believe more; the bench camera did
+not move (the 'wind' overlay shakes the *scene*), so there is no real gyro at the exposure.
+Results: `~/.navera_sim/pubdata/day_guards_replay_2026-10-22.txt`. "base" = feat/field-sky-test
+d77f8c4 with the gyro heading; "product" = the defaults below.
+
+**F20 — wind / camera shake.** What carried the wrong fixes was not blur: on the 115 recorded frames of
+the wind run, sharpness (`image_quality.sharpness`) of the 10 wrong fixes 0.54–0.81 vs 0.58–0.86 for
+the right ones (median 0.68) — no separation; frame-time alignment of the shaken scene does not
+explain them either (best global offset 0–25 ms, median error unchanged). The shake rate does carry
+part of them (bench overlay rate > 40 deg/s: 62 % of the wrong, 40 % of the right fixes). Replayed
+(3 seeds, 443 lost frames a seed on 8 wind runs):
+
+| wind runs | measured output > 50 m | right fixes (≤ 20 m) not used | output median / p95 / max m | within 3σ |
+|---|---|---|---|---|
+| base | 51 | 13 / 540 | 12.0 / 75 / 166 | 83 % |
+| **product (blend + strong 3σ)** | **16** | 15 / 540 | **10.5 / 68 / 159** | 87 % (99.5 % with the 30 m floor) |
+| product + rate gate 6 px | 9 | **185** / 540 | 13.4 / 105 / 246 | 89 % |
+| product + rate gate 10 px | 16 | 39 / 540 | 10.5 / 69 / 124 | 87 % |
+| product + rate gate 15 px | 16 | 18 / 540 | 10.6 / 68 / 159 | 87 % |
+
+On the vibration runs (0 wrong in all arms) the rate gate refused 132 / 621 right fixes at 10 px, 45
+at 15 px. **Down-weighting wins, refusing does not:** the blend (each fix averaged with the carried
+position by their sigmas) cuts the wrong outputs by 3x without losing right fixes; a hard rate gate
+removes more wrong fixes only by refusing a third of the right ones, and the dead-reckoning that
+replaces them is worse than the fixes. So `day_pkg/frame_gate.py` (gyro smear at the exposure,
+sharpness against the flight's running median) is in the node but **off by default**
+(`frame_max_blur_px` 0, `frame_sharp_rel` 0), to be tried on a real vehicle, where the attitude at
+the exposure (not modelled on the bench) also depends on the rate.
+
+**F16 / D17 — a confident wrong match.** The track gate exists since 2026-10-19 (kinematic: speed ×
+time + 3 × the two sigmas; 3σ of the carried position; a doubted fix believed once a second agrees).
+Two gaps: a strong fix (≥ 100 inliers) was gated at 6σ only, and a believed wrong fix moved the
+output all the way. Now `day_pkg/fix_consistency.py` (used by the node and VisionNavigator) gates
+strong fixes at 3σ too (`strong_gate_k_sigma` 3), and the blend shares a fix's error with the carry.
+The hand-tilt log of 2026-10-19 (tilt2) is no longer on disk, so confident wrong matches were
+injected into the recorded runs instead: 5 % of the lost matches replaced by one 100–650 m off with
+100–228 inliers (the tilt2 run's), alone or two in a row at the same place:
+
+| injected (3 seeds) | believed: base → strong 3σ → product | measured output > 50 m: base → product | right fixes not used: base → product |
+|---|---|---|---|
+| flights, single (579) | 16 → 5 → **3** | 123 → **29** | 137 → 80 / 14303 |
+| missions, single (548) | 20 → 9 → **9** | 26 → **15** | 399 → 288 / 9371 |
+| flights, two in a row (1151) | 52 → 35 → **22** | 162 → **60** | 164 → 109 / 13768 |
+| missions, two in a row (1029) | 83 → 55 → **51** | 87 → **55** | 509 → 414 / 8907 |
+
+Re-acquisition confidence (`reacquire_confirm`: while the carried position is lost, σ > 50 m, a fix
+further from it than 3 × its own sigma waits for a second agreeing one): believed injected 9 → 2
+(missions) but right fixes refused 288 → 804 and availability 94 → 89 %, on the real recorded fixes
+703 vs 271 refused. **Off by default** (it delays every legitimate re-acquisition after a gap,
+where fixes are sparse). Two wrong matches in a row at the same place are still believed (a moving
+lens near the screen did that on the bench): D17 stays partly open — what is left is a real
+multi-hypothesis track.
+
+**F23 — blending with the gyro heading** (strong fixes at 3σ in all arms; measured output > 50 m /
+output p95 m / within 3σ):
+
+| set | no heading: off → blend | true heading: off → blend | gyro heading: off → blend |
+|---|---|---|---|
+| wind (443 frames × 3) | 57 → 15 / 90 → 88 / 81 → 82 % | 57 → 15 / 75 → 67 / 82 → 87 % | 51 → 16 / 75 → 68 / 83 → 87 % |
+| other conditions (5067 × 3) | 63 → **75** / 60 → **98** / 95 → 93 % | 57 → 15 / 22 → 21 / 99.4 → 99.1 % | 57 → **13** / 19 → **17** / 99.4 → 99.1 % |
+| missions camp4-7 (3979 × 3) | 6 → 6 / 414 → **805** | 6 → 6 / 24 → 23 | 6 → 6 / 25 → 24 / 98.4 → 97.9 % |
+
+Without a heading the blend lags in turns (the F23 finding, reproduced: worse on the circuit and the
+missions); with the gyro-carried heading it is as good as with the true one. **`blend_fixes` is on
+in the node, applied only when the carry turns with a heading** (frame attitude or gyro) and never to
+a re-acquisition. One mission max grew 150 → 211 m: a carried output stated ±290 m (honest, 1σ);
+the 30 m floor arm: 100 % within 3σ on missions and other conditions.
+
+**F4 — coast, time per failed frame.** The uniform-frame rejection (1a97204) is in the integration
+branch (`learned_matcher._locate_learned`: frame features before the map window, with the map
+levels added since). Measured with `navera_tools/bench/day_fail_timing.py` (product matcher,
+campaign 4's other-date coast terrain, 40 frames at 520 m over land, shore and sea, prior up to
+half the radius off):
+
+| search radius | accepted (wrong) | failed | failed frame: median / p90 / max |
+|---|---|---|---|
+| 150 m | 29 (0) | 11 | 1.35 / 3.8 / 5.7 s (map windows not yet cached) |
+| 400 m | 29 (0) | 11 | 0.48 / 0.56 / 0.69 s |
+| 600 m | 28 (0) | 12 | 0.74 / 1.07 / 1.09 s |
+
+Campaigns 6/7 took 6–20 s per failed frame: now 0.5–1.4 s (median) — about the time of a success
+(0.45–0.7 s). None of these sea frames was "uniform" (noise and JPEG give DISK ≥ 10 features): they
+fail at the matching, quickly. The heading search, when it runs, now stops at once on a uniform
+frame (D18 below). Not re-measured on the camera; the coast availability (no landmarks at sea) is
+unchanged (D19).
+
+**D18 — heading search** (`navera_tools/bench/heading_search_eval.py`: UAV-VisLoc flight 04 on the
+Esri map, 20 photos the Esri run located + 20 it refused, prior 100 m off, search 250 m, the heading
+given wrong by the error; product matcher):
+
+| heading error | search off: located / wrong / ms (all, failed) | search on: located / wrong / ms (all, failed) |
+|---|---|---|
+| 0° | 20/20 / 0 / 578, 1574 | 19/20 / 1 / 1292, 2497 |
+| 15° | 12/20 / 1 / 324, 357 | 18/20 / 1 / 586, 2466 |
+| 30° | 0/20 / 0 / 358, 358 | 18/20 / 2 / 1475, 2424 |
+| 60° / 120° / 180° | 0/20 / 0 / ~330 | 19 / 19 / 18 of 20, 0–2 wrong, ~2.4 s |
+| unknown (none given) | 0/20 / 0 / 97 | 17/20 / 0 / 2264, 2344 |
+
+Without a magnetometer a wrong or missing heading means no day fix at all; the search recovers
+85–95 % of the photos whatever the error, at ~2.4 s per frame that fails (12 headings) instead of
+0.3–1.6 s, and finds 1–2 more wrong fixes in 40 (left to the track gate). **Default now
+automatic** (`local_heading_search_after` 3; `local_heading_search` still forces it): the search runs
+when the frame has no heading (no attitude heading, no gyro-carried one) or after 3 frames in a row
+without a match; with a known heading the cost is nil. A uniform frame stops the search at once
+(rotation adds no texture). Not measured with NAVERA's camera.
+
+**The three UAV-VisLoc fixes > 100 m on the Esri map, replayed straightened**
+(`navera_tools/bench/uavvisloc_straightened.py`): each photo warped to the straight-down view by
+its recorded attitude (the dataset does not say how Omega / Kappa map to the image axes: of the 8
+conventions, the one that located 9/10 well-matched tilted photos of flights 01/04/06/11, pose tilt
+median 1.4°, was used) and located with expected tilt 0 — the product path — from 8 priors 250 m
+off (search 350 m):
+
+| photo (tilt) | as the bench (unstraightened) | straightened, expected tilt 0 |
+|---|---|---|
+| 04_0439 (3.2°) | 8/8 accepted, 33–96 m, 0 > 100 m | 0/8 accepted |
+| 04_0663 (9.1°) | 8/8 accepted, 64–131 m, 1 > 100 m (pose guard 7/8) | 8/8 accepted, 21–58 m, 0 > 100 m (pose guard 3/8) |
+| 05_0149 (8.9°) | 2/8 accepted, 56 / 90 m | 0/8 accepted |
+
+**No fix > 100 m on the product path** (0 of 8 accepted for two photos; 21–58 m for the third,
+where the guard refused 3 of 8 poses and kept the frame centre). The original 109–148 m fixes came
+from one prior each in the Esri run; here the unstraightened arm gave 1 > 100 m in 24. Limits: the
+attitude convention is fitted, not documented; the photos' poses on well-matched frames (median
+1.8° unstraightened for 4.5–12° recorded tilts) suggest a partly stabilised camera.
+
+**Defaults changed by this work:** `strong_gate_k_sigma` 6 → 3; `blend_fixes` on (with a heading);
+`local_heading_search_after` 3 (automatic heading search). New, off: `reacquire_confirm`,
+`frame_max_blur_px`, `frame_sharp_rel`. Open: F20 and D17 need a real vehicle (shake moves the
+camera, not the scene; two wrong matches in a row at the same place are still believed).
 
 ### Night vision (`night_pkg`, STHN one-stage)
 
@@ -1201,6 +1348,219 @@ over by vision, median 59–129 m, mission continued); (2) a celestial fix (±55
 the autopilot moved its position by 125 km — positions coarser than `max_forward_sigma_m`
 (1 km) are no longer forwarded.
 
+### Isaac Sim closed loop: the camera delay learned in flight dates the attitude too (F35b, 2026-10-22)
+
+**SIMULATION only** (Isaac Sim scene, ArduPilot SITL, NAVERA's real nodes; true camera delay
+1.3 s, unknown to NAVERA unless stated). The F33/F35 runs showed that every wrong plane fix was a
+frame centre: live_camera straightened each frame with the attitude at its **arrival**, 1.3 s
+after the exposure, so on a banked plane the frame centre landed 50–272 m off. Changes
+(branch work/plane-delay-2026-10-22):
+
+- the day node publishes its delay estimate on `/day/camera_delay` (latched, before each ack);
+  live_camera takes the attitude, altitude and rotation rate `correction_s` before the stamp —
+  the same instant the day node dates the frame (the stamp itself is left to the day node, so
+  `capture_latency_s` is never subtracted twice; meta `attitude_delay_s`);
+- a staged (not yet stable) delay is applied only while ground speed × its sigma ≤
+  `latency_partial_max_error_m` (10 m);
+- a mount calibration learned or stored with other camera mount settings (`mount_id`: mount
+  angles, lens file content, crop) is dropped (F33 open item 4).
+
+| run | matched % | fix error at stated time med/p90/max (m) | at exposure | output err | > 3σ | wrong | mission |
+|---|---|---|---|---|---|---|---|
+| n1_plane30 (F33: delay **set by hand** 1.3 s) | 98.1 | 9/16/27 | – | 9/17/60 | 3/214 | 0 | completed |
+| m1_plane30 (F33: in-flight staged delay, arrival attitude) | 83.4 | 33/48/73 | 27/42/68 | 35/54/129 | 0/170 | 6 | completed |
+| **pd_plane30** (in-flight delay only, attitude at exposure) | **98.2** | **13/21/41** | 13/21/43 | 14/22/144 | 0/176 | **0** | completed |
+| c3_base (copter 250 m, before F33) | 98.7 | 13/21/30 | 6.5 median | – | 1/317 | 0 | completed |
+| pd_ref_base (d0ab1c2, **without** these changes) | 96.9 | 19/34/47 | 10/22/38 | 20/35/88 | 146/356 | 0 | completed |
+| pd_base (these changes) | 96.0 | 22/40/55 | 14/29/46 | 22/41/114 | 178/382 | 0 | completed |
+| pd_nomc_base (these changes, mount_cal off) | 98.5 | 36/73/101 | 25/57/79 | 36/75/188 | 182/461 | 90 | completed |
+| c2_h600 (copter 600 m, before F33) | 98.8 | 21/30/36 | 13/19/23 | – | 16/258 | 0 | completed |
+| pd_h600 | 82.1 | 16/20/24 | 11/15/23 | 17/40/164 | 112/217 | 0 | NOT completed (EKF failsafe, LAND) |
+| pd_plane60 (jet 60 m/s, 900 m circuit) | 0.0 | – | – | 131/236/257 | 0/44 | 0 | completed |
+
+- **Plane 30 m/s: 6 → 0 wrong fixes with the delay learned in flight alone**, matched 83 → 98 %,
+  13 m median (the hand-set delay gives 9 m). The staged delay was applied after 12 GPS checks
+  as 1.41 ± 0.17 s and ended 1.47 ± 0.17 s (true 1.3 s; 5 m along the track at 30 m/s): with the
+  attitude at the exposure the GPS-check fixes are better, and the estimate tighter than F33's
+  0.58 ± 0.44 s. The speed cap did not trigger in this run (30 × 0.17 s = 5 m).
+- **Copter base / h600: regression, not caused by these changes.** In pd_base no delay was ever
+  applied (the attitude shift stayed 0: the change is inert there), and the reference run of
+  d0ab1c2 without these changes shows the same degradation (19 m median, 146/356 beyond 3σ, vs
+  c3_base 12.8 m, 1/317). The stated sigma is 5–9 m where it was 11–13 m in c3_base while the
+  unknown 1.3 s delay at 10 m/s leaves ~13 m along the track (pd_h600: error 15–20 m, stated
+  ~5 m, after the blending with the carried track halved the fix sigma) — the stated accuracy
+  after the F33 / day-robustness merges is overconfident on a copter whose delay is not learned
+  (its delay samples are refused as "too slow" / "turning"; in pd_nomc_base a 1.0 ± 0.44 s
+  staged delay was undone by the 20 s rollback at the GPS cut). Found and fixed in F41 (next
+  section): the blend fed the carry its own output and averaged the common error, and the mount
+  calibration learned the delay.
+- **Plane 60 m/s: no frame used** (as c2_plane60): live_camera measures 60–190 deg/s rotation
+  at every exposure on the jet model and refuses the frames (max 30 deg/s). Open: an attitude
+  stream / jet model problem in the simulation, not investigated here.
+
+### Isaac Sim closed loop: the overconfident copter sigma found and fixed (F41, 2026-10-22)
+
+**SIMULATION only.** The F35b open item: after the F31 / day-robustness / F33 merges the copter's
+stated sigma was 5–9 m for 13–20 m errors (pd_ref_base 146/356 outputs beyond 3σ; pd_nomc_base
+182/461 and 90 wrong fixes; pd_h600 EKF failsafe). Bisected **offline**:
+`navera_tools/bench/replay_sigma_isaac.py` replays a run's recorded matcher answers after the GPS
+cut through `DaySubscriber._publish_result` (built by its own `__init__`, shipped defaults, virtual
+clock; the calibrations as they stood at the cut), one feature toggled at a time. It reproduces the
+live runs (pd_ref_base 19.8 m / 160 beyond 3σ vs 19.2 m / 146 live; pd_nomc_base 99 wrong vs 90).
+
+Bisection (bef4170, error at the stated time median, outputs beyond 3σ, wrong fixes):
+
+| run | product | blend_fixes off | mount_cal off | strong gate 6σ | unknown_delay_sigma 0 |
+|---|---|---|---|---|---|
+| pd_ref_base | 19.8 m, 160/353, 0 | **11.2 m, 3/353**, 0 | 21.8 m, 158/353 | 21.6 m, 176/353 | 17.5 m, 171/353 |
+| pd_nomc_base | 38.7 m, 196/454, **99** | **15.2 m, 0/454, 0** | (= product) | 41.2 m, 212/454, 114 | 37.2 m, 186/454, 80 |
+| pd_h600 | 16.3 m, 111/185 | 16.5 m, 1/185 | **10.0 m, 1/185** | = | 16.3 m, 126/185 |
+| pd_plane30 | 12.7 m, 14/168 | 14.2 m, 1/168 | 14.4 m, 7/168 | 13.1 m, 11/168 | = |
+| c3_base frames | 14.8 m, 71/315 | 12.9 m, 0/315 | = | = | 14.8 m, 87/315 |
+
+Root causes:
+1. **blend_fixes (F23) fed the carry its own output.** The track (velocity fit, carry start) got the
+   blended position, so the carry was a filter of itself: velocity fitted to smoothed points, its
+   sigma shrinking, each fix weighted ~0.2, and after every speed change the output lagged — up to
+   100 m behind the copter (pd_nomc_base: the 90 wrong fixes are blended outputs; the raw matches
+   were 6.6 m median at the exposure). And the blend counted the error **common to every fix** —
+   speed × the unknown delay's sigma (10 m at 10 m/s), height × tan(mount sigma) — as independent,
+   averaging it down frame after frame (fix 12 m ⊕ carry 7 m → 6 m stated).
+2. **mount_cal (F33) learned what it cannot separate.** A copter flies nose first: the unknown
+   delay's offset lies along the frame top like a pitch error — 1.2–1.5° "learned" for the point
+   under the camera, which no mount error moves; at 600 m all GPS checks were on one heading during
+   the climb, where a mount offset is a map shift: the correction put the fixes 16 m off instead of
+   10 m, with a 0.33° stated sigma.
+
+Fixes: the track holds the **measured** fix with its own sigma (the output is still the blend);
+the blend weight uses the independent parts only and states hypot(√k × the fix's own part, the
+common part); a GPS check is a mount sample only while the camera delay is known and speed × its
+sigma ≤ `mount_cal_max_dating_m` (2 m); an in-flight mount fit is used / persisted only once its
+samples span `mount_cal_min_heading_span_deg` (90°). Replay after the fixes:
+
+| run | error at stated time med/p90/max | at exposure | beyond 3σ | wrong | median stated σ |
+|---|---|---|---|---|---|
+| pd_ref_base | 15.6/23.5/37.0 (19.8/33.5/47.3) | 7.2/12.2/22.0 | **3/353** (160) | 0 | 13.5 m (7.2) |
+| pd_base | 19.5/26.3/31.5 (21.8/42.6/60.4) | 10.2/16.2/21.0 | **0/379** (186) | 0 (1) | 13.7 m |
+| pd_nomc_base | 17.5/28.3/42.6 (38.7/75.4/98.3) | 7.5/13.2/22.3 | **0/454** (196) | **0** (99) | 23.8 m |
+| pd_h600 | 9.9/12.4/17.5 (16.3/19.8/27.0) | 5.6/9.6/19.1 | **1/185** (111) | 0 | 14.8 m |
+| pd_plane30 | 9.9/18.8/43.5 (12.7/29.8/41.1) | 11.3/17.5/39.0 | **1/168** (14) | 0 | 17.9 m |
+| c3_base frames | 12.7/21.5/32.5 (14.8/36.9/53.0) | 6.3/12.4/17.6 | 0/315 (71) | 0 | 14.0 m |
+
+(in brackets: bef4170.) Blending still costs ~1.5 m median against no blending in these runs
+(pd_ref_base 15.6 vs 14.1 m: the carry adds lag, the fixes here are good and their error is mostly
+the delay's); on the screen bench (VisionNavigator, which now carries from the measured fix too)
+its gain shrinks: wind measured outputs > 50 m 51 → 26 (was 51 → 16 with the self-filtering carry,
+whose constant-circle bench truth flattered it), other conditions 57 → 29 (was 13). Regression
+test: `day_pkg/test/test_isaac_sigma_replay.py` (fixtures of pd_ref_base and pd_nomc_base; fails
+on bef4170). Also found: `isaac_link.py` on bef4170 did not compile (`continue` outside a loop):
+no closed-loop flight could start.
+
+Isaac Sim flights with the fixes (code d53c4be–5808792, one flight each, results
+`~/.navera_sim/isaac/f38/sr_*` on the Jetson; same arguments as the pd_* runs):
+
+| run | matched % | fix error at stated time med/p90/max | at exposure | output err | > 3σ | wrong | mission |
+|---|---|---|---|---|---|---|---|
+| **sr_base** | 98.1 | **13.7/21.9/30.7** | 6.9/12.3/18.9 | 13.8/21.6/30.7 | **0/315** | **0** | completed |
+| c3_base (reference) | 98.7 | 12.8/20.7/30.0 | 6.5/12.2/14.8 | 12.8/20.7/30.0 | 1/317 | 0 | completed |
+| pd_ref_base (d0ab1c2) | 96.9 | 19/34/47 | 10/22/38 | 20/35/88 | 146/356 | 0 | completed |
+| **sr_nomc_base** (mount_cal off) | 98.3 | **13.8/22.7/31.9** | 6.6/12.3/18.1 | 13.7/22.6/31.9 | **0/301** | **0** (90) | completed |
+| **sr_h600** | 98.1 | 20.5/32.0/54.4 | 14.7/20.5/35.9 | 20.5/35.6/54.4 | **0/276** (112/217) | 0 | **completed** (pd_h600: EKF failsafe, LAND) |
+| **sr_plane30** | 97.6 | 13.3/23.3/41.1 | 11.1/17.9/34.3 | 13.3/24.0/79.1 | 0/170 | **0** | completed |
+
+The copter base is back to c3_base (13.7 vs 12.8 m median, one run each: within run-to-run spread;
+0/315 beyond 3σ, 0 wrong). At 600 m the error is c2_h600's level again (21/30/36 before F33) and now
+stated honestly; the 600 m mount error is no longer corrected (never learned with the delay unknown,
+its 2° prior stated instead). Plane 30 m/s: no regression (0 wrong, 0 beyond 3σ).
+
+**The same cause on the real Jetson in the loop** (B23 runs hil_resil4/5, 2026-10-22: day fix error
+20–45 m after the GPS cut against 5–7 m in hil_base1 / hil_endur30, from before any kill; hil_base1
+and hil_endur30 ran code without blending or mount calibration). Replayed offline (stated time,
+med/p90/max; beyond 3σ): hil_resil5 bef4170 40.2/59.9/77.9 m, 1833/2919 → blend off 6.1/10.1/20.6 m,
+0 → with the fixes 4.6/8.5/18.6 m, 0/2919; hil_resil4 32.0/61.8/105.3 m, 140/287 → with the fixes
+15.6/26.8/31.7 m, 0/287 (its remaining 15 m is the camera delay, never learned in that run). Neither
+isaac_link's one frame per tick nor the learned 2.0 s delay (true 1.7 s) explains it: the fixes
+replayed with that same delay are 4.6 m. Note: the HIL summaries' exposure errors and "wrong fixes"
+(resil5: 1334) are unreliable — day.csv's `t_exposure` joined from the PC stream is off for part of
+the frames (e.g. 659 s for a fix stamped 140 s); judge HIL runs by the stated-time error.
+
+### Isaac Sim closed loop: final verification of the 2026-10-23 code (B23 track restore, DR watchdog, GPS handover)
+
+Code: `work/final-2026-10-23` (ad88f5d unless noted), one Isaac Sim closed-loop flight each (copter SITL
+4.5.7, Kalaa scene, results `~/.navera_sim/isaac/final/` on the Jetson). SIMULATION only. New in the day
+node: the track is persisted and restored by a restarted node (B23); a watchdog thread publishes the
+carried position when a match stalls (> 2 s without an output); GPS read in its own thread, its points
+timed by their stamps, and the last GPS position + velocity bridges the handover at once; a fix older than
+the last GPS point is inserted in the track (it erased it); height retries within a 6 s frame budget and
+without the 12-heading search. The flight script now sets the documented Copter `EK3_GLITCH_RAD 100`
+(the reference runs had 25).
+
+| run | matched % | fix error at stated time med/p90/max | at exposure | output err | > 3σ | wrong | autopilot EKF | mission |
+|---|---|---|---|---|---|---|---|---|
+| **fin_base** | 96.6 | **14.3/21.8/28.5** | 6.7/11.6/15.2 | 14.0/21.8/50.7 | **0/354** | **0** | 16.5/28.9/39.0 | completed |
+| sr_base (F41, ref.) | 98.1 | 13.7/21.9/30.7 | 6.9/12.3/18.9 | 13.8/21.6/30.7 | 0/315 | 0 | 16.4/31.3/47.4 | completed |
+| **fin_h600** | 93.6 | 21.4/31.3/40.1 | 13.8/19.8/22.5 | 21.1/31.3/61.5 | **0/283** | **0** | 25.6/36.5/48.9 | completed |
+| sr_h600 (ref.) | 98.1 | 20.5/32.0/54.4 | 14.7/20.5/35.9 | 20.5/35.6/54.4 | 0/276 | 0 | 25.7/47.1/87.9 | completed |
+| **fin_plane30** | 95.5 | 11.8/20.2/33.5 | 10.4/17.8/28.8 | 12.0/21.9/90.1 | 1/204 | **0** | 20.2/37.7/60.4 | completed |
+| sr_plane30 (ref.) | 97.6 | 13.3/23.3/41.1 | 11.1/17.9/34.3 | 13.3/24.0/79.1 | 0/170 | 0 | 18.6/53.5/98.3 | completed |
+| fin_outage60 #1 (2ad5406) | 47.4 | 10.5/25.8/28.1 | 8.7/12.8/22.1 | 15.3/114/357 | 0/180 | 0 | 24/213/363 | **NOT** (EKF failsafe at the outage end) |
+| fin_outage60 #2 (cdae642) | 87.8 | 16.0/24.9/30.8 | 7.1/12.1/24.1 | 16.9/28.6/451 | 0/437 | 0 | 22/148/501 | completed |
+| fin_outage60 #3 | 25.4 | 21.8/25.8/28.7 | 10.1/12.1/24.3 | 27.5/539/617 | 0/107 | 0 | 182/719/882 | **NOT** |
+| fin_outage60 #4, `EK3_GLITCH_RAD 25` | 84.5 | 16.5/24.7/32.6 | 8.0/11.7/19.6 | 17.8/31.7/387 | 1/469 | 0 | 25/95/413 | completed |
+| ref_outage60 (05630fb, before this work) | 40.9 | 13.5/25.1/29.3 | 9.4/13.1/22.7 | 21.9/335/688 | 0/166 | 0 | 53/668/756 | **NOT** |
+| f32s_outage60 (F32, ref.) | 89.6 | 14.3/24.8/45.3 | 6.8/11.0/21.1 | 15.0/27.4/278 | 0/449 | 0 | 19/103/305 | completed |
+| fin_h1200 #1–#3 | 35 / 27 / 1.4 | 21–58 m median | | | 10/220, 3/170, 11/41 | 1, 0, 1 | km | **NOT** (as f32s_h1200) |
+
+Findings:
+
+1. **No regression on base, 600 m and the plane**: error, 0 wrong and 0–1 beyond 3σ as in the F41 runs
+   (the matched % is 1–4 points lower: the watchdog's outputs count as frames without a match).
+2. **The 60 s cloud bank is not repeatable, with or without this work**: 2 of 4 flights on the final
+   code completed, and the code before it (05630fb) failed the same flight (ref_outage60). In the failed
+   ones the velocity carried into the cloud was 6–8 m/s wrong from its first seconds (a waypoint corner
+   just before: frames 3–6 inliers for 5.4 s, the velocity refitted on 5 s of fixes; error 121 m after
+   15 s), the error reached 360–475 m and the EKF failed safe. F32's "outage60 completes" was one flight.
+3. **h1200 (F32 open)**: the handover is now seamless — the first frame after the cut searches R = 80 m
+   around the GPS track carried on (was 600 m around the last GPS point), positions are published from
+   0.5 s after the cut (was: none for 13 s, failsafe 8 s after the cut). Root cause of the old gap: the
+   GPS messages were read in the matching thread; at 1200 m GPS-check matches took 7–10 s, the queued GPS
+   points arrived in bursts timed at their arrival, the track had no velocity at the cut. The mission
+   still fails, later and for another reason: the copter starts its legs at the cut, tilts 20–35° (frames
+   3–6 inliers, scale 0.80 at 1200 m), the carried velocity is the hover's, the autopilot flies on it and
+   ends 1–3 km off. In f32s_h1200 the frames matched only because the vehicle was already landing level
+   after its failsafe. Open: matching at 1200 m while the copter accelerates.
+4. Watchdog (frames > 2 s): 7 outputs in fin_base, all within 3σ after the gyro-turn fix (two at a
+   waypoint corner were 2.7–2.9σ before it, 2ad5406).
+
+### Isaac Sim closed loop: 2 hours without GPS, day node killed at 45 min (fin_endur_2h, 2026-10-23)
+
+`run_closed_loop.sh --endurance 7200 --cut-after 12 --sigma 15 --time 10:00 --isaac-args "--sun-ramp 1"
+--cam-args "-p capture_latency_s:=1.3"` (copter 250 m, 8 m/s, `EK3_GLITCH_RAD 100`, forwarding on), code
+3b95ab5; `day_subscriber` SIGKILLed alone 45 min after the cut, respawned 1 s later. SIMULATION. Report:
+`~/.navera_sim/isaac/final/fin_endur_2h/ENDURANCE.md`.
+
+| block after the cut (min) | matched % | fix err stated time med/p90 | > 3σ / outputs | autopilot EKF med/p90/max | EKF velocity err med/p90 |
+|---|---|---|---|---|---|
+| 0–15 | 97.8 | 6.9/11.7 m | 0/999 | 10.7/22.6/55 m | 1.10/2.25 m/s |
+| 15–30 | 97.5 | 6.7/10.9 | 0/984 | 9.3/18.6/33 | 1.00/2.05 |
+| 30–45 | 97.6 | 6.3/9.8 | 0/1048 | 9.4/20.6/39 | 0.88/2.06 |
+| 45–60 (kill at 45.0) | 95.0 | 6.2/10.5 | 0/928 | 11.3/33.6/**770** | 1.29/3.20 |
+| 60–75 | 97.3 | 6.5/10.0 | 0/1007 | 9.7/20.7/35 | 1.10/2.05 |
+| 75–90 | 98.2 | 6.3/10.1 | 0/1153 | 9.2/20.1/39 | 0.79/2.08 |
+| 90–105 | 98.5 | 6.4/10.0 | 0/1110 | 10.0/19.3/37 | 1.01/2.04 |
+| 105–120 | 97.4 | 6.9/10.5 | 0/1022 | 9.5/21.2/42 | 1.06/2.07 |
+| RTL | 96.1 | 9.0/12.8 | 0/124 | 12.4/28.8/33 | 1.17/1.79 |
+
+**Mission completed** (120.0 min GPS-denied, RTL on vision, 43.8 m from home at arrival); 0 wrong fixes,
+0/8375 outputs beyond 3σ. The two earlier 2-hour runs ended in an EKF failsafe at 62 and 67 min
+(endur_2h: autopilot velocity drift with `EK3_GLITCH_RAD 25`, F38; endur2_2h: an 8.7 s "no fix" after a
+pipeline stall, fixed by the vision-FIX bridge). The kill: the restarted process published the
+persisted carried position after 7.0 s (early bridge), the node restored its track after 17.6 s, the
+output bridged meanwhile (never "no fix"); the kill fell on a diamond corner, the carry went straight on,
+error up to 745 m at ±384 m stated and the autopilot 770 m off until vision re-acquired 40 s after the
+kill. Before the early bridge (fin_endur_2h_try1, ad88f5d) the same kill left 21 s without a day position
+and the EKF failed safe 17 s after the kill. Open: turn the restored carry with the IMU.
+
 ### Long route (simulator, 2026-10-01)
 
 Paris → Tunisia, 1768 km, mapped as ≤ 10 km great-circle legs: 79 775 tiles generated in
@@ -1285,8 +1645,10 @@ holds the only results from the real sensors. No sensor recording (log, bag) was
 3. **No inertial navigation (not pursued: FEAT-2, NAV-FUN-20).** The IMU gives the camera's
    attitude and heading changes; it is not integrated into a position — a low-cost MEMS IMU
    would drift hundreds of metres within a minute. Without vision matches, day vision dead-reckons
-   along the track measured before the gap for at most 2 minutes / 500 m (simulator figures
-   above), then NAVERA gives no position.
+   along the track measured before the gap for at most 2 minutes, while its stated accuracy
+   stays within 900 m (the first limit reached: ~80 s at 10 m/s; simulator figures above),
+   then NAVERA gives no position until a frame matches again (`max_dead_reckon_s`,
+   `dead_reckon_max_sigma_m`; the product launch uses the node's 120 s since F32).
 4. **One pipeline at a time.** Day and night cannot both be loaded within 8 GB.
 5. **Map coverage is Sousse only** (z13–z19 MBTiles). Other areas need their own map, or
    tiles downloaded through `NAVERA_TILE_URL` when a route is generated on `/mission`
@@ -1294,9 +1656,9 @@ holds the only results from the real sensors. No sensor recording (log, bag) was
    **At sea** there are no landmarks: away from the coast vision gives nothing beyond the
    2-minute dead-reckoning; a low camera on a boat (a few metres above the water) has not
    been tested at all. The boat results above are simulator runs with simulated vision.
-6. **Vehicle output validated in simulation only** (ArduPilot SITL, above); not yet on a real
-   autopilot, and not on PX4 — which does not handle the `GPS_INPUT` message NAVERA sends
-   (PX4_INTEGRATION.md; no PX4 SITL run). ArduPilot needs `EK3_SRC1_VELXY = 0` /
+6. **Vehicle output validated in simulation only** (ArduPilot SITL, above; PX4 v1.15.4 SITL with
+   `HIL_GPS`, since PX4 does not handle `GPS_INPUT` — PX4_INTEGRATION.md §4); not yet on a real
+   autopilot. ArduPilot needs `EK3_SRC1_VELXY = 0` /
    `EK3_SRC1_VELZ = 0` (which also removes GPS velocity fusion while GPS is good) and one
    real GPS fix at power-on (navera_output/README.md); it caps a stated accuracy at 100 m.
    NMEA carries no accuracy: vision positions are not sent over it by default.

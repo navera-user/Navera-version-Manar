@@ -178,3 +178,22 @@ def test_a_turn_the_chi_square_lets_through_widens_the_autopilot_velocity_sigma(
     a = 22.0 * 9.6 / 300.0                                           # true heading now
     err = math.hypot(ve - 22.0 * math.sin(a), vn - 22.0 * math.cos(a))
     assert err > 5.0 and err <= 2.45 * sig and sig > straight[2] + 3.0
+
+
+def test_an_older_measured_point_is_inserted_not_a_clock_step():
+    """A frame matched after later GPS points (exposure 2.5 s before the last GPS point): put in time
+    order, the velocity kept; older than the window it is dropped (add() would start again)."""
+    tr = TrackVelocity()
+    for i in range(50):                                   # GPS 5 Hz, north 10 m/s
+        tr.add(100.0 + 0.2 * i, 35.0 + 10.0 * 0.2 * i / 111320.0, 10.0, 2.0)
+    last = tr.last_time()
+    tr.insert(last - 2.5, 35.0 + 10.0 * (last - 2.5 - 100.0) / 111320.0, 10.0, 20.0)
+    assert tr.last_time() == last and len(tr._pts) == 51
+    ts = [p[0] for p in tr._pts]
+    assert ts == sorted(ts)
+    v = tr.velocity(last)
+    assert v is not None and abs(v[1] - 10.0) < 0.5
+    tr.insert(last - 60.0, 35.0, 10.0, 20.0)              # beyond the window: dropped, nothing cleared
+    assert len(tr._pts) == 51
+    tr.insert(last + 1.0, 35.0 + 10.0 * (last + 1.0 - 100.0) / 111320.0, 10.0, 20.0)
+    assert tr.last_time() == last + 1.0
