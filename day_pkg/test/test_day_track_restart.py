@@ -211,3 +211,28 @@ def test_carry_state_pure_rules():
     assert restore_track(rec, 120.0, 120.0) is None                               # from the future
     assert restore_track({"pts": [[1, "x", 2, 3]]}, 2.0, 120.0) is None           # malformed
     assert restore_track({"pts": []}, 2.0, 120.0) is None
+
+
+def test_the_watchdog_follows_the_turn_the_gyro_measures(env):
+    """A copter at a waypoint corner: the watchdog's carry turns with the gyro (fin_base: carried straight
+    at a 90 deg corner, 46-50 m off at +-17 m)."""
+    R, make = env
+    t0 = R.VClock.now
+    n = make()
+    _fly_measured(R, n, t0)
+    snap = n._dr_snap
+    for k in range(0, 201):                             # 0.02 s samples: 30 deg/s for 3 s, clockwise
+        n.gyro.add_rate(snap.t - 1.0 + 0.02 * k, 0.0 if k < 50 else 30.0)
+    R.VClock.now = snap.t + 3.0
+    n._busy_lock.acquire()
+    try:
+        n._last_frame = (R.VClock.now, {})
+        n._last_out_wall = R.VClock.now - 3.0
+        assert n._watchdog_publish()
+    finally:
+        n._busy_lock.release()
+    e = n.est[-1]
+    de = (e.longitude - snap.lon) * M * math.cos(math.radians(LAT0))
+    dn = (e.latitude - snap.lat) * M
+    # 3 s turning north -> east along an arc: ~19 m east and north each (straight on: 30 m north, 0 east)
+    assert de > 12.0 and dn < 25.0, (de, dn)

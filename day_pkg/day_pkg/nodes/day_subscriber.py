@@ -1619,12 +1619,15 @@ class DaySubscriber(Node):
         snap, t = self._dr_snap, time.time()
         if snap is None:
             return False
+        # the turn since the snapshot, integrated by the gyro (no heading reference needed): a copter at
+        # a waypoint corner turns 90 deg in a few seconds (Isaac Sim fin_base: carried straight, 46-50 m
+        # off at +-17 m); without it the snapshot's velocity goes straight on
         turn, h_sig = 0.0, 0.0
         gyro = getattr(self, "gyro", None)
-        if gyro is not None and snap.heading is not None:
-            g = gyro.at(t)
-            if g is not None:
-                turn, h_sig = (g[0] - snap.heading + 180.0) % 360.0 - 180.0, g[1]
+        if gyro is not None:
+            d = gyro.turn(snap.t, t)
+            if d is not None:
+                turn, h_sig = d, gyro.bias * max(0.0, t - snap.t)
         p, why = watchdog_carry(snap, t, self.track, self.max_dead_reckon_s, self.dr_max_sigma_m, turn, h_sig)
         if p is None:
             return False
@@ -1659,6 +1662,12 @@ class DaySubscriber(Node):
                 return
             ve, vn, sig_v = v
             since_v = t - t_last
+            # the fit is the chord of its window: turned to this output's heading, as the carry is
+            h, h_sig = self._carry_heading(meta)
+            hv = self._velocity_heading(h_sig)
+            if h is not None and hv is not None:
+                a = math.radians((h - hv + 180.0) % 360.0 - 180.0)
+                ve, vn = ve * math.cos(a) + vn * math.sin(a), -ve * math.sin(a) + vn * math.cos(a)
         h = self._carry_heading(meta)[0]
         if h is None and getattr(self, "gyro", None) is not None:
             g = self.gyro.at(t)
