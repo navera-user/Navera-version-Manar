@@ -28,7 +28,9 @@ requirements: `docs/certification/REQUIREMENTS.md`, known problems: the shared p
 
 ### Product
 - Crash resilience: services restart in 1 s with backoff; the output keeps the autopilot fed;
-  a restarted day node resumes its track.
+  a restarted day node resumes its track, turned with the IMU yaw and the autopilot velocity
+  (crash at a turn: 745 → 40 m); 60 s camera blackouts complete 4 of 4.
+- Memory: day node peak 4.3 → 2.4 GB (GPU cache trimmed), flat over a 1-hour soak.
 - Swap and memory classes, journal cap, frozen-camera and camera-stall detection, clean
   installs (no repository data), release archive (`deploy/make_release.sh`).
 - User manual (`docs/USER_MANUAL.md`), 85 requirements each linked to tests, 1,073 tests.
@@ -41,5 +43,6 @@ requirements: `docs/certification/REQUIREMENTS.md`, known problems: the shared p
 
 ### Known limits
 - No real NAVERA flight; ground hidden (fog, low cloud, sea); maps older than ~5 years;
-  1200 m while accelerating; a crash exactly at a turn; 60 s blackouts complete 2 of 4 times.
+  1200 m while accelerating (fixes unit-tested, not flown); two agreeing wrong matches while
+  the track is uncertain can still be believed (D17, multi-hypothesis tracking not done).
 - Vision positions go to the autopilot only with `NAVERA_FORWARD_DEGRADED=true`.
