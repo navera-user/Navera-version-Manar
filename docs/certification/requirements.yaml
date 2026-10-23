@@ -1361,9 +1361,11 @@ requirements:
     - navera_tools/isaac/hil_flight.sh
     - day_pkg/day_pkg/nodes/day_subscriber.py::DaySubscriber._restore_track
     - day_pkg/day_pkg/carry_state.py::restore_track
+    - day_pkg/day_pkg/nodes/day_entry.py::EarlyBridge
   match:
     - 'test_bridge_flow\.py::test_(a_restarted|no_restore|the_held_position)'
     - 'test_day_track_restart\.py::test_a_(restarted|stale)'
+    - 'test_day_early_bridge\.py::'
     - 'test_output\.py::test_the_soft_no_fix'
     - 'test_estimator_rules\.py::test_(a_restart|an_old_gps_gate)'
     - 'test_localizer_restart\.py::'
