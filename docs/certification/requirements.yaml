@@ -139,19 +139,23 @@ requirements:
 - id: NAV-FUN-07
   category: FUN
   title: 'Day vision bounded dead-reckoning between matches'
-  text: 'Between matches day vision shall carry its last measured position along the measured track (IMU heading change), published PROPAGATED with a stated sigma that grows with time, for at most max_dead_reckon_s (120 s node default) / 300 m sigma, then stop.'
+  text: 'Between matches day vision shall carry its last measured position along the measured track (IMU heading change), published PROPAGATED with a stated sigma that grows with time, for at most max_dead_reckon_s (120 s) while the stated sigma stays within dead_reckon_max_sigma_m (900 m, about 80 s at 10 m/s), then stop; positions resume as soon as a frame matches. The carried position shall go on being published while a match is in progress (a watchdog in its own thread, after dr_watchdog_s = 2 s without an output), and from the last trusted GPS position at a GPS loss during a match.'
   code:
     - day_pkg/day_pkg/vision_nav.py::VisionNavigator.predict
     - day_pkg/day_pkg/nodes/day_subscriber.py::DaySubscriber._dead_reckon
+    - day_pkg/day_pkg/nodes/day_subscriber.py::DaySubscriber._watchdog
+    - day_pkg/day_pkg/carry_state.py::watchdog_carry
     - navera_common/navera_common/track.py::TrackVelocity.propagate
   match:
     - 'test_vision_nav\.py::test_(straight_gap|turn_is_followed|a_turn_grows|a_full_lap|no_velocity_chord|velocity_from_before)'
+    - 'test_day_track_restart\.py::test_(the_watchdog|gps_handover|carry_state)'
     - 'test_dead_reckon_sigma\.py::'
     - 'test_track\.py::'
     - 'test_gyro_heading\.py::'
   evidence:
     - {level: SIM, value: 'land route: error median 10 m, max 33 m; 90 s over sea stating ±300 m, true error ≤ 146 m', ref: 'VALIDATION_STATUS.md, Dead-reckoning'}
     - {level: SIM, value: '1606 replayed outages: 100 % within 3σ; 60 s sigma 628 m vs 15 m real (conservative, D16)', ref: 'problems doc D16'}
+    - {level: UT, value: '2026-10-23: a 5.7 s stalled match (endur2) -> the watchdog publishes the carried position at 2 s, within 3 sigma, matching state untouched; GPS cut during a 10 s match (F32 h1200) -> carried from the last GPS point at once (+-<30 m), the GPS points timed by their stamps give the track its velocity, search radius < 150 m (was 600 m)'}
   status: verified-SIM
   note: 'no real IMU, no real camera; not inertial navigation (NAV-FUN-21)'
 
@@ -387,7 +391,7 @@ requirements:
     - {level: SIM, value: 'land route: no failsafe, median 10 m / max 33 m; 90 s over the sea stating +-300 m, true error at most 146 m', ref: 'VALIDATION_STATUS.md, summary "Day vision dead-reckoning"'}
     - {level: PUB, value: 'MARS-LVIG real flight replayed: dead-reckoning alone 4 / 12 m (median / max) over 70 s after two fixes; screen bench turn: 264 m straight on -> 35.7 m with the gyro heading', ref: 'VALIDATION_STATUS.md, "Day: a real flight replayed"; gyro_heading.py docstring'}
   status: verified-PUB
-  note: 'Replaces the original FEAT-2 text ("integrate the IMU into a position with a growing sigma"), NOT PURSUED: double-integrating a low-cost MEMS IMU (BNO085-class, the Insta360 One R IMU) drifts by hundreds of metres within a minute (an accelerometer bias of ~10 mg alone gives 0.5 x 0.1 m/s^2 x t^2 = 180 m at 60 s), far beyond the vision gaps it was meant to bridge; a tactical-grade IMU is out of the product''s cost and size. The IMU is used for attitude (frame straightening), the gyro heading carried between fixes, and liveness. Limits: the product launch (day_pipeline.launch.py) sets max_dead_reckon_s = 30 s, the node default (and the simulator) 120 s.'
+  note: 'Replaces the original FEAT-2 text ("integrate the IMU into a position with a growing sigma"), NOT PURSUED: double-integrating a low-cost MEMS IMU (BNO085-class, the Insta360 One R IMU) drifts by hundreds of metres within a minute (an accelerometer bias of ~10 mg alone gives 0.5 x 0.1 m/s^2 x t^2 = 180 m at 60 s), far beyond the vision gaps it was meant to bridge; a tactical-grade IMU is out of the product''s cost and size. The IMU is used for attitude (frame straightening), the gyro heading carried between fixes, and liveness. Limits: max_dead_reckon_s 120 s (node default and product launch day_pipeline.launch.py since F32), while the stated sigma stays within dead_reckon_max_sigma_m 900 m.'
 
 - id: NAV-FUN-21
   category: FUN
@@ -1355,8 +1359,11 @@ requirements:
     - camera_pkg/camera_pkg/nodes/live_camera.py::LiveCamera._on_ready
     - simulation_web/simulation_web/launch/day_pipeline.launch.py
     - navera_tools/isaac/hil_flight.sh
+    - day_pkg/day_pkg/nodes/day_subscriber.py::DaySubscriber._restore_track
+    - day_pkg/day_pkg/carry_state.py::restore_track
   match:
     - 'test_bridge_flow\.py::test_(a_restarted|no_restore|the_held_position)'
+    - 'test_day_track_restart\.py::test_a_(restarted|stale)'
     - 'test_output\.py::test_the_soft_no_fix'
     - 'test_estimator_rules\.py::test_(a_restart|an_old_gps_gate)'
     - 'test_localizer_restart\.py::'
@@ -1368,7 +1375,7 @@ requirements:
     - {level: SIM, value: 'B23 box in the loop 2026-10-23 (real Jetson, SITL copter, GPS denied): estimator killed twice -> autopilot gap 2.6 / 2.5 s, no failsafe; output killed -> gap 4.7 s, no failsafe; day camera killed -> gap 2.6 s; whole day pipeline unit -> positions after 12.5 s, bridged 10 s, no failsafe', ref: 'DEPLOYMENT_VALIDATION.md §4'}
     - {level: SIM, against: true, value: 'B23 2026-10-23: day_subscriber killed alone -> ready 7.2 s after but no match in its 600 m restart search circle; bridge ended at 10 s, EKF failsafe LAND (hil_resil4)', ref: 'DEPLOYMENT_VALIDATION.md §4'}
   status: partial
-  note: 'open: a restarted day node must restore its track (velocity, heading, sigma), not only day_anchor, to match again inside the bridge (day_subscriber.py); not on a real vehicle'
+  note: 'a restarted day node restores its track (state day_track: measured points, carried velocity, headings, at their own times; sigma grown by the time elapsed) since 2026-10-23 (unit-tested; Isaac endurance kill: see VALIDATION_STATUS.md); not on a real vehicle'
 
 - id: NAV-DEP-02
   category: DEP
