@@ -79,8 +79,9 @@ vision > celestial**. A good GPS always wins. When GPS is lost or refused, visio
    origin. (Where there is no GPS at all, see "Start without GPS", section 7.5.)
 2. **After take-off, NAVERA keeps navigating if GPS is jammed or spoofed** — for as long as the
    camera keeps matching the map, possibly for the whole flight. Between matches it carries the
-   last position along the measured track for **at most 2 minutes / 500 m**, then it says "no
-   position". It does **not** integrate the IMU into a position (no inertial navigation).
+   last position along the measured track for **at most 120 s, while the stated accuracy stays
+   within 900 m (about 80 s at 10 m/s)**; positions resume as soon as a frame matches. Past that it
+   says "no position". It does **not** integrate the IMU into a position (no inertial navigation).
 3. **NAVERA is fully offline in flight.** The map package of the route is prepared **before
    departure** (section 7). No internet, no network link is needed in the air.
 4. **Autopilots:** ArduPilot is supported (verified in simulation only). PX4: only as a plain
@@ -826,7 +827,7 @@ them with your ground station, then reboot the autopilot.
 |---|---|---|
 | `GPS_TYPE` (`GPS1_TYPE`) | **14** (MAV) | NAVERA is GPS 1 |
 | `SERIALn_PROTOCOL` | **2** (MAVLink 2) | on the TELEM port wired to NAVERA |
-| `SERIALn_BAUD` | the NAVERA baud: 921 = 921600, 115 = 115200 | |
+| `SERIALn_BAUD` | **921** (921 600 baud, as in `serial:/dev/ttyTHS2:921600`) | the same baud on both ends; 115 (115 200) only if the wiring cannot carry 921 600 — NAVERA sends a position 5 times a second plus the messages it asks for |
 | `GPS_AUTO_CONFIG` | **0** | no receiver configuration sent to a "GPS" that is NAVERA |
 | `EK3_SRC1_POSXY` | 3 (GPS, default) | position from NAVERA |
 | `EK3_SRC1_VELXY` | **0** | do not fuse NAVERA's velocity as a measurement (see the cost below) |
@@ -834,7 +835,7 @@ them with your ground station, then reboot the autopilot.
 | `EK3_SRC1_POSZ` | 1 (barometer, default) — **never 3** | vision positions carry no altitude; 3 would pull the height to 0 m (simulation: hundreds of metres of error) |
 | `EK3_OGN_HGT_MASK` | 0 (default) — **never set** | same reason |
 | `GPS_DELAY_MS` | 0 (default) | NAVERA already carries its vision positions to the present |
-| `EK3_GLITCH_RAD` | **100 on Copter** (default 25); **default on Plane** | see 5.3 |
+| `EK3_GLITCH_RAD` | **100 on Copter — required** (default 25); **default on Plane** | see 5.3; the 2-hour endurance flight was flown without it and ended in an EKF failsafe after 60 min (simulation, finding F38) |
 | `FS_EKF_ACTION` / `FS_EKF_THRESH` | defaults (1 = LAND, 0.8) | LAND is the safe outcome of a long vision outage on a copter |
 | `AHRS_OPTIONS`, `ARSPD_OPTIONS` (Plane) | defaults | changing them made outages worse in simulation |
 
@@ -855,7 +856,7 @@ stream rates are needed: NAVERA asks for its messages itself.
 
 | | Copter | Plane (with airspeed sensor) |
 |---|---|---|
-| `EK3_GLITCH_RAD` | **100** — with the default 25 m the autopilot resets onto almost every vision position and drifts (simulation: landings 136–290 m from home → 4–21 m with 100) | default (25) |
+| `EK3_GLITCH_RAD` | **100, required** — with the default 25 m the autopilot resets onto almost every vision position and drifts (simulation: landings 136–290 m from home → 4–21 m with 100). Endurance finding F38 (Isaac Sim, 2 h GPS-denied, 2026-10-22): flown with the default 25, the autopilot's own velocity drifted in growing episodes, flew the copter off the map after 60 min and its EKF failed safe (LAND) while NAVERA's fixes stayed at ~15 m | default (25) |
 | `NAVERA_BRIDGE_MAX_S` (NAVERA side) | **10** (default) — NAVERA bridges a gap in vision positions for 10 s | **0** — the plane dead-reckons better on its airspeed than NAVERA carries a position |
 | Longest vision gap survived (simulation) | about **25 s**: then the autopilot stops aiding and **LANDs where it is** | 60 s outages flown (after the 2026-10-21 velocity fix) |
 
@@ -874,6 +875,16 @@ A copter **cannot** fly a GPS-denied gap longer than about 25 s: do not raise
 
 **An autopilot does not resume its mission by itself after a failsafe**, even when NAVERA has
 positions again. The safety pilot takes over.
+
+**`NAVERA_FORWARD_DEGRADED` must be `true` for a flight to go on without GPS.** It is `false` by
+default: NAVERA then gives the autopilot the GPS only, and the moment GPS is lost or refused the
+autopilot receives **"no fix"** — whatever vision knows — and its own failsafe acts (Copter LAND
+after its EKF failsafe delay, ~1–10 s; Plane and Rover per their settings). With `true`, the
+vision positions (and the dead-reckoned position between matches, at most 120 s while its stated
+accuracy stays within 900 m) go to the autopilot with their stated accuracy, and the mission goes
+on. Every GPS-denied flight in this manual's results (simulation, box in the loop) was flown with
+it `true`. Leave it `false` only while you have not yet recorded vision working on your vehicle
+and route (section 9.3): then a GPS loss ends the mission by design.
 
 **To send vision positions to the autopilot** (only after recording flights showed vision
 working, section 9.3):
@@ -925,6 +936,10 @@ position as **`HIL_GPS`**. Detection does this by itself when it sees a PX4 auto
 | `COM_POS_FS_EPH` | 25 | else PX4 declares a vision-fed position invalid at 12.5 m |
 | `EKF2_NOAID_NOISE` | ≥ `NAVERA_DEGRADED_SIGMA_M` | else PX4 trusts a vision position more than stated |
 | `NAV_ACC_RAD` (multicopter) | 25 | waypoint radius larger than the vision error |
+| `MAV_n_CONFIG` / `SER_TELn_BAUD` | the TELEM port wired to NAVERA / 921600 | the MAVLink instance NAVERA talks to (`MAV_n_MODE` Normal or Onboard) |
+| `COM_POS_FS_DELAY` | default (1 s) | how long PX4 waits after a position is invalid before its failsafe |
+
+On PX4 too, NAVERA sends vision positions only with `NAVERA_FORWARD_DEGRADED=true` (5.4).
 
 The detection report (`check_box.py`) shows a **CHECK PX4 …** line for each wrong value it can
 read. NAVERA uses the autopilot's own system id (written by detection): PX4 ignores `HIL_GPS` from
@@ -1240,7 +1255,7 @@ The web page is **not needed** for NAVERA to work: NAVERA runs on its own from p
 |---|---|---|
 | **FIX** | a fresh measured position with a stated accuracy of 25 m or better. **Today only GPS reaches it** | flies on the GPS that NAVERA passes through |
 | **DEGRADED** | a position exists, but it comes from vision or stars, or is carried between matches, or its accuracy is unknown or above 25 m, or the GPS is "in doubt" (vision disagrees with it) | **by default receives "no fix" for vision positions → its own failsafe** (Copter LAND, Rover/boat HOLD). With forwarding on: flies on NAVERA's vision positions with their stated accuracy. A GPS in doubt is still passed on, with a worse accuracy |
-| **NO FIX** | nothing usable (no GPS, no match, dead-reckoning limit of 2 min / 500 m reached) | "no fix" → failsafe |
+| **NO FIX** | nothing usable (no GPS, no match, dead-reckoning limit reached: 120 s, or a stated accuracy beyond 900 m — about 80 s at 10 m/s) | "no fix" → failsafe |
 | **STARTING** | NAVERA is starting | — |
 | **OFFLINE / LINK LOST** | the web page cannot reach NAVERA (not the vehicle's state) | unaffected by the web page |
 
@@ -1248,7 +1263,8 @@ The web page is **not needed** for NAVERA to work: NAVERA runs on its own from p
 
 - **Jammed (lost):** vision takes over at once (DEGRADED). The position follows the camera's
   matches; between matches it is carried along the track, its accuracy growing, for at most
-  2 minutes / 500 m.
+  120 s while the stated accuracy stays within 900 m (about 80 s at 10 m/s); positions resume as
+  soon as a frame matches.
 - **Spoofed by a jump:** a GPS position the vehicle could not reach (`NAVERA_MAX_SPEED_KMH`) is
   refused at once.
 - **Spoofed slowly:** when vision disagrees with the GPS, NAVERA first marks it **in doubt**, then
@@ -1350,7 +1366,7 @@ First run `python3 navera_tools/check_box.py` (NAVERA shell). Then look at the s
 | A service "activating (auto-restart)" with "could not convert string to float: ''" | a number setting left empty | give it a value or comment it out |
 | "… does not exist (data disk not mounted?)" | data disk missing | mount `/data`; the service retries (every 30 s after a few tries) |
 | "restart loop: N starts in 60 s — waiting …" | a service fails at every start | its journal says why (`journalctl -u <service> -n 100`); it keeps retrying by itself |
-| A NAVERA service crashed in flight (journal: "process has died", "respawning", "restart: …") | a bug or the memory killer | nothing to do: it is back within seconds. Meanwhile the output keeps giving the autopilot the last vision position carried along its velocity, its accuracy growing ("bridging", at most 10 s); a restarted output resumes from what it last sent; a GPS refused for spoofing stays refused. Known limit (simulation): a restarted day vision service may not find its position again within those 10 s — the autopilot's own failsafe then acts. If the restarts repeat, report the journal |
+| A NAVERA service crashed in flight (journal: "process has died", "respawning", "restart: …") | a bug or the memory killer | nothing to do: it is back within seconds. Meanwhile the output keeps giving the autopilot the last vision position carried along its velocity, its accuracy growing ("bridging", at most 10 s); a restarted output resumes from what it last sent; a GPS refused for spoofing stays refused. A restarted day vision service resumes its carried position (saved once a second) before it is fully loaded, then searches around it (simulation: 7 s after the kill, no failsafe). If the restarts repeat, report the journal |
 | ROS topics invisible | the shell is not on NAVERA's domain; `ROS_LOCALHOST_ONLY=1`; different domain or ROS version on the vehicle | open the NAVERA shell; Way C settings (3.3) |
 | A sensor plugged in after boot is not used | detection runs once per boot | `sudo systemctl restart navera-discover`, then the services |
 
@@ -1366,7 +1382,7 @@ First run `python3 navera_tools/check_box.py` (NAVERA shell). Then look at the s
 | **Coarse maps** (worse than 2 m) | 10 m imagery does not work; 5 m is marginal |
 | **Night without a thermal camera** | The day camera sees nothing in the dark: no vision position. Night vision needs a thermal camera and is not flown yet |
 | **Stars** | Experimental, accuracy in kilometres, never sent to the autopilot |
-| **No inertial navigation** | Without matches, at most 2 minutes / 500 m of dead-reckoning |
+| **No inertial navigation** | Without matches, dead-reckoning for at most 120 s while the stated accuracy stays within 900 m (about 80 s at 10 m/s); positions resume as soon as a frame matches |
 | **Copter vision gaps** | About 25 s without positions → the autopilot lands where it is |
 | **Fixed camera on a fast multirotor** | Pictures too tilted: fit a gimbal |
 | **One vision pipeline at a time** | Day or night, not both (8 GB memory) |

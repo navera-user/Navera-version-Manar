@@ -164,3 +164,19 @@ def test_a_frame_stops_trying_windows_past_its_time_budget():
     n.local.locate = lambda *a, **k: time.sleep(0.06) or slow(*a, **k)
     n._locate_search(IMG, C, 1200.0, 0.3, {})
     assert len(calls) == 1
+
+
+def test_the_heading_search_runs_at_the_frames_own_height_only():
+    """h1200: 3 heights x 12 headings held one frame 58-93 s; the other heights go without the search."""
+    seen = []
+    n = SimpleNamespace(local=SimpleNamespace(locate=lambda img, p, r, mpp, **kw: seen.append(kw.get("heading_search"))
+                                              or {"accepted": False}),
+                        local_min_radius_m=80.0, reacquire_windows=True, reacquire_window_frac=0.65,
+                        _scan=WindowScan(), heading_search=False, _scale_tol=lambda m: 0.15,
+                        _match_heading_kw=lambda m: {"heading_deg": 10.0}, _hfov=lambda m: 77.0,
+                        _expected_tilt=lambda m: 0.0, _heading_search_kw=lambda: {"heading_search": True})
+    for name in ("_locate_search", "_reacquire_window_m"):
+        setattr(n, name, MethodType(getattr(DaySubscriber, name), n))
+    n._locate_search(IMG, C, 120.0, 0.3, {})
+    n._locate_search(IMG, C, 120.0, 0.24, {}, windows=False, heading_search=False)
+    assert seen == [True, False]

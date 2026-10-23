@@ -28,6 +28,7 @@ been measured. Open engineering items are tracked in
 | Celestial (astrometry.net) | Run end to end on simulated star fields; **coarse: bounded by the IMU attitude (~111 km per degree); simulator only — not run on a real sky**. Compass-free when the camera's full mount is known (B11, 2026-10-22, unit-tested on synthetic plate solutions only) | 5.5–6.5 km with a perfect attitude; 24–119 km with a BNO085-class IMU; simulated night mission without barometer (2026-10-07): 29 km median, 40 km max, 100 % within its stated sigma; compass error 1/5/10° → 51/256/516 km with the compass method, 0.24 km with the zenith method |
 | Celestial 360 in a car: trusted ('stopped') fixes and the learned tilt of 'up' (2026-10-22) | **Simulation only (car drive: synthetic IMU and sky)**; real drive planned from 31 Oct | glass road: 'stopped' frames with 'up' > 0.3° off 106 → 1 (4 seeds: 394 → 2), no stop lost on 13 profiles; trusted fixes through the server p90 265 → 9.3 km, max 825 → 22 km; tilt fit with 1–4 bad samples in 12: 33–101 km → 0.8–2.4 km; below: "Celestial: field-test readiness fixes" |
 | Day vision dead-reckoning along the measured track (no match: sea, uniform ground, frame unusable) | Implemented 2026-10-02; **simulator only** | Land route: no failsafe, error median 10 m, max 33 m; across the bay: carried 90 s over the sea stating ±300 m, true error at most 146 m |
+| Isaac Sim closed loop, final code 2026-10-23 (copter, 2 h GPS-denied with the day node killed at 45 min; base / 600 m / plane 30 m/s / 60 s cloud bank / 1200 m) | **Simulation only** | 2 h: mission completed, fix 6.5 m median, 0 wrong, 0/8375 beyond 3σ; kill: carried position again after 7 s, no failsafe (770 m excursion: the kill fell on a corner); base/600 m/plane: as before (0 wrong); 60 s cloud bank 2 of 4 completed (the code before: 0 of 1 today); 1200 m not completed (matching while the copter accelerates); below: "final verification" and "2 hours without GPS" |
 | Vision position carried to the present (output, operator view) | Implemented; unit tests and simulator only | 1.5 s old photo at 40 m/s: moved 60 m, stated ±31.5 m |
 | Inertial navigation (integrating the IMU) | **Not implemented** — the IMU gives attitude and heading changes | — |
 | Vehicle outputs | ArduPilot SITL; **PX4 v1.15.4 SITL** (`HIL_GPS`: PX4 ignores `GPS_INPUT`); no real autopilot | below; PX4_INTEGRATION.md §4 |
@@ -1482,6 +1483,83 @@ isaac_link's one frame per tick nor the learned 2.0 s delay (true 1.7 s) explain
 replayed with that same delay are 4.6 m. Note: the HIL summaries' exposure errors and "wrong fixes"
 (resil5: 1334) are unreliable — day.csv's `t_exposure` joined from the PC stream is off for part of
 the frames (e.g. 659 s for a fix stamped 140 s); judge HIL runs by the stated-time error.
+
+### Isaac Sim closed loop: final verification of the 2026-10-23 code (B23 track restore, DR watchdog, GPS handover)
+
+Code: `work/final-2026-10-23` (ad88f5d unless noted), one Isaac Sim closed-loop flight each (copter SITL
+4.5.7, Kalaa scene, results `~/.navera_sim/isaac/final/` on the Jetson). SIMULATION only. New in the day
+node: the track is persisted and restored by a restarted node (B23); a watchdog thread publishes the
+carried position when a match stalls (> 2 s without an output); GPS read in its own thread, its points
+timed by their stamps, and the last GPS position + velocity bridges the handover at once; a fix older than
+the last GPS point is inserted in the track (it erased it); height retries within a 6 s frame budget and
+without the 12-heading search. The flight script now sets the documented Copter `EK3_GLITCH_RAD 100`
+(the reference runs had 25).
+
+| run | matched % | fix error at stated time med/p90/max | at exposure | output err | > 3σ | wrong | autopilot EKF | mission |
+|---|---|---|---|---|---|---|---|---|
+| **fin_base** | 96.6 | **14.3/21.8/28.5** | 6.7/11.6/15.2 | 14.0/21.8/50.7 | **0/354** | **0** | 16.5/28.9/39.0 | completed |
+| sr_base (F41, ref.) | 98.1 | 13.7/21.9/30.7 | 6.9/12.3/18.9 | 13.8/21.6/30.7 | 0/315 | 0 | 16.4/31.3/47.4 | completed |
+| **fin_h600** | 93.6 | 21.4/31.3/40.1 | 13.8/19.8/22.5 | 21.1/31.3/61.5 | **0/283** | **0** | 25.6/36.5/48.9 | completed |
+| sr_h600 (ref.) | 98.1 | 20.5/32.0/54.4 | 14.7/20.5/35.9 | 20.5/35.6/54.4 | 0/276 | 0 | 25.7/47.1/87.9 | completed |
+| **fin_plane30** | 95.5 | 11.8/20.2/33.5 | 10.4/17.8/28.8 | 12.0/21.9/90.1 | 1/204 | **0** | 20.2/37.7/60.4 | completed |
+| sr_plane30 (ref.) | 97.6 | 13.3/23.3/41.1 | 11.1/17.9/34.3 | 13.3/24.0/79.1 | 0/170 | 0 | 18.6/53.5/98.3 | completed |
+| fin_outage60 #1 (2ad5406) | 47.4 | 10.5/25.8/28.1 | 8.7/12.8/22.1 | 15.3/114/357 | 0/180 | 0 | 24/213/363 | **NOT** (EKF failsafe at the outage end) |
+| fin_outage60 #2 (cdae642) | 87.8 | 16.0/24.9/30.8 | 7.1/12.1/24.1 | 16.9/28.6/451 | 0/437 | 0 | 22/148/501 | completed |
+| fin_outage60 #3 | 25.4 | 21.8/25.8/28.7 | 10.1/12.1/24.3 | 27.5/539/617 | 0/107 | 0 | 182/719/882 | **NOT** |
+| fin_outage60 #4, `EK3_GLITCH_RAD 25` | 84.5 | 16.5/24.7/32.6 | 8.0/11.7/19.6 | 17.8/31.7/387 | 1/469 | 0 | 25/95/413 | completed |
+| ref_outage60 (05630fb, before this work) | 40.9 | 13.5/25.1/29.3 | 9.4/13.1/22.7 | 21.9/335/688 | 0/166 | 0 | 53/668/756 | **NOT** |
+| f32s_outage60 (F32, ref.) | 89.6 | 14.3/24.8/45.3 | 6.8/11.0/21.1 | 15.0/27.4/278 | 0/449 | 0 | 19/103/305 | completed |
+| fin_h1200 #1–#3 | 35 / 27 / 1.4 | 21–58 m median | | | 10/220, 3/170, 11/41 | 1, 0, 1 | km | **NOT** (as f32s_h1200) |
+
+Findings:
+
+1. **No regression on base, 600 m and the plane**: error, 0 wrong and 0–1 beyond 3σ as in the F41 runs
+   (the matched % is 1–4 points lower: the watchdog's outputs count as frames without a match).
+2. **The 60 s cloud bank is not repeatable, with or without this work**: 2 of 4 flights on the final
+   code completed, and the code before it (05630fb) failed the same flight (ref_outage60). In the failed
+   ones the velocity carried into the cloud was 6–8 m/s wrong from its first seconds (a waypoint corner
+   just before: frames 3–6 inliers for 5.4 s, the velocity refitted on 5 s of fixes; error 121 m after
+   15 s), the error reached 360–475 m and the EKF failed safe. F32's "outage60 completes" was one flight.
+3. **h1200 (F32 open)**: the handover is now seamless — the first frame after the cut searches R = 80 m
+   around the GPS track carried on (was 600 m around the last GPS point), positions are published from
+   0.5 s after the cut (was: none for 13 s, failsafe 8 s after the cut). Root cause of the old gap: the
+   GPS messages were read in the matching thread; at 1200 m GPS-check matches took 7–10 s, the queued GPS
+   points arrived in bursts timed at their arrival, the track had no velocity at the cut. The mission
+   still fails, later and for another reason: the copter starts its legs at the cut, tilts 20–35° (frames
+   3–6 inliers, scale 0.80 at 1200 m), the carried velocity is the hover's, the autopilot flies on it and
+   ends 1–3 km off. In f32s_h1200 the frames matched only because the vehicle was already landing level
+   after its failsafe. Open: matching at 1200 m while the copter accelerates.
+4. Watchdog (frames > 2 s): 7 outputs in fin_base, all within 3σ after the gyro-turn fix (two at a
+   waypoint corner were 2.7–2.9σ before it, 2ad5406).
+
+### Isaac Sim closed loop: 2 hours without GPS, day node killed at 45 min (fin_endur_2h, 2026-10-23)
+
+`run_closed_loop.sh --endurance 7200 --cut-after 12 --sigma 15 --time 10:00 --isaac-args "--sun-ramp 1"
+--cam-args "-p capture_latency_s:=1.3"` (copter 250 m, 8 m/s, `EK3_GLITCH_RAD 100`, forwarding on), code
+3b95ab5; `day_subscriber` SIGKILLed alone 45 min after the cut, respawned 1 s later. SIMULATION. Report:
+`~/.navera_sim/isaac/final/fin_endur_2h/ENDURANCE.md`.
+
+| block after the cut (min) | matched % | fix err stated time med/p90 | > 3σ / outputs | autopilot EKF med/p90/max | EKF velocity err med/p90 |
+|---|---|---|---|---|---|
+| 0–15 | 97.8 | 6.9/11.7 m | 0/999 | 10.7/22.6/55 m | 1.10/2.25 m/s |
+| 15–30 | 97.5 | 6.7/10.9 | 0/984 | 9.3/18.6/33 | 1.00/2.05 |
+| 30–45 | 97.6 | 6.3/9.8 | 0/1048 | 9.4/20.6/39 | 0.88/2.06 |
+| 45–60 (kill at 45.0) | 95.0 | 6.2/10.5 | 0/928 | 11.3/33.6/**770** | 1.29/3.20 |
+| 60–75 | 97.3 | 6.5/10.0 | 0/1007 | 9.7/20.7/35 | 1.10/2.05 |
+| 75–90 | 98.2 | 6.3/10.1 | 0/1153 | 9.2/20.1/39 | 0.79/2.08 |
+| 90–105 | 98.5 | 6.4/10.0 | 0/1110 | 10.0/19.3/37 | 1.01/2.04 |
+| 105–120 | 97.4 | 6.9/10.5 | 0/1022 | 9.5/21.2/42 | 1.06/2.07 |
+| RTL | 96.1 | 9.0/12.8 | 0/124 | 12.4/28.8/33 | 1.17/1.79 |
+
+**Mission completed** (120.0 min GPS-denied, RTL on vision, 43.8 m from home at arrival); 0 wrong fixes,
+0/8375 outputs beyond 3σ. The two earlier 2-hour runs ended in an EKF failsafe at 62 and 67 min
+(endur_2h: autopilot velocity drift with `EK3_GLITCH_RAD 25`, F38; endur2_2h: an 8.7 s "no fix" after a
+pipeline stall, fixed by the vision-FIX bridge). The kill: the restarted process published the
+persisted carried position after 7.0 s (early bridge), the node restored its track after 17.6 s, the
+output bridged meanwhile (never "no fix"); the kill fell on a diamond corner, the carry went straight on,
+error up to 745 m at ±384 m stated and the autopilot 770 m off until vision re-acquired 40 s after the
+kill. Before the early bridge (fin_endur_2h_try1, ad88f5d) the same kill left 21 s without a day position
+and the EKF failed safe 17 s after the kill. Open: turn the restored carry with the IMU.
 
 ### Long route (simulator, 2026-10-01)
 

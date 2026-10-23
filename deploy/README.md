@@ -129,7 +129,7 @@ it that long:
 |---|---|---|
 | `navera-estimator` | the output bridges its last vision position (carried along the velocity it sent, accuracy growing, at most 10 s) | systemd restart, positions after ~5 s |
 | `navera-output` | nothing until it is back; it then resumes the bridge from its last position (state `output_held`) and its next vision positions are not held back | systemd restart: the autopilot went 4.7 s without a position |
-| `day_subscriber` | the output's bridge, then the new day node's first match (search around the saved `day_anchor`) | respawned alone, ready after ~7 s; **its first match is not guaranteed** (open, §4 of DEPLOYMENT_VALIDATION.md) |
+| `day_subscriber` | the output's bridge, then the restarted process's own carried position (persisted track `day_track`, published before its heavy imports, accuracy grown by the time elapsed), then its first match (searched around that carry) | respawned alone; Isaac Sim endurance (PC under load): carried position again 7 s after the kill, node ready after ~18 s, no failsafe (§4 of DEPLOYMENT_VALIDATION.md) |
 | the day camera | the day node's own dead reckoning (from 2.5 s), forwarded | respawned alone, ~2 s |
 | the whole day pipeline | the output's bridge (10 s), then "no fix" until the first match | systemd restart, day positions after ~12.5 s |
 

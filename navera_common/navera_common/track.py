@@ -6,6 +6,7 @@ the IMU measures since (a vehicle's heading follows its course in a turn; a cons
 crab angle from wind is kept). The stated uncertainty grows with time: velocity error
 plus a heading error, both from the fit — never a position more precise than it is.
 """
+import bisect
 import math
 from collections import deque
 from typing import Optional, Tuple
@@ -37,6 +38,23 @@ class TrackVelocity:
             else:
                 return
         self._pts.append((t, lat, lon, max(1.0, sigma_m)))
+
+    def insert(self, t: float, lat: float, lon: float, sigma_m: float) -> None:
+        """A measured point that may be older than the latest one: a frame matched after later GPS
+        points (its exposure precedes the last GPS point by the camera delay and the matching time).
+        Within window_s of the latest point it is put in time order; older, it is dropped. add() takes
+        any older point for a clock stepped back and starts again: at a GPS loss during a 10 s match
+        (Isaac Sim at 1200 m, 2026-10-23) the first fix after the cut erased the GPS track — no
+        velocity, a 600 m search, no position for 80 s."""
+        if not self._pts or t > self._pts[-1][0]:
+            self.add(t, lat, lon, sigma_m)
+            return
+        if t < self._pts[-1][0] - self.window_s or any(abs(p[0] - t) < 1e-6 for p in self._pts):
+            return
+        pts = list(self._pts)
+        i = bisect.bisect_left([p[0] for p in pts], t)
+        pts.insert(i, (t, lat, lon, max(1.0, sigma_m)))
+        self._pts = deque(pts, maxlen=self._pts.maxlen)
 
     def velocity(self, t_now: float) -> Optional[Tuple[float, float, float]]:
         """(east m/s, north m/s, 1-sigma speed error m/s) from a weighted line fit of the
