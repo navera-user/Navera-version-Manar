@@ -1,0 +1,213 @@
+"""B23 / F32 / endurance: the day node's carried position does not depend on the matching thread.
+
+- a day node restarted alone in flight restores its track (state "day_track"): dead reckoning resumes at
+  once with the uncertainty grown by the time elapsed (never a fresh fix) and the search circle stays
+  small (hil_resil4: a 600 m restart circle, no match within the output's 10 s bridge, EKF failsafe);
+- a stalled match (5.7 s in endur2) no longer silences the carried position: a watchdog in its own
+  thread publishes the last output's snapshot carried to now, without touching the matching state;
+- F32 h1200: GPS points read while a 10 s match held the node came in bursts timed at their arrival:
+  no track velocity at the GPS loss, no position for 13 s, EKF failsafe 8 s after the cut. They are
+  now read in their own thread, timed by their stamps, and the GPS snapshot bridges the handover.
+
+The node is built by its own __init__ (shipped defaults) without a matcher, on a virtual clock
+(navera_tools/bench/replay_sigma_isaac.py's harness), with a real state directory (tmp)."""
+import importlib.util
+import math
+import os
+
+import numpy as np
+import pytest
+
+from day_pkg.carry_state import DrSnap, carry_snap, restore_track, track_state, watchdog_carry
+from navera_common.track import TrackVelocity
+from navera_msgs.msg import PositionEstimate
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(os.path.dirname(HERE))
+LAT0, LON0, V = 35.8685, 10.5352, 10.0           # flying north at 10 m/s
+M = 111320.0
+
+
+def _harness():
+    spec = importlib.util.spec_from_file_location(
+        "replay_sigma_isaac", os.path.join(ROOT, "navera_tools", "bench", "replay_sigma_isaac.py"))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+@pytest.fixture
+def env(tmp_path, monkeypatch):
+    import rclpy
+    from navera_common import state_store
+    monkeypatch.setenv("NAVERA_STATE_DIR", str(tmp_path))
+    R = _harness()
+    owned = not rclpy.ok()
+    if owned:
+        rclpy.init(args=["--ros-args", "--log-level", "error"])
+    nodes = []
+    try:
+        with R._patched() as ds:
+            ds.state_store = state_store                # the real store, in tmp_path
+            R.VClock.now = 1.8e9
+
+            def make():
+                n = R.make_node(ds)
+                n.est = []
+                n.pub_est = R._Pub(n.est.append)
+                nodes.append(n)
+                return n
+            yield R, make
+    finally:
+        for n in nodes:
+            n.destroy_node()
+        if owned:
+            rclpy.shutdown()
+
+
+def _truth(t, t0):
+    return LAT0 + V * (t - t0) / M, LON0
+
+
+def _fly_measured(R, n, t0, seconds=10, sigma=8.0):
+    """Measured fixes 1 Hz along the track, then one dead-reckoned output (snapshot + persisted)."""
+    for i in range(seconds):
+        lat, lon = _truth(t0 + i, t0)
+        n.track.add(t0 + i, lat, lon, sigma)
+    n._anchor_lat, n._anchor_lon = _truth(t0 + seconds - 1, t0)
+    n._anchor_time = n._last_measured_time = t0 + seconds - 1
+    n._dr_sigma = n._anchor_sigma = sigma
+    R.VClock.now = t0 + seconds + 1
+    meta = {"frame_id": 1, "image_stamp_ns": int((t0 + seconds + 1) * 1e9)}
+    assert n._dead_reckon(n.get_clock().now().to_msg(), 1, meta, {}, 0.0, "test")
+    return n.est[-1]
+
+
+def _sigma(est):
+    return math.sqrt(est.position_covariance[0])
+
+
+def test_a_restarted_day_node_resumes_its_track_not_a_fresh_fix(env):
+    R, make = env
+    t0 = R.VClock.now
+    a = make()
+    a.track_persist, a._track_saved_at = True, 0.0
+    before = _fly_measured(R, a, t0)
+    a.destroy_node()
+    R.VClock.now = t0 + 11 + 6.0                        # killed, respawned and ready 6 s later
+    b = make()
+    assert b.track.last_time() == pytest.approx(t0 + 9)  # the measured points, at their own times
+    lat, lon, sig = b._predicted({})
+    # carried at once, its uncertainty grown by the time elapsed (never the fix's own)
+    assert sig > _sigma(before) + 1.0
+    assert sig < 60.0
+    tl = _truth(R.VClock.now, t0)
+    assert math.hypot((lat - tl[0]) * M, (lon - tl[1]) * M * math.cos(math.radians(LAT0))) < 3.0 * sig
+    # the search stays around the carry (k sigma), not the 600 m restart circle
+    _, r = b._spatial_window(np.zeros((480, 640, 3), np.uint8), {"altitude_m": 250.0})
+    assert r < 200.0
+    # and dead reckoning is published by the first frame without a match
+    assert b._dead_reckon(b.get_clock().now().to_msg(), 2, {"image_stamp_ns": int(R.VClock.now * 1e9)},
+                          {}, 0.0, "no match")
+    assert b.est[-1].mode == PositionEstimate.MODE_PROPAGATED and b.est[-1].valid
+
+
+def test_a_stale_or_rewound_track_is_not_restored(env):
+    R, make = env
+    t0 = R.VClock.now
+    a = make()
+    a.track_persist, a._track_saved_at = True, 0.0
+    _fly_measured(R, a, t0)
+    R.VClock.now = t0 + 11 + a.max_dead_reckon_s + 5   # past the dead-reckoning limit
+    assert make().track.last_time() is None
+    R.VClock.now = t0 + 12
+    a.on_start_cmd(type("B", (), {"data": False})())    # mission rewind: forgotten
+    assert make().track.last_time() is None
+
+
+def test_the_watchdog_publishes_while_a_match_is_stalled(env):
+    R, make = env
+    t0 = R.VClock.now
+    n = make()
+    first = _fly_measured(R, n, t0)
+    pts, anchor = list(n.track._pts), (n._anchor_lat, n._anchor_lon, n._anchor_time)
+    n._busy_lock.acquire()                              # a frame is being matched ...
+    try:
+        n._last_frame = (R.VClock.now, {})
+        R.VClock.now += 1.0
+        n._watchdog()
+        assert len(n.est) == 1                          # ... under dr_watchdog_s: nothing yet
+        R.VClock.now += 4.7                             # 5.7 s stall (endur2)
+        n._watchdog()
+        assert len(n.est) == 2
+        e = n.est[-1]
+        assert e.valid and e.mode == PositionEstimate.MODE_PROPAGATED
+        assert _sigma(e) > _sigma(first)
+        tl = _truth(R.VClock.now, t0)
+        assert abs(e.latitude - tl[0]) * M < 3.0 * _sigma(e)
+        n._watchdog()                                   # once per dr_watchdog_s, not every tick
+        assert len(n.est) == 2
+        # the matching thread's state is not touched
+        assert list(n.track._pts) == pts and (n._anchor_lat, n._anchor_lon, n._anchor_time) == anchor
+    finally:
+        n._busy_lock.release()
+
+
+def _gps(lat, lon, t):
+    m = PositionEstimate()
+    m.source, m.valid, m.mode = PositionEstimate.SOURCE_GPS, True, PositionEstimate.MODE_MEASURED
+    m.latitude, m.longitude = lat, lon
+    m.header.stamp.sec, m.header.stamp.nanosec = int(t), int(round((t % 1) * 1e9))
+    m.position_covariance = [4.0, 0.0, 0.0, 0.0, 4.0, 0.0, 0.0, 0.0, 0.0]
+    return m
+
+
+def test_gps_handover_during_a_long_match_h1200(env):
+    """F32 h1200: GPS at 5 Hz while 10 s matches hold the node, then the GPS is cut."""
+    R, make = env
+    t0 = R.VClock.now
+    n = make()
+    n._busy_lock.acquire()                              # GPS checks taking 10 s each at 1200 m
+    try:
+        for k in range(100):                            # 20 s of GPS at 5 Hz, all during the match
+            t = t0 + 0.2 * k
+            R.VClock.now = t
+            n.on_gps(_gps(*_truth(t, t0), t))
+        assert n.track.last_time() is None              # the matching state waits for the frame thread
+        assert n._dr_snap is not None                   # the GPS thread's snapshot is there
+        R.VClock.now = t0 + 19.8 + 3.0                  # GPS cut: not trusted any more (2 s)
+        n._last_frame = (R.VClock.now, {})
+        n._watchdog()                                   # the handover: carried from the last GPS point
+        e = n.est[-1]
+        assert e.valid and e.mode == PositionEstimate.MODE_PROPAGATED and _sigma(e) < 30.0
+        tl = _truth(R.VClock.now, t0)
+        assert abs(e.latitude - tl[0]) * M < 3.0 * _sigma(e)
+    finally:
+        n._busy_lock.release()
+    n._drain_gps()                                      # the next frame: the GPS points at their times
+    v = n.track.velocity(R.VClock.now)
+    assert v is not None and v[1] == pytest.approx(V, abs=0.5)
+    meta = {"altitude_m": 1200.0, "image_stamp_ns": int(R.VClock.now * 1e9)}
+    _, r = n._spatial_window(np.zeros((480, 640, 3), np.uint8), meta)
+    assert r < 150.0                                    # was the 600 m circle around the anchor
+
+
+def test_carry_state_pure_rules():
+    tr = TrackVelocity(accel_mps2=0.25)
+    s = DrSnap(LAT0, LON0, 100.0, 10.0, 0.0, V, 0.5, 0.0, 99.0, 0.0)
+    lat, lon, sig = carry_snap(s, 110.0, tr)
+    assert (lat - LAT0) * M == pytest.approx(100.0, rel=1e-3) and lon == pytest.approx(LON0)
+    assert sig == pytest.approx(10.0 + tr.sigma_growth(0.5, V, 10.0, 0.0))
+    assert carry_snap(s, 120.0, tr)[2] > sig
+    assert watchdog_carry(None, 110.0, tr, 120.0, 900.0)[0] is None
+    assert watchdog_carry(s, 99.0 + 121.0, tr, 120.0, 900.0)[0] is None          # time limit
+    assert watchdog_carry(s, 110.0, tr, 120.0, 12.0)[0] is None                  # sigma limit
+    rec = track_state([(90.0 + i, LAT0, LON0, 8.0) for i in range(40)], None, None, 12.0,
+                      [(95.0, 12.0)], (LAT0, LON0, 129.0, 9.0), 129.0, s)
+    assert len(rec["pts"]) <= 26                                                   # the fit window only
+    r = restore_track(rec, 135.0, 120.0)
+    assert r is not None and r["snap"] == s and r["pts"][-1][0] == 129.0
+    assert restore_track(rec, 129.0 + 121.0, 120.0) is None                      # too old
+    assert restore_track(rec, 120.0, 120.0) is None                               # from the future
+    assert restore_track({"pts": [[1, "x", 2, 3]]}, 2.0, 120.0) is None           # malformed
+    assert restore_track({"pts": []}, 2.0, 120.0) is None

@@ -28,6 +28,7 @@ import logging
 import math
 import threading
 import time
+from collections import deque
 
 import cv2
 
@@ -62,6 +63,7 @@ from day_pkg.map_levels import area_zooms, choose_zoom
 from day_pkg.mount_cal import MountCalibration
 from day_pkg.local_matcher import LocalMatcher
 from day_pkg.reacquire import WindowScan, cover_windows
+from day_pkg.carry_state import DrSnap, TRACK_STATE, restore_track, track_state, watchdog_carry
 from day_pkg.vision_nav import VisionNavigator, _en, _move, kinematic_margin_m
 
 # ── A priori spatial GPS-denied (fix matching cross-source) ─────────────────
@@ -359,6 +361,15 @@ class DaySubscriber(Node):
         self.declare_parameter("reacquire_min_inliers", 25)
         # a frame stops trying windows after this long (s): the carry must not go stale between frames
         declare_float(self, "reacquire_budget_s", 2.5)
+        # the carried position is also published by a watchdog in its own thread (day_pkg.carry_state):
+        # when no output for dr_watchdog_s (a match stalled: 5.7 s in the endurance flight endur2, 7-10 s
+        # at 1200 m), checked every dr_watchdog_period_s. 0: off (only the matching thread publishes)
+        declare_float(self, "dr_watchdog_s", 2.0)
+        declare_float(self, "dr_watchdog_period_s", 0.5)
+        # B23: the track (measured points, carried velocity, headings) persisted at most once a second
+        # (state "day_track") and restored by a day node restarted in flight: it carries on at once,
+        # its uncertainty grown by the time elapsed, and searches around that (not a 600 m circle)
+        self.declare_parameter("track_persist", True)
 
         self.conf_threshold = float(self.get_parameter("conf_threshold").value)
         image_topic   = self.get_parameter("image_topic").value
@@ -375,7 +386,6 @@ class DaySubscriber(Node):
         self._track_heading = None             # frame heading (IMU) at the last measured fix
         # the frames' attitude headings by their exposure time: the heading the track velocity was
         # measured at (its fit time) — GPS points and odometry steps have none of their own
-        from collections import deque
         self._frame_headings = deque(maxlen=600)
         self.gyro = None                        # GyroHeading when gyro_heading is on
         if bool(self.get_parameter("gyro_heading").value):
@@ -433,7 +443,22 @@ class DaySubscriber(Node):
         # without frames at all (camera failed, unplugged), the measured track is still
         # carried on (1 Hz) — the case dead-reckoning matters most for
         self._last_frame = (time.time(), {})
-        self.create_timer(1.0, self._dead_reckon_without_frames)
+        # the last output and the velocity it moves with (DrSnap), for the watchdog thread; set by
+        # the matching thread at each output and by the GPS thread while the GPS is trusted
+        self._dr_snap = None
+        self._last_out_wall = time.time()       # wall clock of the last output (position or "none")
+        self.dr_watchdog_s = float(self.get_parameter("dr_watchdog_s").value)
+        self.track_persist = bool(self.get_parameter("track_persist").value)
+        self._track_saved_at = 0.0
+        # GPS messages are read in their own thread (a 10 s match must not hold them back: their
+        # points came in bursts, the track had no velocity at the GPS loss — F32 h1200); the
+        # matching state is updated from them under _busy_lock (_drain_gps)
+        self._gps_pending = deque()
+        self._gps_vel = TrackVelocity()         # GPS thread only: the velocity of the GPS snapshot
+        self._cb_gps = MutuallyExclusiveCallbackGroup()
+        period = float(self.get_parameter("dr_watchdog_period_s").value)
+        self.create_timer(period if period > 0 else 1.0, self._watchdog,
+                          callback_group=MutuallyExclusiveCallbackGroup())
         self._pairer       = FramePairer()   # image/meta matched on the image stamp
         self._frame_count   = 0
         self._success_count = 0
@@ -454,6 +479,8 @@ class DaySubscriber(Node):
             self._anchor_time = self._last_measured_time = float(saved["saved_at"])
             self.get_logger().warn(f"[day] restart: last known position {time.time() - saved['saved_at']:.0f} s "
                                    f"ago reused as the search centre")
+        if self.track_persist:
+            self._restore_track()
 
         # ── Banner (PRE-load) ──────────────────────────────────
         self.get_logger().info("=" * 60)
@@ -608,12 +635,14 @@ class DaySubscriber(Node):
         )
         self._gps_prior = GpsPrior(float(self.get_parameter("gps_prior_timeout_s").value))
         # The arbiter's decision: GPS is the prior only while it is the source in use.
-        self.create_subscription(NavStatus, "/navera/nav_status", self.on_nav_status, 10)
+        self.create_subscription(NavStatus, "/navera/nav_status", self.on_nav_status, 10,
+                                 callback_group=self._cb_gps)
         self.shadow_mode = bool(self.get_parameter("shadow_mode").value)
         if self.shadow_mode:
             self.get_logger().warn("SHADOW MODE: vision runs while GPS is valid (test flights)")
         self.sub_gps = self.create_subscription(
-            PositionEstimate, self.get_parameter("gps_topic").value, self.on_gps, 10)
+            PositionEstimate, self.get_parameter("gps_topic").value, self.on_gps, 10,
+            callback_group=self._cb_gps)
         # a start position entered by the operator (page /mission) when there is no GPS:
         # where to search first — never published as a position (latched: heard on restart)
         self.create_subscription(
@@ -688,32 +717,74 @@ class DaySubscriber(Node):
         message the arbiter refuses (spoofed, implausible) never reaches it. Taken
         from the raw GPS, the first spoofed fix of an attack became the search
         centre, 2 km off (mission simulator). Any other source is ignored.
-        In shadow mode it only seeds a missing anchor."""
+        In shadow mode it only seeds a missing anchor.
+
+        Read in its own thread (main(): multi-threaded executor): here only what is thread-safe —
+        the prior, the GPS history, the delay calibration, the gyro course and the watchdog's GPS
+        snapshot; the track and the anchor are updated under _busy_lock (_drain_gps: now if no
+        frame is being matched, else before the next frame), each point at its own time."""
         if msg.source != PositionEstimate.SOURCE_GPS:
             return
-        if self._gps_prior.update(msg.latitude, msg.longitude, msg.valid,
-                                  msg.mode == PositionEstimate.MODE_MEASURED):
-            st = msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
-            if st > 0:
-                self._gps_hist.add(st, (float(msg.latitude), float(msg.longitude)))
-                self.latency_cal.add_gps(st, float(msg.latitude), float(msg.longitude))
-                if getattr(self, "course", None) is not None:
-                    self.course.maybe_reset(self.gyro, self._gps_hist, st, getattr(self, "_mount_yaw", None))
+        if not self._gps_prior.update(msg.latitude, msg.longitude, msg.valid,
+                                      msg.mode == PositionEstimate.MODE_MEASURED):
+            return
+        rx = time.time()
+        st = msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
+        if st > 0:
+            self._gps_hist.add(st, (float(msg.latitude), float(msg.longitude)))
+            self.latency_cal.add_gps(st, float(msg.latitude), float(msg.longitude))
+            if getattr(self, "course", None) is not None:
+                self.course.maybe_reset(self.gyro, self._gps_hist, st, getattr(self, "_mount_yaw", None))
+        # the point's time: the arbiter's stamp (the frames' time base), the arrival if it is far off
+        t = st if st > 0 and abs(st - rx) <= 2.0 else rx
+        cov = list(msg.position_covariance)
+        sigma = math.sqrt(max(cov[0], cov[4])) if cov[0] > 0 else 5.0
+        self._gps_snapshot(t, float(msg.latitude), float(msg.longitude), sigma)
+        self._gps_pending.append((t, rx, float(msg.latitude), float(msg.longitude), sigma))
+        if self._busy_lock.acquire(blocking=False):
+            try:
+                self._drain_gps()
+            finally:
+                self._busy_lock.release()
+
+    def _gps_snapshot(self, t, lat, lon, sigma) -> None:
+        """GPS thread: the trusted GPS position and its velocity (a GPS-only track) as the watchdog's
+        snapshot — at a GPS loss during a long match the carried position starts from the last GPS
+        point at once (F32 h1200: 13 s without a position after the cut)."""
+        gv = getattr(self, "_gps_vel", None)
+        if gv is None:
+            return
+        gv.add(t, lat, lon, sigma)
+        v = gv.velocity(t)
+        if v is None:
+            return
+        snap = self._dr_snap
+        if snap is None or t >= snap.t:
+            g = self.gyro.at(t) if getattr(self, "gyro", None) is not None else None
+            self._dr_snap = DrSnap(lat, lon, t, sigma, v[0], v[1], v[2], 0.0, t, g[0] if g else None)
+
+    def _drain_gps(self) -> None:
+        """Under _busy_lock: the pending GPS points become the anchor and the track (at their own times)."""
+        pending = getattr(self, "_gps_pending", None)
+        while pending:
+            t, rx, lat, lon, sigma = pending.popleft()
             if self.shadow_mode and self._anchor_lat is not None:
-                return
-            self._anchor_lat, self._anchor_lon = msg.latitude, msg.longitude
-            self._anchor_time = time.time()
-            self._last_measured_time = self._anchor_time
+                continue
+            self._anchor_lat, self._anchor_lon = lat, lon
+            self._anchor_time = rx
+            self._last_measured_time = rx
             self._rejects_in_row = 0
-            self._remember_anchor()
-            cov = list(msg.position_covariance)
-            self._anchor_sigma = math.sqrt(max(cov[0], cov[4])) if cov[0] > 0 else 5.0
-            self.track.add(self._anchor_time, msg.latitude, msg.longitude, self._anchor_sigma)
+            self._anchor_sigma = sigma
+            lt = self.track.last_time()
+            if lt is None or t > lt:                # (an older point would read as a clock step back)
+                self.track.add(t, lat, lon, sigma)
             # the GPS now measures the track: a carried velocity from an earlier dead-reckoning
             # (e.g. at power-on, standing still) must not outlive it. It did: after the GPS loss
             # the carry went on with that velocity — 0 m/s for a copter at 8 m/s, 97 m off in 10 s
             # with a stated +-28 m (Isaac Sim closed loop 2026-10-21, low clouds at the GPS loss)
             self._carry, self._vel_epoch = None, None
+            self._remember_anchor()
+            self._remember_track()
 
     def on_operator_position(self, msg: PositionEstimate):
         """The operator's start position: the search centre while no GPS is trusted, the
@@ -742,6 +813,8 @@ class DaySubscriber(Node):
         if self.gyro is not None:
             self.gyro.clear()
         state_store.save("day_anchor", {"lat": None, "lon": None})   # forgotten too
+        self._carry, self._vel_epoch, self._dr_snap = None, None, None
+        state_store.save(TRACK_STATE, {"pts": []})
         self._rejects_in_row = 0
         self.get_logger().info("[day] mission rewind — tracking state reset")
 
@@ -788,6 +861,7 @@ class DaySubscriber(Node):
 
     def _process_frame(self, seq_id, img, meta):
         try:
+            self._drain_gps()
             # GPS connu (CSV lat/lon réelles) → naviguer vers CE point, SANS prédire.
             # (la paire img/meta est déjà consommée dans _dispatch ; le finally
             #  ci-dessous release _busy_lock → la frame suivante est traitée normalement)
@@ -1516,19 +1590,121 @@ class DaySubscriber(Node):
         ns = meta.get("image_stamp_ns")
         return int(ns) / 1e9 if ns else time.time()
 
-    def _dead_reckon_without_frames(self):
-        t_frame, meta = self._last_frame
-        if time.time() - t_frame < 2.5 or self._gps_prior.fresh() is not None:
+    def _watchdog(self):
+        """Its own thread (dr_watchdog_period_s): while the GPS is not trusted, the carried position
+        goes on being published. No camera frame for 2.5 s and no frame being matched: carried by
+        the matching state itself (_dead_reckon, as before). A frame being matched (or none yet)
+        and no output for dr_watchdog_s: the last output's snapshot carried to now (read-only —
+        the matching thread's state is not touched; day_pkg.carry_state)."""
+        if self._gps_prior.fresh() is not None:
             return
-        if not self._busy_lock.acquire(blocking=False):
-            return                                          # a frame is being processed
-        try:
-            m = dict(meta)
-            m.pop("image_stamp_ns", None)                   # this is no frame: stamped now
-            self._dead_reckon(self.get_clock().now().to_msg(), m.get("frame_id", -1), m, {}, 0.0,
-                              f"no camera frame for {time.time() - t_frame:.0f} s")
-        finally:
-            self._busy_lock.release()
+        t_frame, meta = self._last_frame
+        if time.time() - t_frame >= 2.5 and time.time() - self._last_out_wall >= 1.0 and \
+                self._busy_lock.acquire(blocking=False):
+            try:
+                self._drain_gps()
+                m = dict(meta)
+                m.pop("image_stamp_ns", None)                   # this is no frame: stamped now
+                self._dead_reckon(self.get_clock().now().to_msg(), m.get("frame_id", -1), m, {}, 0.0,
+                                  f"no camera frame for {time.time() - t_frame:.0f} s")
+            finally:
+                self._busy_lock.release()
+            return
+        if self.dr_watchdog_s > 0 and time.time() - self._last_out_wall >= self.dr_watchdog_s:
+            self._watchdog_publish()
+
+    def _watchdog_publish(self) -> bool:
+        """Publish the snapshot (DrSnap) carried to now, turned by the gyro if it measured the turn;
+        True if published."""
+        snap, t = self._dr_snap, time.time()
+        if snap is None:
+            return False
+        turn, h_sig = 0.0, 0.0
+        gyro = getattr(self, "gyro", None)
+        if gyro is not None and snap.heading is not None:
+            g = gyro.at(t)
+            if g is not None:
+                turn, h_sig = (g[0] - snap.heading + 180.0) % 360.0 - 180.0, g[1]
+        p, why = watchdog_carry(snap, t, self.track, self.max_dead_reckon_s, self.dr_max_sigma_m, turn, h_sig)
+        if p is None:
+            return False
+        lat, lon, sigma = p
+        now = self.get_clock().now().to_msg()
+        reason = (f"no output for {t - self._last_out_wall:.1f} s (match in progress); carried "
+                  f"{t - snap.t_meas:.0f} s, ±{sigma:.0f} m")
+        self._last_out_wall = t
+        self.pub_status.publish(String(data=json.dumps({
+            "frame_id": None, "success": True, "source": "dead_reckon", "watchdog": True,
+            "lat": lat, "lon": lon, "sigma_m": round(sigma, 1), "reason": reason})))
+        self._publish_estimate(now, -1, "dead_reckon", lat, lon, {}, score=0.0,
+                               details={"src": "dead_reckon", "watchdog": True, "reason": reason},
+                               sigma_m=sigma)
+        self.get_logger().info(f"[day] 🧭 DR watchdog lat={lat:+.5f} lon={lon:+.5f} ({reason})")
+        return True
+
+    def _snapshot_output(self, lat, lon, t, sigma, meta) -> None:
+        """Matching thread, at each output: the snapshot the watchdog carries — this position and the
+        velocity the next carry would use (the carried one, else the track's)."""
+        t_last = self.track.last_time()
+        if t_last is None:
+            return
+        c = self._carry
+        if c is not None and c[2] >= t_last:
+            v = self.track.velocity(t_last + 1e-3)
+            ve, vn, sig_v = c[4], c[5], (v[2] if v is not None else 3.0)
+            since_v = t - (self._vel_epoch if self._vel_epoch is not None else t_last)
+        else:
+            v = self.track.velocity(t)
+            if v is None:
+                return
+            ve, vn, sig_v = v
+            since_v = t - t_last
+        h = self._carry_heading(meta)[0]
+        if h is None and getattr(self, "gyro", None) is not None:
+            g = self.gyro.at(t)
+            h = g[0] if g is not None else None
+        self._dr_snap = DrSnap(lat, lon, t, sigma, ve, vn, sig_v, max(0.0, since_v), t_last, h)
+
+    def _remember_track(self) -> None:
+        """Persist the track for a restart in flight (state "day_track", at most once a second)."""
+        if not getattr(self, "track_persist", False) or time.time() - self._track_saved_at < 1.0:
+            return
+        self._track_saved_at = time.time()
+        anchor = None
+        if self._anchor_lat is not None and self._anchor_time is not None:
+            anchor = (self._anchor_lat, self._anchor_lon, self._anchor_time,
+                      self._anchor_sigma if self._anchor_sigma is not None else self.local_sigma_m)
+        state_store.save(TRACK_STATE, track_state(
+            self.track._pts, self._carry, self._vel_epoch, self._track_heading, self._frame_headings,
+            anchor, self._last_measured_time, self._dr_snap))
+
+    def _restore_track(self) -> bool:
+        """Restarted in flight: the persisted track carried on (its original times: the uncertainty
+        grows with the time elapsed, never a fresh fix); the anchor = that carry now. True if restored."""
+        now = time.time()
+        r = restore_track(state_store.load(TRACK_STATE, self.max_dead_reckon_s + 5.0), now, self.max_dead_reckon_s)
+        if r is None:
+            return False
+        self.track.reset()
+        for p in r["pts"]:
+            self.track.add(*p)
+        self._carry, self._vel_epoch, self._track_heading = r["carry"], r["vel_epoch"], r["track_heading"]
+        for h in r["headings"]:
+            self._frame_headings.append(h)
+        self._dr_snap = r["snap"]
+        self._last_measured_time = r["last_measured"]
+        p = self._predicted({})
+        if p is None or p[2] > self.dr_max_sigma_m:
+            if r["anchor"] is None:
+                return False
+            lat, lon, ta, sig = r["anchor"]
+            sig = sig + self.max_speed_mps * max(0.0, now - ta)       # no velocity: as far as it can go
+            p = (lat, lon, sig)
+        self._anchor_lat, self._anchor_lon, self._anchor_time = p[0], p[1], now
+        self._anchor_sigma = self._dr_sigma = p[2]
+        self.get_logger().warn(f"[day] restart: track restored, last measured fix {now - r['pts'][-1][0]:.1f} s ago; "
+                               f"carried on at ±{p[2]:.0f} m (search around it)")
+        return True
 
     def _dead_reckon(self, now, seq_id, meta, status, score, why) -> bool:
         """No measurement this frame: publish the last measured position carried along the
@@ -1786,6 +1962,10 @@ class DaySubscriber(Node):
         status["altitude_measured_m"] = round(alt, 1)
 
     def _emit_fix(self, now, seq_id, lat, lon, meta, status, src, score, jump_m, reason=None):
+        self._last_out_wall = time.time()
+        self._snapshot_output(lat, lon, self._frame_time(meta),
+                              self._dr_sigma if src == "dead_reckon" else self._last_fix_sigma, meta)
+        self._remember_track()
         status["source"], status["lat"], status["lon"] = src, lat, lon
         status["jump_m"], status["reason"] = jump_m, reason
         status["sigma_cal"] = self.sigma_cal.state()
@@ -1834,7 +2014,7 @@ class DaySubscriber(Node):
         except (TypeError, ValueError):
             return -1
 
-    def _publish_estimate(self, now, seq_id, src, lat, lon, meta, score, details):
+    def _publish_estimate(self, now, seq_id, src, lat, lon, meta, score, details, sigma_m=None):
         """Additive: emit the typed source contract on /navera/estimate/day.
 
         One PositionEstimate per NavSatFix, same lat/lon. `mode` is the honesty
@@ -1858,7 +2038,7 @@ class DaySubscriber(Node):
         if src in ("local_match", "dead_reckon") and valid:
             # local match: its stated sigma (details["sigma_m"], see _fix_sigma; local_sigma_m
             # without one); dead-reckoning: the anchor's plus the growth along the track
-            sig = (details.get("sigma_m") if src == "local_match" else None) or \
+            sig = sigma_m or (details.get("sigma_m") if src == "local_match" else None) or \
                 (self.local_sigma_m if src == "local_match" else self._dr_sigma)
             var = float(sig) ** 2
             est.position_covariance = [var, 0.0, 0.0, 0.0, var, 0.0, 0.0, 0.0, 0.0]
@@ -2386,6 +2566,7 @@ class DaySubscriber(Node):
     def _publish_no_fix(self, now, seq_id, meta, status, score, reason):
         """Declare a frame that produced no position (valid=False, NaN) — never a guess."""
         self._reject_count += 1
+        self._last_out_wall = time.time()
         status.update({"success": False, "rejected": True, "reason": reason,
                        "lat": None, "lon": None, "source": "none"})
         self.pub_status.publish(String(data=json.dumps(status)))
@@ -2424,14 +2605,12 @@ def main(args=None):
     node = None
     try:
         node = DaySubscriber()   # may abort if a signal lands during model load
-        if node.gyro is not None:
-            # the gyro in its own callback group, read while a frame is processed; every other
-            # callback stays in the node's default (mutually exclusive) group, serial as before
-            ex = MultiThreadedExecutor(num_threads=2)
-            ex.add_node(node)
-            ex.spin()
-        else:
-            rclpy.spin(node)
+        # the gyro, the GPS (with the arbiter's decision) and the dead-reckoning watchdog in their own
+        # callback groups, run while a frame is matched; every other callback stays in the node's
+        # default (mutually exclusive) group, serial as before
+        ex = MultiThreadedExecutor(num_threads=4)
+        ex.add_node(node)
+        ex.spin()
     except (KeyboardInterrupt, ExternalShutdownException):
         pass
     finally:

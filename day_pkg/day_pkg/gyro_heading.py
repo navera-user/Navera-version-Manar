@@ -200,11 +200,12 @@ class CourseReset:
     def offset(self, mount_yaw_deg: Optional[float]) -> Optional[Tuple[float, float]]:
         """(frame top - course deg, sigma deg): learned from vision (circular mean, sigma its spread,
         at least 2 deg), else -mount yaw (a downward camera on a vehicle flying nose first), else None."""
-        if len(self._offsets) >= self.min_samples:
-            sn = sum(math.sin(math.radians(o)) for o in self._offsets)
-            cs = sum(math.cos(math.radians(o)) for o in self._offsets)
+        offs = list(self._offsets)          # a copy: samples are added from the frame thread
+        if len(offs) >= self.min_samples:
+            sn = sum(math.sin(math.radians(o)) for o in offs)
+            cs = sum(math.cos(math.radians(o)) for o in offs)
             mean = math.degrees(math.atan2(sn, cs))
-            spread = math.sqrt(sum(_wrap(o - mean) ** 2 for o in self._offsets) / len(self._offsets))
+            spread = math.sqrt(sum(_wrap(o - mean) ** 2 for o in offs) / len(offs))
             return mean, max(2.0, spread)
         if mount_yaw_deg is None or not math.isfinite(mount_yaw_deg):
             return None
