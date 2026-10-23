@@ -2616,20 +2616,27 @@ class DaySubscriber(Node):
         self.get_logger().warn(f"[day] ✗ frame={seq_id} no position: {reason}")
 
 
-def main(args=None):
+def main(args=None, init: bool = True, before_spin=None):
     """Entry point. Exits cleanly (code 0) on SIGINT and SIGTERM.
 
     rclpy installs handlers for both signals and shuts the context down itself,
     so spin() returns with the context already closed — an unconditional
     rclpy.shutdown() here would then raise RCLError. Hence the rclpy.ok() guard.
+    init False: rclpy is already initialised (day_entry: the early bridge ran first);
+    before_spin(): called once the node is constructed (or failed to be), before spinning.
     """
-    # The localizer libraries log through the standard logging module.
-    logging.basicConfig(level=logging.INFO, format="[%(levelname)s] [%(name)s]: %(message)s")
-    die_with_parent()  # orphan guard: die if our launcher/systemd unit is killed
-    rclpy.init(args=args)
+    if init:
+        # The localizer libraries log through the standard logging module.
+        logging.basicConfig(level=logging.INFO, format="[%(levelname)s] [%(name)s]: %(message)s")
+        die_with_parent()  # orphan guard: die if our launcher/systemd unit is killed
+        rclpy.init(args=args)
     node = None
     try:
-        node = DaySubscriber()   # may abort if a signal lands during model load
+        try:
+            node = DaySubscriber()   # may abort if a signal lands during model load
+        finally:
+            if before_spin is not None:
+                before_spin()
         # the gyro, the GPS (with the arbiter's decision) and the dead-reckoning watchdog in their own
         # callback groups, run while a frame is matched; every other callback stays in the node's
         # default (mutually exclusive) group, serial as before
