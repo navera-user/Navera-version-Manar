@@ -20,14 +20,18 @@ import math
 from collections import namedtuple
 from typing import Optional, Tuple
 
+from day_pkg.carry_aids import autopilot_sigma_growth, carry_autopilot, carry_with_turns
 from day_pkg.vision_nav import _move
 
 # lat, lon: the position output at t (s, the frames' time base); sigma: its stated 1-sigma (m);
 # ve, vn, sig_v: the velocity it moves with (m/s) and its 1-sigma; since_v: seconds between the
 # instant that velocity was measured and t (the unseen-acceleration term grows from there);
 # t_meas: the last MEASURED fix (the dead-reckoning limit counts from it); heading: the heading the
-# velocity is turned to (deg, None: unknown)
-DrSnap = namedtuple("DrSnap", "lat lon t sigma ve vn sig_v since_v t_meas heading")
+# velocity is turned to (deg, None: unknown); yaw: the IMU attitude's yaw at t (deg, None: unknown — the
+# turn across a restart, carry_aids.AttitudeYaw); be, bn: the bias fitted to the autopilot's velocity
+# (m/s, None: not carried along the autopilot's velocity; sig_v is then that bias's 1-sigma)
+DrSnap = namedtuple("DrSnap", "lat lon t sigma ve vn sig_v since_v t_meas heading yaw be bn",
+                    defaults=(None, None, None))
 
 
 def carry_snap(snap: DrSnap, t: float, track, turn_deg: float = 0.0,
@@ -51,15 +55,64 @@ def carry_snap(snap: DrSnap, t: float, track, turn_deg: float = 0.0,
     return p[0], p[1], sigma
 
 
+def carry_snap_aided(snap: DrSnap, t: float, track, apv=None, yaw=None, gyro=None, drift_mps2: float = 0.1,
+                     gyro_bias_dps: float = 0.1):
+    """The snapshot carried to t with what is known of the motion since (carry_aids): along the
+    autopilot's velocity + the snapshot's bias (apv; a first gap after a restart bridged), else turned
+    by the IMU attitude's yaw since the snapshot's (yaw, seeded with snap.yaw: across a restart), else
+    by the gyro's integrated turn (gyro, within this process), else straight (carry_snap).
+    Returns (DrSnap carried to t, how): its position, sigma, velocity, the same measurement times."""
+    dt = max(0.0, t - snap.t)
+    if apv is not None and snap.be is not None:
+        r = carry_autopilot(snap.lat, snap.lon, snap.t, t, apv, (snap.be, snap.bn), snap.ve, snap.vn)
+        if r is not None:
+            lat, lon, ve, vn, gap, dvg = r
+            sigma = snap.sigma + autopilot_sigma_growth(snap.sig_v, dt, snap.since_v, drift_mps2, gap, dvg,
+                                                        track.accel)
+            return snap._replace(lat=lat, lon=lon, t=t, sigma=sigma, ve=ve, vn=vn, since_v=snap.since_v + dt,
+                                 yaw=yaw.yaw(t) if yaw is not None else None), "autopilot velocity"
+    speed = math.hypot(snap.ve, snap.vn)
+    if yaw is not None and snap.yaw is not None:
+        yaw.seed(snap.t, snap.yaw)
+        tr = yaw.turn(snap.t, t)
+        if tr is not None:
+            def turn_at(s):
+                x = yaw.turn(snap.t, s)
+                return x[0] if x is not None else None
+            lat, lon, ve, vn = carry_with_turns(snap.lat, snap.lon, snap.t, snap.ve, snap.vn, t, turn_at)
+            # measured turns: the track's growth without its half-turn term, but for the turn inside a
+            # gap (when it turned is not known) and the yaw's drift (gyro bias x time)
+            sigma = (snap.sigma + track.sigma_growth(snap.sig_v, speed, dt, max(0.0, snap.since_v))
+                     + 0.5 * math.radians(tr[2]) * speed * tr[1]
+                     + 0.5 * math.radians(gyro_bias_dps * dt) * speed * dt)
+            return snap._replace(lat=lat, lon=lon, t=t, sigma=sigma, ve=ve, vn=vn, since_v=snap.since_v + dt,
+                                 yaw=yaw.yaw(t), heading=None if snap.heading is None else
+                                 (snap.heading + tr[0]) % 360.0), "attitude yaw"
+    turn, h_sig, how = 0.0, 0.0, "straight"
+    if gyro is not None:
+        d = gyro.turn(snap.t, t)
+        if d is not None:
+            turn, h_sig, how = d, gyro.bias * dt, "gyro turn"
+    lat, lon, sigma = carry_snap(snap, t, track, turn, h_sig)
+    a = math.radians(turn)
+    ve, vn = snap.ve * math.cos(a) + snap.vn * math.sin(a), -snap.ve * math.sin(a) + snap.vn * math.cos(a)
+    return snap._replace(lat=lat, lon=lon, t=t, sigma=sigma, ve=ve, vn=vn, since_v=snap.since_v + dt), how
+
+
 def watchdog_carry(snap: Optional[DrSnap], t: float, track, max_dr_s: float, max_sigma_m: float,
-                   turn_deg: float = 0.0, heading_sigma_deg: float = 0.0):
+                   turn_deg: float = 0.0, heading_sigma_deg: float = 0.0, aids: Optional[dict] = None):
     """(lat, lon, sigma_m) the watchdog may publish at t, or (None, why): no snapshot, the
-    dead-reckoning limit (max_dr_s since the last measured fix) or the uncertainty limit reached."""
+    dead-reckoning limit (max_dr_s since the last measured fix) or the uncertainty limit reached.
+    aids: carry_snap_aided's keyword arguments (apv, yaw, gyro, ...) — then turn_deg is not used."""
     if snap is None:
         return None, "nothing carried yet"
     if t - snap.t_meas > max_dr_s:
         return None, f"dead-reckoning limit {max_dr_s:.0f}s reached"
-    lat, lon, sigma = carry_snap(snap, t, track, turn_deg, heading_sigma_deg)
+    if aids is not None:
+        c, _ = carry_snap_aided(snap, t, track, **aids)
+        lat, lon, sigma = c.lat, c.lon, c.sigma
+    else:
+        lat, lon, sigma = carry_snap(snap, t, track, turn_deg, heading_sigma_deg)
     if not (math.isfinite(lat) and math.isfinite(lon) and math.isfinite(sigma)):
         return None, "non-finite carry"
     if sigma > max_sigma_m:
@@ -117,10 +170,17 @@ def restore_track(data: Optional[dict], now: float, max_dr_s: float) -> Optional
                 carry = None
         snap = data.get("snap")
         if snap is not None:
-            snap = DrSnap(*[None if x is None else float(x) for x in snap])
+            vals = [None if x is None else float(x) for x in snap]
+            snap = DrSnap(*vals) if 10 <= len(vals) <= 13 else None
+        if snap is not None:
             if not _finite(snap.lat, snap.lon, snap.t, snap.sigma, snap.ve, snap.vn, snap.sig_v,
                            snap.since_v, snap.t_meas) or snap.t > now + 1.0:
                 snap = None
+        if snap is not None:
+            if snap.be is None or snap.bn is None or not _finite(snap.be, snap.bn):
+                snap = snap._replace(be=None, bn=None)
+            if snap.yaw is not None and not _finite(snap.yaw):
+                snap = snap._replace(yaw=None)
         anchor = data.get("anchor")
         if anchor is not None:
             anchor = tuple(float(x) for x in anchor)

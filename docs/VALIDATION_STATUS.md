@@ -1561,6 +1561,41 @@ error up to 745 m at ±384 m stated and the autopilot 770 m off until vision re-
 kill. Before the early bridge (fin_endur_2h_try1, ad88f5d) the same kill left 21 s without a day position
 and the EKF failed safe 17 s after the kill. Open: turn the restored carry with the IMU.
 
+### Isaac Sim closed loop: open3 — the carry turns and changes speed with the vehicle (2026-10-23)
+
+SIMULATION only (copter SITL 4.5.7, Kalaa scene, results `~/.navera_sim/isaac/open3/` on the Jetson). Code:
+branch `work/open3-2026-10-23`. The day carry now uses (day_pkg/carry_aids.py): the **autopilot's own velocity**
+(vehicle_link `/navera/vehicle/velocity`, GLOBAL_POSITION_INT; in the closed loop vehicle_link runs on SITL
+SERIAL2), checked against the node's measured fixes of the last 20 s (offset fit, chi-square refusal); the
+offset is *not* added while the autopilot flies on NAVERA's positions (adding it ran away: o3_o60b, the EKF
+velocity 0.5 -> 7 m/s off in 45 s), only its size widens the sigma; and the **IMU attitude's absolute yaw**,
+persisted with the snapshot, so a restarted process turns across the seconds it was down. The early bridge
+carries with both and hands its carry to the restarted node. Also: a strong match refused only for its scale is
+matched again at the implied height; frames at scale 1.3-1.41 of the map use map level 1 (h1200).
+
+| run (code) | condition | matched % | fix err stated time med/p90/max | output err | > 3σ | wrong | autopilot EKF med/p90/max | mission |
+|---|---|---|---|---|---|---|---|---|
+| o3_kill1_base (19736c4, offset applied) | base + day_subscriber SIGKILLed 23 m before a corner | 97.0 | 13/21/28 | 14/23/40 | 0/340 | 0 | 18/27/38 | completed |
+| o3_o60a / o60b / o60c (c145c0f, offset applied) | 60 s cloud bank | 87-88 | 11-12/20-22/27-31 (o60c 6/10/12) | max 87 / 280 / 119 | 0 | 0 | max 104 / 302 / 136 | 3 of 3 completed |
+| **o3_fin_outage60 (f6702be, final)** | 60 s cloud bank + day_subscriber SIGKILLed 6 m before a corner inside it | 87.0 | 6/13/18 | 7/16/58 | **0/278** | **0** | 14/44/84 | **completed** |
+| o3_h12a / h12b (daf8151) | 1200 m | 64 / 63 | 4/7/18, 8/14/23 | max 184 / 421 | 0/338, 0/330 | 0 | max 158 / 1871 | NOT (EKF failsafe) |
+
+Findings:
+
+1. **Kill on a corner**: before (fin_endur_2h) 745 m off at +-384 m, autopilot 770 m off, 40 s to re-acquire;
+   now 40 m max (kill1) / 58 m max (kill inside the cloud bank), 0 beyond 3σ, autopilot <= 84 m, matched again
+   ~13 s after the kill.
+2. **60 s cloud bank**: before 2 of 4 completed (+ ref 0 of 1); with the autopilot velocity 4 of 4 completed
+   (3 with the earlier offset-applied code, 1 on the final code). The final code ran only once (scope cut): the
+   completion rate on the final code is 1 of 1.
+3. **1200 m** still fails (both runs on daf8151, before the level / fit-hold fix, which was NOT flown): the carry
+   now follows the acceleration (error 27 m after 37 s instead of km), matching 63 % (was 1.4-35 %), 0 wrong;
+   but ~80 s without a match after the cut (frames enlarged on map level 0 found nothing; 25 %-higher retries on
+   level 1 matched at scale 0.80 and were refused) let the stated sigma grow to ~900 m and the EKF failed safe;
+   and after the first fix the carry lost the autopilot fit (one point after a gap). Both are fixed in f6702be
+   (unit tests only, not flown).
+4. Not re-flown on the final code (scope cut): base and plane30 regression, h1200, outage60 repeats.
+
 ### Long route (simulator, 2026-10-01)
 
 Paris → Tunisia, 1768 km, mapped as ≤ 10 km great-circle legs: 79 775 tiles generated in

@@ -17,6 +17,8 @@
 #                  camera delay: --cam-args "-p capture_latency_s:=1.3" (NAVERA_CAMERA_LATENCY_S)
 #   --set K=V,...  extra / overriding ArduPilot parameters (after NAVERA's recommended ones)
 #   NAVERA_ISAAC_WS (env): the colcon build directory (default ~/.navera_isaac_ws; one per checkout)
+#   --vlink URL|off  vehicle_link on the autopilot's SERIAL2 (default tcp:127.0.0.1:5763): its velocity for
+#                  the day node's carry (open3); off = without it (the day node carries as before)
 #   --area NAME  NAVERA's map ~/navera_data/isaac_NAME_area (default: the scene's, isaac_<scene>_area)
 #
 #   windows: "NAVERA - Isaac Sim flight" (the scene, chase view), MAVProxy map + console,
@@ -29,6 +31,7 @@ set -u
 name=closed_loop_$(date +%Y%m%d_%H%M%S); alt=250; radius=500; speed=8; cut_after=15; tod=10:30; sigma=30
 gate=""; hold=30; vehicle=copter; model=quad; scene=kalaa; legs=4; wind=4; wind_dir=290; turb=1.0
 isaac_extra=""; link_extra=""; gimbal=""; day_extra=""; cam_extra=""; endurance=0; area=""; ap_set=""
+vlink=tcp:127.0.0.1:5763
 while [ $# -gt 0 ]; do
   case $1 in
     --name) name=$2;; --alt) alt=$2;; --radius) radius=$2;; --speed) speed=$2;; --cut-after) cut_after=$2;;
@@ -38,6 +41,7 @@ while [ $# -gt 0 ]; do
     --gimbal) gimbal=$2;; --day-args) day_extra=$2;; --cam-args) cam_extra=$2;; --endurance) endurance=$2;;
     --area) area=$2;;
     --set) ap_set=$2;;
+    --vlink) vlink=$2;;
     *) echo "unknown option $1" >&2; exit 2;;
   esac; shift 2
 done
@@ -71,6 +75,7 @@ docker rm -f navera_isaac >/dev/null 2>&1
 rm -rf "$D/runs/$name"
 docker run -d --rm --name navera_isaac --gpus all --network host --user "$(id -u):$(id -g)" -e HOME=/results \
   -e RUN="$name" -e MATCHER=auto -e MAX_SPEED=$([ "$vehicle" = plane ] && echo 75 || echo 30) -e GROUND_ALT="$zref" -e VEHICLE_OUT=tcp:127.0.0.1:5762 \
+  -e VEHICLE_LINK="$([ "$vlink" = off ] || echo "$vlink")" \
   -e DEGRADED_SIGMA="$sigma" -e GIMBAL=$gimbal -e DAY_ARGS="$day_extra" -e CAM_ARGS="$cam_extra" \
   -e LINK_ARGS="-p truth_udp_port:=15501 -p delay_s:=1.3 -p scene_dir:=/isaac/scenes/$scene $link_extra" \
   -v "$repo":/ws/src/navera -v "$ws/build":/ws/build \

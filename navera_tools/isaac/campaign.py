@@ -87,6 +87,12 @@ CONDITIONS = {
 }
 
 
+def condition_args(name: str, extra: str = "") -> str:
+    """The launcher arguments of a condition, --extra appended once (it was appended twice: a repeated
+    --set or --day-args replaced by its second copy, a repeated --link-args doubled)."""
+    return (CONDITIONS[name][1] + " " + extra).strip()
+
+
 def sh(cmd, ssh):
     full = ["ssh", "-o", "BatchMode=yes", ssh, cmd] if ssh else ["bash", "-c", cmd]
     return subprocess.run(full, capture_output=True, text=True)
@@ -113,15 +119,13 @@ def main():
     names = [n for n in (a.only.split(",") if a.only else CONDITIONS) if n]
     os.makedirs(a.out, exist_ok=True)
     for n in names:
-        what, args = CONDITIONS[n]
-        args = (args + " " + a.extra).strip()
+        what, args = CONDITIONS[n][0], condition_args(n, a.extra)
         run = a.prefix + n
         if a.notice:
             with open(a.notice, "a") as f:
                 f.write(f"{time.strftime('%F %T')} NOTICE: campaign run '{run}' ({what}) starts now: MAVProxy map+console, "
                         f"'NAVERA - live error' and ~1.5 min later 'NAVERA - Isaac Sim flight' open, ~9 min.\n")
         t0 = time.time()
-        args = f"{args} {a.extra}".strip()
         env = f"NAVERA_ISAAC_WS={a.ws} " if a.ws else ""
         cmd = (f"rm -rf ~/navera_results/{run}; {env}bash {a.repo}/navera_tools/isaac/run_closed_loop.sh --name {run} "
                f"--hold 5 {args} > ~/navera_{run}.out 2>&1")

@@ -69,3 +69,15 @@ def test_system_time_becomes_a_time_reference_only_once_the_autopilot_has_a_time
     ref = system_time_reference(mav.MAVLink_system_time_message(1_792_613_999_500_123, 1), Time(sec=5))
     assert (ref.time_ref.sec, ref.time_ref.nanosec) == (1_792_613_999, 500_123_000)
     assert ref.source == "autopilot" and ref.header.stamp.sec == 5
+
+
+def test_global_position_velocity_is_published_enu():
+    """open3: the autopilot's EKF velocity for the day node's carry (GLOBAL_POSITION_INT vx north, vy east,
+    vz down, cm/s -> TwistStamped ENU m/s)."""
+    from types import SimpleNamespace
+    from builtin_interfaces.msg import Time
+    from navera_output.nodes.vehicle_link_node import global_position_velocity
+    v = global_position_velocity(SimpleNamespace(vx=250, vy=-120, vz=40), Time(sec=5))
+    assert (v.twist.linear.x, v.twist.linear.y, v.twist.linear.z) == (-1.2, 2.5, -0.4)
+    assert v.header.stamp.sec == 5
+    assert global_position_velocity(SimpleNamespace(vx=float("nan"), vy=0, vz=0), Time()) is None

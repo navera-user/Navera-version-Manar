@@ -7,6 +7,11 @@ its own: any MAVLink autopilot (ArduPilot, PX4, ...). Publishes, stamped on rece
     /navera/vehicle/imu            sensor_msgs/Imu          attitude (ENU, body FLU) + rates
     /navera/vehicle/altitude_agl   sensor_msgs/Range        downward rangefinder, tilt-corrected
     /navera/vehicle/relative_alt   geometry_msgs/PointStamped  z = height above home (barometer)
+    /navera/vehicle/velocity       geometry_msgs/TwistStamped  the autopilot's EKF velocity (ENU m/s,
+                                                            GLOBAL_POSITION_INT vx/vy/vz) — its own IMU
+                                                            integrated; without GPS it is corrected by
+                                                            NAVERA's positions, so the day node only uses
+                                                            it with a bias fitted on its own measured fixes
     /navera/vehicle/gps2           sensor_msgs/NavSatFix    the vehicle's second GPS, if any
     /navera/vehicle/gps2_satellites std_msgs/UInt32         its satellites (NavSatFix has no field)
     /navera/vehicle/gps1           sensor_msgs/NavSatFix    the vehicle's FIRST GPS (GPS_RAW_INT), only
@@ -48,7 +53,7 @@ import threading
 import time
 
 import rclpy
-from geometry_msgs.msg import PointStamped
+from geometry_msgs.msg import PointStamped, TwistStamped
 from navera_common.lifecycle import die_with_parent
 from navera_common.params import declare_float
 from rclpy.executors import ExternalShutdownException
@@ -110,6 +115,20 @@ def gps_raw_navsatfix(msg, stamp, frame_id: str, warn=None):
     return f
 
 
+def global_position_velocity(msg, stamp):
+    """GLOBAL_POSITION_INT (vx north, vy east, vz down, cm/s) -> TwistStamped ENU m/s, or None (non-finite)."""
+    try:
+        e, n, u = msg.vy / 100.0, msg.vx / 100.0, -msg.vz / 100.0
+    except (AttributeError, TypeError):
+        return None
+    if not all(math.isfinite(c) for c in (e, n, u)):
+        return None
+    v = TwistStamped()
+    v.header.stamp, v.header.frame_id = stamp, "enu"
+    v.twist.linear.x, v.twist.linear.y, v.twist.linear.z = float(e), float(n), float(u)
+    return v
+
+
 def system_time_reference(msg, stamp):
     """SYSTEM_TIME -> TimeReference (time_ref = the autopilot's UTC, source "autopilot"), or None while
     the autopilot has no real time (time_unix_usec 0 / before 2020).
@@ -147,6 +166,7 @@ class VehicleLink(Node):
         self.pub_imu = self.create_publisher(Imu, "/navera/vehicle/imu", 50)
         self.pub_agl = self.create_publisher(Range, "/navera/vehicle/altitude_agl", 10)
         self.pub_rel = self.create_publisher(PointStamped, "/navera/vehicle/relative_alt", 10)
+        self.pub_vel = self.create_publisher(TwistStamped, "/navera/vehicle/velocity", 10)
         self.pub_gps2 = self.create_publisher(NavSatFix, "/navera/vehicle/gps2", 10)
         self.pub_gps2_sats = self.create_publisher(UInt32, "/navera/vehicle/gps2_satellites", 10)
         if self.read_gps1:
@@ -320,6 +340,9 @@ class VehicleLink(Node):
             p.header.stamp, p.header.frame_id = now, "vehicle_home"
             p.point.z = msg.relative_alt / 1000.0
             self.pub_rel.publish(p)
+            v = global_position_velocity(msg, now)
+            if v is not None:
+                self.pub_vel.publish(v)
         elif t == "GPS2_RAW":
             f = gps_raw_navsatfix(msg, now, "vehicle_gps2", self._warn_msl)
             if f is not None:
