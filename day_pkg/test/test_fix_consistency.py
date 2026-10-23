@@ -26,7 +26,7 @@ def test_weak_fixes_while_lost_are_doubted_and_the_reacquisition_check_is_option
 
 
 def test_a_doubted_fix_is_confirmed_by_a_second_agreeing_one_only():
-    c = FixConsistency()
+    c = FixConsistency(confirm_n=2)                                    # the rule of 2026-10-22
     a = _move(P0, 300.0, 0.0)
     assert not c.confirm(10.0, *a, 5.0, (20.0, 0.0), lost=False)
     b = _move(a, 20.0 * 1.0, 3.0)                                      # 1 s later, carried 20 m east
@@ -56,6 +56,39 @@ def test_vision_nav_with_the_rules_refuses_a_confident_wrong_fix_then_confirms_a
         off = 4.0 * math.hypot(pred[2], 4.0)
         wrong = _move(pred[:2], 0.0, off)
         assert nav.update(3.0, _res(wrong), None, 90.0) is believed
-    # the next frame agrees with it (carried 4 m by the 20 m/s velocity): believed, re-acquired
-    assert nav.update(3.2, _res(_move(wrong, 4.0, 0.0)), None, 90.0)
+    # the next frame agrees with it (carried 4 m by the 20 m/s velocity): still doubted on a good
+    # track (D17: two frames in a row are not independent); the third agreeing one is believed
+    assert not nav.update(3.2, _res(_move(wrong, 4.0, 0.0)), None, 90.0)
+    assert nav.update(3.4, _res(_move(wrong, 8.0, 0.0)), None, 90.0)
     assert "re-acquired" in nav.last_reason
+
+
+def test_d17_two_wrong_in_a_row_at_the_same_place_are_not_believed_on_a_good_track():
+    c = FixConsistency()
+    a = _move(P0, 300.0, 0.0)
+    assert not c.confirm(10.0, *a, 5.0, (20.0, 0.0), lost=False)
+    assert not c.confirm(11.0, *_move(a, 20.0, 0.0), 5.0, (20.0, 0.0), lost=False)   # agrees: 2 in a row
+    c.clear()                                                          # a right fix the gate believed
+    assert not c.confirm(12.0, *_move(a, 40.0, 0.0), 5.0, (20.0, 0.0), lost=False)
+    assert c.confirmed == 0
+    # three in a row, each agreeing with the previous one carried: a real jump, believed
+    assert not c.confirm(13.0, *_move(a, 60.0, 0.0), 5.0, (20.0, 0.0), lost=False)
+    assert c.confirm(14.0, *_move(a, 80.0, 0.0), 5.0, (20.0, 0.0), lost=False)
+    assert c.confirmed == 1 and c.pending is None
+    # a disagreeing one in the middle restarts the run
+    assert not c.confirm(20.0, *a, 5.0, None, lost=False)
+    assert not c.confirm(21.0, *a, 5.0, None, lost=False)
+    assert not c.confirm(22.0, *_move(a, 300.0, 0.0), 5.0, None, lost=False)
+    assert not c.confirm(23.0, *_move(a, 300.0, 0.0), 5.0, None, lost=False)
+    assert c.confirm(24.0, *_move(a, 300.0, 0.0), 5.0, None, lost=False)
+
+
+def test_d17_reacquisition_after_a_gap_still_needs_two_only():
+    c = FixConsistency()
+    a = _move(P0, 300.0, 0.0)
+    assert not c.confirm(100.0, *a, 8.0, None, lost=True)
+    assert c.confirm(115.0, *a, 8.0, None, lost=False)                # the run began lost: 2 suffice
+    c.clear()
+    assert not c.confirm(200.0, *a, 8.0, None, lost=True)
+    assert not c.confirm(230.0, *a, 8.0, None, lost=True)              # beyond confirm_lost_s (20 s)
+    assert c.confirm(240.0, *a, 8.0, None, lost=True)

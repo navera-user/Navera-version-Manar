@@ -13,10 +13,12 @@ decide, for one fix, against the position carried from the last fixes (dead reck
   (< weak_inliers), or one further from the carried position than reacq_k x its own sigma
   (with reacq_floor_m: the carried position's error is unknown, not zero) is doubted too: right
   after a gap, one confident match is not yet a position.
-- **confirmation**: a doubted fix is kept pending; it is believed when a later fix (within
-  confirm_s, confirm_lost_s while lost: frames match rarely after a gap) agrees with it, carried
-  by the velocity: two independent matches in the same wrong place are much rarer than one. The
-  confirming fix is believed as well (both say the track is what was wrong: re-acquired).
+- **confirmation**: a doubted fix is kept pending; it is believed when later fixes (each within
+  confirm_s, confirm_lost_s while lost: frames match rarely after a gap) agree with it, carried
+  by the velocity: confirm_n (3) doubted fixes in a row while the carried position is good,
+  confirm_lost_n (2) while it is lost. Two consecutive frames are not independent (the same
+  ground against the same map window: a wrong match repeats at the same wrong place, D17 —
+  2026-10-23); a third is one more frame for a real jump. The confirming fix is believed.
 
 A fix the gate leaves alone clears the pending one. Nothing here blocks a re-acquisition: a right
 fix after a long gap costs one more matched frame. Pure Python: the day node and the bench
@@ -44,13 +46,15 @@ class FixConsistency:
     def __init__(self, gate_k: float = 3.0, strong_inliers: int = 100, strong_gate_k: float = 3.0,
                  lost_sigma_m: float = 50.0, weak_inliers: int = 40, reacq_k: float = 3.0,
                  reacq_floor_m: float = 15.0, confirm_s: float = 6.0, confirm_lost_s: float = 20.0,
-                 reacquire_check: bool = True):
+                 reacquire_check: bool = True, confirm_n: int = 3, confirm_lost_n: int = 2):
         self.gate_k, self.strong_inliers, self.strong_gate_k = gate_k, strong_inliers, strong_gate_k
         self.lost_sigma_m, self.weak_inliers = lost_sigma_m, weak_inliers
         self.reacq_k, self.reacq_floor_m = reacq_k, reacq_floor_m
         self.confirm_s, self.confirm_lost_s = confirm_s, confirm_lost_s
         self.reacquire_check = reacquire_check
+        self.confirm_n, self.confirm_lost_n = max(2, int(confirm_n)), max(2, int(confirm_lost_n))
         self.pending = None           # (t, lat, lon, sigma, lost) of the last doubted fix
+        self.chain = 1                # doubted fixes in a row agreeing with each other, pending included
         self.doubted = 0              # fixes doubted (statistics)
         self.confirmed = 0            # of them believed once a second fix agreed
 
@@ -72,10 +76,19 @@ class FixConsistency:
 
     def confirm(self, t: float, lat: float, lon: float, sigma_m: float,
                 vel: Optional[Tuple[float, float]], lost: bool) -> bool:
-        """A doubted fix at t: True when the pending one (an earlier doubted fix) agrees with it once
-        carried by vel (east, north m/s; None: standing); else it becomes the pending one."""
+        """A doubted fix at t: True when it closes a run of doubted fixes in a row, each agreeing with
+        the previous one once carried by vel (east, north m/s; None: standing): confirm_n of them
+        while the carried position is good, confirm_lost_n while it is lost (lost, or the run began
+        lost). Else it becomes the pending one.
+
+        D17, two wrong matches in a row at the same wrong place: consecutive frames see the same
+        ground against the same map window, so the matcher's mistake repeats and moves with the
+        vehicle — agreement and the carried displacement cannot tell it from a real jump. A good
+        track that suddenly jumps hundreds of metres therefore needs a third agreeing fix (one
+        more frame for a real one); after a gap (lost) two still re-acquire."""
         pend, self.pending = self.pending, (t, lat, lon, sigma_m, lost)
         self.doubted += 1
+        chain, self.chain = self.chain, 1
         if pend is None:
             return False
         dt = t - pend[0]
@@ -84,12 +97,16 @@ class FixConsistency:
             return False
         ve, vn = vel if vel is not None else (0.0, 0.0)
         gap = _dist_m((lat, lon), _carry(pend[1:3], ve, vn, dt))
-        if gap <= max(3.0 * math.hypot(sigma_m, pend[3]), 15.0) + 0.3 * math.hypot(ve, vn) * dt:
-            self.pending = None
+        if gap > max(3.0 * math.hypot(sigma_m, pend[3]), 15.0) + 0.3 * math.hypot(ve, vn) * dt:
+            return False
+        self.chain = chain + 1
+        self.pending = (t, lat, lon, sigma_m, lost or pend[4])
+        if self.chain >= (self.confirm_lost_n if (lost or pend[4]) else self.confirm_n):
+            self.pending, self.chain = None, 1
             self.confirmed += 1
             return True
         return False
 
     def clear(self) -> None:
         """A fix the gate believed (or GPS): nothing is pending any more."""
-        self.pending = None
+        self.pending, self.chain = None, 1
