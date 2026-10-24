@@ -162,6 +162,7 @@ def save_dem(directory: str, pieces: List[dict], **info) -> str:
         out.append(dict(meta, file=name, rows=int(rows), cols=int(cols)))
     index = dict(format=DEM_FORMAT, version=DEM_VERSION, **info, pieces=out)
     path = os.path.join(directory, DEM_INDEX)
-    with open(path, "w") as f:
-        json.dump(index, f, indent=1)
+    from navera_common.atomic_io import atomic_write_json, fsync_tree
+    fsync_tree(directory)                       # the pieces on the disk before the index names them
+    atomic_write_json(path, index, indent=1)
     return path

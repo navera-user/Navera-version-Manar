@@ -166,10 +166,8 @@ class ArmedWatch:
 
 def _save(doc: dict, json_path: str, env_path: str) -> None:
     disc.write_env(doc["settings"], env_path)
-    tmp = f"{json_path}.tmp"
-    with open(tmp, "w") as f:
-        json.dump(doc, f, indent=1, default=str)
-    os.replace(tmp, json_path)
+    from navera_common.atomic_io import atomic_write_json
+    atomic_write_json(json_path, doc, indent=1, default=str)
 
 
 def run(env, json_path: str, env_path: str, armed: Callable[[], Optional[bool]],
@@ -179,8 +177,12 @@ def run(env, json_path: str, env_path: str, armed: Callable[[], Optional[bool]],
         if passes is not None:
             return
         time.sleep(interval_s)
-    with open(json_path) as f:
-        doc = json.load(f)
+    from navera_common.atomic_io import read_json
+    doc = read_json(json_path)
+    if doc is None or not isinstance(doc.get("found"), dict):   # damaged report (power cut): start afresh
+        log(f"hotplug: {json_path} unreadable or damaged: rescanning from nothing")
+        doc = {"found": {}, "settings": {}, "report": []}
+    doc.setdefault("settings", {})
     if "idle" not in doc:                                   # a report written before hot-plug existed
         doc["idle"] = disc.decide(doc.get("found") or {}, env).get("idle", [])
     before = devices(env)

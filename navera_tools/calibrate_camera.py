@@ -224,9 +224,9 @@ def main():
         from navera_common.vehicle import camera_identity
         calib["camera_id"] = camera_identity(a.device)       # live_camera checks it is this camera
     os.makedirs(os.path.dirname(os.path.abspath(a.out)), exist_ok=True)
-    with open(a.out, "w") as f:
-        f.write("# NAVERA camera calibration (navera_tools/calibrate_camera.py) — NAVERA_CAMERA_CALIBRATION\n")
-        yaml.safe_dump(calib, f, sort_keys=False)
+    from navera_common.atomic_io import atomic_write      # power-cut safe: old or new file, never a cut one
+    atomic_write(a.out, "# NAVERA camera calibration (navera_tools/calibrate_camera.py) — NAVERA_CAMERA_CALIBRATION\n"
+                 + yaml.safe_dump(calib, sort_keys=False))
     verdict = "good" if rms < 0.5 else "usable" if rms < 1.0 else "POOR — redo with more, sharper views"
     print(f"\n{a.model} calibration from {calib['views']} views: RMS {rms:.3f} px ({verdict}); "
           f"NAVERA will publish a {cam.out_hfov_deg:.1f} deg wide undistorted image -> {a.out}")

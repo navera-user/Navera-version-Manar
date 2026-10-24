@@ -1023,9 +1023,18 @@ def build_bundle(spec: MissionSpec, sources: Sequence[TileSource], out_dir: str,
     )
     with open(os.path.join(tmp, "manifest.json"), "w") as f:
         json.dump(manifest, f, indent=1)
+    # power-cut safe: every file on the disk before the bundle takes its name; the old bundle is
+    # renamed aside (not deleted) first, so a cut leaves the old or the new one complete
+    from navera_common.atomic_io import fsync_dir, fsync_tree
+    fsync_tree(tmp)
+    old = None
     if os.path.exists(out_dir):
-        shutil.rmtree(out_dir)
+        old = f"{out_dir}.old{os.getpid()}"
+        os.replace(out_dir, old)
     os.replace(tmp, out_dir)
+    fsync_dir(os.path.dirname(os.path.abspath(out_dir)))
+    if old:
+        shutil.rmtree(old, ignore_errors=True)
     progress("done", len(files), len(files), mb=manifest["totals"]["mb"], seconds=manifest["build"]["total_s"])
     return manifest
 

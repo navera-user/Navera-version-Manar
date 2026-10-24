@@ -28,6 +28,7 @@ import time
 from collections import deque
 from typing import Callable, Dict, List, Optional
 
+from navera_common.atomic_io import atomic_write, atomic_write_json, read_env, read_json
 from day_pkg.prepare_area import densify_route, plan_tiles, quick_texture_profile, route_length_m
 
 
@@ -87,18 +88,8 @@ INTERNAL = ("DAY_DATASET_DIR",)
 
 
 def read_settings(path: str = SETTINGS_FILE) -> Dict[str, str]:
-    out = {}
-    try:
-        with open(path) as f:
-            for line in f:
-                line = line.strip()
-                if line and not line.startswith("#") and "=" in line:
-                    k, v = line.split("=", 1)
-                    if k in SETTINGS or k in INTERNAL:
-                        out[k] = v
-    except FileNotFoundError:
-        pass
-    return out
+    # tolerant: a damaged file (NUL bytes, invalid UTF-8, cut line) keeps only its good lines
+    return {k: v for k, v in read_env(path).items() if k in SETTINGS or k in INTERNAL}
 
 
 def validate_settings(changes: Dict[str, object]) -> Dict[str, Optional[str]]:
@@ -129,14 +120,10 @@ def write_settings(changes: Dict[str, Optional[str]], path: str = SETTINGS_FILE)
         else:
             cur[k] = v
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-    tmp = f"{path}.tmp{os.getpid()}"
-    with open(tmp, "w") as f:
-        f.write("# NAVERA settings written by the box's web page (/mission).\n"
-                "# Loaded after /etc/navera/navera.env, which they override. Do not edit by hand\n"
-                "# while the web service runs.\n")
-        for k in sorted(cur):
-            f.write(f"{k}={cur[k]}\n")
-    os.replace(tmp, path)
+    text = ("# NAVERA settings written by the box's web page (/mission).\n"
+            "# Loaded after /etc/navera/navera.env, which they override. Do not edit by hand\n"
+            "# while the web service runs.\n" + "".join(f"{k}={cur[k]}\n" for k in sorted(cur)))
+    atomic_write(path, text)                    # temp + fsync + rename: a power cut never leaves it cut
     return cur
 
 
@@ -384,12 +371,8 @@ class AreaJobs:
         return os.path.join(self.dir, "missions.json")
 
     def missions(self) -> List[dict]:
-        try:
-            with open(self._missions_file()) as f:
-                m = json.load(f)
-            return m if isinstance(m, list) else []
-        except (OSError, ValueError):
-            return []
+        m = read_json(self._missions_file(), [], expect=list)
+        return [x for x in m if isinstance(x, dict)]
 
     def save_mission(self, name, route) -> List[dict]:
         """Save (or replace, same name) a named route; returns the list, newest first."""
@@ -405,19 +388,13 @@ class AreaJobs:
         with self.lock:
             out = [entry] + [m for m in self.missions() if m.get("name") != name]
             os.makedirs(self.dir, exist_ok=True)
-            tmp = f"{self._missions_file()}.tmp{os.getpid()}"
-            with open(tmp, "w") as f:
-                json.dump(out[:200], f)
-            os.replace(tmp, self._missions_file())
+            atomic_write_json(self._missions_file(), out[:200])
         return out
 
     def delete_mission(self, name) -> List[dict]:
         with self.lock:
             out = [m for m in self.missions() if m.get("name") != str(name)]
-            tmp = f"{self._missions_file()}.tmp{os.getpid()}"
-            with open(tmp, "w") as f:
-                json.dump(out, f)
-            os.replace(tmp, self._missions_file())
+            atomic_write_json(self._missions_file(), out)
         return out
 
 

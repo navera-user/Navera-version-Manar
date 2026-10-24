@@ -29,7 +29,6 @@ which is asked for its data streams; a port another process holds open is never 
 After boot, navera_common.hotplug looks again when a device appears (hot-plug).
 """
 import glob
-import json
 import os
 import re
 import threading
@@ -899,16 +898,15 @@ def decide(found: dict, env) -> dict:
 
 
 def write_env(settings: dict, path: str) -> None:
-    tmp = f"{path}.tmp{os.getpid()}"
-    with open(tmp, "w") as f:
-        f.write("# Written at boot by navera-discover (navera_common.discovery): what was found.\n"
-                "# Only for settings left to auto in /etc/navera/navera.env. Do not edit.\n")
-        for k in sorted(settings):
-            v = str(settings[k])
-            if not re.fullmatch(r"[A-Z][A-Z0-9_]*", k) or re.search(r"[\x00-\x1f\x7f]", v):
-                continue
-            f.write(f"{k}={v}\n")
-    os.replace(tmp, path)
+    from navera_common.atomic_io import atomic_write
+    lines = ["# Written at boot by navera-discover (navera_common.discovery): what was found.\n"
+             "# Only for settings left to auto in /etc/navera/navera.env. Do not edit.\n"]
+    for k in sorted(settings):
+        v = str(settings[k])
+        if not re.fullmatch(r"[A-Z][A-Z0-9_]*", k) or re.search(r"[\x00-\x1f\x7f]", v):
+            continue
+        lines.append(f"{k}={v}\n")
+    atomic_write(path, "".join(lines))          # temp + fsync + rename: power-cut safe
 
 
 def main(argv=None) -> int:
@@ -924,11 +922,9 @@ def main(argv=None) -> int:
     if a.env_out:
         write_env(d["settings"], a.env_out)
     if a.json_out:
-        tmp = f"{a.json_out}.tmp"
-        with open(tmp, "w") as f:
-            json.dump(dict(found=found, settings=d["settings"], report=d["report"], idle=d["idle"]), f, indent=1,
-                      default=str)
-        os.replace(tmp, a.json_out)
+        from navera_common.atomic_io import atomic_write_json
+        atomic_write_json(a.json_out, dict(found=found, settings=d["settings"], report=d["report"], idle=d["idle"]),
+                          indent=1, default=str)
     return 0
 
 
