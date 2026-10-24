@@ -194,6 +194,23 @@ python3 navera_tools/isaac/sitl_record.py --vehicle copter --lat 35.8685 --lon 1
     --dem ~/.navera_sim/isaac/kalaa/dem --out ~/.navera_sim/isaac/traj/copter.csv --height 300 --speed 12 \
     --radius 700 --wind 4 --turb 1.5 --instance 9
 ```
+Wide scene `kalaa_wide` (12 x 12 km, same centre, for fast planes: a 60 m/s jet needs a circuit of
+radius >= 2.5 km to bank only ~8-10 deg). Imagery z17 (0.97 m/px, 2 304 tiles, mosaic 12 288 px),
+DEM mesh 513 x 513, all 12 401 footprints (the area is mostly fields: no need to drop the far
+ones), NAVERA's map = all 2 401 z17 tiles of kalaa_map (+-6 km). Prepared on the PC (WSL; the
+12 k mosaic needs ~2.5 GB RAM):
+```bash
+python3 navera_tools/isaac/fetch_scene_data.py --lat 35.8685 --lon 10.5352 --out ~/navera_wide_build/kalaa_wide \
+    --zoom 17 --tiles 48
+python3 navera_tools/isaac/prepare_scene.py --lat0 35.8685 --lon0 10.5352 --scene ~/navera_wide_build/kalaa_wide \
+    --scene-out /mnt/d/navera_isaac/scenes/kalaa_wide --terrain-grid 513 \
+    --map-tiles <kalaa_map>/images --area-out ~/navera_data/isaac_kalaa_wide_area --area-radius-m 6200
+# options for a heavier place: --buildings-within-m 4000 (footprints near the route only), --mosaic-max-px 8192
+```
+Fly it with `--scene kalaa_wide` (the map `isaac_kalaa_wide_area` follows; `--area kalaa_wide` to name it),
+e.g. campaign condition `plane60_wide` (`--loiter-turns 1`: one circle of WP_LOITER_RAD about the centre).
+Copy on the Jetson: `~/.navera_sim/isaac/kalaa_wide_scene`.
+
 PC layout: `D:\navera_isaac\{scenes\kalaa, traj}` (scene + trajectories), `~/navera_data/isaac_kalaa_area`
 (NAVERA's map), `~/navera_data/lens/hik_visible_lens.yaml`, `~/navera_data/torch_home` (DINOv2,
 DISK, LightGlue weights — offline), image: `docker build -t navera-humble -f Dockerfile.humble .`

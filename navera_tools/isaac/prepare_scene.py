@@ -18,6 +18,11 @@
 --map-tiles  NAVERA's map (tile_<z>_<x>_<y>.jpg, the ~2025 MBTiles export): tiles within
 --area-radius-m of the origin -> --area-out (DAY_DATASET_DIR: images/ + dataset.csv)
 
+Wide scenes (e.g. kalaa_wide, 12 x 12 km at z17): --buildings-within-m keeps only the footprints
+within that distance of the origin (the route; the far ground stays imagery on the relief),
+--terrain-grid sets the DEM mesh (default 257), --mosaic-max-px downsizes the mosaic texture if
+the renderer's GPU memory or texture limit needs it.
+
 Building heights: the footprints carry none here (Microsoft ML footprints, Tunisia): a
 deterministic draw of 1-4 floors x 3.2 m (40/40/15/5 %), OSM height / building:levels tags
 override when a mapped OSM building lies on the footprint.
@@ -66,7 +71,7 @@ def read_tiles(d):
     return zs.pop(), tiles
 
 
-def mosaic(tile_dir, out, quality=92):
+def mosaic(tile_dir, out, quality=92, max_px=0):
     z, tiles = read_tiles(tile_dir)
     xs, ys = sorted({k[0] for k in tiles}), sorted({k[1] for k in tiles})
     nx, ny = xs[-1] - xs[0] + 1, ys[-1] - ys[0] + 1
@@ -82,6 +87,10 @@ def mosaic(tile_dir, out, quality=92):
     map_y = np.repeat(src_y[:, None], merc.shape[1], axis=1)
     map_x = np.repeat(np.arange(merc.shape[1], dtype=np.float32)[None, :], rows, axis=0)
     flat = cv2.remap(merc, map_x, map_y, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
+    del merc, map_x, map_y
+    if max_px and max(flat.shape[:2]) > max_px:
+        f = max_px / max(flat.shape[:2])
+        flat = cv2.resize(flat, (round(flat.shape[1] * f), round(flat.shape[0] * f)), interpolation=cv2.INTER_AREA)
     cv2.imwrite(os.path.join(out, "mosaic.jpg"), flat, [cv2.IMWRITE_JPEG_QUALITY, quality])
     lat_c = (lat_n + lat_s) / 2
     return dict(zoom=z, tiles=len(tiles), missing=nx * ny - len(tiles), width=flat.shape[1], height=flat.shape[0],
@@ -149,7 +158,7 @@ def osm_heights(osm_path):
     return out
 
 
-def buildings(scene, geo, dem, z_ref, mos, out):
+def buildings(scene, geo, dem, z_ref, mos, out, within_m=0.0):
     fp = json.load(open(os.path.join(scene, "ms_buildings.json")))
     tagged = osm_heights(os.path.join(scene, "osm_buildings.json"))
     xw, ys_ = geo.to_en(mos["lat_s"], mos["lon_w"])
@@ -162,6 +171,8 @@ def buildings(scene, geo, dem, z_ref, mos, out):
         if len(ring) < 3:
             continue
         pts = [geo.to_en(la, lo) for lo, la in ring]
+        if within_m and math.hypot(sum(p[0] for p in pts) / len(pts), sum(p[1] for p in pts) / len(pts)) > within_m:
+            continue
         if _area2(pts) < 0:
             pts, ring = pts[::-1], ring[::-1]
         if abs(_area2(pts)) / 2 < 12.0:                     # sheds, noise
@@ -196,7 +207,7 @@ def buildings(scene, geo, dem, z_ref, mos, out):
                         roof_uv=np.array(ruv, np.float32), roof_tris=np.array(rt, np.int32),
                         wall_points=np.array(wp, np.float32), wall_quads=np.array(wf, np.int32))
     hs = sorted(heights)
-    return dict(buildings=len(hs), height_median_m=hs[len(hs) // 2] if hs else None,
+    return dict(buildings=len(hs), height_median_m=hs[len(hs) // 2] if hs else None, within_m=within_m or None,
                 osm_tagged=len(tagged), source="Microsoft Global ML Building Footprints + OSM tags")
 
 
@@ -239,15 +250,20 @@ def main() -> None:
     ap.add_argument("--map-tiles", default="")
     ap.add_argument("--area-out", default="")
     ap.add_argument("--area-radius-m", type=float, default=3000.0)
+    ap.add_argument("--terrain-grid", type=int, default=257, help="DEM mesh points per side")
+    ap.add_argument("--buildings-within-m", type=float, default=0.0,
+                    help="only footprints within this distance of the origin (0 = all)")
+    ap.add_argument("--mosaic-max-px", type=int, default=0, help="downsize the mosaic to at most this many px a side")
     a = ap.parse_args()
     scene, out = os.path.expanduser(a.scene), os.path.expanduser(a.scene_out)
     os.makedirs(out, exist_ok=True)
     geo = GeoRef(a.lat0, a.lon0)
     dem = Dem(os.path.join(scene, "dem"))
     z_ref = dem.height(a.lat0, a.lon0)
-    mos = mosaic(os.path.join(scene, "imagery"), out)
+    mos = mosaic(os.path.join(scene, "imagery"), out, max_px=a.mosaic_max_px)
     info = dict(lat0=a.lat0, lon0=a.lon0, z_ref_m=z_ref, mosaic=mos,
-                terrain=terrain(geo, dem, z_ref, mos, out), buildings=buildings(scene, geo, dem, z_ref, mos, out))
+                terrain=terrain(geo, dem, z_ref, mos, out, n=a.terrain_grid),
+                buildings=buildings(scene, geo, dem, z_ref, mos, out, a.buildings_within_m))
     fetch = os.path.join(scene, "fetch.json")
     if os.path.exists(fetch):
         info["fetch"] = json.load(open(fetch))

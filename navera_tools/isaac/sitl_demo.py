@@ -54,6 +54,13 @@ def main():
                     help="HOST:PORT also sent the truth stream (hardware-in-the-loop: the NAVERA box's recorder)")
     ap.add_argument("--timeout", type=float, default=1200.0)
     ap.add_argument("--legs", type=int, default=4, help="diamond legs (4 = the full diamond)")
+    ap.add_argument("--loiter-turns", type=float, default=0.0,
+                    help="instead of the diamond: N turns of a circle of WP_LOITER_RAD around the scene centre "
+                         "(entered from its east point at --radius; a fast plane's gentle circuit: set "
+                         "WP_LOITER_RAD = --radius, RTL_RADIUS for home)")
+    ap.add_argument("--home-radius", type=float, default=0.0,
+                    help="m from home that counts as 'over home' in RTL (default copter 30, plane 450; "
+                         "a fast plane loitering at RTL_RADIUS needs more)")
     ap.add_argument("--hold-home", type=float, default=45.0, help="s over home (RTL) before the demo ends")
     ap.add_argument("--arm-after-file", default="", help="arm only once this file exists (Isaac Sim rendering)")
     ap.add_argument("--endurance", type=float, default=0.0,
@@ -120,10 +127,12 @@ def main():
             items.append((mavutil.mavlink.MAV_CMD_NAV_TAKEOFF, home[0], home[1], 60.0))
         else:
             items.append((mavutil.mavlink.MAV_CMD_NAV_TAKEOFF, home[0], home[1], a.alt))
-        for k in range(a.legs + 1):                         # a diamond, back to its first corner
+        for k in range(1 if a.loiter_turns > 0 else a.legs + 1):   # a diamond, back to its first corner
             th = math.radians(90 * k)
             wps.append(geo.to_latlon(a.radius * math.cos(th), a.radius * math.sin(th)))
             items.append((mavutil.mavlink.MAV_CMD_NAV_WAYPOINT, wps[-1][0], wps[-1][1], a.alt))
+        if a.loiter_turns > 0:                              # the circle (radius WP_LOITER_RAD) about the centre
+            items.append((mavutil.mavlink.MAV_CMD_NAV_LOITER_TURNS, a.lat0, a.lon0, a.alt))
         if a.endurance > 0:                                 # endurance: the diamond again and again
             items.append((mavutil.mavlink.MAV_CMD_DO_JUMP, 0, 0, 0))   # -> the second corner, forever
         items.append((mavutil.mavlink.MAV_CMD_NAV_RETURN_TO_LAUNCH, 0, 0, 0))
@@ -138,6 +147,9 @@ def main():
             cmd, lat, lon, alt = items[r.seq]
             if cmd == mavutil.mavlink.MAV_CMD_DO_JUMP:      # param1 target item, param2 repeats (-1: forever)
                 m.mav.mission_item_int_send(ts, tc, r.seq, rel, cmd, 0, 1, jump_to, -1, 0, 0, 0, 0, 0)
+            elif cmd == mavutil.mavlink.MAV_CMD_NAV_LOITER_TURNS:   # param1 turns, param3 0 = WP_LOITER_RAD
+                m.mav.mission_item_int_send(ts, tc, r.seq, rel, cmd, 0, 1, a.loiter_turns, 0, 0, 0,
+                                            int(lat * 1e7), int(lon * 1e7), alt)
             else:
                 m.mav.mission_item_int_send(ts, tc, r.seq, rel, cmd, 0, 1, 0, 0, 0, 0, int(lat * 1e7), int(lon * 1e7),
                                             alt)
@@ -229,7 +241,7 @@ def main():
         if flown["rtl_at"] is not None and flown["home_at"] is None and state["ekf"] and state["home"]:
             d = math.hypot((state["ekf"][0] - state["home"][0]) * 111320.0,
                            (state["ekf"][1] - state["home"][1]) * 111320.0 * math.cos(math.radians(state["home"][0])))
-            if d < (30.0 if a.vehicle == "copter" else 450.0):   # a plane loiters around home
+            if d < (a.home_radius or (30.0 if a.vehicle == "copter" else 450.0)):   # a plane loiters around home
                 flown["home_at"] = t
                 state["phase"] = "over home (RTL, holding at altitude)"
                 log("home_reached", ekf_dist_m=round(d, 1))

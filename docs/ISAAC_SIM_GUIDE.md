@@ -65,6 +65,8 @@ Add options to the same command. Common ones:
 | Wind | `--wind 8 --wind-dir 290 --turb 2` |
 | Camera delay measured on the bench (recommended) | `--cam-args "-p capture_latency_s:=1.3"` |
 | Weather / obstacles (rain, dust, fog, clouds, birds…) | `--isaac-args "..."`, see the conditions in `navera_tools/isaac/campaign.py` (`CONDITIONS`) |
+| Wide 12 x 12 km scene (fast planes) | `--scene kalaa_wide` (map `isaac_kalaa_wide_area` follows; or `--area kalaa_wide`) |
+| A 60 m/s jet on a 2.5 km circle | campaign condition `plane60_wide` (`--loiter-turns 1` + jet cruise `--set` limits) |
 | A long flight without GPS (e.g. 2 h) | `--endurance 7200 --cut-after 12 --isaac-args "--sun-ramp 1"` |
 
 Example — a 2-hour GPS-denied flight like the one that completed on 2026-10-23 (~2.5 h):
