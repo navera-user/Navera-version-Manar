@@ -1635,6 +1635,32 @@ Findings:
    (unit tests only, not flown).
 4. Not re-flown on the final code (scope cut): base and plane30 regression, h1200, outage60 repeats.
 
+### Isaac Sim closed loop: a 60 m/s jet on a wide scene (plane60_wide, 2026-10-24)
+
+SIMULATION only (Isaac Sim, ArduPlane SITL 4.5.7 `plane-jet`, NAVERA release 0.5.1 nodes on the PC; results
+`~/.navera_sim/isaac/wide/` on the Jetson; branch `work/wide-world-2026-10-24`). The earlier 60 m/s run
+(f35b `pd_plane60`, 0 % matched) was invalid: the 4 km scene forced a 900 m circuit (39 deg bank) and
+SITL's plane-jet defaults rolled in a limit cycle (truth 143 deg/s median), so live_camera refused every
+frame (max_rate_dps 30). Now: scene `kalaa_wide` (12 x 12 km, z17, navera_tools/isaac/README.md), one
+2.5 km circle (`--loiter-turns 1`, WP_LOITER_RAD 2500) at 500 m, jet cruise limits (ROLL_LIMIT_DEG 25,
+RLL2SRV_RMAX 30, RLL2SRV_TCONST 0.8, PTCH2SRV_RMAX_UP/DN 15, pitch +-15, NAVL1_PERIOD 25), body-fixed
+camera, bench delay set (capture_latency_s 1.3), GPS cut 20 s after altitude, ~6 min denied, RTL
+(loiter radius 1000 m), sigma 15 m. Condition `plane60_wide` in campaign.py.
+
+| run | matched | fix error at stated time med / p90 / max | wrong (> 50 m) | beyond 3 sigma | output med / p90 / max | autopilot EKF med / p90 / max | mission |
+|---|---|---|---|---|---|---|---|
+| ww1 | 358/382 (93.7 %) | 15 / 27 / 46 m | 0 | 0/387 | 15 / 28 / 179 m | 46 / 75 / 112 m | completed, RTL home |
+| ww2 | 335/353 (94.9 %) | 16 / 28 / 40 m | 0 | 3/358 | 16 / 29 / 218 m | 37 / 85 / 111 m | completed, RTL home |
+
+Rotation: bank 9-10 deg median on the circle (25 deg max: climb-out turn, RTL); truth rate between
+rendered frames (0.1 s) 10 / 28 / 78 deg/s median / p90 / max; live_camera (0.2 s window) refused
+**0 frames** for rotation. Isaac Sim with the 12 288 px texture: 4.1 GB of 8 GB GPU memory, 31 ms per update.
+Output > 50 m only in the first ~17 s after the cut (carried, sigma 43-102 m) and after the flight.
+Finding: the autopilot's EKF error (37-46 m median) is 2.5-3x NAVERA's own fix error at 60 m/s — without a
+velocity source the EKF likely lags the vision fixes (exposure -> position ~1.8 s in hil_base1 = ~100 m at 60 m/s; not measured here); to look at:
+GPS_INPUT time / EK3 GPS delay for a fast vehicle (not changed here). "At exposure" error not
+computed by summarise.py for these runs.
+
 ### Long route (simulator, 2026-10-01)
 
 Paris → Tunisia, 1768 km, mapped as ≤ 10 km great-circle legs: 79 775 tiles generated in

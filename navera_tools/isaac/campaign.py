@@ -78,6 +78,15 @@ CONDITIONS = {
     # radius 900: with 1500 the jet's turns (r ~ 450 m at 40 deg bank) left the 4 km scene (2026-10-21)
     "plane60": ("plane 60 m/s (jet model), 500 m", PLANE.replace("--alt 400", "--alt 500")
                 + " --speed 60 --model plane-jet --radius 900"),
+    # wide scene (12 x 12 km, z17): a jet in cruise on a 2.5 km circle (bank ~8-10 deg), its roll / pitch
+    # rates limited as a real jet's (SITL plane-jet's defaults rolled at 70-150 deg/s), GPS cut 20 s after
+    # altitude, ~5 min denied, RTL; the bench camera delay set (2026-10-24)
+    "plane60_wide": ("plane 60 m/s (jet, cruise-tuned), 500 m, wide scene, 2.5 km circle",
+                     "--vehicle plane --gimbal false --model plane-jet --speed 60 --alt 500 --scene kalaa_wide "
+                     "--radius 2500 --legs 1 --loiter-turns 1 --home-radius 1300 --cut-after 20 --sigma 15 "
+                     "--cam-args '-p capture_latency_s:=1.3' --set ROLL_LIMIT_DEG=25,RLL2SRV_RMAX=30,"
+                     "RLL2SRV_TCONST=0.8,PTCH2SRV_RMAX_UP=15,PTCH2SRV_RMAX_DN=15,PTCH_LIM_MAX_DEG=15,"
+                     "PTCH_LIM_MIN_DEG=-15,NAVL1_PERIOD=25,WP_RADIUS=250,WP_LOITER_RAD=2500,RTL_RADIUS=1000"),
     "worst_copter": ("dusk + dust 3 km + rain + wind 10 + outage 30 (full mission)",
                      FULL + " --time 17:15 --wind 10 --turb 3 --link-args '-p haze_visibility_m:=3000 "
                      "-p haze_rgb:=0.8/0.62/0.4 -p rain:=0.5 -p outages:=60/30'"),

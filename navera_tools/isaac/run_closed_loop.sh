@@ -19,6 +19,9 @@
 #   NAVERA_ISAAC_WS (env): the colcon build directory (default ~/.navera_isaac_ws; one per checkout)
 #   --vlink URL|off  vehicle_link on the autopilot's SERIAL2 (default tcp:127.0.0.1:5763): its velocity for
 #                  the day node's carry (open3); off = without it (the day node carries as before)
+#   --loiter-turns N  instead of the diamond: N turns of a circle (radius WP_LOITER_RAD, set it with --set)
+#                  about the scene centre, entered at --radius east: a fast plane's gentle circuit
+#   --home-radius M  distance from home that counts as "over home" in RTL (plane default 450 m)
 #   --area NAME  NAVERA's map ~/navera_data/isaac_NAME_area (default: the scene's, isaac_<scene>_area)
 #
 #   windows: "NAVERA - Isaac Sim flight" (the scene, chase view), MAVProxy map + console,
@@ -31,6 +34,7 @@ set -u
 name=closed_loop_$(date +%Y%m%d_%H%M%S); alt=250; radius=500; speed=8; cut_after=15; tod=10:30; sigma=30
 gate=""; hold=30; vehicle=copter; model=quad; scene=kalaa; legs=4; wind=4; wind_dir=290; turb=1.0
 isaac_extra=""; link_extra=""; gimbal=""; day_extra=""; cam_extra=""; endurance=0; area=""; ap_set=""
+loiter_turns=0; home_radius=0
 vlink=tcp:127.0.0.1:5763
 while [ $# -gt 0 ]; do
   case $1 in
@@ -39,7 +43,7 @@ while [ $# -gt 0 ]; do
     --vehicle) vehicle=$2;; --model) model=$2;; --scene) scene=$2;; --legs) legs=$2;; --wind) wind=$2;;
     --wind-dir) wind_dir=$2;; --turb) turb=$2;; --isaac-args) isaac_extra=$2;; --link-args) link_extra=$2;;
     --gimbal) gimbal=$2;; --day-args) day_extra=$2;; --cam-args) cam_extra=$2;; --endurance) endurance=$2;;
-    --area) area=$2;;
+    --area) area=$2;; --loiter-turns) loiter_turns=$2;; --home-radius) home_radius=$2;;
     --set) ap_set=$2;;
     --vlink) vlink=$2;;
     *) echo "unknown option $1" >&2; exit 2;;
@@ -165,6 +169,7 @@ log "MAVProxy (map, console) started"
 # 3. the mission + truth stream (arms once Isaac Sim renders)
 "$VENV/bin/python" "$here/sitl_demo.py" --master udpin:127.0.0.1:14550 --results "$res" --lat0 "$lat0" --lon0 "$lon0" \
   --alt "$alt" --radius "$radius" --speed "$speed" --cut-after "$cut_after" --vehicle "$vehicle" --legs "$legs" \
+  --loiter-turns "$loiter_turns" --home-radius "$home_radius" \
   --arm-after-file "$D/runs/$name/session.json" --endurance "$endurance" \
   --timeout $(python3 -c "print(1200 + 1.0 * $endurance)") > "$res/sitl/demo.log" 2>&1 &
 demo=$!
