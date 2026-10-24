@@ -111,6 +111,15 @@ loop"). Weigh it against the stale-velocity failsafe above. ArduPilot's alternat
 sets (`EK3_SRC2_*`, switched by an RC option or a script, §8) could keep GPS velocity while
 GPS is good: *not tested with NAVERA*.
 
+**Fusing NAVERA's vision velocity does not help (measured).** `EK3_SRC1_VELXY = 3` with
+`EK3_VEL_I_GATE = 1000` and `EK3_VELNE_M_NSE = 0.9` (the only combination that neither fails
+safe after GPS loss nor blocks arming, F38) was flown again on 2026-10-24 with the current
+velocity (Isaac Sim closed loop, NAVERA's fixes unchanged): the autopilot's EKF error after GPS
+loss got **worse**, plane 60 m/s 30 / 47 / 92 m median / p90 / max (25 / 45 / 52 with
+`VELXY = 0`), copter 16 / 25 / 30 m (12.5 / 22 / 27). The vision velocity is a fit of past
+fixes: 11 m/s median error at 60 m/s, 2–3 m/s at 10 m/s (its `speed_accuracy` states this
+honestly). **Keep `EK3_SRC1_VELXY = 0`.**
+
 **Stated accuracy above 100 m.** ArduPilot's EKF3 limits the accuracy it uses for a GPS
 position: R = constrain(reported accuracy, `EK3_POSNE_M_NSE`, 100 m)²
 (`AP_NavEKF3_PosVelFusion.cpp`; `AP_NavEKF3_Measurements.cpp` also caps it at 100 m —
