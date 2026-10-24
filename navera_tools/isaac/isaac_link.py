@@ -37,6 +37,7 @@ and records NAVERA's answers against the truth into --results (live, for live_pl
   live.json     latest status; navera_view/ the frames as NAVERA received them (small)
   summary.json  written at the end (Isaac's done.json): accepted %, errors after the GPS cut
 """
+import array
 import json
 import math
 import os
@@ -640,7 +641,7 @@ class IsaacLink(Node):
                 self._stamp(m.header, now)
                 m.header.frame_id = "camera"
                 m.height, m.width, m.encoding, m.step = img.shape[0], img.shape[1], "bgr8", img.shape[1] * 3
-                m.data = img.tobytes()
+                m.data = array.array("B", img.tobytes())   # 3.6 ms (bytes: 533 ms per 3 MB frame)
                 self.arrival[m.header.stamp.sec * 1_000_000_000 + m.header.stamp.nanosec] = t
                 self.pub_img.publish(m)
             self.live["frames_out"] += 1
