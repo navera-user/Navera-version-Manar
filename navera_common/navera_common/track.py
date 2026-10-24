@@ -11,6 +11,8 @@ import math
 from collections import deque
 from typing import Optional, Tuple
 
+import numpy as np
+
 from navera_common.geo import dead_reckon
 
 EARTH_R = 6371000.0
@@ -85,6 +87,43 @@ class TrackVelocity:
         sig_pos = max(scatter, math.sqrt(len(pts) / sw))
         sig_v = max(self.speed_floor, sig_pos / math.sqrt(sum((ti - tm) ** 2 for ti in ts)))
         return v[0], v[1], sig_v
+
+    def velocity_at_last_fix(self, window_s: float = 15.0, min_points: int = 6,
+                             min_span_s: float = 6.0) -> Optional[Tuple[float, float, float]]:
+        """(east m/s, north m/s, 1-sigma m/s) of the vehicle AT ITS LATEST FIX, or None — the velocity
+        to carry that fix to the present along (vehicle_output: the 1.5–3.5 s from the photo to the
+        autopilot).
+
+        A weighted quadratic fit (position = p + v t + a t^2 / 2) of the fixes of the last window_s,
+        its slope taken at the latest fix. velocity() is a line fit: the chord of its 20 s window,
+        whose direction in a turn is the heading 10 s BEFORE the latest fix — the 60 m/s plane on its
+        2.5 km circuit (Isaac plane60_wide, 2026-10-24) was carried ~11 deg (up to 43) off its course,
+        ~37 m sideways at the autopilot, whose EKF was 37–46 m off with NAVERA's fixes at 15 m.
+        The sigma is the fit's own slope error at that instant (scaled up by the chi-square when
+        above 1), floored at the speed floor. None with too few fixes: use velocity().
+        """
+        pts = self._fit_points(window_s)
+        if pts is None or len(pts) < min_points or pts[-1][0] - pts[0][0] < min_span_s:
+            return None
+        lat0, lon0 = pts[-1][1], pts[-1][2]
+        k = math.cos(math.radians(lat0))
+        t_end = pts[-1][0]
+        a = np.array([[1.0, p[0] - t_end, 0.5 * (p[0] - t_end) ** 2] for p in pts])
+        xy = np.array([(math.radians(p[2] - lon0) * EARTH_R * k, math.radians(p[1] - lat0) * EARTH_R)
+                       for p in pts])
+        w = np.array([1.0 / p[3] ** 2 for p in pts])
+        n = a.T @ (a * w[:, None])
+        try:
+            cov = np.linalg.inv(n)
+        except np.linalg.LinAlgError:
+            return None
+        coef = cov @ (a.T @ (xy * w[:, None]))                 # 3 x 2: (p, v, acc) per axis
+        resid = xy - a @ coef
+        chi2_dof = float((w[:, None] * resid ** 2).sum()) / max(1, 2 * (len(pts) - 3))
+        sig = max(self.speed_floor, math.sqrt(max(1.0, chi2_dof) * float(cov[1, 1])))
+        if not math.isfinite(sig):
+            return None
+        return float(coef[1, 0]), float(coef[1, 1]), sig
 
     def autopilot_velocity(self, t_now: float, window_s: float = 10.0, min_points: int = 5,
                            max_chi2: float = 4.0) -> Optional[Tuple[float, float, float]]:

@@ -197,3 +197,54 @@ def test_an_older_measured_point_is_inserted_not_a_clock_step():
     assert len(tr._pts) == 51
     tr.insert(last + 1.0, 35.0 + 10.0 * (last + 1.0 - 100.0) / 111320.0, 10.0, 20.0)
     assert tr.last_time() == last + 1.0
+
+
+def _circle(tr, speed=60.0, radius=2500.0, n=20, dt=1.0, noise_m=0.0, sigma=3.0, seed=1):
+    import random
+    rnd = random.Random(seed)
+    lon_m = M_LAT / math.cos(math.radians(35.8))
+    w = speed / radius
+    for i in range(n):
+        a = w * i * dt                                         # counter-clockwise, starts heading north
+        e = -radius * (1.0 - math.cos(a))
+        nn = radius * math.sin(a)
+        tr.add(i * dt, 35.8 + (nn + rnd.gauss(0, noise_m)) * M_LAT,
+               10.6 + (e + rnd.gauss(0, noise_m)) * lon_m, sigma)
+    a = w * (n - 1) * dt
+    return -speed * math.sin(a), speed * math.cos(a)            # true (ve, vn) at the last fix
+
+
+def test_the_velocity_at_the_last_fix_follows_a_turn_the_chord_lags():
+    tr = TrackVelocity()
+    ve_t, vn_t = _circle(tr)
+    ve, vn, sig = tr.velocity_at_last_fix()
+    assert math.hypot(ve - ve_t, vn - vn_t) < 1.0             # < 1 deg at 60 m/s
+    assert 0.5 <= sig < 3.0
+    le, ln, _ = tr.velocity(19.0)                               # the 20 s chord: ~11 deg behind
+    lag_deg = math.degrees(math.atan2(le * vn_t - ln * ve_t, le * ve_t + ln * vn_t))
+    assert abs(lag_deg) > 8.0
+
+
+def test_the_velocity_at_the_last_fix_states_noisy_fixes_honestly():
+    errs, sigs = [], []
+    for seed in range(40):
+        tr = TrackVelocity()
+        ve_t, vn_t = _circle(tr, noise_m=15.0, sigma=15.0, seed=seed)
+        ve, vn, sig = tr.velocity_at_last_fix()
+        errs.append(math.hypot(ve - ve_t, vn - vn_t) / math.sqrt(2.0))
+        sigs.append(sig)
+    rms = math.sqrt(sum(e * e for e in errs) / len(errs))
+    assert 0.6 * rms < sum(sigs) / len(sigs) < 2.0 * rms
+
+
+def test_the_velocity_at_the_last_fix_needs_six_fixes_over_six_seconds():
+    tr = TrackVelocity()
+    fixes(tr, n=5)
+    assert tr.velocity_at_last_fix() is None
+    tr = TrackVelocity()
+    fixes(tr, n=8, dt=0.5)                                      # 3.5 s
+    assert tr.velocity_at_last_fix() is None
+    tr = TrackVelocity()
+    fixes(tr)
+    ve, vn, _ = tr.velocity_at_last_fix()
+    assert (ve, vn) == (pytest.approx(10.0, abs=0.05), pytest.approx(5.0, abs=0.05))
