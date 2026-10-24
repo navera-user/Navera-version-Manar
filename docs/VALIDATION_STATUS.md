@@ -1673,6 +1673,17 @@ beyond 3 sigma; **autopilot EKF 25 / 45 / 52 m** (was 37–46 / 75–85 / 111–
 Regression check ft2 (base copter): fix 7.5 / 12 / 16 m, 0 wrong, 0/294 beyond 3 sigma, EKF 12.5 / 22 / 27 m
 (before ~16 m median), final 17.5 m from home (before ~14 m). SIMULATION only.
 
+**EKF fusing the vision velocity: no gain (2026-10-24, branch `work/ekf-vel-2026-10-24`).** Same two
+conditions with `EK3_SRC1_VELXY 3`, `EK3_VEL_I_GATE 1000`, `EK3_VELNE_M_NSE 0.9` (ev1/ev2,
+~/.navera_sim/isaac/ekf_vel): NAVERA fix 15 / 27 / 50 m and 7 / 12 / 26 m (unchanged), 0 wrong, both
+missions completed, no EKF failsafe (copter "GPS Glitch or Compass error" at the cut, as in ft2:
+speed_accuracy > 1.5 m/s). **Autopilot EKF worse**: plane 30 / 47 / 92 m (ft1 25 / 45 / 52), copter
+16 / 25 / 30 m (ft2 12.5 / 22 / 27). Recommendation stays `EK3_SRC1_VELXY 0` (outage test not needed).
+speed_accuracy vs SITL truth (DataFlash GPS/GPA vs SIM2, vision phase, 4 flights): velocity error
+11 m/s median at 60 m/s (plane), 2.3–2.9 m/s at 10 m/s (copter); per-axis error / stated sigma rms
+0.90–1.06 (plane: honest), 0.46–0.51 (copter: stated ~2x too large, never too small: 2–3 % beyond
+2 sigma, 14 % expected) — conservative, left as is. SIMULATION only.
+
 ### Long route (simulator, 2026-10-01)
 
 Paris → Tunisia, 1768 km, mapped as ≤ 10 km great-circle legs: 79 775 tiles generated in
