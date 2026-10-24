@@ -246,6 +246,36 @@ The software is installed by one command on the Jetson. Your IRIS contact provid
 
 After any change to `navera.env`, run the restart command of step 5 again.
 
+### 3.0b A delivered box: product mode, power cuts, signed releases
+
+**Verify the release before installing it** (IRIS delivers the archive, its `.sha256`, its
+signature, `verify_release.sh` and the IRIS public key together):
+```bash
+NAVERA_RELEASE_REQUIRE_SIG=1 bash verify_release.sh navera-<version>.tar.gz iris-release.pub.pem
+```
+"FAIL" = do not install; ask IRIS for a new copy.
+
+**Install a box that leaves IRIS in product mode** — first copy your SSH key to it
+(`ssh-copy-id <user>@<box>`), or SSH will be refused afterwards:
+```bash
+sudo deploy/install.sh --product
+```
+It turns the desktop off, allows SSH with keys only (`NAVERA_PRODUCT_SSH=off` in
+`navera.env` turns SSH off entirely), removes the developer's password-less `sudo` rules,
+generates the web access code if `NAVERA_WEB_TOKEN` is empty (read it with
+`sudo grep NAVERA_WEB_TOKEN /etc/navera/navera.env`), starts a firewall that lets in only
+the web page, SSH and the MAVLink / ROS ports you configured, disables services the box
+does not use, and makes the file system repair itself at boot. To serve the web page only on
+the vehicle network, set `NAVERA_WEB_HOST=iface:eth0` (your interface) and, for the
+firewall, `NAVERA_FW_ALLOW_FROM=<vehicle network, e.g. 192.168.144.0/24>`. Details and how to
+undo each step: `deploy/README.md` §13.
+
+**Power cuts.** You may unplug the battery at any time, also in flight: NAVERA writes every
+file it keeps (state, settings, calibration, mission list, maps) so that a cut leaves the old
+or the new version, never a broken one, and a damaged file is ignored at the next start
+(a damaged `settings.env` from the web page is renamed `settings.env.damaged`: redo those
+settings on the `/mission` page). The last ~30 s of the log may be lost.
+
 ### 3.1 Way A — with IRIS's own sensors (the Insta360 kit)
 
 The box carries its own camera, GPS receiver and clock. The camera is an **Insta360 ONE R (360
