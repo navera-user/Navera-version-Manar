@@ -9,6 +9,11 @@
 #   sudo deploy/install.sh --start              # also start them now
 #   sudo deploy/install.sh --headless           # boot without the desktop (multi-user.target)
 #   sudo deploy/install.sh --no-swap            # do not make the swap file (deploy/setup_swap.sh)
+#   sudo deploy/install.sh --product            # a delivered box (or NAVERA_PRODUCT_MODE=1): also
+#                                               # --headless, SSH keys only (or off), developer sudo
+#                                               # rules removed, web token, firewall, unused services
+#                                               # off, fsck.repair=yes (deploy/product/apply_product.sh,
+#                                               # deploy/README.md §13)
 #   deploy/install.sh --root /tmp/stage         # staged install into another root, no sudo:
 #                                               # (or DESTDIR=/tmp/stage) for checks, see below
 #
@@ -35,7 +40,7 @@ set -euo pipefail
 SRC="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
 WS=/home/navera/isaac_ros_common
 UNITS="navera-discover navera-hotplug navera-estimator navera-gps navera-imu navera-insta360 navera-rtc navera-vehicle-link navera-pipeline-day navera-output navera-web"
-DRY=0; PIP=1; APT=1; START=0; HEADLESS=0; BUILD=1; SWAP=1
+DRY=0; PIP=1; APT=1; START=0; HEADLESS=0; BUILD=1; SWAP=1; PRODUCT="${NAVERA_PRODUCT_MODE:-0}"
 R="${DESTDIR:-}"
 # never copied to the box (both modes): git data and the other worktrees of a working repository
 # (.claude/worktrees), build products (rebuilt there), Python / test caches, test recordings.
@@ -54,6 +59,7 @@ while [ $# -gt 0 ]; do
     --units) shift; UNITS="$1" ;;
     --no-build) BUILD=0 ;;
     --no-swap) SWAP=0 ;;
+    --product) PRODUCT=1 ;;
     --root) shift; R="$1" ;;
     -h|--help) sed -n '2,/^set -euo/p' "$0" | sed '$d' | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "unknown option: $1 (--help)" >&2; exit 2 ;;
@@ -203,6 +209,7 @@ else
   run udevadm trigger --subsystem-match=usb --attr-match=idVendor=2e1a || true
 fi
 
+[ "$PRODUCT" = 1 ] && HEADLESS=1          # a delivered box has no desktop
 say "wrappers and units"
 [ -n "$R" ] && run install -d "$R/home/navera" "$R/etc/systemd/system"
 run install "${OWN[@]}" -m 0755 "$SRC"/deploy/systemd/navera_boot_*.sh "$R/home/navera/"
@@ -212,7 +219,15 @@ if [ -n "$R" ]; then skip "systemctl daemon-reload"; else run systemctl daemon-r
 say "enable at boot: $UNITS"
 # shellcheck disable=SC2086
 run "${SYSTEMCTL[@]}" enable $UNITS
-[ "$HEADLESS" = 1 ] && run "${SYSTEMCTL[@]}" set-default multi-user.target
+if [ "$HEADLESS" = 1 ]; then
+  # staged: the root has no multi-user.target to point default.target at
+  if [ -n "$R" ]; then skip "systemctl set-default multi-user.target (no desktop)"
+  else run systemctl set-default multi-user.target; fi
+fi
+if [ "$PRODUCT" = 1 ]; then
+  P_ARGS=(); [ "$DRY" = 1 ] && P_ARGS+=(--dry-run); [ -n "$R" ] && P_ARGS+=(--root "$R")
+  "$SRC/deploy/product/apply_product.sh" "${P_ARGS[@]}"
+fi
 if [ "$START" = 1 ]; then
   if [ -n "$R" ]; then
     skip "systemctl restart $UNITS"
