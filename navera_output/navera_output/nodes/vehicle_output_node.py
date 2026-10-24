@@ -476,11 +476,14 @@ class VehicleOutputNode(Node):
                                f"bridged on until new positions come (at most {self.cfg.bridge_max_s:.0f} s)")
 
     def _ground_velocity(self):
-        """(east, north, sigma) m/s from the positions of the last 20 s, or None."""
+        """(east, north, sigma) m/s of the vehicle at its latest position, or None: a quadratic fit
+        of the last 15 s (a turn's heading at that fix, not the 20 s chord's — 37 m sideways at
+        60 m/s carried 3 s, Isaac 2026-10-24), else the line fit of the last 20 s.
+        """
         last = self._track.last_time()
         if last is None or time.time() - last > 5.0:
             return None
-        return self._track.velocity(time.time())
+        return self._track.velocity_at_last_fix() or self._track.velocity(time.time())
 
     def _autopilot_velocity(self):
         """(east, north, sigma) m/s trustworthy enough for the autopilot, or None."""
