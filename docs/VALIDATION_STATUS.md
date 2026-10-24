@@ -1661,6 +1661,18 @@ velocity source the EKF likely lags the vision fixes (exposure -> position ~1.8 
 GPS_INPUT time / EK3 GPS delay for a fast vehicle (not changed here). "At exposure" error not
 computed by summarise.py for these runs.
 
+**Measured and fixed (2026-10-24, branch `work/fast-timing-2026-10-24`).** From ww1/ww2 logs
+(sitl_gps.csv = what the autopilot received, matched to the /navera/position it carried): the
+vision fix reaches the autopilot 3.2 s (1.4–4.7 s p10–p90) after its sensor stamp and was carried
+along the 20 s line-fit velocity — the chord of a turn, ~11 deg (up to 43) behind the course — so
+it arrived 35–38 m sideways (15 m along). Not a time-stamp issue: GPS_DELAY_MS (≤ 250 ms) could
+not compensate it. vehicle_output now carries along `TrackVelocity.velocity_at_last_fix()`
+(quadratic fit of 15 s, slope at the fix; honest sigma, tested). ft1 (plane60_wide, same
+condition): carry heading error -2 deg median, sideways 7 m; fix 15 / 27 / 50 m, 0 wrong, 2/365
+beyond 3 sigma; **autopilot EKF 25 / 45 / 52 m** (was 37–46 / 75–85 / 111–112 m), mission completed.
+Regression check ft2 (base copter): fix 7.5 / 12 / 16 m, 0 wrong, 0/294 beyond 3 sigma, EKF 12.5 / 22 / 27 m
+(before ~16 m median), final 17.5 m from home (before ~14 m). SIMULATION only.
+
 ### Long route (simulator, 2026-10-01)
 
 Paris → Tunisia, 1768 km, mapped as ≤ 10 km great-circle legs: 79 775 tiles generated in

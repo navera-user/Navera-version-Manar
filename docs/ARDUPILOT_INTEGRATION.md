@@ -507,7 +507,11 @@ than `NAVERA_MAX_MEASUREMENT_AGE_S` (5 s) ago:
 
 - **GPS** positions are sent stamped with their measurement instant (not carried);
 - **vision / celestial** positions are carried to the present along the ground velocity
-  fitted to NAVERA's recent positions, their accuracy grown by the speed error × their age,
+  at the position's own instant (a quadratic fit of NAVERA's positions of the last 15 s, so a
+  turn's current heading — the 20 s line fit used before is the chord of its window, ~11° behind
+  a 60 m/s plane on a 2.5 km circle: carried ~3 s, the fix reached the autopilot ~37 m to the
+  side and its EKF was 37–46 m off; now 25 m, Isaac 2026-10-24), their accuracy grown by the
+  speed error × their age,
   and sent stamped **now**; when no velocity is known they are sent stamped with their
   measurement instant, their accuracy grown by the maximum speed (`NAVERA_MAX_SPEED_KMH`) ×
   their age.
