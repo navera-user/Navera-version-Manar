@@ -1762,3 +1762,14 @@ holds the only results from the real sensors. No sensor recording (log, bag) was
    (`/mission`, a search area for day vision only — never a published position). Verified:
    accepted, a bad latitude refused, a vision node started later receives it (latched);
    not tested in flight.
+
+## Insta360 kit on the real camera — attitude bench (2026-10-24)
+
+First test of the IRIS kit (camera_pkg Insta360 node: picture + built-in IMU attitude) with the real
+Insta360 One R, against the screen dot grid (`navera_tools/bench/attitude_check.py --kit`, screen
+pose re-measured with `lens_calib_screen.py --pose-only`, camera 41.6 cm from the screen, turned by
+hand, 147 frames). **Frame time stamps: best time offset 0–30 ms** (the field driver's 1.5 s lag
+of 2026-10-19 is gone). **Tilt error:** median 0.15° (max 0.53°) when still or nearly still,
+0.27–0.59° median for 3–30° turns, 1.6° median beyond 30° (up to 91°), worst frames 10–12° during
+fast hand turns (the screen near the lens edge, the lens moved ~2 cm — partly the bench method).
+Bench only, not on a vehicle. Data: `~/.navera_sim/bench/attitude_kit_2026-10-24.{csv,log}`.
