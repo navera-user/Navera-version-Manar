@@ -132,3 +132,31 @@ navera_idle_until_discovered() {
         fi
     done
 }
+
+# navera_web_host — the address the web page listens on, from NAVERA_WEB_HOST:
+#   empty (default)   0.0.0.0: every network (the firewall of --product mode still applies)
+#   localhost         127.0.0.1: this box only (an SSH tunnel or a local browser)
+#   iface:<name>      the IPv4 address of that interface (the vehicle network, e.g. iface:eth0),
+#                     waited for up to NAVERA_WEB_HOST_WAIT_S (default 30 s)
+#   <IPv4 address>    that address
+# Anything unusable (no address on the interface, a malformed value) gives 127.0.0.1: the page
+# is then closed to the network rather than opened wider than configured.
+navera_web_host() {
+    local h="${NAVERA_WEB_HOST:-}" t=0 a
+    case "$h" in
+      "") echo 0.0.0.0 ;;
+      localhost) echo 127.0.0.1 ;;
+      iface:*)
+        while :; do
+            a=$(ip -4 -o addr show dev "${h#iface:}" 2>/dev/null | awk '{print $4}' | cut -d/ -f1 | head -1)
+            [ -n "$a" ] && { echo "$a"; return 0; }
+            [ "$t" -ge "${NAVERA_WEB_HOST_WAIT_S:-30}" ] && break
+            sleep 1; t=$((t + 1))
+        done
+        navera_log "NAVERA_WEB_HOST=$h: no IPv4 address on ${h#iface:}: web page on 127.0.0.1 only"
+        echo 127.0.0.1 ;;
+      *)
+        if [[ "$h" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]]; then echo "$h"
+        else navera_log "NAVERA_WEB_HOST=$h not understood: web page on 127.0.0.1 only"; echo 127.0.0.1; fi ;;
+    esac
+}

@@ -3,7 +3,7 @@
 # stage_check.sh — validate the NAVERA deployment WITHOUT root and without a deployed box.
 #
 #   deploy/stage_check.sh [--stage DIR] [--reuse] [--keep] [--kill UNIT]... [--no-day]
-#                         [--env-extra FILE] [--nice N]
+#                         [--env-extra FILE] [--nice N] [--corrupt-state]
 #
 #   --stage DIR   where the staged root goes (default ~/.cache/navera-stage)
 #   --reuse       keep an existing staged build (no colcon build; the code is re-synced)
@@ -15,6 +15,12 @@
 #                 lines win): another installation to stage — the hardware-in-the-loop test
 #                 (navera_tools/isaac/hil_flight.sh) stages a box fed by a simulator over the network
 #   --nice N      niceness of the staged units (default 19; 0 = as deployed, for timing measurements)
+#   --corrupt-state  power-cut test: before the start, every state file of the staged box is
+#                 damaged (truncated JSON, NUL-filled, garbage: ground, day_anchor, day_track,
+#                 output_held, sigma_cal_*, missions.json, discovery.json) and settings.env is
+#                 cut in the middle of a line (NAVERA_PIPELINE=da); the boot's env check
+#                 (navera_boot_envcheck.sh, as navera-discover runs it) must move settings.env
+#                 aside and every unit must still come up (step 4)
 #
 # Steps, each reported:
 #   1. deploy/install.sh --root DIR      the real installer, staged (no apt/useradd/chown/pip)
@@ -45,7 +51,7 @@ set -uo pipefail
 case "${1:-}" in -h|--help) sed -n '2,/^set -uo/p' "$0" | sed '$d' | sed 's/^# \{0,1\}//'; exit 0 ;; esac
 
 SRC="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
-STAGE="$HOME/.cache/navera-stage"; REUSE=0; KEEP=0; KILLS=(); DAY=1; ENV_EXTRA=""; NICE=19
+STAGE="$HOME/.cache/navera-stage"; REUSE=0; KEEP=0; KILLS=(); DAY=1; ENV_EXTRA=""; NICE=19; CORRUPT=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --stage) shift; STAGE="$1" ;;
@@ -55,6 +61,7 @@ while [ $# -gt 0 ]; do
     --no-day) DAY=0 ;;
     --env-extra) shift; ENV_EXTRA="$1" ;;
     --nice) shift; NICE="$1" ;;
+    --corrupt-state) CORRUPT=1 ;;
     *) echo "unknown option: $1 (--help)" >&2; exit 2 ;;
   esac
   shift
@@ -140,6 +147,27 @@ fi
 # what navera-discover would write on a box without the I2C IMU / clock (not run: it probes hardware)
 printf 'NAVERA_BOX_IMU=0\nNAVERA_BOX_RTC=0\n' > "$STAGE/var/lib/navera/discovered.env"
 : > "$STAGE/var/lib/navera/settings.env"
+if [ "$CORRUPT" = 1 ]; then
+  step "3a. power-cut test: damaged state files before the start (--corrupt-state)"
+  SD="$STAGE/var/lib/navera"
+  rm -f "$SD"/*.json "$SD"/*.damaged
+  printf '{"altitude_m": 12.0, "lat": 36.8' > "$SD/ground.json"                    # cut
+  head -c 512 /dev/zero > "$SD/day_anchor.json"                                    # zero-filled
+  printf '{"pts": [[1, 2, "x", 4]], "saved_at": "' > "$SD/day_track.json"
+  head -c 300 /dev/urandom > "$SD/output_held.json"                                # garbage
+  printf '{"key": "cam", "terms": {"f": ' > "$SD/sigma_cal_cam.json"
+  printf '[{"name": "m", "route": [[36.8, 10' > "$SD/missions.json"
+  printf '{"found": {"serial": [' > "$SD/discovery.json"
+  printf 'NAVERA_PIPELINE=da' > "$SD/settings.env"                                 # cut mid-line
+  ls -l "$SD" | sed 's/^/    /'
+  # what navera-discover's ExecStartPre does at boot
+  NAVERA_WS="$STAGE$WS" NAVERA_STATE_DIR="$SD" "$STAGE/home/navera/navera_boot_envcheck.sh" 2>&1 | sed 's/^/    /'
+  if [ -f "$SD/settings.env.damaged" ] && [ ! -e "$SD/settings.env" ]; then
+    verdict PASS "power cut: the cut settings.env moved aside at boot (units start on navera.env)"
+  else
+    verdict FAIL "power cut: the cut settings.env was not moved aside"
+  fi
+fi
 
 mkdir -p "$UDIR"
 staged_units=()

@@ -26,6 +26,11 @@ Changes nothing outside a temporary directory. For every deploy/systemd/navera-*
     memory           (F5 / H-11) every unit has a memory class: critical units OOMScoreAdjust <= -500
                      and never picked by systemd-oomd, vision pipelines below 0 and above the
                      critical ones, non-critical units above 0 with MemoryHigh / MemoryMax
+    power cut        navera-discover moves damaged settings files aside first (ExecStartPre
+                     navera_boot_envcheck.sh); journald persistent; deploy/setup_fs.sh parses
+    product          deploy/product: the firewall rules load (user namespace, no root), sshd drop-in
+                     keys only, iris-firewall.service verifies; --root with a product install:
+                     NAVERA_PRODUCT_MODE=1, a token set, files installed root-only where needed
     code excludes    deploy/install.sh never copies git data, other worktrees, build products or
                      test recordings (B18); --root: none of them in the staged workspace
 
@@ -296,6 +301,64 @@ def memory_findings(units):
     return out
 
 
+def power_cut_findings(by, root):
+    """Boot after a power cut: damaged env files moved aside before any unit reads them."""
+    out = []
+    d = by.get('navera-discover.service')
+    if d:
+        pre = ' '.join(values(d, 'Service', 'ExecStartPre'))
+        out.append(('PASS' if 'navera_boot_envcheck.sh' in pre else 'FAIL', 'power cut',
+                    'navera-discover checks the env files first (ExecStartPre navera_boot_envcheck.sh)', pre or '-'))
+    jd = os.path.join(root, 'etc/systemd/journald.conf.d/navera.conf') if root else \
+        os.path.join(REPO, 'deploy', 'journald', 'navera.conf')
+    text = open(jd).read() if os.path.isfile(jd) else ''
+    out.append(('PASS' if re.search(r'^Storage=persistent', text, re.M) and re.search(r'^SystemMaxUse=', text, re.M)
+                else 'FAIL', 'power cut', 'journald persistent and size-capped', jd))
+    fs = os.path.join(REPO, 'deploy', 'setup_fs.sh')
+    r = subprocess.run(['bash', '-n', fs], capture_output=True, text=True)
+    out.append(('PASS' if r.returncode == 0 else 'FAIL', 'power cut', 'deploy/setup_fs.sh parses',
+                r.stderr.strip()[:200]))
+    return out
+
+
+def product_findings(root):
+    """--product: firewall, SSH and the installed product files."""
+    out = []
+    pdir = os.path.join(REPO, 'deploy', 'product')
+    fw = os.path.join(pdir, 'navera_firewall.sh')
+    env = dict(os.environ, ROS_LOCALHOST_ONLY='0', ROS_DOMAIN_ID='42', NAVERA_VEHICLE_MAVLINK_URL='udpin:0.0.0.0:14550',
+               NAVERA_FW_ALLOW_FROM='192.168.144.0/24,fe80::/10')
+    r = subprocess.run(['bash', fw, '--check'], capture_output=True, text=True, env=env, timeout=60)
+    level = 'PASS' if r.returncode == 0 else ('WARN' if 'unshare' in r.stderr or 'Operation not permitted' in r.stderr
+                                              else 'FAIL')
+    out.append((level, 'product', 'firewall rules load (iptables in a user namespace)',
+                (r.stdout or r.stderr).strip().splitlines()[-1][:200] if (r.stdout or r.stderr).strip() else ''))
+    p = subprocess.run(['bash', fw, '--print'], capture_output=True, text=True, env=env, timeout=30).stdout
+    ok = p.count('-A NAVERA-IN -j DROP') == 2 and '14550' in p and '7400:7649' not in p and '17900:18149' in p
+    out.append(('PASS' if ok else 'FAIL', 'product', 'firewall: default drop, MAVLink and ROS domain 42 ports open'))
+    sshd = open(os.path.join(pdir, 'sshd-navera-product.conf')).read()
+    ok = all(re.search(rf'^{k}\s+no$', sshd, re.M) for k in ('PasswordAuthentication', 'KbdInteractiveAuthentication',
+                                                             'PermitRootLogin'))
+    out.append(('PASS' if ok else 'FAIL', 'product', 'sshd drop-in: keys only, no root login'))
+    if root and os.path.isfile(os.path.join(root, 'usr/local/sbin/navera_firewall.sh')):
+        envf = os.path.join(root, 'etc/navera/navera.env')
+        text = open(envf).read() if os.path.isfile(envf) else ''
+        last = lambda k: (re.findall(rf'^{k}=(.*)$', text, re.M) or [''])[-1]   # noqa: E731
+        out.append(('PASS' if last('NAVERA_PRODUCT_MODE') == '1' else 'FAIL', 'product', 'NAVERA_PRODUCT_MODE=1'))
+        out.append(('PASS' if len(last('NAVERA_WEB_TOKEN')) >= 16 else 'FAIL', 'product', 'web control token set'))
+        link = os.path.join(root, 'etc/systemd/system/multi-user.target.wants/iris-firewall.service')
+        out.append(('PASS' if os.path.islink(link) else 'FAIL', 'product', 'iris-firewall.service enabled'))
+        leftover = [f for f in glob.glob(os.path.join(root, 'etc/sudoers.d/*'))
+                    if os.path.basename(f) not in ('navera-web', 'README')
+                    and re.search(r'^[^#]*NOPASSWD', open(f).read(), re.M)]
+        out.append(('PASS' if not leftover else 'FAIL', 'product', 'no developer NOPASSWD sudo rule left',
+                    ' '.join(map(os.path.basename, leftover))))
+        sd = os.path.join(root, 'etc/ssh/sshd_config.d/10-navera-product.conf')
+        mode = last('NAVERA_PRODUCT_SSH') or 'keys'
+        out.append(('PASS' if mode == 'off' or os.path.isfile(sd) else 'FAIL', 'product', f'SSH {mode}', sd))
+    return out
+
+
 def main(argv=None):
     """Run every check; return 0 when none FAILs."""
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
@@ -334,6 +397,10 @@ def main(argv=None):
             ok = os.path.isfile(p) and os.access(p, os.X_OK)
             report('PASS' if ok else 'FAIL', name, 'ExecStart exists and is executable', p)
             check_wrapper(name, p, root, pkgs, docvars)
+        for ex in values(u, 'Service', 'ExecStartPre'):
+            p = staged(ex.lstrip('-@+!:').split()[0], root)
+            ok = os.path.isfile(p) and os.access(p, os.X_OK)
+            report('PASS' if ok else 'FAIL', name, 'ExecStartPre exists and is executable', p)
         for wd in values(u, 'Service', 'WorkingDirectory'):
             p = staged(wd, root)
             report('PASS' if os.path.isdir(p) else 'FAIL', name, 'WorkingDirectory exists', p)
@@ -385,6 +452,8 @@ def main(argv=None):
     else:
         report('FAIL', 'sudoers/navera-web', 'file missing', sud)
 
+    for f in power_cut_findings(by, root) + product_findings(root):
+        report(*f)
     check_code_excludes(root)
 
     n = {lv: sum(r[0] == lv for r in results) for lv in ('PASS', 'WARN', 'FAIL')}

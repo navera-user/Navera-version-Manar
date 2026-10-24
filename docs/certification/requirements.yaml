@@ -1521,3 +1521,46 @@ requirements:
     - {level: UT, value: '2026-10-22: an update over an install older than B18 removes the .git, .claude worktrees, caches and recordings it left (rsync --delete skips excluded paths), keeps build/ install/ log/ (found by stage_check on a stage reused from 2026-10-21)', ref: 'deploy/test/test_install_excludes.py'}
   status: verified-UT
   note: 'R-8 — the sudoers restart path to verify on an installed box'
+
+- id: NAV-DEP-07
+  category: DEP
+  title: 'Power cut at any moment'
+  text: 'A power cut at any moment (the battery unplugged, also in flight) shall never leave a file NAVERA keeps half-written (state, settings, discovered devices, mission list, calibration, DEM, bundles: temp + fsync + rename), and the next boot shall start every unit even when a state or settings file is damaged (truncated, zero-filled, garbage): readers take it as nothing saved, damaged env files are moved aside before any unit reads them, the root file system is checked and repaired at boot without a prompt.'
+  code:
+    - navera_common/navera_common/atomic_io.py::atomic_write
+    - navera_common/navera_common/atomic_io.py::quarantine_damaged_env
+    - navera_common/navera_common/state_store.py::save
+    - navera_common/navera_common/altitude.py::_valid_ground
+    - deploy/systemd/navera_boot_envcheck.sh
+    - deploy/setup_fs.sh
+  tests:
+    - deploy/stage_check.sh
+  match:
+    - 'test_power_cut_state\.py::'
+    - 'test_atomic_io\.py::'
+    - 'test_product_box\.py::test_(setup_fs|boot_envcheck)'
+  evidence:
+    - {level: UT, value: '2026-10-24: every reader fed truncated / NUL / garbage / wrong-type forms of its file: none raises (2 crashes fixed: saved ground, non-UTF-8 settings.env)', ref: 'deploy/test/test_power_cut_state.py'}
+    - {level: UT, value: '2026-10-24: stage_check.sh --no-day --corrupt-state: every state file damaged, settings.env cut mid-line → moved aside, every staged unit up', ref: 'deploy/stage_check.sh'}
+  status: verified-UT
+  note: 'not yet tested by cutting the power of a real box (to do: repeated cuts during a staged flight, then check_boot.sh)'
+
+- id: NAV-DEP-08
+  category: DEP
+  title: 'Delivered box hardening and signed releases'
+  text: 'deploy/install.sh --product shall turn the desktop off, allow SSH with keys only (or no SSH), remove developer NOPASSWD sudo rules except navera-web, require the web token (generated when empty) and bind the web page as configured (NAVERA_WEB_HOST), drop incoming traffic except the web port, SSH and the configured MAVLink / ROS ports, and disable unused services; releases can be signed and are verified before extraction.'
+  code:
+    - deploy/product/apply_product.sh
+    - deploy/product/navera_firewall.sh
+    - deploy/systemd/navera_boot_lib.sh::navera_web_host
+    - deploy/verify_units.py::product_findings
+    - deploy/verify_release.sh
+  tests:
+    - deploy/verify_units.py
+  match:
+    - 'test_product_box\.py::test_(apply_product|firewall|web_host)'
+    - 'test_release_signing\.py::'
+  evidence:
+    - {level: UT, value: '2026-10-24: staged product install (fake root): token, SSH drop-in, sudoers moved, firewall enabled, fsck.repair; firewall rules loaded by iptables in a user namespace; a tampered signed archive refused', ref: 'deploy/test/test_product_box.py'}
+  status: verified-UT
+  note: 'not yet applied on a real box (sshd reload, firewall at boot, services disabled: to check with deploy/verify_units.py --root / after sudo deploy/install.sh --product)'

@@ -33,6 +33,20 @@ CARRY_LABEL = {"vehicle": "image + vehicle altitude", "gps": "image + GPS"}
 DEM_LABEL = {"vehicle": "vehicle altitude - DEM", "gps": "GPS - DEM"}
 
 
+def _valid_ground(s) -> Optional[dict]:
+    """A saved ground {altitude_m, lat, lon} with finite numbers, else None (a damaged state file
+    after a power cut must not stop the altitude: the first GPS fix is used instead)."""
+    if not isinstance(s, dict):
+        return None
+    try:
+        out = {k: float(s[k]) for k in ("altitude_m", "lat", "lon")}
+    except (KeyError, TypeError, ValueError):
+        return None
+    if not all(math.isfinite(v) for v in out.values()) or abs(out["lat"]) > 90 or abs(out["lon"]) > 180:
+        return None
+    return out
+
+
 class AltitudeEstimator:
     def __init__(self, ground_altitude_m: Optional[float] = None, gps_sigma_m: float = 10.0,
                  relative_sigma_m: float = 3.0, terrain_fraction: float = 0.02,
@@ -55,7 +69,7 @@ class AltitudeEstimator:
         """
         self.ground = ground_altitude_m if ground_altitude_m is not None and math.isfinite(ground_altitude_m) else None
         self.ground_source = "configured" if self.ground is not None else None
-        self._saved_ground, self._on_ground = saved_ground, on_ground
+        self._saved_ground, self._on_ground = _valid_ground(saved_ground), on_ground
         self.gps = History(max_gap_s=1.5)              # GPS altitude above the ellipsoid
         self.relative = History(max_gap_s=1.5)         # vehicle height above its home
         self.measured = History(max_gap_s=measured_timeout_s)

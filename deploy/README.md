@@ -958,7 +958,8 @@ A service restarted in the air (watchdog, crash, power blip) resumes with what i
 
 They are JSON files in `NAVERA_STATE_DIR` (default `/var/lib/navera` when writable by the
 service user, else `/home/navera/.local/state/navera`). `/var/lib/navera` must therefore be
-owned by `navera` (§3.5); otherwise the state silently goes to the home directory.
+owned by `navera` (§3.5); otherwise the state silently goes to the home directory. Each file
+is replaced atomically and durably; a damaged one reads as "nothing saved" (power cuts: §13.1).
 
 ## 10. Switching pipelines (day / night / celestial)
 
@@ -1118,3 +1119,81 @@ sudo rm /home/navera/navera_boot_*.sh
 sudo systemctl daemon-reload
 # Settings and state, if no longer wanted:  sudo rm -r /etc/navera /var/lib/navera
 ```
+
+## 13. Delivered box: power cuts and security
+
+### 13.1 Power cuts (the battery can be unplugged at any moment)
+
+| What | How it survives a cut |
+|---|---|
+| State (`/var/lib/navera/*.json`), `settings.env` (web page), `discovered.env`, `discovery.json`, the saved mission list, the camera calibration file, DEM tile sets | written by `navera_common/atomic_io.py`: temporary file + `fsync` + rename + directory `fsync`. After a cut the file is the old one or the new one, whole — never cut or zero-filled |
+| Mission / map bundles (`navera_tools/mission_bundle.py`) | built in a temporary folder, every file `fsync`ed, the old bundle renamed aside, the new one renamed in, then the old one deleted |
+| A damaged state file anyway (card fault, older install) | every reader treats it as "nothing saved" and starts normally (tests: `deploy/test/test_power_cut_state.py` feed truncated, NUL-filled and garbage forms of every file to every reader) |
+| A damaged `settings.env` / `discovered.env` | `navera-discover` first runs `navera_boot_envcheck.sh` (ExecStartPre): a file with NUL bytes, a cut last line or a line that is not `KEY=VALUE` is renamed `<file>.damaged` and every unit starts on `/etc/navera/navera.env` alone (a cut `NAVERA_PIPELINE=da` would otherwise stop the web unit) |
+| The journal | `Storage=persistent`, append-only files; a file cut while written is set aside by journald at the next start, never blocks the boot; synced every 30 s (`SyncIntervalSec`, critical messages at once) |
+| Recordings (`record_session.sh`, field sessions) | on the data disk `/data` mounted `nofail`: a broken recording or disk never stops the boot; the session description `session.json` is written atomically; a recording cut by the power loses its last seconds only |
+| The file systems | `deploy/setup_fs.sh`: root ext4 with the defaults (`data=ordered`, barriers, `commit=5`), fsck at every boot (fstab pass 1, `/data` pass 2 + `nofail`), and **`fsck.repair=yes`** on the kernel command line (`/boot/extlinux/extlinux.conf`, a copy `.navera-bak` kept) so a repair never waits at a prompt on a sealed box |
+
+Check without root: `deploy/setup_fs.sh --check`. Staged boot test with every state file
+damaged: `deploy/stage_check.sh --no-day --corrupt-state`.
+
+### 13.2 Read-only root (optional, not installed)
+
+A read-only root with a RAM overlay (`sudo apt install overlayroot`, then
+`overlayroot="tmpfs:recurse=0"` in `/etc/overlayroot.conf`) makes the system partition
+immune to cuts. It is **not** forced: `/var/lib/navera` (state across restarts),
+`/etc/navera` (settings from the web page) and the journal must then be on a writable
+partition (`/data`, bind-mounted), every update needs `overlayroot-chroot`, and it has not
+been validated on the Jetson boot chain. Use it only after a full test on the delivered image.
+
+### 13.3 Product mode: `sudo deploy/install.sh --product`
+
+(or `NAVERA_PRODUCT_MODE=1` in the environment of `install.sh`). On top of the normal install
+(`deploy/product/apply_product.sh`, each step reported):
+
+| Step | Result | Setting |
+|---|---|---|
+| desktop | off: boots to `multi-user.target` (as `--headless`) | — |
+| web control | `NAVERA_PRODUCT_MODE=1`; a random `NAVERA_WEB_TOKEN` generated when empty (`sudo grep NAVERA_WEB_TOKEN /etc/navera/navera.env`); every control action needs it | `NAVERA_WEB_TOKEN` |
+| web network | the page listens only where configured: `NAVERA_WEB_HOST=iface:eth0` (the vehicle network), `localhost`, an address, or empty (every network) | `NAVERA_WEB_HOST` |
+| SSH | `keys`: `/etc/ssh/sshd_config.d/10-navera-product.conf` — no passwords, no root login (refused when no account has `~/.ssh/authorized_keys`: copy a key first with `ssh-copy-id`); `off`: the SSH server disabled (maintenance from the local console) | `NAVERA_PRODUCT_SSH=keys\|off` |
+| sudo | developer rules granting `NOPASSWD` in `/etc/sudoers.d` moved to `/var/backups/navera-sudoers`; only `navera-web` stays (the web page's exact restart commands, §8) | — |
+| firewall | `iris-firewall.service` runs `/usr/local/sbin/navera_firewall.sh` before the network: incoming traffic dropped except loopback, replies, ICMP / ICMPv6, DHCP, the web port, SSH (keys mode), a listening MAVLink port of `NAVERA_VEHICLE_MAVLINK_URL` / `NAVERA_MAVLINK_URL`, the DDS ports of the ROS domain when `ROS_LOCALHOST_ONLY` is not 1. iptables (the L4T kernel has no nftables conntrack); only `/etc/navera/navera.env` is read | `NAVERA_FW_ALLOW_TCP`, `NAVERA_FW_ALLOW_UDP`, `NAVERA_FW_ALLOW_FROM` (the vehicle network, CIDR) |
+| services | disabled: avahi, bluetooth, ModemManager, cups, apport / whoopsie / kerneloops, rpcbind, unattended upgrades and the apt / motd / fwupd timers | `NAVERA_PRODUCT_DISABLE` |
+| file systems | `deploy/setup_fs.sh` (§13.1) | — |
+
+See the rules: `/usr/local/sbin/navera_firewall.sh --print`; test them without root:
+`deploy/product/navera_firewall.sh --check`. `deploy/verify_units.py --root /` reports the
+product checks (mode, token, firewall enabled, no `NOPASSWD` rule left, SSH).
+
+### 13.4 Undo (development only)
+
+```bash
+sudo systemctl disable --now iris-firewall                   # firewall off
+sudo rm /etc/ssh/sshd_config.d/10-navera-product.conf && sudo systemctl reload ssh
+sudo systemctl enable --now ssh                              # if NAVERA_PRODUCT_SSH=off
+sudo mv /var/backups/navera-sudoers/* /etc/sudoers.d/ && sudo visudo -c
+sudo systemctl set-default graphical.target
+sudoedit /etc/navera/navera.env                              # NAVERA_PRODUCT_MODE=0
+```
+
+### 13.5 Signed releases
+
+IRIS signs each release with its release key (never in git):
+
+```bash
+NAVERA_RELEASE_SIGN=openssl:/secure/iris-release.key.pem deploy/make_release.sh 0.6.0   # → .tar.gz.sig
+NAVERA_RELEASE_SIGN=gpg:<IRIS key id> deploy/make_release.sh 0.6.0                      # → .tar.gz.asc
+```
+
+On the box, **before extracting** (the archive, its `.sha256`, its signature,
+`verify_release.sh` and the IRIS public key `iris-release.pub.pem` are delivered together):
+
+```bash
+NAVERA_RELEASE_REQUIRE_SIG=1 bash verify_release.sh navera-0.6.0.tar.gz iris-release.pub.pem
+tar xzf navera-0.6.0.tar.gz && cd navera-0.6.0 && sha256sum -c RELEASE_MANIFEST.sha256 --quiet
+sudo deploy/install.sh --product
+```
+
+A key pair (once, kept offline): `openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 -out iris-release.key.pem`
+and `openssl pkey -in iris-release.key.pem -pubout -out iris-release.pub.pem`.

@@ -4,6 +4,17 @@ Measured numbers come from simulation (Isaac Sim + ArduPilot/PX4 SITL), bench, o
 data from other vehicles; **no NAVERA flight yet**. Details: `docs/VALIDATION_STATUS.md`,
 requirements: `docs/certification/REQUIREMENTS.md`, known problems: the shared problems list.
 
+## Unreleased — product box (2026-10-24)
+- Power cuts: every file NAVERA keeps is written atomically and durably (temp + fsync +
+  rename, `navera_common/atomic_io.py`); every reader takes a damaged file as "nothing saved"
+  (fixed: a damaged saved ground crashed the altitude, a non-UTF-8 `settings.env` the web page);
+  damaged `settings.env` / `discovered.env` are moved aside at boot; `deploy/setup_fs.sh`
+  (`fsck.repair=yes`); `stage_check.sh --corrupt-state`. Not yet tested by pulling the power
+  on a real box.
+- `install.sh --product`: SSH keys-only or off, no desktop, developer sudo rules removed, web
+  token, `NAVERA_WEB_HOST`, iptables firewall, unused services off. Signed releases
+  (`make_release.sh` + `verify_release.sh`). `deploy/README.md` §13.
+
 ## 0.5.1 — 2026-10-23
 - Day vision: multi-hypothesis track (D17). A far-off fix starts an alternative instead of moving
   the track; it takes over only after 3+ agreeing fixes and a clear likelihood lead, and the stated
