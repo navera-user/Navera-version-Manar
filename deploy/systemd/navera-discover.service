@@ -16,6 +16,8 @@ Group=navera
 # serial ports, I2C, cameras
 SupplementaryGroups=dialout i2c video
 WorkingDirectory=/home/navera/isaac_ros_common
+# power cut: a damaged settings.env / discovered.env is moved aside before anything reads it
+ExecStartPre=-/home/navera/navera_boot_envcheck.sh
 ExecStart=/home/navera/navera_boot_discover.sh
 # a search takes ~20 s; never hold the boot longer
 TimeoutStartSec=90
