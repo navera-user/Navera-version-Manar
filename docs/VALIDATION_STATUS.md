@@ -1657,7 +1657,7 @@ rendered frames (0.1 s) 10 / 28 / 78 deg/s median / p90 / max; live_camera (0.2 
 **0 frames** for rotation. Isaac Sim with the 12 288 px texture: 4.1 GB of 8 GB GPU memory, 31 ms per update.
 Output > 50 m only in the first ~17 s after the cut (carried, sigma 43-102 m) and after the flight.
 Finding: the autopilot's EKF error (37-46 m median) is 2.5-3x NAVERA's own fix error at 60 m/s — without a
-velocity source the EKF lags the vision fixes (exposure -> GPS_INPUT ~1.5-2 s = 90-120 m of travel); to look at:
+velocity source the EKF likely lags the vision fixes (exposure -> position ~1.8 s in hil_base1 = ~100 m at 60 m/s; not measured here); to look at:
 GPS_INPUT time / EK3 GPS delay for a fast vehicle (not changed here). "At exposure" error not
 computed by summarise.py for these runs.
 
