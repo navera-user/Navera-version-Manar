@@ -26,7 +26,8 @@
 
 ## 3. Pre-shipping checklist (each box)
 - [ ] Release installed from the archive: `tar xzf navera-X.tar.gz && cd navera-X && sha256sum -c RELEASE_MANIFEST.sha256 --quiet && sudo deploy/install.sh`
-- [ ] `/etc/navera/navera.env` filled (camera, lens file, map package, autopilot, `NAVERA_FORWARD_DEGRADED`)
+- [ ] Box set up with `sudo deploy/provision_box.sh --serial NAV-XXXX --customer "..." --lens FILE --camera-delay S --map-bundle DIR --env-extra extra.env`
+      (extra.env e.g. `NAVERA_FORWARD_DEGRADED=true`, `NAVERA_DEGRADED_SIGMA_M=15`); keep the record `/var/lib/navera/provision/<serial>.json`
 - [ ] Camera calibrated (`navera_tools/calibrate_camera.py`) and camera delay measured (manual §6.3)
 - [ ] Map package of the customer area built and checked (`mission_bundle.py check`)
 - [ ] `deploy/setup_swap.sh --check` OK; `deploy/check_boot.sh` after a reboot: all services active
