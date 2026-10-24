@@ -365,6 +365,7 @@ class IsaacLink(Node):
             self.proc_f.write("t,frame,proc_ms\n")
         self.events = open(os.path.join(self.results, "events.jsonl"), "a")
         self.delivery = []           # (deliver at wall, header stamp, image)
+        self.max_backlog = int(p("max_delivery_backlog", 30))   # frames (~10 s at 3 fps)
         self.done = False
         self.ekf_f = open(os.path.join(self.results, "ekf.csv"), "a")
         if self.ekf_f.tell() == 0:
@@ -580,6 +581,13 @@ class IsaacLink(Node):
             (t, i), img = self.cam.out_q.get()
             deliver = self.t0 + t + self.delay_s + abs(self.rng.normal(0, 0.03))
             self.delivery.append((deliver, t, img))
+            # bounded: frames handed over slower than the camera model makes them would pile up
+            # (24 h soak 2026-10-24: 2 400 frames, ~7 GB, OOM-killed after 2.6 h) — drop the oldest
+            while len(self.delivery) > self.max_backlog:
+                self.delivery.pop(0)
+                self.live["frames_dropped_backlog"] = self.live.get("frames_dropped_backlog", 0) + 1
+                self.get_logger().warn("camera delivery behind: oldest frame dropped (backlog "
+                                       f"> {self.max_backlog})", throttle_duration_sec=30.0)
             if k % 5 == 0:
                 small = cv2.resize(img, (img.shape[1] // 2, img.shape[0] // 2), interpolation=cv2.INTER_AREA)
                 cv2.imwrite(os.path.join(self.results, "navera_view", f"n_{k // 5:05d}.jpg"), small,
