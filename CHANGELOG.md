@@ -4,7 +4,7 @@ Measured numbers come from simulation (Isaac Sim + ArduPilot/PX4 SITL), bench, o
 data from other vehicles; **no NAVERA flight yet**. Details: `docs/VALIDATION_STATUS.md`,
 requirements: `docs/certification/REQUIREMENTS.md`, known problems: the shared problems list.
 
-## Unreleased — product box (2026-10-24)
+## 0.5.2 — 2026-10-25 (simulation/bench-validated; no real flight yet)
 - Power cuts: every file NAVERA keeps is written atomically and durably (temp + fsync +
   rename, `navera_common/atomic_io.py`); every reader takes a damaged file as "nothing saved"
   (fixed: a damaged saved ground crashed the altitude, a non-UTF-8 `settings.env` the web page);
@@ -14,6 +14,22 @@ requirements: `docs/certification/REQUIREMENTS.md`, known problems: the shared p
 - `install.sh --product`: SSH keys-only or off, no desktop, developer sudo rules removed, web
   token, `NAVERA_WEB_HOST`, iptables firewall, unused services off. Signed releases
   (`make_release.sh` + `verify_release.sh`). `deploy/README.md` §13.
+- `deploy/provision_box.sh`: one box's identity, camera calibration + delay, map package
+  settings, check_box and a provisioning record.
+- Isaac Sim: wide 12 km scene `kalaa_wide` and jet condition `plane60_wide` (60 m/s): completes
+  twice, 0 wrong, 15–16 m.
+- Fast vehicles: the output is carried along the velocity at the last fix (curve fit), not the
+  20 s chord; plane60_wide EKF error 37–46 → 25 m median, base no regression.
+- EKF fusing NAVERA's vision velocity measured worse on plane and copter: keep
+  `EK3_SRC1_VELXY 0` (docs only).
+- Insta360 kit attitude bench on the real camera: stamps 0–30 ms, tilt 0.15° median still.
+- Docs: sale-prep guide for this development Jetson, commercial docs (datasheet, evaluation
+  programme, hardware kit, bench tests), Isaac Sim guide + `index_runs.py`.
+- 24-hour soak on the Jetson: no memory growth in NAVERA nodes (day node ~2.1–2.2 GB flat),
+  259 036 frames, 0 dropped, 100 % valid outputs, 4.4 m median; 0 log errors.
+- Test tools: isaac_link camera delivery backlog bounded (OOM after 2.6 h in the first soak);
+  frames published via array.array (533 → 3.6 ms per frame; frames had been dropped).
+- 1,135 tests.
 
 ## 0.5.1 — 2026-10-23
 - Day vision: multi-hypothesis track (D17). A far-off fix starts an alternative instead of moving

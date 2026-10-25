@@ -1684,6 +1684,31 @@ speed_accuracy vs SITL truth (DataFlash GPS/GPA vs SIM2, vision phase, 4 flights
 0.90–1.06 (plane: honest), 0.46–0.51 (copter: stated ~2x too large, never too small: 2–3 % beyond
 2 sigma, 14 % expected) — conservative, left as is. SIMULATION only.
 
+### 24-hour soak on the Jetson (Orin Nano 8 GB, 2026-10-24/25)
+
+`navera_tools/isaac/memory_soak.sh <run> 1440 --no-trace`: the full day pipeline (stand-in render
+→ isaac_link → live_camera → day_subscriber → estimator, GPS jammed after start) ran 24 h
+(86 400 s) on 22b8b3c without a restart. Two earlier tries found test-tool faults only:
+isaac_link frame backlog grew to ~7 GB and was OOM-killed after 2.6 h (fixed 7e63ecf, bounded
+backlog); 20 % frames dropped because the rclpy Image fill from bytes took 533 ms (fixed
+22b8b3c, array.array, 3.6 ms).
+
+| Node (RSS+swap, MiB) | start | mean per 4 h block (after 30 min) | max | end |
+|---|---|---|---|---|
+| day_subscriber | 731 | 2202, 2182, 2184, 2196, 2151, 2110 | 2573 | 1940 |
+| isaac_link (test tool) | 81 | 210, 226, 248, 263, 287, 305 | 332 | 309 |
+| stand_in_render (test tool) | 34 | 264, 266, 272, 275, 278, 283 | 285 | 285 |
+| live_camera | 116 | 170, 164, 163, 161, 158, 157 | 189 | 157 |
+| estimator / gps nodes | 86 / 61 | flat (79–85 / 59–61) | 87 / 62 | 78 / 59 |
+
+- No upward trend in any NAVERA node; the day node stays ~2.1–2.2 GB (peaks are matching).
+  isaac_link (simulator side, not shipped) grows ~5 MiB/h — harmless over 24 h, noted.
+- Frames: 259 036 in, 259 036 out, 0 dropped.
+- Day fixes: 166 638 outputs, 100 % valid (166 510 measured, 128 propagated during a slow
+  match); error vs truth median 4.4 m, p95 8.1 m, max 16.5 m. Match time median 351 ms,
+  p95 408 ms, max 3.4 s.
+- Logs: 0 lines with error/traceback/exception in any node log; no OOM.
+
 ### Long route (simulator, 2026-10-01)
 
 Paris → Tunisia, 1768 km, mapped as ≤ 10 km great-circle legs: 79 775 tiles generated in
