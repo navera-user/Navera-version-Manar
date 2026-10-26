@@ -89,8 +89,12 @@ class LiveCamera(Node):
         self.declare_parameter("gst_pipeline", "")
         self.declare_parameter("device", "/dev/video0")
         self.declare_parameter("input_topic", "/vehicle/camera/image_raw")
+        # 0 x 0: the camera's own size, taken from its first frame (a network stream, a ROS topic)
         self.declare_parameter("width", 1920)
         self.declare_parameter("height", 1080)
+        # usb: the V4L2 format asked for (navera_common.cameras picks it); a grey format (Y16, GREY:
+        # a thermal core) is read unconverted and stretched to 8 bit here
+        self.declare_parameter("fourcc", "MJPG")
         declare_float(self, "fps", 1.0)                         # frames offered to the localizer, max
         declare_float(self, "capture_latency_s", 0.0)           # exposure → grab delay (measure it)
         # the day node's camera-delay estimate (navera_common.latency_cal.delay_message): the attitude,
@@ -100,6 +104,11 @@ class LiveCamera(Node):
         declare_float(self, "max_attitude_shift_s", 3.0)
         self.declare_parameter("calibration_file", "")
         declare_float(self, "camera_hfov_deg", float("nan"))    # ideal lens when no calibration file
+        # no calibration file: the lens the day pipeline calibrated in flight (day_pkg.lens_selfcal) — kept
+        # for this camera across flights (state lens_auto_<lens_key>) and applied as soon as it is
+        # published (lens_topic, latched), replacing the ideal lens of camera_hfov_deg
+        self.declare_parameter("auto_lens", True)
+        self.declare_parameter("lens_topic", "/day/lens_update")
         declare_float(self, "mount_roll_deg", 0.0)
         declare_float(self, "mount_pitch_deg", 0.0)
         declare_float(self, "mount_yaw_deg", 0.0)
@@ -147,23 +156,15 @@ class LiveCamera(Node):
         p = lambda n: self.get_parameter(n).value               # noqa: E731
 
         self.input, self.w, self.h = p("input"), int(p("width")), int(p("height"))
-        # the part of the picture that looks at the ground (a 360 camera: one lens' half);
-        # the calibration, the frames and every size below are of that part
-        self.crop = parse_crop(p("crop"), self.w, self.h)
-        self.cw, self.ch = (self.crop[2], self.crop[3]) if self.crop else (self.w, self.h)
         self.period = 1.0 / max(float(p("fps")), 1e-3)
         self.latency_s = float(p("capture_latency_s"))
         self.att_shift_s, self.max_att_shift_s = 0.0, float(p("max_attitude_shift_s"))
         from navera_common.delay_monitor import DelayChangeMonitor
         self.delay_mon = DelayChangeMonitor()
-        cam = self._camera_model(p("calibration_file"), float(p("camera_hfov_deg")))
-        self.builder = FrameBuilder(cam, (p("mount_roll_deg"), p("mount_pitch_deg"), p("mount_yaw_deg")),
-                                    float(p("max_tilt_deg")), p("camera_type"), bool(p("gimbal")),
-                                    bool(p("require_attitude")), float(p("max_rate_dps")))
+        self.builder = None
+        if self.w > 0 and self.h > 0:
+            self._lens_setup(self.w, self.h)
         self.attitude_source, self.frame_id = p("attitude_source"), p("frame_id")
-        from navera_common.camera_model import mount_identity
-        self.mount_ident = mount_identity((p("mount_roll_deg"), p("mount_pitch_deg"), p("mount_yaw_deg")),
-                                          p("calibration_file"), cam.out_hfov_deg, self.crop)
         self.measured_sigma_m = float(p("measured_altitude_sigma_m"))
         self.att = History(maxlen=4000, max_gap_s=0.2, interp=slerp)
         self.yaw_sigma = History(maxlen=4000, max_gap_s=0.2)    # deg, from orientation_covariance
@@ -211,6 +212,8 @@ class LiveCamera(Node):
             dtopic = "/day/camera_delay" if p("camera_type") == "day" else "none"
         if dtopic not in ("", "none"):
             self.create_subscription(String, dtopic, self._on_delay, LATCHED)
+        if bool(p("auto_lens")) and str(p("lens_topic")).strip() not in ("", "none") and p("camera_type") == "day":
+            self.create_subscription(String, p("lens_topic"), self._on_lens, LATCHED)
         self._ready = threading.Event()
         self._go = threading.Event()
         if not bool(p("wait_for_ready")):
@@ -242,12 +245,113 @@ class LiveCamera(Node):
         self._sender = threading.Thread(target=self._send_loop, daemon=True)
         self._sender.start()
         self.get_logger().info(
-            f"live camera: input={self.input} {self.w}x{self.h}, lens "
-            f"{'calibrated (' + cam.model + ')' if p('calibration_file') else 'ideal'}, "
-            f"published field of view {cam.out_hfov_deg:.1f} deg, mount "
-            f"{[p('mount_roll_deg'), p('mount_pitch_deg'), p('mount_yaw_deg')]}, attitude from {p('imu_topic')}")
+            f"live camera: input={self.input} "
+            f"{f'{self.w}x{self.h}' if self.builder else 'size from the first frame'}, attitude from {p('imu_topic')}")
 
     # ── setup ─────────────────────────────────────────────────────────────
+    def _lens_setup(self, w: int, h: int) -> None:
+        """The camera model and frame builder for frames of w x h (at start, or from the first frame
+        when the size is the camera's own). Raises ValueError (calibration for another size...)."""
+        p = lambda n: self.get_parameter(n).value               # noqa: E731
+        self.w, self.h = int(w), int(h)
+        # the part of the picture that looks at the ground (a 360 camera: one lens' half);
+        # the calibration, the frames and every size below are of that part
+        self.crop = parse_crop(p("crop"), self.w, self.h)
+        self.cw, self.ch = (self.crop[2], self.crop[3]) if self.crop else (self.w, self.h)
+        cam = self._camera_model(p("calibration_file"), float(p("camera_hfov_deg")))
+        mount = (p("mount_roll_deg"), p("mount_pitch_deg"), p("mount_yaw_deg"))
+        from navera_common.camera_model import mount_identity
+        # the mount calibration belongs to the configured lens: an in-flight lens refinement keeps it
+        self.mount_ident = mount_identity(mount, p("calibration_file"), cam.out_hfov_deg, self.crop)
+        self.lens_key = self._lens_key(cam)
+        self.lens_source = "calibrated" if p("calibration_file") else "ideal"
+        if not p("calibration_file") and bool(p("auto_lens")):
+            kept = state_store.load(f"lens_auto_{self.lens_key}", 10 * 365 * 86400.0)
+            auto = self._auto_model(kept)
+            if auto is not None:
+                cam, self.lens_source = auto, "in-flight calibration"
+                self.get_logger().info(f"lens: the one calibrated in flight for this camera ({kept.get('date')}, "
+                                       f"{kept.get('views')} views, {kept.get('rms_px')} px)")
+        self.builder = FrameBuilder(cam, mount, float(p("max_tilt_deg")), p("camera_type"), bool(p("gimbal")),
+                                    bool(p("require_attitude")), float(p("max_rate_dps")))
+        self.get_logger().info(
+            f"lens: {self.cw}x{self.ch}, {self.lens_source} ({cam.model}), "
+            f"published field of view {cam.out_hfov_deg:.1f} deg, mount {list(mount)}")
+
+    def _lens_key(self, cam) -> str:
+        """What an in-flight lens calibration belongs to: this camera (device, stream or topic), its
+        size and crop, and the lens it starts from (calibration file or ideal field of view)."""
+        import hashlib
+        import re
+        p = lambda n: self.get_parameter(n).value               # noqa: E731
+        src = {"usb": p("device"), "csi": p("device"), "ros": p("input_topic"),
+               "gst": re.sub(r"user-(id|pw)=\S+", "", str(p("gst_pipeline")))}.get(self.input, self.input)
+        if self.input == "usb":
+            from navera_common.vehicle import camera_identity
+            src = camera_identity(str(src)) or src
+        key = json.dumps({"camera": src, "size": [self.cw, self.ch], "crop": list(self.crop or []),
+                          "base": self.mount_ident["lens"]}, sort_keys=True)
+        return hashlib.sha1(key.encode()).hexdigest()[:12]
+
+    def _auto_model(self, d) -> "CameraModel | None":
+        """The CameraModel of an in-flight calibration ({lens: calibration dict, ...}) for this camera's
+        size, or None."""
+        try:
+            lens = d["lens"]
+            cam = CameraModel.from_calibration(lens)
+        except (TypeError, KeyError, ValueError):
+            return None
+        return cam if cam.size == (self.cw, self.ch) else None
+
+    def _on_lens(self, m: String):
+        """An in-flight lens calibration published by the day pipeline: applied to the next frame when
+        it is this camera's (lens_key) and the lens is not a calibration file's."""
+        try:
+            d = json.loads(m.data)
+        except ValueError:
+            return
+        if self.builder is None or d.get("lens_key") != self.lens_key or self.get_parameter("calibration_file").value:
+            return
+        cam = self._auto_model(d)
+        if cam is None:
+            return
+        p = lambda n: self.get_parameter(n).value               # noqa: E731
+        self.builder = FrameBuilder(cam, (p("mount_roll_deg"), p("mount_pitch_deg"), p("mount_yaw_deg")),
+                                    float(p("max_tilt_deg")), p("camera_type"), bool(p("gimbal")),
+                                    bool(p("require_attitude")), float(p("max_rate_dps")))
+        self.lens_source = "in-flight calibration"
+        self.get_logger().warn(f"lens calibrated in flight applied: {cam.model}, field of view "
+                               f"{cam.out_hfov_deg:.1f} deg published ({d.get('views')} views, {d.get('rms_px')} px)")
+
+    def _adopt(self, img) -> bool:
+        """A frame's size checked against the camera's (the first frame sets it when the size is the
+        camera's own); False: not usable."""
+        if self.builder is None:
+            try:
+                self._lens_setup(img.shape[1], img.shape[0])
+            except ValueError as e:
+                self.get_logger().fatal(f"camera {img.shape[1]}x{img.shape[0]}: {e} — exiting")
+                self.context.try_shutdown()
+                return False
+        if img.shape[1] != self.w or img.shape[0] != self.h:
+            self.get_logger().error(f"camera gives {img.shape[1]}x{img.shape[0]}, set to {self.w}x{self.h}",
+                                    throttle_duration_sec=10.0)
+            return False
+        return True
+
+    @staticmethod
+    def to_bgr8(img):
+        """8-bit BGR from what a camera gives: a 16-bit or grey radiometric picture (thermal core) is
+        stretched between its 1st and 99th percentiles (the scene's own contrast, as a thermal camera's
+        AGC does) and made 3-channel, so every pipeline reads one format."""
+        import cv2
+        if img.dtype != np.uint8:
+            lo, hi = np.percentile(img, (1, 99))
+            img = np.clip((img.astype(np.float32) - lo) * (255.0 / max(float(hi - lo), 1.0)), 0, 255).astype(np.uint8)
+        if img.ndim == 2 or img.shape[2] == 1:
+            img = cv2.cvtColor(img.reshape(img.shape[0], img.shape[1]), cv2.COLOR_GRAY2BGR)
+        return img
+
     def _camera_model(self, calib_file: str, hfov: float) -> CameraModel:
         if calib_file:
             import yaml
@@ -277,8 +381,9 @@ class LiveCamera(Node):
             raise ValueError("set calibration_file (navera_tools/calibrate_camera.py) or camera_hfov_deg")
         if self.input == "insta360":                            # a computed view: an ideal lens by construction
             return CameraModel.ideal(hfov, (self.cw, self.ch))
-        self.get_logger().warn("no calibration file: the lens is taken as distortion-free — "
-                               "calibrate it (navera_tools/calibrate_camera.py) before a real test")
+        self.get_logger().warn("no calibration file: the lens starts distortion-free at the configured field of "
+                               "view — the day pipeline calibrates it in flight while the GPS is trusted "
+                               "(or navera_tools/calibrate_camera.py on the bench)")
         return CameraModel.ideal(hfov, (self.cw, self.ch))
 
     # ── sensor inputs ─────────────────────────────────────────────────────
@@ -352,8 +457,8 @@ class LiveCamera(Node):
     def _grab_loop(self, device: str):
         import cv2
         if self.input == "gst":
-            from camera_pkg.gst_capture import GstCapture
-            cap = GstCapture(str(self.get_parameter("gst_pipeline").value))
+            from camera_pkg.gst_capture import GstCapture, expand_secrets
+            cap = GstCapture(expand_secrets(str(self.get_parameter("gst_pipeline").value)), timeout_s=5.0)
         elif self.input == "csi":
             # through GStreamer directly: the box's OpenCV has no GStreamer support.
             # device: the CSI sensor id ("0", "1"), default 0
@@ -362,9 +467,16 @@ class LiveCamera(Node):
             cap = GstCapture(csi_pipeline(self.w, self.h, sensor))
         else:
             cap = cv2.VideoCapture(device, cv2.CAP_V4L2)
-            cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
-            cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.w)
-            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.h)
+            fourcc = (str(self.get_parameter("fourcc").value) + "    ")[:4]
+            if fourcc.strip() and fourcc not in ("Y16 ", "Y12 ", "Y10 ", "Y8  ", "GREY"):
+                cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*fourcc))
+            else:
+                if fourcc.strip():
+                    cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*fourcc))
+                cap.set(cv2.CAP_PROP_CONVERT_RGB, 0)           # the radiometric values, not a colour guess
+            if self.w > 0 and self.h > 0:
+                cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.w)
+                cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.h)
             cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)                 # newest frame, not a queue
         if not cap.isOpened():
             self.get_logger().fatal(f"cannot open the camera ({device if self.input == 'usb' else 'CSI'}) — "
@@ -395,9 +507,10 @@ class LiveCamera(Node):
                 continue
             fails = 0
             self.watchdog.ok(time.monotonic())
-            if frame.shape[1] != self.w or frame.shape[0] != self.h:
-                self.get_logger().error(f"camera gives {frame.shape[1]}x{frame.shape[0]}, set to {self.w}x{self.h}",
-                                        throttle_duration_sec=10.0)
+            frame = self.to_bgr8(frame)
+            if not self._adopt(frame):
+                if self.builder is None:
+                    return
                 continue
             if self.crop:
                 x, y, w, h = self.crop
@@ -424,10 +537,9 @@ class LiveCamera(Node):
 
     def _on_image(self, m: Image):
         from cv_bridge import CvBridge
-        img = CvBridge().imgmsg_to_cv2(m, "bgr8")
-        if img.shape[1] != self.w or img.shape[0] != self.h:
-            self.get_logger().error(f"{self.get_parameter('input_topic').value} is {img.shape[1]}x{img.shape[0]}, "
-                                    f"set to {self.w}x{self.h}", throttle_duration_sec=10.0)
+        mono = m.encoding in ("mono8", "mono16", "16UC1", "8UC1")
+        img = self.to_bgr8(CvBridge().imgmsg_to_cv2(m, "passthrough" if mono else "bgr8"))
+        if not self._adopt(img):
             return
         if self.crop:
             x, y, w, h = self.crop
@@ -484,6 +596,7 @@ class LiveCamera(Node):
             meta["capture_latency_s"] = self.latency_s          # already subtracted: the localizers' set delay
             meta["attitude_delay_s"] = round(shift, 4)          # attitude taken this long before the stamp
             meta.update(self.mount_ident)                       # what a learned mount calibration belongs to
+            meta.update(lens_key=self.lens_key, lens_source=self.lens_source)   # the in-flight lens calibration
             meta["delay_monitor"] = self.delay_mon.state()     # the delay's change since start (no GPS needed)
             if self.delay_mon.significant:
                 self.get_logger().warn(f"camera delay changed by {self.delay_mon.change_s:+.3f} s since the start "

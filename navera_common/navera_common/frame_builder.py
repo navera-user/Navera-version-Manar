@@ -17,6 +17,10 @@ Meta keys (all optional except frame_id and image_stamp_ns):
   usable / reason    false + why when the frame cannot be used (e.g. camera too tilted)
   gps_lat, gps_lon   the GPS at exposure, for recording and evaluation ONLY — vision never
                      reads them (gps_valid stays false: a live frame is never ground truth)
+  lens               the lens the frame was made with: model, K, D, size (raw), K_out (published)
+  R_world_cam        the camera attitude the frame was straightened with (9 numbers, row-major)
+                     — with lens, a published pixel can be taken back to the raw camera pixel
+                     (day_pkg.lens_selfcal: the in-flight lens calibration)
 """
 import math
 import time
@@ -46,6 +50,9 @@ class FrameBuilder:
         # a fixed camera turning fast: the tilt at the shutter instant is only as good as
         # the exposure stamp (rate x stamp error), and the picture blurs
         self.max_rate_dps = max_rate_dps
+        self.lens_meta = dict(model=camera.model, K=[round(float(v), 4) for v in camera.K.ravel()],
+                              D=[round(float(v), 7) for v in camera.D], size=list(camera.size),
+                              K_out=[round(float(v), 4) for v in camera.K_out.ravel()])
 
     def build(self, img: np.ndarray, frame_id: int, exposure_ns: int,
               q_body_enu: Optional[Sequence[float]] = None, attitude_source: str = "imu",
@@ -63,7 +70,7 @@ class FrameBuilder:
                     timestamp=time.strftime("%H:%M:%S", time.gmtime(exposure_ns / 1e9)),
                     image_file=f"live_{int(frame_id):06d}.jpg", usable=True,
                     straightened=False, attitude_source="none", heading_deg=None,
-                    mount_yaw_deg=self.mount[2])
+                    mount_yaw_deg=self.mount[2], lens=self.lens_meta)
         if altitude is not None:
             meta.update(altitude_m=round(altitude[0], 2), altitude_sigma_m=round(altitude[1], 2),
                         altitude_source=altitude[2])
@@ -108,5 +115,6 @@ class FrameBuilder:
                 h, w = out.shape[:2]
                 out = cv2.warpPerspective(out, H, (w, h), flags=cv2.INTER_LINEAR,
                                           borderMode=cv2.BORDER_CONSTANT)
+            meta["R_world_cam"] = [round(float(v), 7) for v in R.ravel()]
             meta["straightened"] = True
         return out, meta

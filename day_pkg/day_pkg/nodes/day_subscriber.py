@@ -63,6 +63,7 @@ from day_pkg.frame_odometry import FrameOdometry
 from day_pkg.gyro_heading import CourseReset, GyroHeading, heading_rate_dps
 from day_pkg.map_levels import area_zooms, choose_zoom
 from day_pkg.mount_cal import MountCalibration
+from day_pkg.lens_selfcal import LensSelfCal, calibration_dict, lens_of_meta, list_pairs
 from day_pkg.local_matcher import LocalMatcher
 from day_pkg.reacquire import WindowScan, cover_windows
 from day_pkg.carry_aids import (AttitudeYaw, VelocityRef, autopilot_sigma_growth, carry_autopilot,
@@ -350,6 +351,18 @@ class DaySubscriber(Node):
         self.declare_parameter("mount_cal_persist", True)
         declare_float(self, "mount_cal_persisted_min_sigma_deg", 0.5)
         declare_float(self, "mount_cal_save_period_s", 30.0)
+        # The lens calibrated in flight (day_pkg.lens_selfcal): while GPS is trusted every GPS-check match's
+        # point pairs are a view of the map; with lens_selfcal_min_views of them (and every
+        # lens_selfcal_every_views after) the lens is fitted in the background, and a clearly better
+        # one is kept for this camera (state lens_auto_<lens_key>) and published on lens_topic — the live
+        # camera applies it at once and at every start. "auto": only a lens not calibrated with a file
+        # (navera-discover's starting value, or NAVERA_CAMERA_HFOV_DEG); "on": also a calibrated one;
+        # "off". At most lens_selfcal_max_updates lenses applied per flight.
+        self.declare_parameter("lens_selfcal", "auto")
+        self.declare_parameter("lens_selfcal_min_views", 12)
+        self.declare_parameter("lens_selfcal_every_views", 8)
+        self.declare_parameter("lens_selfcal_max_updates", 3)
+        self.declare_parameter("lens_topic", "/day/lens_update")
         # A consistent camera pose whose tilt disagrees with the attitude's (pose_tilt_guard_deg): the
         # frame centre and the point under the camera are both candidates — the one nearer the carried
         # position is taken and the fix states half their distance more (or the carried sigma, if less).
@@ -547,6 +560,7 @@ class DaySubscriber(Node):
         self.calib_rollback_s = float(self.get_parameter("calib_rollback_s").value)
         self._sigma_store_init()
         self._init_mount_cal()
+        self._init_lens_cal()
         self._last_fix_sigma = self.local_sigma_m
         self.local_max_radius_m = float(self.get_parameter("local_max_radius_m").value)
         self.reacquire_windows = bool(self.get_parameter("reacquire_windows").value)
@@ -1333,6 +1347,8 @@ class DaySubscriber(Node):
             ns = meta.get("image_stamp_ns")
             self._gyro_reset(int(ns) / 1e9 if ns else time.time(), res)   # heading known at the GPS loss
             g = self._gps_hist.at(int(ns) / 1e9) if ns else None
+            if g is not None:
+                self._lens_sample(res, meta, img, g, int(ns) / 1e9)
             placed = self._mount_check_fix(res, meta, g)
             if placed is None:                      # refused (pose far from the attitude): no sample
                 return
@@ -2526,6 +2542,71 @@ class DaySubscriber(Node):
             self._load_mount_cal(str(p_("mount_cal_file")).strip(), float(p_("mount_cal_persisted_min_sigma_deg")))
 
     MOUNT_STATE = "day_mount"
+
+    # ────────────────────────────────────────────────────────────
+    # The lens, calibrated in flight against the map (day_pkg.lens_selfcal)
+    # ────────────────────────────────────────────────────────────
+    def _init_lens_cal(self):
+        p_ = lambda n: self.get_parameter(n).value               # noqa: E731
+        self.lens_mode = str(p_("lens_selfcal")).strip().lower()
+        self.lens_cal = LensSelfCal(min_views=int(p_("lens_selfcal_min_views"))) if self.lens_mode != "off" else None
+        self.lens_every = int(p_("lens_selfcal_every_views"))
+        self.lens_max_updates = int(p_("lens_selfcal_max_updates"))
+        self._lens_new, self._lens_updates, self._lens_fitting = 0, 0, False
+        self.pub_lens = self.create_publisher(
+            String, str(p_("lens_topic")),
+            QoSProfile(depth=1, reliability=ReliabilityPolicy.RELIABLE, durability=DurabilityPolicy.TRANSIENT_LOCAL))
+
+    def _lens_sample(self, res, meta, img, g, t):
+        """A GPS-check match as a view for the lens calibration; a fit started when enough are new."""
+        cal = getattr(self, "lens_cal", None)
+        lens, key = lens_of_meta(meta), meta.get("lens_key")
+        if cal is None or lens is None or not key or self._lens_updates >= self.lens_max_updates:
+            return
+        if self.lens_mode == "auto" and meta.get("lens_source") == "calibrated":
+            return
+        pairs = list_pairs(res)
+        if pairs is None:
+            return
+        g0 = self._gps_hist.at(t - 1.0)
+        speed = haversine_m(g0[0], g0[1], g[0], g[1]) if g0 is not None else 0.0
+        try:
+            why = cal.add_view(lens, meta.get("R_world_cam"), pairs[0], pairs[1], g[:2], float(meta["altitude_m"]),
+                               speed, float(lens["size"][0]) / float(img.shape[1]), t)
+        except (KeyError, TypeError, ValueError) as e:
+            why = f"unusable ({e})"
+        if why is not None:
+            self.get_logger().debug(f"[day] lens view not kept: {why}")
+            return
+        self._lens_new += 1
+        if cal.ready() and not self._lens_fitting and (cal.last is None or self._lens_new >= self.lens_every):
+            self._lens_new, self._lens_fitting = 0, True
+            threading.Thread(target=self._lens_fit, args=(key,), daemon=True).start()
+
+    def _lens_fit(self, key: str):
+        """Background: fit the lens; a clearly better one is kept for this camera and published."""
+        try:
+            out = self.lens_cal.fit()
+        except Exception as e:                              # noqa: BLE001 — never takes the node down
+            self.get_logger().error(f"[day] lens calibration failed: {e}")
+            return
+        finally:
+            self._lens_fitting = False
+        if out is None:
+            return
+        self.get_logger().info(
+            f"[day] lens calibration ({out['views']} views, {out['points']} points): {out['model']}, field of view "
+            f"{out['hfov_deg']} deg, k1 {out['k1']}, k2 {out['k2']}, {out['rms_before_px']} -> {out['rms_after_px']} px"
+            f" — {'APPLIED' if out['accepted'] else 'not applied: ' + out['why']}")
+        if not out["accepted"]:
+            return
+        rec = calibration_dict(out["lens"], out)
+        doc = dict(lens=out["lens"], lens_key=key, views=out["views"], rms_px=out["rms_after_px"], date=rec["date"],
+                   hfov_deg=out["hfov_deg"], summary={k: v for k, v in out.items() if k != "lens"})
+        if not state_store.save(f"lens_auto_{key}", doc):
+            self.get_logger().error("[day] the calibrated lens could not be kept for the next flight (state dir)")
+        self._lens_updates += 1
+        self.pub_lens.publish(String(data=json.dumps(doc)))
 
     def _load_mount_cal(self, path: str, min_sigma_deg: float) -> None:
         """The persisted mount calibration: mount_cal_file, else the last one learned in flight."""

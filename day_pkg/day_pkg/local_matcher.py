@@ -152,6 +152,10 @@ def refine_with_pose(res: dict, fit_pts: Tuple[np.ndarray, np.ndarray], near_pts
     when the guard keeps the centre)."""
     res["position_from"] = "frame centre"
     res["centre_lat"], res["centre_lon"] = res.get("predicted_lat"), res.get("predicted_lon")
+    # the similarity fit's point pairs (frame px, global map px at zoom z): ground control points
+    # for the in-flight lens calibration (day_pkg.lens_selfcal), at most 400
+    k = np.linspace(0, len(fit_pts[0]) - 1, min(400, len(fit_pts[0]))).astype(int) if len(fit_pts[0]) else []
+    res["_lens_pairs"] = (np.asarray(fit_pts[0])[k].tolist(), np.asarray(fit_pts[1])[k].tolist(), int(z))
     if hfov_deg is None or not (1.0 < float(hfov_deg) < 179.0):
         return None
     f = (frame_size[0] / 2.0) / math.tan(math.radians(float(hfov_deg)) / 2.0)
