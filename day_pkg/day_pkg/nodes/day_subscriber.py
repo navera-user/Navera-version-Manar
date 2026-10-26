@@ -1232,6 +1232,7 @@ class DaySubscriber(Node):
         recent independent vision fix disagrees with it by more than 100 m (the GPS was
         drifting: spoofing) — then the search starts from where vision last saw us."""
         self._lens_trial_end("the GPS was lost before the checks were done")
+        self._lens_views_save()
         c = self._check_fix
         if c is None or self._anchor_lat is None or time.time() - c[2] > 10.0:
             return
@@ -2587,6 +2588,13 @@ class DaySubscriber(Node):
         if self.lens_mode == "auto" and meta.get("lens_source") == "calibrated":
             return
         self._lens_source_seen = meta.get("lens_source") or "ideal"
+        if key and getattr(self, "_lens_views_key", None) != key:
+            # the views an earlier flight of this camera collected: the first fit can come at the first GPS check
+            self._lens_views_key = key
+            kept = state_store.load(f"lens_views_{key}", 365 * 86400.0)
+            n = cal.load_views((kept or {}).get("views"))
+            if n:
+                self.get_logger().info(f"[day] lens calibration: {n} views from earlier flights of this camera")
         pairs = list_pairs(res)
         why = None
         if lens is None or not key:
@@ -2695,6 +2703,14 @@ class DaySubscriber(Node):
             self.get_logger().warn(f"[day] lens on trial NOT kept: GPS checks {after:.1f} m median with it, "
                                    f"{before:.1f} m with the lens in use (same frames, alternating)")
         self._lens_trial = None
+
+    def _lens_views_save(self) -> None:
+        """Keep this flight's lens views for the next flight of the camera (at the GPS loss)."""
+        cal, key = getattr(self, "lens_cal", None), getattr(self, "_lens_views_key", None)
+        if cal is None or not key or not cal.views:
+            return
+        if not state_store.save(f"lens_views_{key}", {"views": cal.export_views()}):
+            self.get_logger().error("[day] the lens views could not be kept for the next flight (state dir)")
 
     def _lens_trial_end(self, why: str) -> None:
         """The GPS is lost with a lens still on trial: the old lens comes back (never an unproven lens)."""

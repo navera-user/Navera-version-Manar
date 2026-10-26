@@ -1086,8 +1086,12 @@ take-off):
   it offers the new lens only if it explains the pictures significantly better than the old one;
 - the new lens is then **on trial**: applied to the next pictures, and **kept for this camera**
   only if the next GPS checks place the vehicle no worse than before. Otherwise — or if the GPS is
-  lost before the trial ends — the old lens comes back. A kept lens is used from the start of the
-  next flights, and refines itself again (at most 3 trials per flight).
+  lost before the trial ends — the old lens comes back. During the trial the camera **alternates**
+  the two lenses picture by picture, so both are judged on the same stretch of flight (a turn or a
+  speed change must not decide it);
+- a kept lens is used from the start of the next flights, and the pictures collected are kept too:
+  the next flight fits again from all of them at its first GPS check and proves the result during
+  its own climb — **the lens gets better with every flight** (at most 3 trials per flight).
 
 The box check shows it: `lens calibration — calibrated in flight <date>: fisheye, 77 deg, 0.9 px
 over 14 views`, or `not calibrated yet: starts with 70 deg (a guess)`.

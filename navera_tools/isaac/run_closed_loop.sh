@@ -23,8 +23,8 @@
 #                  about the scene centre, entered at --radius east: a fast plane's gentle circuit
 #   --home-radius M  distance from home that counts as "over home" in RTL (plane default 450 m)
 #   --area NAME  NAVERA's map ~/navera_data/isaac_NAME_area (default: the scene's, isaac_<scene>_area)
-#   --seed-lens RUN  start with the lens an earlier run calibrated in flight and kept (its state lens_auto_*):
-#                  the next flight of the same camera
+#   --seed-lens RUN  start with the lens an earlier run calibrated in flight and kept, and its views (state
+#                  lens_auto_*, lens_views_*): the next flight of the same camera
 #
 #   windows: "NAVERA - Isaac Sim flight" (the scene, chase view), MAVProxy map + console,
 #            "NAVERA - live error" (truth / NAVERA / autopilot EKF, map, camera, status)
@@ -59,6 +59,7 @@ res=$HOME/navera_results/$name; mkdir -p "$res/sitl" "$ws"/{build,install,log}
 if [ -n "$seed_lens" ]; then                # the lens kept by an earlier flight (NAVERA_STATE_DIR=/results/state)
   mkdir -p "$res/state"; cp "$HOME/navera_results/$seed_lens"/state/lens_auto_*.json "$res/state/" 2>/dev/null \
     || echo "no lens kept in run $seed_lens" >&2
+  cp "$HOME/navera_results/$seed_lens"/state/lens_views_*.json "$res/state/" 2>/dev/null || true
 fi
 VENV=$HOME/.venv-navera-sitl; AP=$HOME/ardupilot
 cp "$here"/isaac_flight.py "$here"/flight_profile.py "$D"/

@@ -207,6 +207,30 @@ class LensSelfCal:
     def ready(self) -> bool:
         return len(self.views) >= self.min_views
 
+    def export_views(self) -> List[dict]:
+        """The views kept, as plain numbers (state lens_views_<lens_key>): they hold raw camera pixels and ground
+        points relative to the GPS position of their frame, valid for this camera whatever its lens and flight,
+        so the next flight fits from them at its first GPS check instead of starting again."""
+        return [dict(raw=np.round(v["raw"], 2).tolist(), ground=np.round(v["ground"], 2).tolist(),
+                     R=np.round(v["R"], 7).ravel().tolist(), height=round(v["height"], 2),
+                     pos_sigma=round(v["pos_sigma"], 2), t=v["t"]) for v in self.views]
+
+    def load_views(self, views) -> int:
+        """Views from export_views (an earlier flight), oldest first; returns how many were taken."""
+        n = 0
+        for v in views or []:
+            try:
+                raw, ground = np.asarray(v["raw"], float).reshape(-1, 2), np.asarray(v["ground"], float).reshape(-1, 3)
+                R = np.asarray(v["R"], float).reshape(3, 3)
+                if len(raw) != len(ground) or len(raw) < self.min_points:
+                    continue
+                self.views.append(dict(raw=raw, ground=ground, R=R, height=float(v["height"]),
+                                       pos_sigma=float(v["pos_sigma"]), t=float(v.get("t", 0.0))))
+                n += 1
+            except (KeyError, TypeError, ValueError):
+                continue
+        return n
+
     # ── fit ───────────────────────────────────────────────────────────────
     def _residuals(self, x, views, model, cx, cy, f0, k_prior, fit_lens):
         if fit_lens:

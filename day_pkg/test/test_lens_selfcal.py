@@ -5,6 +5,7 @@ assumed) photographs the ground; the frame is undistorted with the ASSUMED lens 
 as navera-discover's guess) and straightened with the IMU attitude (noisy, the mount 1 deg off);
 the map points come with a GPS that is metres off and a height a few percent off.
 """
+import json
 import math
 
 import numpy as np
@@ -163,6 +164,21 @@ def test_views_are_kept_across_a_lens_change_and_the_newest_lens_is_the_current_
     cal.add_view(w["lens"], w["R"], w["fp"], w["ml"], w["gps"], w["h"])
     assert len(cal.views) == 5 and cal.lens is w["lens"]
     assert np.allclose(cal.views[-1]["raw"], cal.views[-1]["raw"])       # (raw pixels, lens-independent)
+
+
+def test_views_go_to_the_next_flight_and_fit_the_same():
+    f_true = (W / 2) / math.tan(math.radians(84.0) / 2)
+    cal = LensSelfCal(min_views=12)
+    for v in make_views("pinhole", f_true, -0.25, 0.06, CameraModel.ideal(70.0, (W, H))):
+        cal.add_view(v["lens"], v["R"], v["fp"], v["ml"], v["gps"], v["h"])
+    saved = json.loads(json.dumps(cal.export_views()))          # through the state file's JSON
+    nxt = LensSelfCal(min_views=12)
+    assert nxt.load_views(saved) == len(cal.views) and nxt.ready()
+    nxt.lens = cal.lens
+    a, b = cal.fit(), nxt.fit()
+    assert a["accepted"] and b["accepted"] and abs(a["focal_px"] - b["focal_px"]) < 0.01 * a["focal_px"]
+    assert nxt.load_views([{"raw": [[1, 2]], "ground": [[1, 2, 3]], "R": [1, 0, 0, 0, 1, 0, 0, 0, 1],
+                            "height": 1, "pos_sigma": 1}, {"bad": 1}]) == 0
 
 
 def test_raw_pixels_undo_the_straightening_and_the_lens():
