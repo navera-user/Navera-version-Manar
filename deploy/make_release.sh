@@ -42,8 +42,9 @@ tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 git -C "$repo" archive --format=tar --prefix="$name/" "$rev" | tar -x -C "$tmp"
 
-sha=$(git -C "$repo" rev-parse "$rev")
-date=$(git -C "$repo" show -s --format=%cs "$rev")
+# the commit (an annotated tag names a tag object; `show` of it prints the tag message too)
+sha=$(git -C "$repo" rev-parse "$rev^{commit}")
+date=$(git -C "$repo" show -s --format=%cs "$sha")
 printf '%s\nrevision %s\ndate %s\n' "$version" "$sha" "$date" > "$tmp/$name/VERSION"
 (cd "$tmp/$name" && find . -type f ! -name RELEASE_MANIFEST.sha256 -print0 | sort -z \
     | xargs -0 sha256sum > RELEASE_MANIFEST.sha256)
