@@ -1097,8 +1097,9 @@ requirements:
     - 'test_star_fov_learned\.py::'
   evidence:
     - {level: UT, value: '2026-10-26 synthetic GPS-check views (true lens distorted, 62-110 deg, assumed ideal 70 deg, IMU 0.3 deg noise, mount 1 deg off, GPS 2 m, height 1 %): lens within 1.5 % of the image width everywhere, focal within 2 %; a 110 deg fisheye recognised; the right lens left unchanged; a 5 % height bias moved the focal 1.2 %'}
-  status: verified-UT
-  note: 'Isaac Sim closed loop to add (lens_guess campaign condition); not yet with a real camera in flight; the thermal camera lens is not calibrated in flight'
+    - {level: SIM, value: '2026-10-26 Isaac Sim closed loop, 70 deg guess on a 92.5 deg fisheye, camera delay set: output error median 12.8 m without calibration; with it 14.1, 10.6, 10.2, 8.0, 7.2 m over 5 consecutive flights of the camera (views and lens kept between flights; true lens 4.8-5.4 m); the lens converged to an 89 deg fisheye; trials refused worse lenses, kept better ones; 0 wrong fixes', ref: 'VALIDATION_STATUS.md, plug-and-play camera'}
+  status: verified-SIM
+  note: 'one simulated camera model; not yet with a real camera in flight; 5 flights did not reach the bench calibration (7.2 vs ~5 m); the thermal camera lens is not calibrated in flight'
 
 - id: NAV-FUN-25
   category: FUN

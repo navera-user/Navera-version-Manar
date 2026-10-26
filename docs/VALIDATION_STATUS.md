@@ -1709,6 +1709,53 @@ backlog); 20 % frames dropped because the rclpy Image fill from bytes took 533 m
   p95 408 ms, max 3.4 s.
 - Logs: 0 lines with error/traceback/exception in any node log; no OOM.
 
+### Isaac Sim closed loop: plug-and-play camera, lens calibrated in flight (2026-10-26)
+
+The simulated camera is the Hikvision visible lens model (a 92.5 deg fisheye, `isaac_link`); NAVERA
+is given NO calibration file, only navera-discover's 70 deg ideal guess (campaign conditions
+`lens_guess*`, `lens_kept*`; copter 250-300 m, GPS cut 75 s after reaching altitude). The day
+pipeline calibrates the lens from its GPS-check matches (`day_pkg/lens_selfcal.py`), puts each
+fitted lens on trial (camera alternating old / new frame by frame), keeps it for the camera only if
+its GPS checks are no worse, and keeps the views for the next flight. All runs completed, 0 wrong
+fixes. Error = NAVERA's output vs truth after the GPS cut.
+
+Camera delay set (1.3 s, bench-measured): only the lens differs.
+
+| Run | Lens | Output error median / p90 |
+|---|---|---|
+| lens11 / lens13a_base_setdelay | the true lens (calibration file), 2 runs | 4.8 / 7.2 m, 5.4 / 10.2 m |
+| lens11_lens_guess_nocal_setdelay | 70 deg guess, calibration off | 12.8 / 18.3 m |
+| lens12a (1st flight of the camera) | guess → 79 deg pinhole kept (GPS checks 10.7 → 6.9 m) | 14.1 / 18.2 m |
+| lens12b (2nd flight, 40 views kept) | 82 deg pinhole kept | 10.6 / 14.8 m |
+| lens12c (3rd flight) | 83.9 deg pinhole kept | 10.2 / 13.6 m |
+| lens13b (4th flight, both models tried) | 88.4 deg fisheye fitted, trial not finished at the cut: 83.9 kept | 8.0 / 10.4 m |
+| lens13c (5th flight) | 89.1 deg fisheye kept (GPS checks 7.4 → 4.3 m), then "no clear improvement" | 7.2 / 10.8 m |
+
+Camera delay learned in flight (not set): the output is dominated by whether the delay estimate was
+applied before the cut (applied: 7-8 m; not: 13-14 m, any lens); the error at the exposure isolates
+the lens: true lens 7.2 m, guess without calibration 8.6 m, guess + calibration 7.8 / 8.2 / 8.1 m
+(lens8 / lens9 / lens10). lens8, the delay applied: 7.7 / 10.3 m output (true lens: 8.0 / 12.3 m).
+
+The lens itself (pixel distance from the true lens over the central 50 / 70 / 85 % of the image):
+the 70 deg guess 33 / 54 / 74 px; flight fits 1-12 px in the centre; the 40 views of lens12c fitted
+with both models: an 88.3 deg fisheye (focal 840 px, true 850) 2.7 / 3.0 / 3.4 px.
+
+Found and fixed on the way (each by a run): the frame's lens key overwritten by the mount identity
+(no view kept); `lens_selfcal:=off` read as a boolean (crash loop); the frame height taken from the
+image, computed with the lens being calibrated (focal 12 % off kept: now a rangefinder / barometer /
+GPS height); a noise model 4x too optimistic (real map matches ~6 px); a pinhole polynomial bent
+200+ px in the corners the matches never reach (tie → the smaller distortion); a fit ending after the
+GPS cut applied unproven (now refused); a before / after trial confounded by the cruise's camera-delay
+error (now the same frames, alternating); a new fit replacing a trial before its verdict; a pinhole
+kept early never becoming the fisheye (now both models always).
+
+Limits: simulation only; one camera model; GPS phase of 75 s (a real climb and transit give more
+views); the calibrated lens has not reached the bench calibration's accuracy in 3 flights here
+(7.2 vs ~5 m after 5 flights) — a bench calibration (`calibrate_camera.py`, ~10 min) stays the best
+before delivery. lens13c's max 175 m: 3 of 330 outputs carried 85 s with no camera frame at the end of
+the mission, stated sigma ~100 m.
+The thermal camera's lens is not calibrated in flight.
+
 ### Long route (simulator, 2026-10-01)
 
 Paris → Tunisia, 1768 km, mapped as ≤ 10 km great-circle legs: 79 775 tiles generated in

@@ -4,6 +4,27 @@ Measured numbers come from simulation (Isaac Sim + ArduPilot/PX4 SITL), bench, o
 data from other vehicles; **no NAVERA flight yet**. Details: `docs/VALIDATION_STATUS.md`,
 requirements: `docs/certification/REQUIREMENTS.md`, known problems: the shared problems list.
 
+## 0.6.0 — 2026-10-26 (simulation/bench-validated; no real flight yet)
+- **Plug-and-play cameras** (`navera_common/cameras.py`): navera-discover and hot-plug find USB /
+  UVC, CSI, network (ONVIF WS-Discovery, IPv4 + IPv6 link-local, login from
+  `NAVERA_IP_CAMERA_USER` / `_PASSWORD`, never written to discovered.env; known gimbal camera
+  addresses) and ROS cameras; tell colour / thermal and ground / sky; give each its job: day
+  (`NAVERA_CAMERA_*`), thermal for night (`NAVERA_THERMAL_CAMERA_*`), star (`NAVERA_STAR_CAMERA_*`).
+  RTSP pipelines written with hardware decoding; size, V4L2 format and a starting field of view
+  filled in; look-alikes reported with CHECK. Wired interfaces only by default (`wifi` to add).
+- Live camera: a stream's own size (`SIZE=auto`), 16-bit / grey thermal pictures, the V4L2 format.
+- **Lens calibrated in flight against the map** (`day_pkg/lens_selfcal.py`), no checkerboard: while
+  the GPS is trusted, from the GPS-check matches, with a height not taken from the image; a fitted
+  lens is on trial (old / new alternating frame by frame) and kept for the camera only if its GPS
+  checks are no worse; the views are kept for the next flight. Isaac Sim (70 deg guess on a 92 deg
+  fisheye, delay set): 12.8 m without → 10.6, 10.2, 8.0, 7.2 m over 5 flights (true lens 4.8–5.4 m);
+  the lens converges to an 89 deg fisheye. The bench calibration file still wins and stays
+  recommended before delivery.
+- Star camera: its field width measured from the first solved sky and kept.
+- discovered.env values with spaces are double-quoted (read alike by systemd, a shell, read_env);
+  provision_box sets `NAVERA_CAMERA=live`; check_box shows the lens state of each camera.
+- Requirements NAV-FUN-31 (cameras) and NAV-FUN-32 (lens in flight); manual §6.0–6.6.
+
 ## 0.5.2 — 2026-10-25 (simulation/bench-validated; no real flight yet)
 - Power cuts: every file NAVERA keeps is written atomically and durably (temp + fsync +
   rename, `navera_common/atomic_io.py`); every reader takes a damaged file as "nothing saved"
