@@ -153,6 +153,11 @@ class AltitudeEstimator:
                 for kind, ref in refs.items():           # home ground = image height - ref + DEM
                     self._anchors[kind].append((t, agl_m - ref + h, math.hypot(sigma_m, h_sig)))
 
+    def forget_vision(self) -> None:
+        """The image heights measured so far no longer apply (the camera's lens changed: a height from a
+        map match's scale is made with the lens). The references carry on; the next match measures again."""
+        self._vision = None
+
     # ── the DEM ──────────────────────────────────────────────────────────
     def set_terrain(self, terrain) -> None:
         """The corridor's DEM (navera_common.terrain.Terrain), or None."""

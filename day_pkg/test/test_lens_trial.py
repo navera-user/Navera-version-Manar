@@ -28,7 +28,7 @@ def node():
     n.get_logger = lambda: n.log
     n._lens_check = MethodType(DaySubscriber._lens_check, n)
     n._lens_trial_end = MethodType(DaySubscriber._lens_trial_end, n)
-    n._lens_trial = dict(doc={"lens_key": "cam1", "lens": {"camera_matrix": NEW_K}}, before=list(n._check_errs),
+    n._lens_trial = dict(doc={"lens_key": "cam1", "lens": {"camera_matrix": NEW_K}}, before=[],
                          after=[], K=NEW_K, previous={"lens_key": "cam1", "revert": True, "lens": {"camera_matrix": OLD_K}})
     return n
 
@@ -38,12 +38,15 @@ def meta(K):
 
 
 def test_a_better_lens_is_kept_for_the_camera(tmp_path, monkeypatch):
+    """The camera alternates the two lenses: both are judged on the same stretch of flight."""
     monkeypatch.setenv("NAVERA_STATE_DIR", str(tmp_path))
     n = node()
-    n._lens_check(30.0, meta(OLD_K))                     # a frame still made with the old lens: ignored
     for _ in range(8):
         n._lens_check(6.0, meta(NEW_K))
-    assert n._lens_trial is None and not n.sent
+        assert n._lens_trial is not None                 # not decided before both have their checks
+    for _ in range(8):
+        n._lens_check(10.0, meta(OLD_K))
+    assert n._lens_trial is None and n.sent[-1]["keep"]
     assert state_store.load("lens_auto_cam1", 1e9)["verified"]["after_m"] == 6.0
     assert list(n._check_errs) == [6.0] * 8
 
@@ -53,11 +56,22 @@ def test_a_worse_lens_is_put_back_and_not_kept(tmp_path, monkeypatch):
     n = node()
     for _ in range(8):
         n._lens_check(15.0, meta(NEW_K))
+        n._lens_check(10.0, meta(OLD_K))
     assert n._lens_trial is None and n.sent == [n.sent[0]] and n.sent[0]["revert"]
     assert state_store.load("lens_auto_cam1", 1e9) is None
     n._lens_check(40.0, meta(NEW_K))                    # a late frame of the refused lens: not the old lens' record
     n._lens_check(9.0, meta(OLD_K))
-    assert list(n._check_errs)[-2:] == [10.0, 9.0]
+    assert list(n._check_errs)[-1] == 9.0 and 40.0 not in n._check_errs
+
+
+def test_a_phase_change_during_the_trial_does_not_decide_it(tmp_path, monkeypatch):
+    """The cruise doubles every error (the camera delay x the speed): both lenses see it alike."""
+    monkeypatch.setenv("NAVERA_STATE_DIR", str(tmp_path))
+    n = node()
+    for e in (5.0, 5.0, 5.0, 5.0, 20.0, 20.0, 20.0, 20.0):     # hover, then cruise
+        n._lens_check(e * 0.8, meta(NEW_K))
+        n._lens_check(e, meta(OLD_K))
+    assert n.sent[-1].get("keep")
 
 
 def test_the_gps_lost_during_the_trial_puts_the_old_lens_back(tmp_path, monkeypatch):

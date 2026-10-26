@@ -62,3 +62,20 @@ def test_a_16_bit_thermal_picture_becomes_8_bit_bgr():
     assert out[..., 0].min() == 0 and out[..., 0].max() == 255 and (out[..., 0] == out[..., 2]).all()
     grey = np.full((120, 160), 90, np.uint8)
     assert LiveCamera.to_bgr8(grey).shape == (120, 160, 3)
+
+
+def test_a_lens_on_trial_alternates_with_the_lens_in_use_then_is_kept_or_dropped(ros):
+    n = camera()
+    try:
+        n._adopt(np.zeros((480, 640, 3), np.uint8))
+        old = n.builder
+        n._on_lens(String(data=json.dumps({"lens_key": n.lens_key, "lens": LENS, "trial": True})))
+        assert n.builder is old and n._trial_builder.cam.model == "fisheye"
+        n._on_lens(String(data=json.dumps({"lens_key": n.lens_key, "lens": {}, "revert": True})))
+        assert n._trial_builder is None and n.builder is old       # (a revert needs no valid lens to end the trial)
+        n._on_lens(String(data=json.dumps({"lens_key": n.lens_key, "lens": LENS, "trial": True})))
+        n._on_lens(String(data=json.dumps({"lens_key": n.lens_key, "lens": LENS, "keep": True})))
+        assert n.builder.cam.model == "fisheye" and n._trial_builder is None
+    finally:
+        n._stop.set()
+        n.destroy_node()

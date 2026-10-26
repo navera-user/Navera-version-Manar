@@ -304,26 +304,43 @@ class LiveCamera(Node):
         return cam if cam.size == (self.cw, self.ch) else None
 
     def _on_lens(self, m: String):
-        """An in-flight lens calibration published by the day pipeline: applied to the next frame when
-        it is this camera's (lens_key) and the lens is not a calibration file's."""
+        """An in-flight lens calibration published by the day pipeline, for this camera (lens_key) when its lens
+        is not a calibration file's: "trial" — every other frame is made with it, the others with the lens in
+        use, so that the day node compares both on the same stretch of flight; "keep" — it becomes the lens;
+        "revert" — the trial ends, the lens in use stays; neither (a lens kept earlier) — applied."""
         try:
             d = json.loads(m.data)
         except ValueError:
             return
         if self.builder is None or d.get("lens_key") != self.lens_key or self.get_parameter("calibration_file").value:
             return
+        if d.get("revert"):                                 # the trial ends; the lens in use stays
+            if getattr(self, "_trial_builder", None) is not None:
+                self._trial_builder = None
+                self.alt.forget_vision()
+                self._lens_changed_t = self.get_clock().now().nanoseconds * 1e-9
+                self.get_logger().warn("lens trial ended: the lens in use stays")
+            return
         cam = self._auto_model(d)
         if cam is None:
             return
         p = lambda n: self.get_parameter(n).value               # noqa: E731
-        self.builder = FrameBuilder(cam, (p("mount_roll_deg"), p("mount_pitch_deg"), p("mount_yaw_deg")),
-                                    float(p("max_tilt_deg")), p("camera_type"), bool(p("gimbal")),
-                                    bool(p("require_attitude")), float(p("max_rate_dps")))
-        self.lens_source = str(d.get("lens_source") or "in-flight calibration")
-        self.get_logger().warn(("lens put back (the in-flight one was not kept): " if d.get("revert") else
-                                "lens calibrated in flight applied: ") + f"{cam.model}, field of view "
-                               f"{cam.out_hfov_deg:.1f} deg published"
-                               + ("" if d.get("revert") else f" ({d.get('views')} views, {d.get('rms_px')} px)"))
+        builder = FrameBuilder(cam, (p("mount_roll_deg"), p("mount_pitch_deg"), p("mount_yaw_deg")),
+                               float(p("max_tilt_deg")), p("camera_type"), bool(p("gimbal")),
+                               bool(p("require_attitude")), float(p("max_rate_dps")))
+        # the image heights were measured with the old lens (Isaac Sim 2026-10-26: a 13 % focal change kept the
+        # old height for seconds); during a trial none is taken (two lenses), the references carry the height
+        self.alt.forget_vision()
+        self._lens_changed_t = self.get_clock().now().nanoseconds * 1e-9
+        if d.get("trial"):
+            self._trial_builder = builder
+            what = "lens on trial (every other frame)"
+        else:
+            self.builder, self._trial_builder = builder, None
+            self.lens_source = str(d.get("lens_source") or "in-flight calibration")
+            what = "lens calibrated in flight applied"
+        self.get_logger().warn(f"{what}: {cam.model}, field of view {cam.out_hfov_deg:.1f} deg published"
+                               + (f" ({d.get('views')} views, {d.get('rms_px')} px)" if d.get("views") else ""))
 
     def _adopt(self, img) -> bool:
         """A frame's size checked against the camera's (the first frame sets it when the size is the
@@ -417,7 +434,10 @@ class LiveCamera(Node):
 
     def _on_vision_alt(self, m: Range):
         # field_of_view carries the 1-sigma (m) of the image-measured height
-        self.alt.add_vision(stamp_s(m.header.stamp), m.range, m.field_of_view or 5.0)
+        t = stamp_s(m.header.stamp)
+        if t <= getattr(self, "_lens_changed_t", float("-inf")) or getattr(self, "_trial_builder", None) is not None:
+            return                                      # measured with the previous lens, or two lenses in use
+        self.alt.add_vision(t, m.range, m.field_of_view or 5.0)
 
     def _on_position(self, m: PositionEstimate):
         """The arbiter's position (GPS, or vision after its loss): where the DEM is read."""
@@ -587,7 +607,9 @@ class LiveCamera(Node):
             # (the stamp stays the camera's: the day node moves it by the same correction)
             shift = self.att_shift_s
             te = t - shift
-            out, meta = self.builder.build(raw, self.count, int(t * 1e9), self.att.at(te), self.attitude_source,
+            trial = getattr(self, "_trial_builder", None)
+            builder = trial if trial is not None and self.count % 2 == 1 else self.builder
+            out, meta = builder.build(raw, self.count, int(t * 1e9), self.att.at(te), self.attitude_source,
                                            self.alt.estimate(te), self.gps.at(t),
                                            time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(t)),
                                            self._rate_dps(te))
@@ -598,7 +620,8 @@ class LiveCamera(Node):
             meta["capture_latency_s"] = self.latency_s          # already subtracted: the localizers' set delay
             meta["attitude_delay_s"] = round(shift, 4)          # attitude taken this long before the stamp
             meta.update(self.mount_ident)                       # what a learned mount calibration belongs to
-            meta.update(lens_key=self.lens_key, lens_source=self.lens_source)   # the in-flight lens calibration
+            meta.update(lens_key=self.lens_key,                 # the in-flight lens calibration
+                        lens_source="on trial" if builder is not self.builder else self.lens_source)
             ref = self.alt.reference(te)                        # its height must not come from the image
             if ref is not None:
                 meta.update(altitude_ref_m=round(ref[0], 2), altitude_ref_sigma_m=round(ref[1], 2),
@@ -617,7 +640,7 @@ class LiveCamera(Node):
             self._acked.clear()
             self.pub_img.publish(msg)
             self.pub_meta.publish(String(data=json.dumps(meta)))
-            self.pub_info.publish(self._camera_info(msg.header))
+            self.pub_info.publish(self._camera_info(msg.header, builder))
             self._check_tilt(t, str(meta.get("reason", "")).startswith("camera tilted"))
             if self.count % 30 == 0:
                 self.get_logger().info(
@@ -708,8 +731,8 @@ class LiveCamera(Node):
                                     f"the vehicle leans too much for a fixed camera — fit a gimbal or fly slower",
                                     throttle_duration_sec=30.0)
 
-    def _camera_info(self, header) -> CameraInfo:
-        K = self.builder.cam.K_out
+    def _camera_info(self, header, builder=None) -> CameraInfo:
+        K = (builder or self.builder).cam.K_out
         ci = CameraInfo()
         ci.header, ci.width, ci.height = header, self.w, self.h
         ci.distortion_model, ci.d = "plumb_bob", [0.0] * 5           # published images are undistorted

@@ -1334,7 +1334,11 @@ class DaySubscriber(Node):
         (the estimator never prefers it to a trusted GPS, but cross-checks GPS with it:
         a slowly spoofed GPS drifts away and is refused) and gives the height above
         ground. The tracking state (anchor) is not touched: GPS stays the prior."""
-        if self.local is None or self.calib_period_s <= 0 or time.time() - self._last_calib < self._gps_check_period():
+        # a lens on trial: every frame is checked (the camera alternates the two lenses frame by frame: with one
+        # check every other frame, all checks could fall on the same lens)
+        trial = getattr(self, "_lens_trial", None) is not None
+        if self.local is None or self.calib_period_s <= 0 or \
+                (not trial and time.time() - self._last_calib < self._gps_check_period()):
             return
         prior = self._gps_prior.fresh()
         mpp, _ = self._frame_m_per_px(img, meta)
@@ -1353,7 +1357,8 @@ class DaySubscriber(Node):
             g = self._gps_hist.at(int(ns) / 1e9) if ns else None
             if g is not None:
                 self._lens_sample(res, meta, img, g, int(ns) / 1e9)
-                self._lens_check(haversine_m(g[0], g[1], float(res["predicted_lat"]), float(res["predicted_lon"])), meta)
+                self._lens_check(haversine_m(g[0], g[1], float(res["predicted_lat"]), float(res["predicted_lon"])),
+                                 meta)
             placed = self._mount_check_fix(res, meta, g)
             if placed is None:                      # refused (pose far from the attitude): no sample
                 return
@@ -2595,7 +2600,8 @@ class DaySubscriber(Node):
             speed = haversine_m(g0[0], g0[1], g[0], g[1]) if g0 is not None else 0.0
             try:
                 why = cal.add_view(lens, meta.get("R_world_cam"), pairs[0], pairs[1], g[:2],
-                                   float(meta["altitude_ref_m"]), speed, float(lens["size"][0]) / float(img.shape[1]), t)
+                                   float(meta["altitude_ref_m"]), speed, float(lens["size"][0]) / float(img.shape[1]),
+                                   t)
             except (KeyError, TypeError, ValueError) as e:
                 why = f"unusable ({e})"
         if why is not None:
@@ -2634,7 +2640,7 @@ class DaySubscriber(Node):
                    hfov_deg=out["hfov_deg"], lens_source="in-flight calibration",
                    summary={k: v for k, v in out.items() if k != "lens"})
         old = self.lens_cal.lens
-        self._lens_trial = dict(doc=doc, before=list(self._check_errs), after=[], K=out["lens"]["camera_matrix"],
+        self._lens_trial = dict(doc=doc, before=[], after=[], K=out["lens"]["camera_matrix"],
                                 previous=dict(lens=dict(model=old["model"], camera_matrix=list(old["K"]),
                                                         distortion=list(old.get("D") or []),
                                                         image_width=int(old["size"][0]),
@@ -2642,43 +2648,50 @@ class DaySubscriber(Node):
                                               lens_key=key, lens_source=getattr(self, "_lens_source_seen", "ideal"),
                                               revert=True))
         self._lens_updates += 1
-        self.pub_lens.publish(String(data=json.dumps(doc)))
-        self.get_logger().warn(f"[day] lens on trial ({out['hfov_deg']} deg {out['model']}): kept only if the next "
-                               f"{self.lens_trial_checks} GPS checks are no worse than the last "
-                               f"{len(self._check_errs)} with the old lens")
+        self.pub_lens.publish(String(data=json.dumps(dict(doc, trial=True))))
+        self.get_logger().warn(f"[day] lens on trial ({out['hfov_deg']} deg {out['model']}), every other frame: kept "
+                               f"only if its next {self.lens_trial_checks} GPS checks are no worse than those of the "
+                               "lens in use, on the same stretch of flight")
 
     def _lens_check(self, err_m: float, meta) -> None:
-        """A GPS-check error (vision vs GPS, m): with the lens in use, or with the lens on trial — which, after
-        lens_trial_checks of them, is kept (and saved for this camera) or replaced by the old one."""
+        """A GPS-check error (vision vs GPS, m). During a trial the camera alternates the lens in use and the lens
+        on trial frame by frame (the same stretch of flight for both: a before / after comparison took a turn or
+        the cruise's camera-delay error for the lens' — Isaac Sim 2026-10-26); after lens_trial_checks of each,
+        the lens on trial is kept (and saved for this camera) or dropped."""
         lens, trial = lens_of_meta(meta), self._lens_trial
         if lens is None:
             return
         fx = float(lens["K"][0])
         if getattr(self, "_lens_fx", None) is None:
             self._lens_fx = fx                              # the lens in use (not on trial)
-        if trial is None or abs(fx - float(trial["K"][0])) >= 0.5:
-            if abs(fx - self._lens_fx) < 0.5:               # never a frame of a lens no longer in use
+        in_use = abs(fx - self._lens_fx) < 0.5
+        if trial is None:
+            if in_use:                                      # never a frame of a lens no longer in use
                 self._check_errs.append(err_m)
             return
-        trial["after"].append(err_m)
-        if len(trial["after"]) < self.lens_trial_checks:
+        if abs(fx - float(trial["K"][0])) < 0.5:
+            trial["after"].append(err_m)
+        elif in_use:
+            trial["before"].append(err_m)
+        n = self.lens_trial_checks
+        if len(trial["after"]) < n or len(trial["before"]) < n:
             return
-        before = float(statistics.median(trial["before"])) if trial["before"] else float("inf")
-        after = float(statistics.median(trial["after"]))
+        before, after = float(statistics.median(trial["before"])), float(statistics.median(trial["after"]))
         key = trial["doc"]["lens_key"]
         if after <= self.lens_trial_margin * before:
             doc = dict(trial["doc"], verified=dict(before_m=round(before, 1), after_m=round(after, 1),
                                                    checks=len(trial["after"])))
             if not state_store.save(f"lens_auto_{key}", doc):
                 self.get_logger().error("[day] the calibrated lens could not be kept for the next flight (state dir)")
-            self.get_logger().warn(f"[day] lens calibrated in flight KEPT for this camera: GPS checks {before:.1f} -> "
-                                   f"{after:.1f} m median")
+            self.pub_lens.publish(String(data=json.dumps(dict(doc, keep=True))))
+            self.get_logger().warn(f"[day] lens calibrated in flight KEPT for this camera: GPS checks {after:.1f} m "
+                                   f"median with it, {before:.1f} m with the old lens (same frames, alternating)")
             self._check_errs = deque(trial["after"], maxlen=12)
             self._lens_fx = float(trial["K"][0])
         else:
             self.pub_lens.publish(String(data=json.dumps(trial["previous"])))
-            self.get_logger().warn(f"[day] lens on trial NOT kept: GPS checks {before:.1f} -> {after:.1f} m median "
-                                   "(worse): the old lens is back")
+            self.get_logger().warn(f"[day] lens on trial NOT kept: GPS checks {after:.1f} m median with it, "
+                                   f"{before:.1f} m with the lens in use (same frames, alternating)")
         self._lens_trial = None
 
     def _lens_trial_end(self, why: str) -> None:
