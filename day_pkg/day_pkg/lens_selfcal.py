@@ -305,12 +305,16 @@ class LensSelfCal:
         # terms — the matches rarely reach the corners, where a pinhole polynomial mimicking a fisheye
         # bends away (Isaac Sim 2026-10-26: a 92 deg fisheye fitted as a pinhole, 1-2 px off in the centre,
         # 200+ px in the corners; the fisheye model with k ~ 0 is right everywhere)
-        candidates = [model] + ([("pinhole" if model == "fisheye" else "fisheye")] if not any(D[:2]) else [])
+        # both models, always: a pinhole kept early (few views, near the centre) must be able to become the fisheye
+        # the later views show (Isaac Sim lens12: three flights stuck at an 84 deg pinhole, 10-12 px off; the same
+        # 40 views fitted afresh: an 88 deg fisheye 2-3 px from the true lens). The other model starts undistorted.
+        candidates = [model, "pinhole" if model == "fisheye" else "fisheye"]
         fits = []
         for m in candidates:
-            x1 = np.r_[1.0, k0[0], k0[1], b.x]
+            kk = k0 if m == model else (0.0, 0.0)
+            x1 = np.r_[1.0, kk[0], kk[1], b.x]
             r = least_squares(self._residuals, x1, jac_sparsity=self._sparsity(views, True), loss="soft_l1",
-                              f_scale=2.0, args=(views, m, cx, cy, f0, k0, True), max_nfev=120, x_scale="jac")
+                              f_scale=2.0, args=(views, m, cx, cy, f0, kk, True), max_nfev=120, x_scale="jac")
             fits.append((r, m))
         best = min(r.cost for r, _ in fits)
         alike = [(r, m) for r, m in fits if r.cost <= best * (1.0 + self.model_tie)]
