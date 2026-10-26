@@ -2610,7 +2610,9 @@ class DaySubscriber(Node):
         self._lens_new += 1
         self.get_logger().info(f"[day] lens calibration: {len(cal.views)} views (fit from {cal.min_views})",
                                throttle_duration_sec=20.0)
-        if cal.ready() and not self._lens_fitting and (cal.last is None or self._lens_new >= self.lens_every):
+        # no new fit while a lens is on trial (it would replace the trial before it is judged: Isaac Sim lens9)
+        if cal.ready() and not self._lens_fitting and self._lens_trial is None and \
+                (cal.last is None or self._lens_new >= self.lens_every):
             self._lens_new, self._lens_fitting = 0, True
             threading.Thread(target=self._lens_fit, args=(key,), daemon=True).start()
 

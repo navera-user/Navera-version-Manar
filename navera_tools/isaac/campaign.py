@@ -91,6 +91,18 @@ CONDITIONS = {
     # Hikvision visible fisheye, 77 deg): calibrated in flight against the map while GPS is trusted
     "lens_guess": ("baseline, lens unknown: 70 deg ideal guess, calibrated in flight (day_pkg.lens_selfcal)",
                    SHORT + " --cam-args '-p calibration_file:=\"\" -p camera_hfov_deg:=70.0'"),
+    "lens_kept": ("baseline, lens unknown, the lens kept by an earlier lens_guess flight (campaign --extra "
+                  "'--seed-lens <run>')", SHORT + " --cam-args '-p calibration_file:=\"\" -p camera_hfov_deg:=70.0'"),
+    # the same with the camera delay set (bench-measured, 1.3 s): only the lens differs from base_setdelay
+    "lens_guess_setdelay": ("lens unknown (70 deg guess), calibrated in flight, camera delay set 1.3 s",
+                            SHORT + " --cam-args '-p calibration_file:=\"\" -p camera_hfov_deg:=70.0 "
+                            "-p capture_latency_s:=1.3'"),
+    "lens_guess_nocal_setdelay": ("lens unknown (70 deg guess), calibration OFF, camera delay set 1.3 s",
+                                  SHORT + " --cam-args '-p calibration_file:=\"\" -p camera_hfov_deg:=70.0 "
+                                  "-p capture_latency_s:=1.3' --day-args '-p lens_selfcal:=off'"),
+    "lens_kept_setdelay": ("lens kept by an earlier flight (--extra '--seed-lens <run>'), camera delay set 1.3 s",
+                           SHORT + " --cam-args '-p calibration_file:=\"\" -p camera_hfov_deg:=70.0 "
+                           "-p capture_latency_s:=1.3'"),
     "lens_guess_nocal": ("baseline, lens unknown: 70 deg ideal guess, in-flight calibration OFF",
                          SHORT + " --cam-args '-p calibration_file:=\"\" -p camera_hfov_deg:=70.0'"
                          " --day-args '-p lens_selfcal:=off'"),

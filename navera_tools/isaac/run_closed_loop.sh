@@ -23,6 +23,8 @@
 #                  about the scene centre, entered at --radius east: a fast plane's gentle circuit
 #   --home-radius M  distance from home that counts as "over home" in RTL (plane default 450 m)
 #   --area NAME  NAVERA's map ~/navera_data/isaac_NAME_area (default: the scene's, isaac_<scene>_area)
+#   --seed-lens RUN  start with the lens an earlier run calibrated in flight and kept (its state lens_auto_*):
+#                  the next flight of the same camera
 #
 #   windows: "NAVERA - Isaac Sim flight" (the scene, chase view), MAVProxy map + console,
 #            "NAVERA - live error" (truth / NAVERA / autopilot EKF, map, camera, status)
@@ -34,7 +36,7 @@ set -u
 name=closed_loop_$(date +%Y%m%d_%H%M%S); alt=250; radius=500; speed=8; cut_after=15; tod=10:30; sigma=30
 gate=""; hold=30; vehicle=copter; model=quad; scene=kalaa; legs=4; wind=4; wind_dir=290; turb=1.0
 isaac_extra=""; link_extra=""; gimbal=""; day_extra=""; cam_extra=""; endurance=0; area=""; ap_set=""
-loiter_turns=0; home_radius=0
+loiter_turns=0; home_radius=0; seed_lens=""
 vlink=tcp:127.0.0.1:5763
 while [ $# -gt 0 ]; do
   case $1 in
@@ -45,6 +47,7 @@ while [ $# -gt 0 ]; do
     --gimbal) gimbal=$2;; --day-args) day_extra=$2;; --cam-args) cam_extra=$2;; --endurance) endurance=$2;;
     --area) area=$2;; --loiter-turns) loiter_turns=$2;; --home-radius) home_radius=$2;;
     --set) ap_set=$2;;
+    --seed-lens) seed_lens=$2;;
     --vlink) vlink=$2;;
     *) echo "unknown option $1" >&2; exit 2;;
   esac; shift 2
@@ -53,6 +56,10 @@ here=$(cd "$(dirname "$0")" && pwd); repo=$(cd "$here/../.." && pwd)
 D=/mnt/d/navera_isaac; DW='D:\navera_isaac'
 ws=${NAVERA_ISAAC_WS:-$HOME/.navera_isaac_ws}
 res=$HOME/navera_results/$name; mkdir -p "$res/sitl" "$ws"/{build,install,log}
+if [ -n "$seed_lens" ]; then                # the lens kept by an earlier flight (NAVERA_STATE_DIR=/results/state)
+  mkdir -p "$res/state"; cp "$HOME/navera_results/$seed_lens"/state/lens_auto_*.json "$res/state/" 2>/dev/null \
+    || echo "no lens kept in run $seed_lens" >&2
+fi
 VENV=$HOME/.venv-navera-sitl; AP=$HOME/ardupilot
 cp "$here"/isaac_flight.py "$here"/flight_profile.py "$D"/
 log() { echo "[$(date +%H:%M:%S)] $*" | tee -a "$res/run.log"; }
