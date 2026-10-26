@@ -1,0 +1,751 @@
+"""Every camera plugged into the box: what it is, and which job it gets.
+
+The client plugs a camera — or two — and NAVERA works out the rest (navera_common.discovery calls
+this at boot, navera_common.hotplug when a camera appears later):
+
+  find      USB / UVC cameras (/dev/v4l/by-id, an HDMI capture stick is one too), Jetson CSI
+            cameras, network cameras (ONVIF WS-Discovery on every wired interface, IPv4 and IPv6
+            link-local — a camera with a static address in another subnet answers on IPv6 — and the
+            fixed addresses of common drone gimbal cameras, e.g. SIYI 192.168.144.25:8554), and the
+            vehicle's ROS image topics (discovery.probe_ros);
+  describe  colour or thermal: the USB id / name / model (FLIR Boson, Lepton / PureThermal, Seek,
+            InfiRay, Hikvision "2TD" ...), a grey-only pixel format (Y16, GREY: a radiometric core),
+            and the picture itself (one channel, R = G = B); looking at the GROUND or the SKY: the
+            picture (a day sky is bright, smooth, blue or white; ground has texture — two cameras
+            are compared with each other, which is far surer than either alone); the topic / stream
+            name when it says (down, nadir / sky, star, up);
+  assign    day   = the colour camera looking down (day vision, NAVERA_CAMERA_*),
+            thermal = the thermal camera looking down (night vision, NAVERA_THERMAL_CAMERA_*),
+            star  = the camera looking up (celestial, NAVERA_STAR_CAMERA_*).
+            A value written in navera.env always wins; what cannot be told apart is reported with
+            CHECK (check_box, the web page), never guessed silently.
+
+The lens: a known camera gets its field of view from LENS_DB (a starting value, `lens_source`
+"database"); any other one the generic guess GUESS_HFOV_DEG. Neither is a calibration: the day
+pipeline calibrates the lens in flight against the map while the GPS is trusted (day_pkg.lens_selfcal)
+and the star pipeline from the stars (plate scale); navera_tools/calibrate_camera.py stays the
+bench method, and a file it wrote always wins.
+
+Probing READS only: V4L2 devices are queried (VIDIOC_QUERYCAP / ENUM_FMT / ENUM_FRAMESIZES, no
+streaming) and one frame is read in a child process with a time limit (a stuck driver cannot hang
+the boot); a device another process holds is never opened; the Insta360 in Android mode is never
+opened (discovery.probe_insta360, D10). Network passwords: NAVERA_IP_CAMERA_USER /
+NAVERA_IP_CAMERA_PASSWORD (navera.env); they are never written into discovered.env or the JSON
+report — the pipeline written there names them (@NAVERA_IP_CAMERA_USER@ ...) and the camera node
+fills them in at start (gst_capture.expand_secrets).
+"""
+import base64
+import fcntl
+import glob
+import hashlib
+import ipaddress
+import json
+import os
+import re
+import socket
+import struct
+import subprocess
+import sys
+import time
+import uuid
+from typing import Dict, List, Optional, Tuple
+
+# ── lens starting values ───────────────────────────────────────────────────
+# (pattern on "vendor:product name model", spectrum, horizontal field of view deg or None, lens model)
+# Only values from the makers' datasheets; a camera sold with several lenses has None (the in-flight
+# calibration, or NAVERA_<ROLE>_HFOV_DEG, sets it).
+LENS_DB = (
+    (r"09cb:4007|\bboson\b", "thermal", None, "pinhole"),             # FLIR Boson: 4-95 deg lenses
+    (r"1e4e:0100|purethermal|lepton ?3", "thermal", 57.0, "pinhole"),  # Lepton 3.x on PureThermal
+    (r"lepton ?2", "thermal", 51.0, "pinhole"),
+    (r"289d:00\d\d|seek ?thermal", "thermal", None, "pinhole"),
+    (r"infiray|hikmicro|\btc001\b|tiny1|\bp2 ?pro\b", "thermal", None, "pinhole"),
+    (r"ds-2td\d", "thermal", None, "pinhole"),                         # Hikvision thermal / bi-spectrum
+    (r"\bthermal\b|\blwir\b|\bflir\b|thermo", "thermal", None, "pinhole"),
+    (r"imx219", "rgb", 62.2, "pinhole"),                               # Raspberry Pi camera v2
+    (r"imx708_wide", "rgb", 102.0, "fisheye"),                         # Raspberry Pi camera 3 wide
+    (r"imx708", "rgb", 66.0, "pinhole"),                               # Raspberry Pi camera 3
+    (r"046d:082d|\bc920\b", "rgb", 70.4, "pinhole"),                   # Logitech C920
+    (r"siyi.*a8|a8 ?mini", "rgb", 81.0, "pinhole"),
+)
+GUESS_HFOV_DEG = 70.0          # an unknown camera: a common webcam / gimbal width; refined in flight
+GREY_FORMATS = {"Y16 ", "Y12 ", "Y10 ", "Y8  ", "GREY", "Y16B", "B16 "}
+SKY_WORDS, GROUND_WORDS = r"sky|star|zenith|(?<![a-z])up(?![a-z])|upward|celest", r"down|nadir|bottom|ground"
+THERMAL_WORDS = r"thermal|\blwir\b|\bir\b|/ir/|infrared|\bflir\b|boson|lepton"
+ROLES = {"day": "NAVERA_CAMERA_", "thermal": "NAVERA_THERMAL_CAMERA_", "star": "NAVERA_STAR_CAMERA_"}
+# drone cameras that stream without a password at a fixed address (probed only when an interface
+# of the box is in that subnet)
+FIXED_RTSP = (
+    ("192.168.144.0/24", "rtsp://192.168.144.25:8554/main.264", "SIYI gimbal camera"),
+    ("192.168.144.0/24", "rtsp://192.168.144.25:8554/video1", "SIYI gimbal camera (ZT / ZR)"),
+    ("192.168.144.0/24", "rtsp://192.168.144.25:8554/video2", "SIYI gimbal camera, second sensor"),
+    ("192.168.144.0/24", "rtsp://192.168.144.108:554/stream=1", "Skydroid camera"),
+    ("192.168.43.0/24", "rtsp://192.168.43.1:8554/fpv_stream", "Herelink air unit camera"),
+)
+
+
+def lens_info(text: str) -> Tuple[Optional[str], Optional[float], str]:
+    """(spectrum or None, hfov deg or None, model) of the first LENS_DB entry matching text."""
+    t = text.lower()
+    for pat, spectrum, hfov, model in LENS_DB:
+        if re.search(pat, t):
+            return spectrum, hfov, model
+    return None, None, "pinhole"
+
+
+# ── USB / CSI (V4L2) ───────────────────────────────────────────────────────
+def _ioc(direction, nr, size):
+    return (direction << 30) | (size << 16) | (ord("V") << 8) | nr
+
+
+VIDIOC_QUERYCAP = _ioc(2, 0, 104)
+VIDIOC_ENUM_FMT = _ioc(3, 2, 64)
+VIDIOC_ENUM_FRAMESIZES = _ioc(3, 74, 44)
+V4L2_BUF_TYPE_VIDEO_CAPTURE, V4L2_CAP_VIDEO_CAPTURE, V4L2_CAP_DEVICE_CAPS = 1, 0x1, 0x80000000
+
+
+def _cstr(b: bytes) -> str:
+    return b.split(b"\0", 1)[0].decode("ascii", "replace").strip()
+
+
+def v4l2_query(dev: str) -> Optional[dict]:
+    """{card, driver, bus, formats: {fourcc: [(w, h), ...]}} of a capture device, None if it is not one."""
+    try:
+        fd = os.open(dev, os.O_RDONLY | os.O_NONBLOCK)
+    except OSError:
+        return None
+    try:
+        cap = bytearray(104)
+        fcntl.ioctl(fd, VIDIOC_QUERYCAP, cap)
+        caps, dcaps = struct.unpack_from("<II", cap, 84)
+        if not ((dcaps if caps & V4L2_CAP_DEVICE_CAPS else caps) & V4L2_CAP_VIDEO_CAPTURE):
+            return None                                   # a metadata node of the same camera
+        out = {"card": _cstr(cap[16:48]), "driver": _cstr(cap[0:16]), "bus": _cstr(cap[48:80]), "formats": {}}
+        for i in range(32):
+            fd_ = bytearray(64)
+            struct.pack_into("<II", fd_, 0, i, V4L2_BUF_TYPE_VIDEO_CAPTURE)
+            try:
+                fcntl.ioctl(fd, VIDIOC_ENUM_FMT, fd_)
+            except OSError:
+                break
+            pixfmt = struct.unpack_from("<I", fd_, 44)[0]
+            fourcc = struct.pack("<I", pixfmt).decode("ascii", "replace")
+            sizes = []
+            for j in range(64):
+                fs = bytearray(44)
+                struct.pack_into("<II", fs, 0, j, pixfmt)
+                try:
+                    fcntl.ioctl(fd, VIDIOC_ENUM_FRAMESIZES, fs)
+                except OSError:
+                    break
+                kind = struct.unpack_from("<I", fs, 8)[0]
+                if kind == 1:                             # discrete
+                    sizes.append(struct.unpack_from("<II", fs, 12))
+                else:                                     # stepwise / continuous: the largest
+                    sizes.append(struct.unpack_from("<II", fs, 16)[0:1] + struct.unpack_from("<I", fs, 24))
+                    break
+            out["formats"][fourcc] = sorted(set(sizes))
+        return out
+    except OSError:
+        return None
+    finally:
+        os.close(fd)
+
+
+def usb_ids(dev: str, sysfs: str = "/sys/class/video4linux") -> str:
+    """'vvvv:pppp' of the USB device behind /dev/videoN ('' when not USB)."""
+    d = os.path.realpath(os.path.join(sysfs, os.path.basename(os.path.realpath(dev)), "device"))
+    for _ in range(4):
+        try:
+            v = open(os.path.join(d, "idVendor")).read().strip()
+            p = open(os.path.join(d, "idProduct")).read().strip()
+            return f"{v}:{p}".lower()
+        except OSError:
+            d = os.path.dirname(d)
+    return ""
+
+
+def held_by(dev: str) -> Optional[int]:
+    """The pid of a process that has dev open (never opened then), None if none."""
+    real = os.path.realpath(dev)
+    for fd in glob.glob("/proc/[0-9]*/fd/*"):
+        try:
+            if os.readlink(fd) == real:
+                return int(fd.split("/")[2])
+        except OSError:
+            continue
+    return None
+
+
+def best_size(formats: Dict[str, list], want=(1920, 1080)) -> Tuple[str, Tuple[int, int]]:
+    """(fourcc, (w, h)): MJPG at the size nearest the wanted one (a 1 fps vision feed needs no more),
+    else the format with the largest size (a thermal core: Y16 at its only size)."""
+    def near(sizes):
+        return min(sizes, key=lambda s: (abs(s[0] * s[1] - want[0] * want[1]), -s[0]))
+    for fc in ("MJPG", "YUYV", "NV12", "UYVY"):
+        if formats.get(fc):
+            return fc, near(formats[fc])
+    fc = max(formats, key=lambda f: max((w * h for w, h in formats[f]), default=0), default="")
+    return fc, (max(formats[fc], key=lambda s: s[0] * s[1]) if fc and formats[fc] else (0, 0))
+
+
+def usb_cameras() -> List[dict]:
+    """The USB cameras (by-id name, its USB id, V4L2 description, best size), the Insta360 kit excluded."""
+    cams = []
+    for path in sorted(glob.glob("/dev/v4l/by-id/*-video-index0")):
+        q = v4l2_query(path) or {}
+        ids = usb_ids(path)
+        text = f"{ids} {os.path.basename(path)} {q.get('card', '')}"
+        spectrum, hfov, model = lens_info(text)
+        fmts = q.get("formats") or {}
+        fourcc, size = best_size(fmts) if fmts else ("", (0, 0))
+        if spectrum is None and fmts and set(fmts) <= GREY_FORMATS:
+            spectrum = "thermal"                          # grey-only formats: a radiometric core
+        cams.append(dict(kind="usb", id=path, name=q.get("card") or os.path.basename(path), usb_id=ids,
+                         spectrum=spectrum, hfov_deg=hfov, lens_model=model, fourcc=fourcc,
+                         size=list(size), formats={k: [list(s) for s in v] for k, v in fmts.items()}))
+    return cams
+
+
+def csi_cameras(sysfs: str = "/sys/class/video4linux") -> List[dict]:
+    out = []
+    for d in sorted(glob.glob(os.path.join(sysfs, "video*"))):
+        try:
+            name = open(os.path.join(d, "name")).read().strip()
+        except OSError:
+            continue
+        if "vi-output" in name or re.search(r"\b(imx|ov)\d", name, re.I):
+            _, hfov, model = lens_info(name)
+            m = re.search(r"(\d+)-00", name)
+            out.append(dict(kind="csi", id=name, name=name, sensor=str(len(out)), spectrum="rgb",
+                            hfov_deg=hfov, lens_model=model, i2c_bus=m.group(1) if m else None))
+    return out
+
+
+# ── network cameras (ONVIF, fixed drone-camera addresses) ──────────────────
+WSD_PROBE = ('<?xml version="1.0" encoding="UTF-8"?><e:Envelope xmlns:e="http://www.w3.org/2003/05/soap-envelope" '
+             'xmlns:w="http://schemas.xmlsoap.org/ws/2004/08/addressing" '
+             'xmlns:d="http://schemas.xmlsoap.org/ws/2005/04/discovery" '
+             'xmlns:dn="http://www.onvif.org/ver10/network/wsdl"><e:Header>'
+             '<w:MessageID>uuid:{id}</w:MessageID><w:To e:mustUnderstand="true">'
+             'urn:schemas-xmlsoap-org:ws:2005:04:discovery</w:To><w:Action e:mustUnderstand="true">'
+             'http://schemas.xmlsoap.org/ws/2005/04/discovery/Probe</w:Action></e:Header><e:Body>'
+             '<d:Probe><d:Types>dn:NetworkVideoTransmitter</d:Types></d:Probe></e:Body></e:Envelope>')
+SKIP_IFACES = re.compile(r"^(lo|docker|l4tbr|tailscale|wg|tun|virbr|veth|br-|can|usb\d)")
+
+
+def wired_interfaces() -> List[dict]:
+    """[{name, ipv4: [(addr, prefix)], index}] of the interfaces that are up (no loopback/VPN/docker).
+    Wi-Fi is kept: a gimbal camera on a Wi-Fi bridge is a camera like any other."""
+    out = []
+    for name in sorted(os.listdir("/sys/class/net")):
+        if SKIP_IFACES.match(name):
+            continue
+        try:
+            if open(f"/sys/class/net/{name}/operstate").read().strip() not in ("up", "unknown"):
+                continue
+            idx = socket.if_nametoindex(name)
+        except OSError:
+            continue
+        v4 = []
+        try:
+            txt = subprocess.run(["ip", "-4", "-o", "addr", "show", "dev", name], capture_output=True,
+                                 text=True, timeout=3).stdout
+            v4 = [(a, int(p)) for a, p in re.findall(r"inet (\d+\.\d+\.\d+\.\d+)/(\d+)", txt)]
+        except (OSError, subprocess.SubprocessError):
+            pass
+        out.append(dict(name=name, index=idx, ipv4=v4))
+    return out
+
+
+def ws_discovery(ifaces: List[dict], wait_s: float = 2.5) -> List[dict]:
+    """[{xaddrs: [url], scopes: str, iface}] of the ONVIF devices answering a WS-Discovery probe."""
+    msg = WSD_PROBE.format(id=uuid.uuid4()).encode()
+    socks = []
+    for f in ifaces:
+        for addr, _ in f["ipv4"]:
+            try:
+                s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                s.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_IF, socket.inet_aton(addr))
+                s.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 1)
+                s.bind((addr, 0))
+                s.sendto(msg, ("239.255.255.250", 3702))
+                socks.append((s, f["name"]))
+            except OSError:
+                pass
+        try:
+            s = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
+            s.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_MULTICAST_IF, f["index"])
+            s.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_MULTICAST_HOPS, 1)
+            s.sendto(msg, ("ff02::c", 3702, 0, f["index"]))
+            socks.append((s, f["name"]))
+        except OSError:
+            pass
+    found, end = {}, time.monotonic() + wait_s
+    while socks and time.monotonic() < end:
+        for s, name in socks:
+            s.settimeout(0.05)
+            try:
+                data, _ = s.recvfrom(65535)
+            except (socket.timeout, OSError):
+                continue
+            txt = data.decode("utf-8", "replace")
+            xa = re.search(r"<[^>]*XAddrs>([^<]+)<", txt)
+            if not xa:
+                continue
+            urls = xa.group(1).split()
+            key = re.search(r"<[^>]*Address>([^<]+)<", txt)
+            key = key.group(1) if key else urls[0]
+            sc = re.search(r"<[^>]*Scopes[^>]*>([^<]*)<", txt)
+            found.setdefault(key, dict(xaddrs=urls, scopes=sc.group(1) if sc else "", iface=name))
+    for s, _ in socks:
+        s.close()
+    return list(found.values())
+
+
+def _scoped(url: str, iface: str) -> str:
+    """An IPv6 link-local URL with its interface (http://[fe80::1%enP8p1s0]/...)."""
+    m = re.match(r"(\w+://)\[(fe80:[^\]%]+)\](.*)", url, re.I)
+    return f"{m.group(1)}[{m.group(2)}%{iface}]{m.group(3)}" if m else url
+
+
+def _soap(url: str, body: str, user: str = "", password: str = "", timeout: float = 4.0) -> Optional[str]:
+    """POST one ONVIF request (WS-UsernameToken digest when a user is given); the reply text or None."""
+    import urllib.request
+    head = ""
+    if user:
+        nonce = os.urandom(16)
+        created = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        digest = base64.b64encode(hashlib.sha1(nonce + created.encode() + password.encode()).digest()).decode()
+        head = ('<s:Header><Security xmlns="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-'
+                'secext-1.0.xsd"><UsernameToken><Username>{u}</Username><Password Type="http://docs.oasis-open.'
+                'org/wss/2004/01/oasis-200401-wss-username-token-profile-1.0#PasswordDigest">{d}</Password><Nonce '
+                'EncodingType="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-soap-message-security-1.0#'
+                'Base64Binary">{n}</Nonce><Created xmlns="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-'
+                'wssecurity-utility-1.0.xsd">{c}</Created></UsernameToken></Security></s:Header>').format(
+            u=user, d=digest, n=base64.b64encode(nonce).decode(), c=created)
+    env = (f'<?xml version="1.0" encoding="UTF-8"?><s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope">'
+           f'{head}<s:Body>{body}</s:Body></s:Envelope>')
+    host = re.match(r"\w+://\[([^\]]+)\]", url)
+    try:
+        if host and "%" in host.group(1):                 # urllib cannot open a scoped IPv6 URL
+            return _soap_raw(url, env, timeout)
+        req = urllib.request.Request(url, env.encode(), {"Content-Type": "application/soap+xml; charset=utf-8"})
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return r.read().decode("utf-8", "replace")
+    except Exception as e:                                 # noqa: BLE001 — a probe never raises
+        txt = getattr(e, "read", lambda: b"")()
+        return txt.decode("utf-8", "replace") if txt else None
+
+
+def _soap_raw(url: str, envelope: str, timeout: float) -> Optional[str]:
+    m = re.match(r"\w+://\[([^\]%]+)%([^\]]+)\](?::(\d+))?(/.*)?", url)
+    if not m:
+        return None
+    addr, iface, port, path = m.group(1), m.group(2), int(m.group(3) or 80), m.group(4) or "/"
+    data = envelope.encode()
+    try:
+        with socket.create_connection((f"{addr}%{iface}", port), timeout=timeout) as s:
+            s.sendall((f"POST {path} HTTP/1.1\r\nHost: [{addr}]\r\nContent-Type: application/soap+xml; "
+                       f"charset=utf-8\r\nContent-Length: {len(data)}\r\nConnection: close\r\n\r\n").encode() + data)
+            chunks = []
+            while True:
+                b = s.recv(65536)
+                if not b:
+                    break
+                chunks.append(b)
+        raw = b"".join(chunks)
+        return raw.split(b"\r\n\r\n", 1)[-1].decode("utf-8", "replace")
+    except OSError:
+        return None
+
+
+def _tag(txt: str, name: str) -> List[str]:
+    return re.findall(rf"<(?:\w+:)?{name}[^>]*>([^<]*)</(?:\w+:)?{name}>", txt or "")
+
+
+def onvif_streams(dev: dict, user: str = "", password: str = "") -> dict:
+    """{name, model, maker, streams: [{uri, width, height, name}], auth} of one ONVIF device."""
+    url = _scoped(dev["xaddrs"][0], dev.get("iface", ""))
+    info = _soap(url, '<GetDeviceInformation xmlns="http://www.onvif.org/ver10/device/wsdl"/>', user, password) or ""
+    scopes = dev.get("scopes", "")
+    out = dict(url=url, maker=(_tag(info, "Manufacturer") or [""])[0],
+               model=(_tag(info, "Model") or re.findall(r"onvif://www.onvif.org/hardware/(\S+)", scopes) or [""])[0],
+               name=(re.findall(r"onvif://www.onvif.org/name/(\S+)", scopes) or [""])[0], streams=[])
+    if "NotAuthorized" in info or "Sender" in info and not out["maker"]:
+        out["auth"] = "needed"
+    caps = _soap(url, '<GetCapabilities xmlns="http://www.onvif.org/ver10/device/wsdl"><Category>Media</Category>'
+                      '</GetCapabilities>', user, password) or ""
+    media = re.search(r"<(?:\w+:)?Media>\s*<(?:\w+:)?XAddr>([^<]+)<", caps)
+    media = _scoped(media.group(1), dev.get("iface", "")) if media else url
+    prof = _soap(media, '<GetProfiles xmlns="http://www.onvif.org/ver10/media/wsdl"/>', user, password) or ""
+    if "NotAuthorized" in prof:
+        out["auth"] = "needed" if not user else "refused"
+        return out
+    for m in re.finditer(r"<(?:\w+:)?Profiles[^>]*token=\"([^\"]+)\"(.*?)</(?:\w+:)?Profiles>", prof, re.S):
+        token, body = m.group(1), m.group(2)
+        w, h = (_tag(body, "Width") or ["0"])[0], (_tag(body, "Height") or ["0"])[0]
+        src = re.search(r"SourceToken>([^<]+)<", body)
+        r = _soap(media, '<GetStreamUri xmlns="http://www.onvif.org/ver10/media/wsdl"><StreamSetup><Stream '
+                         'xmlns="http://www.onvif.org/ver10/schema">RTP-Unicast</Stream><Transport xmlns="http://'
+                         'www.onvif.org/ver10/schema"><Protocol>RTSP</Protocol></Transport></StreamSetup>'
+                         f'<ProfileToken>{token}</ProfileToken></GetStreamUri>', user, password) or ""
+        uri = (_tag(r, "Uri") or [""])[0].replace("&amp;", "&")
+        if uri:
+            out["streams"].append(dict(uri=_scoped(uri, dev.get("iface", "")), width=int(w or 0), height=int(h or 0),
+                                       name=(_tag(body, "Name") or [token])[0],
+                                       source=src.group(1) if src else ""))
+    return out
+
+
+def rtsp_describe(uri: str, user: str = "", password: str = "", timeout: float = 4.0) -> Optional[dict]:
+    """{codec: H264|H265|JPEG|?, status} from an RTSP DESCRIBE (Basic or Digest auth), None: no answer."""
+    m = re.match(r"rtsp://(?:[^@/]*@)?(\[[^\]]+\]|[^:/]+)(?::(\d+))?(/.*)?", uri)
+    if not m:
+        return None
+    host, port = m.group(1).strip("[]"), int(m.group(2) or 554)
+    clean = re.sub(r"rtsp://[^@/]*@", "rtsp://", uri)
+
+    def ask(auth: str = "") -> Tuple[int, str]:
+        with socket.create_connection((host, port), timeout=timeout) as s:
+            s.sendall(f"DESCRIBE {clean} RTSP/1.0\r\nCSeq: 2\r\nAccept: application/sdp\r\n{auth}\r\n".encode())
+            data, t_end = b"", time.monotonic() + timeout
+            while time.monotonic() < t_end:
+                b = s.recv(65536)
+                if not b:
+                    break
+                data += b
+                head, _, body = data.partition(b"\r\n\r\n")
+                n = re.search(rb"Content-Length:\s*(\d+)", head, re.I)
+                if _ and len(body) >= (int(n.group(1)) if n else 0):
+                    break
+        txt = data.decode("utf-8", "replace")
+        code = re.match(r"RTSP/1.0 (\d+)", txt)
+        return (int(code.group(1)) if code else 0), txt
+    try:
+        code, txt = ask()
+        if code == 401 and user:
+            ch = re.search(r'WWW-Authenticate:\s*Digest\s+(.*)', txt, re.I)
+            if ch:
+                kv = dict(re.findall(r'(\w+)="([^"]*)"', ch.group(1)))
+                ha1 = hashlib.md5(f"{user}:{kv.get('realm', '')}:{password}".encode()).hexdigest()
+                ha2 = hashlib.md5(f"DESCRIBE:{clean}".encode()).hexdigest()
+                resp = hashlib.md5(f"{ha1}:{kv.get('nonce', '')}:{ha2}".encode()).hexdigest()
+                auth = (f'Authorization: Digest username="{user}", realm="{kv.get("realm", "")}", '
+                        f'nonce="{kv.get("nonce", "")}", uri="{clean}", response="{resp}"\r\n')
+            else:
+                auth = "Authorization: Basic " + base64.b64encode(f"{user}:{password}".encode()).decode() + "\r\n"
+            code, txt = ask(auth)
+    except OSError:
+        return None
+    codec = re.search(r"a=rtpmap:\d+\s+(H264|H265|HEVC|JPEG)", txt, re.I)
+    return dict(status=code, codec=(codec.group(1).upper().replace("HEVC", "H265") if codec else "?"))
+
+
+def gst_rtsp_pipeline(uri: str, codec: str, auth: bool) -> str:
+    """The NAVERA_*_GST_PIPELINE for an RTSP stream: hardware decoding (the box has no software
+    decoder, navera.env), credentials as @NAVERA_IP_CAMERA_USER@ / @NAVERA_IP_CAMERA_PASSWORD@ (filled in at start)."""
+    clean = re.sub(r"rtsp://[^@/]*@", "rtsp://", uri)
+    cred = " user-id=@NAVERA_IP_CAMERA_USER@ user-pw=@NAVERA_IP_CAMERA_PASSWORD@" if auth else ""
+    if codec == "JPEG":
+        dec = "rtpjpegdepay ! jpegdec ! videoconvert"
+    else:
+        c = "h265" if codec == "H265" else "h264"
+        dec = (f"rtp{c}depay ! video/x-{c},stream-format=byte-stream,alignment=au ! nvv4l2decoder ! nvvidconv ! "
+               "video/x-raw,format=BGRx ! videoconvert")
+    return (f"rtspsrc location={clean} protocols=tcp latency=0{cred} ! {dec} ! video/x-raw,format=BGR ! "
+            "appsink name=sink drop=true max-buffers=1 sync=false")
+
+
+def network_cameras(env, wait_s: float = 2.5) -> List[dict]:
+    """The network cameras' video streams: [{kind: ip, id: uri, name, spectrum, pipeline, ...}]."""
+    user = str(env.get("NAVERA_IP_CAMERA_USER", "") or "").strip()
+    pw = str(env.get("NAVERA_IP_CAMERA_PASSWORD", "") or "")
+    ifaces = wired_interfaces()
+    out, notes = [], []
+    for dev in ws_discovery(ifaces, wait_s):
+        d = onvif_streams(dev, user, pw)
+        label = " ".join(x for x in (d["maker"], d["model"] or d["name"]) if x) or d["url"]
+        if d.get("auth"):
+            notes.append(f"CHECK network camera {label} ({d['url']}): "
+                         + ("password refused — check NAVERA_IP_CAMERA_USER / _PASSWORD" if d["auth"] == "refused"
+                            else "it needs its login: set NAVERA_IP_CAMERA_USER and NAVERA_IP_CAMERA_PASSWORD"))
+            continue
+        spectrum0, hfov, model = lens_info(f"{d['maker']} {d['model']} {d['name']}")
+        # a bi-spectrum camera (one visible and one thermal sensor): main streams only (the first
+        # profile of each video source), the thermal one told by its name or its small size
+        seen = set()
+        for s in d["streams"]:
+            if s["source"] in seen:
+                continue
+            seen.add(s["source"])
+            desc = rtsp_describe(s["uri"], user, pw) or {}
+            name = f"{label} {s['name']}".strip()
+            spectrum = ("thermal" if re.search(THERMAL_WORDS, f"{s['name']} {s['source']}", re.I)
+                        else spectrum0 if spectrum0 == "rgb" or len(d["streams"]) == 1 else None)
+            out.append(dict(kind="ip", id=s["uri"], name=name, spectrum=spectrum, hfov_deg=hfov, lens_model=model,
+                            size=[s["width"], s["height"]], codec=desc.get("codec", "?"),
+                            pipeline=gst_rtsp_pipeline(s["uri"], desc.get("codec", "H264"), bool(user)),
+                            auth=bool(user), bispectrum=len({x["source"] for x in d["streams"]}) > 1))
+    nets = [ipaddress.ip_network(f"{a}/{p}", strict=False) for f in ifaces for a, p in f["ipv4"]]
+    for subnet, uri, label in FIXED_RTSP:
+        if not any(n.overlaps(ipaddress.ip_network(subnet)) for n in nets) or any(c["id"] == uri for c in out):
+            continue
+        desc = rtsp_describe(uri, timeout=2.0)
+        if desc and desc["status"] == 200:
+            spectrum, hfov, model = lens_info(label)
+            out.append(dict(kind="ip", id=uri, name=label, spectrum=spectrum, hfov_deg=hfov, lens_model=model,
+                            size=[0, 0], codec=desc["codec"], auth=False,
+                            pipeline=gst_rtsp_pipeline(uri, desc["codec"], False)))
+    for c in out:
+        c["notes"] = notes
+    return out if out else ([dict(kind="note", notes=notes)] if notes else [])
+
+
+# ── what a picture says ────────────────────────────────────────────────────
+def picture_traits(img) -> dict:
+    """{mono, brightness, texture, blue, sky_score, dark} of one frame (BGR or grey, 8 or 16 bit).
+
+    sky_score > 0: looks like a day sky (bright, smooth, blue or white), < 0 like ground (texture,
+    not blue); about 0: cannot tell (night, a dark room, a wall). Used to COMPARE cameras: the more
+    sky-like of two is the one looking up.
+    """
+    import cv2
+    import numpy as np
+    a = np.asarray(img)
+    if a.dtype != np.uint8:                               # 16-bit radiometric: stretch to 8 bit
+        lo, hi = np.percentile(a, (1, 99))
+        a = np.clip((a.astype(np.float32) - lo) * (255.0 / max(hi - lo, 1.0)), 0, 255).astype(np.uint8)
+    small = cv2.resize(a, (160, 120), interpolation=cv2.INTER_AREA)
+    if small.ndim == 2 or small.shape[2] == 1:
+        grey, mono, blue = small.reshape(120, 160), True, 0.0
+    else:
+        b, g, r = (small[..., i].astype(np.float32) for i in range(3))
+        mono = float(np.percentile(np.abs(b - g) + np.abs(g - r), 98)) < 6.0
+        grey = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
+        blue = float(np.mean(b - r) / 255.0)
+    gf = grey.astype(np.float32)
+    texture = float(np.mean(np.hypot(cv2.Sobel(gf, cv2.CV_32F, 1, 0), cv2.Sobel(gf, cv2.CV_32F, 0, 1))) / 255.0)
+    bright = float(np.mean(gf) / 255.0)
+    dark = bright < 0.12
+    score = 0.0 if dark else (2.0 * (bright - 0.5) + 6.0 * max(blue, 0.0) - 4.0 * min(texture, 0.5) + 0.4)
+    return dict(mono=mono, brightness=round(bright, 3), texture=round(texture, 4), blue=round(blue, 3),
+                sky_score=round(score, 3), dark=dark)
+
+
+SAMPLE_CODE = r"""
+import sys, cv2, numpy as np
+src, kind, fourcc, w, h = sys.argv[1], sys.argv[2], sys.argv[3], int(sys.argv[4]), int(sys.argv[5])
+if kind == "usb":
+    cap = cv2.VideoCapture(src, cv2.CAP_V4L2)
+    if fourcc.strip() and fourcc not in ("Y16 ", "GREY", "Y8  "):
+        cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*fourcc))
+    else:
+        cap.set(cv2.CAP_PROP_CONVERT_RGB, 0)
+    if w and h:
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, w); cap.set(cv2.CAP_PROP_FRAME_HEIGHT, h)
+    frame = None
+    for _ in range(8):          # auto-exposure settles over the first frames
+        ok, f = cap.read()
+        if ok:
+            frame = f
+else:
+    sys.path.insert(0, sys.argv[6])
+    from camera_pkg.gst_capture import GstCapture, expand_secrets
+    cap = GstCapture(expand_secrets(src))
+    frame = None
+    for _ in range(4):
+        ok, f = cap.read()
+        if ok:
+            frame = f
+cap.release()
+if frame is None:
+    sys.exit(3)
+np.save(sys.stdout.buffer, frame)
+"""
+
+
+def sample_frame(cam: dict, timeout_s: float = 12.0):
+    """One frame of the camera (numpy array) read in a child process, or None. Never a device
+    another process holds; never the Insta360 kit."""
+    import io
+    import numpy as np
+    if cam["kind"] == "usb":
+        if held_by(cam["id"]):
+            return None
+        args = [cam["id"], "usb", cam.get("fourcc") or "", str(cam["size"][0]), str(cam["size"][1]), ""]
+    elif cam["kind"] == "ip":
+        here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        pkg = next((p for p in sys.path if os.path.isdir(os.path.join(p, "camera_pkg"))), here)
+        args = [cam["pipeline"], "gst", "", "0", "0", pkg]
+    else:
+        return None
+    try:
+        r = subprocess.run([sys.executable, "-c", SAMPLE_CODE] + args, capture_output=True, timeout=timeout_s)
+        if r.returncode != 0 or not r.stdout:
+            return None
+        return np.load(io.BytesIO(r.stdout), allow_pickle=False)
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return None
+
+
+def describe(cams: List[dict], sample: bool = True) -> List[dict]:
+    """Add the picture's traits (sample=True: one frame each) and settle the spectrum."""
+    for c in cams:
+        if c["kind"] not in ("usb", "ip"):
+            continue
+        img = sample_frame(c) if sample else None
+        if img is None:
+            c["traits"] = None
+            continue
+        t = picture_traits(img)
+        c["traits"] = t
+        if not c.get("size") or not c["size"][0]:
+            c["size"] = [int(img.shape[1]), int(img.shape[0])]
+        if c.get("spectrum") is None:
+            # one channel and nothing else saying colour: thermal, to be confirmed (a monochrome
+            # visible camera exists, rarely on a drone)
+            c["spectrum"], c["spectrum_guess"] = ("thermal" if t["mono"] else "rgb"), True
+    return cams
+
+
+# ── who does what ──────────────────────────────────────────────────────────
+def _looks(c: dict) -> Optional[str]:
+    """'sky' / 'ground' from the camera's own name (a ROS topic, a stream name), else None."""
+    n = f"{c.get('id', '')} {c.get('name', '')}".lower()
+    if re.search(SKY_WORDS, n):
+        return "sky"
+    if re.search(GROUND_WORDS, n):
+        return "ground"
+    return None
+
+
+def assign_roles(cams: List[dict], env, day_taken: bool = False) -> dict:
+    """{"roles": {role: camera}, "report": [lines]} for the cameras found (pure: tests feed it lists).
+
+    Rules: a camera named in navera.env (NAVERA_<ROLE>DEVICE / _TOPIC / _GST_PIPELINE) keeps its role
+    and is no candidate for another; thermal cameras -> thermal (looking down: STHN matches thermal
+    pictures with the map); colour cameras -> day, and with two the one whose picture is clearly more
+    sky-like (or whose name says sky / up) -> star. Two colour cameras that look alike: the first is
+    day, the other is left out with CHECK (a wrong sky camera would only waste the celestial
+    pipeline; a wrong day camera would mislead vision). day_taken: the day camera is another one
+    (the Insta360 kit): a colour camera is then the star camera only if it clearly looks up.
+    """
+    get = lambda k: str(env.get(k, "") or "").strip()           # noqa: E731
+    roles, rep = {}, []
+    imposed = {}
+    for role, pre in ROLES.items():
+        for k in ("DEVICE", "TOPIC", "GST_PIPELINE"):
+            if get(pre + k):
+                imposed[role] = get(pre + k)
+    if day_taken:
+        imposed.setdefault("day", "the Insta360 kit")
+    taken = {os.path.realpath(v) if v.startswith("/dev/") else v for v in imposed.values()}
+    free = [c for c in cams if c.get("kind") in ("usb", "csi", "ip", "ros")
+            and (os.path.realpath(c["id"]) if str(c["id"]).startswith("/dev/") else c["id"]) not in taken]
+    thermal = [c for c in free if c.get("spectrum") == "thermal" and _looks(c) != "sky"]
+    colour = [c for c in free if c not in thermal]
+    if "thermal" not in imposed and thermal:
+        roles["thermal"] = thermal[0]
+        if len(thermal) > 1:
+            rep.append("CHECK several thermal cameras (" + ", ".join(c["name"] for c in thermal)
+                       + f"): using {thermal[0]['name']} — set NAVERA_THERMAL_CAMERA_DEVICE to choose")
+    sky = [c for c in colour if _looks(c) == "sky"]
+    ground = [c for c in colour if _looks(c) == "ground"]
+    if not sky and "day" in imposed and colour:
+        best = max(colour, key=lambda c: (c.get("traits") or {}).get("sky_score") or -9.0)
+        if ((best.get("traits") or {}).get("sky_score") or -9.0) > 0.3:
+            sky = [best]
+        else:
+            rep.append("CHECK colour camera(s) " + ", ".join(c["name"] for c in colour) + " not used: the day "
+                       "camera is " + imposed["day"] + " and the picture does not show sky — point it up "
+                       "(daylight) and restart navera-discover, or set NAVERA_STAR_CAMERA_DEVICE")
+    elif not sky and len(colour) >= 2:
+        sc = [((c.get("traits") or {}).get("sky_score"), c) for c in colour]
+        known = sorted([x for x in sc if x[0] is not None], key=lambda x: -x[0])
+        if len(known) >= 2 and known[0][0] - known[1][0] >= 0.5 and known[0][0] > 0.2:
+            sky = [known[0][1]]
+        else:
+            rep.append("CHECK two colour cameras and their pictures do not say which looks up ("
+                       + ", ".join(c["name"] for c in colour) + "): the less sky-like is the day camera, none is the "
+                       "star camera — point one at the sky (daylight) and restart navera-discover, or set "
+                       "NAVERA_STAR_CAMERA_DEVICE")
+    if "star" not in imposed and sky and get("NAVERA_STAR_CAMERA_INPUT").lower() in ("", "auto"):
+        roles["star"] = sky[0]
+    if "day" not in imposed:
+        left = [c for c in (ground + colour) if c is not roles.get("star")]
+        if left:
+            pick = sorted(left, key=lambda c: (c["kind"] == "ros", c["kind"] == "ip", c.get("traits") is None,
+                                               (c.get("traits") or {}).get("sky_score") or 0.0))[0]
+            roles["day"] = pick
+            others = [c for c in left if c is not pick and c is not roles.get("thermal")]
+            if others and len(colour) > 2:
+                rep.append("CHECK more colour cameras than jobs: " + ", ".join(c["name"] for c in others)
+                           + " not used")
+    for role in ROLES:
+        c = roles.get(role)
+        if c:
+            why = []
+            if c.get("spectrum_guess"):
+                why.append("single-channel picture" if c["spectrum"] == "thermal" else "colour picture")
+            t = c.get("traits")
+            if role == "star":
+                why.append("its name says sky" if _looks(c) == "sky" else
+                           f"its picture looks like sky (score {t['sky_score']:+.2f})" if t else "")
+            why = ", ".join(w for w in why if w)
+            line = f"{role} camera: {c['name']} ({c['kind']}){' — ' + why if why else ''}"
+            if c.get("spectrum_guess") and c["spectrum"] == "thermal":
+                line = "CHECK " + line + " — thermal guessed from a grey picture: if it is a colour camera set " \
+                       "NAVERA_CAMERA_DEVICE"
+            rep.append(line)
+        elif role in imposed:
+            rep.append(f"{role} camera: {imposed[role]} (written in navera.env)")
+    return {"roles": roles, "report": rep}
+
+
+def role_settings(role: str, cam: dict, env) -> Dict[str, str]:
+    """The NAVERA_<ROLE>_* settings for one camera (only those not written in navera.env)."""
+    pre = ROLES[role]
+    get = lambda k: str(env.get(k, "") or "").strip()           # noqa: E731
+    out = {}
+    if cam["kind"] == "usb":
+        out.update({pre + "INPUT": "usb", pre + "DEVICE": cam["id"]})
+        if cam.get("fourcc"):
+            out[pre + "FOURCC"] = cam["fourcc"].strip()
+    elif cam["kind"] == "csi":
+        out.update({pre + "INPUT": "csi", pre + "DEVICE": cam.get("sensor", "0")})
+    elif cam["kind"] == "ip":
+        out.update({pre + "INPUT": "gst", pre + "GST_PIPELINE": cam["pipeline"]})
+    elif cam["kind"] == "ros":
+        out.update({pre + "INPUT": "ros", pre + "TOPIC": cam["id"]})
+    size = cam.get("size") or [0, 0]
+    if size[0] and size[1]:
+        out[pre + "SIZE"] = f"{int(size[0])}x{int(size[1])}"
+    elif cam["kind"] in ("ip", "ros"):
+        out[pre + "SIZE"] = "auto"                        # the stream's own size, read at start
+    if not get(pre + "CALIBRATION") and not get(pre + "HFOV_DEG"):
+        out[pre + "HFOV_DEG"] = f"{cam.get('hfov_deg') or GUESS_HFOV_DEG:g}"
+        out[pre + "LENS_SOURCE"] = "database" if cam.get("hfov_deg") else "guess"
+    out[pre + "SPECTRUM"] = cam.get("spectrum") or "rgb"
+    out[pre + "NAME"] = re.sub(r"[^\w .:/+()-]", "", str(cam.get("name", "")))[:80]
+    return {k: v for k, v in out.items() if not get(k) or get(k).lower() == "auto"}
+
+
+def main(argv=None) -> int:
+    """navera_tools: python3 -m navera_common.cameras — list the cameras and the jobs they would get."""
+    import argparse
+    ap = argparse.ArgumentParser(description="List the cameras plugged into this box and their jobs.")
+    ap.add_argument("--no-sample", action="store_true", help="do not read a frame from each camera")
+    ap.add_argument("--no-network", action="store_true")
+    a = ap.parse_args(argv)
+    cams = usb_cameras() + csi_cameras() + ([] if a.no_network else network_cameras(os.environ))
+    cams = describe([c for c in cams if c["kind"] != "note"], sample=not a.no_sample)
+    for c in cams:
+        print(json.dumps({k: v for k, v in c.items() if k not in ("formats", "notes")}, default=str))
+    r = assign_roles(cams, os.environ)
+    print("\n".join(r["report"]) or "no camera")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

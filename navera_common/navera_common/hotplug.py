@@ -34,9 +34,14 @@ SLOT_KEYS = {
     "gps": ("NAVERA_GPS_", "NAVERA_ROS_GPS_TOPIC"),
     "autopilot": ("NAVERA_VEHICLE_MAVLINK_URL", "NAVERA_MAVLINK_SYSID", "NAVERA_MAVLINK_URL"),
     "attitude": ("NAVERA_SENSOR_SOURCE", "NAVERA_ROS_IMU_TOPIC", "NAVERA_ROS_ALTITUDE_TOPIC"),
-    "camera": ("NAVERA_CAMERA_INPUT", "NAVERA_CAMERA_DEVICE", "NAVERA_CAMERA_TOPIC"),
+    "camera": ("NAVERA_CAMERA_",),
+    "thermal_camera": ("NAVERA_THERMAL_CAMERA_",),
+    "star_camera": ("NAVERA_STAR_CAMERA_",),
 }
-REPORT_PREFIX = {"gps": "GPS:", "attitude": "attitude:", "camera": "camera:", "autopilot": "output:"}
+REPORT_PREFIX = {"gps": "GPS:", "attitude": "attitude:", "camera": "camera:", "autopilot": "output:",
+                 "thermal_camera": ("thermal camera:", "CHECK thermal camera:"),
+                 "star_camera": ("star camera:", "CHECK star camera:")}
+CAMERA_SLOTS = ("camera", "thermal_camera", "star_camera")
 ARMED_FRESH_S = 5.0
 
 
@@ -63,6 +68,12 @@ def probe(new: Dict[str, List[str]], env, rescan: Optional[dict] = None) -> dict
     rescan = rescan or {}
     frag = {"serial": [], "can": [], "gps_net": [],
             "cameras": {"usb": list(new.get("cameras", [])), "insta360": list(new.get("insta360", []))}}
+    if new.get("cameras") or rescan.get("ip_cameras"):
+        # what the new cameras are (one frame each, in a child process) and the network cameras
+        from navera_common import cameras
+        added_usb = [c for c in cameras.usb_cameras() if c["id"] in set(new.get("cameras", []))]
+        ip = [c for c in cameras.network_cameras(env) if c.get("kind") == "ip"] if rescan.get("ip_cameras") else []
+        frag["cameras"]["list"] = cameras.describe(added_usb + ip)
     ports = dict.fromkeys(new.get("serial", []) + rescan.get("serial", []))
     jobs = [("serial", disc.probe_serial_port, p) for p in ports]
     jobs += [("can", disc.probe_dronecan, b) for b in dict.fromkeys(new.get("can", []) + rescan.get("can", []))]
@@ -92,6 +103,10 @@ def merge(found: dict, frag: dict) -> dict:
     cams = dict(found.get("cameras") or {})
     for kind in ("usb", "insta360"):
         cams[kind] = sorted(set(cams.get(kind) or []) | set((frag.get("cameras") or {}).get(kind) or []))
+    new = (frag.get("cameras") or {}).get("list") or []
+    if new:
+        ids = {c["id"] for c in new}
+        cams["list"] = [c for c in cams.get("list") or [] if c.get("id") not in ids] + new
     out["cameras"] = cams
     return out
 
@@ -111,9 +126,13 @@ def fill_idle(doc: dict, found: dict, env, armed: Optional[bool], stamp: str = "
     discovery.json: found, settings, report, idle). Returns {"settings", "idle", "report":
     new lines, "changed": bool, "deferred": [needs found but not filled yet]}.
     """
-    d = disc.decide(found, env)
     settings = dict(doc.get("settings") or {})
     idle = list(doc.get("idle") or [])
+    # the cameras already given a job count as written: a new camera never takes over their job,
+    # and an old camera is never given a second one
+    busy = {k: v for k, v in settings.items()
+            if any(_in_slot(k, slot) for slot in CAMERA_SLOTS if slot not in idle)}
+    d = disc.decide(found, {**busy, **env})
     lines, deferred, changed = [], [], False
     for slot in sorted(idle, key=lambda x: x != "autopilot"):     # the link first: it tells "armed"
         if slot in d["idle"]:
@@ -130,7 +149,9 @@ def fill_idle(doc: dict, found: dict, env, armed: Optional[bool], stamp: str = "
         settings.update({k: v for k, v in d["settings"].items() if _in_slot(k, slot)})
         idle.remove(slot)
         changed = changed or before != {k: v for k, v in settings.items() if _in_slot(k, slot)}
-        lines += [f"hot-plug {stamp}: {r}" for r in d["report"] if r.startswith(REPORT_PREFIX[slot])]
+        pre = REPORT_PREFIX[slot]
+        pre = pre if isinstance(pre, tuple) else (pre,)
+        lines += [f"hot-plug {stamp}: {r}" for r in d["report"] if r.startswith(pre)]
     return {"settings": settings, "idle": idle, "report": lines, "changed": changed, "deferred": deferred}
 
 
@@ -194,10 +215,17 @@ def run(env, json_path: str, env_path: str, armed: Callable[[], Optional[bool]],
             now = devices(env)
             new = added(before, now)
             rescan = None
-            if "gps" in doc["idle"] and time.monotonic() - last_rescan >= rescan_s:
-                answered = {s.get("port") for s in doc["found"].get("serial") or []}
-                rescan = {"serial": [p for p in now["serial"] if p not in answered],
-                          "can": disc.can_buses(env), "gps_net": disc.gps_urls(env)}
+            if time.monotonic() - last_rescan >= rescan_s:
+                rescan = {}
+                if "gps" in doc["idle"]:
+                    answered = {s.get("port") for s in doc["found"].get("serial") or []}
+                    rescan = {"serial": [p for p in now["serial"] if p not in answered],
+                              "can": disc.can_buses(env), "gps_net": disc.gps_urls(env)}
+                ip_on = str(env.get("NAVERA_DISCOVER_IP_CAMERAS", "1")).strip().lower()
+                ip_on = ip_on not in ("0", "off", "no", "false")
+                if ip_on and any(s in doc["idle"] for s in CAMERA_SLOTS):
+                    rescan["ip_cameras"] = True             # a network camera powered after the box
+                rescan = rescan or None
                 last_rescan = time.monotonic()
             if any(new.values()) or rescan:
                 if any(new.values()):

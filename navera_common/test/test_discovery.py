@@ -140,8 +140,12 @@ def test_cameras_the_star_camera_and_a_written_device_are_respected():
     env = {"NAVERA_STAR_CAMERA_DEVICE": usb[0]}
     s = decide({"cameras": {"usb": usb}}, env)["settings"]
     assert s["NAVERA_CAMERA_DEVICE"] == usb[1]
-    d = decide({"cameras": {"usb": usb}}, {})
-    assert any("CHECK several cameras" in r for r in d["report"])
+    d = decide({"cameras": {"usb": usb}}, {})               # its name says it: the star camera
+    assert d["settings"]["NAVERA_STAR_CAMERA_DEVICE"] == usb[0] and d["settings"]["NAVERA_CAMERA_DEVICE"] == usb[1]
+    two = ["/dev/v4l/by-id/usb-Logitech_C920-video-index0", "/dev/v4l/by-id/usb-Arducam_B0196-video-index0"]
+    d = decide({"cameras": {"usb": two}}, {})               # nothing says which looks up: CHECK, no star
+    assert any("CHECK two colour cameras" in r for r in d["report"])
+    assert d["settings"]["NAVERA_CAMERA_DEVICE"] == two[0] and "NAVERA_STAR_CAMERA_INPUT" not in d["settings"]
     s = decide({"cameras": {"usb": usb}}, {"NAVERA_CAMERA_DEVICE": "/dev/v4l/by-id/mine"})["settings"]
     assert s["NAVERA_CAMERA_INPUT"] == "usb" and "NAVERA_CAMERA_DEVICE" not in s
 
@@ -462,3 +466,21 @@ def test_dronecan_probe_on_a_virtual_bus():
     assert sent_by_probe == []                                   # the probe never transmitted
     d = decide({"can": [r]}, {})
     assert d["settings"]["NAVERA_GPS_CAN_NODE"] == "124"         # the autopilot's re-broadcast is not a GPS
+
+
+def test_a_pipeline_in_discovered_env_reads_back_the_same_in_python_and_in_a_shell(tmp_path):
+    import subprocess
+    from navera_common.atomic_io import env_file_damaged, read_env
+    from navera_common.cameras import gst_rtsp_pipeline
+    from navera_common.discovery import write_env
+    pipe = gst_rtsp_pipeline("rtsp://192.168.144.25:8554/main.264", "H264", True)
+    path = str(tmp_path / "discovered.env")
+    write_env({"NAVERA_CAMERA_GST_PIPELINE": pipe, "NAVERA_CAMERA_NAME": 'SIYI "A8" mini', "NAVERA_CAMERA_FPS": "1",
+               "NAVERA_BAD": "x $(reboot)"}, path)
+    assert env_file_damaged(path) is None
+    env = read_env(path)
+    assert env["NAVERA_CAMERA_GST_PIPELINE"] == pipe and env["NAVERA_CAMERA_NAME"] == 'SIYI "A8" mini'
+    assert "NAVERA_BAD" not in env                       # never something a shell would run
+    out = subprocess.run(["bash", "-c", f'set -a; . "{path}"; set +a; printf "%s\\n%s" "$NAVERA_CAMERA_GST_PIPELINE" '
+                                        '"$NAVERA_CAMERA_NAME"'], capture_output=True, text=True, check=True).stdout
+    assert out.split("\n") == [pipe, 'SIYI "A8" mini']

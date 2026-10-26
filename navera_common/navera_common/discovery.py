@@ -11,12 +11,16 @@ At every boot (navera-discover.service, before the other units) NAVERA looks for
     TCP 127.0.0.1:5760, NAVERA_DISCOVER_MAVLINK); it is asked which data it streams
     (attitude, rangefinder, its GPS receivers) and its GPS types;
   * a ROS vehicle: IMU / GPS / camera / height topics on the ROS domains;
-  * cameras: USB (/dev/v4l/by-id), CSI (Jetson video inputs), and an Insta360 One R in USB
-    "Android" mode (USB id 2e1a:0002: the Insta360 kit, camera AND IMU, navera-insta360).
+  * cameras: USB (/dev/v4l/by-id), CSI (Jetson video inputs), network cameras (ONVIF, common
+    drone gimbal cameras), the vehicle's ROS image topics, and an Insta360 One R in USB "Android"
+    mode (USB id 2e1a:0002: the Insta360 kit, camera AND IMU, navera-insta360); each is told
+    colour or thermal and ground or sky and given its job — day, thermal (night) or star
+    (celestial) camera — by navera_common.cameras.
 then decides, for each need, the best source found (decide()): attitude box IMU >
 autopilot > ROS > Insta360 kit; GPS serial receiver (UBX or NMEA) > DroneCAN GNSS > network GPS >
 autopilot's second GPS > autopilot's first GPS (only when NAVERA does not feed it) > ROS;
-camera Insta360 kit > USB > CSI > ROS; outputs: MAVLink to the autopilot when one answers (through
+day camera Insta360 kit > USB > CSI > network > ROS (cameras.assign_roles: also the thermal and the
+star camera); outputs: MAVLink to the autopilot when one answers (through
 vehicle_link's relay when it is the same link), /navera/fix on ROS when a ROS vehicle is
 there. A GPS NAVERA itself feeds (GPS type 14 = MAVLink, or NMEA when NAVERA's NMEA output
 is set) is never a source: NAVERA would check its output against itself.
@@ -523,16 +527,26 @@ def probe_insta360(sysfs: str = "/sys/bus/usb/devices") -> List[str]:
 
 
 def probe_cameras() -> Dict[str, list]:
-    usb = sorted(p for p in glob.glob("/dev/v4l/by-id/*-video-index0"))
-    csi = []
-    for d in sorted(glob.glob("/sys/class/video4linux/video*")):
-        try:
-            name = open(os.path.join(d, "name")).read().strip()
-        except OSError:
+    """{"usb": [by-id paths], "csi": [names], "insta360": [USB paths], "list": [camera descriptions]}
+    (navera_common.cameras: USB and CSI here; network cameras and the pictures in discover())."""
+    from navera_common import cameras
+    usb = cameras.usb_cameras()
+    csi = cameras.csi_cameras()
+    return {"usb": [c["id"] for c in usb], "csi": [c["id"] for c in csi], "insta360": probe_insta360(),
+            "list": usb + csi}
+
+
+def ros_cameras(ros: Dict[str, List[str]]) -> List[dict]:
+    """The vehicle's ROS image topics as camera descriptions (thermal / sky told by the topic name)."""
+    from navera_common import cameras
+    out = []
+    for t in ros.get("sensor_msgs/msg/Image", []):
+        if re.search(r"depth|disparity|compressed|segment|mask", t):
             continue
-        if "vi-output" in name or re.search(r"\b(imx|ov)\d", name, re.I):
-            csi.append(name)
-    return {"usb": usb, "csi": csi, "insta360": probe_insta360()}
+        thermal = bool(re.search(cameras.THERMAL_WORDS, t, re.I))
+        out.append(dict(kind="ros", id=t, name=t, spectrum="thermal" if thermal else "rgb",
+                        hfov_deg=None, lens_model="pinhole", size=[0, 0], traits=None))
+    return out
 
 
 def probe_ros(domains, wait_s: float = 3.0) -> Dict[int, Dict[str, List[str]]]:
@@ -586,6 +600,10 @@ def discover(env=None, ros_wait_s: float = 8.0) -> dict:
 
     run("i2c", probe_i2c)
     run("cameras", probe_cameras)
+    if str(env.get("NAVERA_DISCOVER_IP_CAMERAS", "1")).strip().lower() not in ("0", "off", "false", "no"):
+        from navera_common import cameras
+        found["ip_cameras"] = []
+        run("ip_cameras", lambda: cameras.network_cameras(env))
     for p in serial_ports():
         run("serial", probe_serial_port, p)
     for url in mavlink_urls(env):
@@ -603,10 +621,23 @@ def discover(env=None, ros_wait_s: float = 8.0) -> dict:
         t.start()
     for t in threads:
         t.join(timeout=60)
+    found["ip_cameras"] = [c for r in found.get("ip_cameras") or [] for c in (r if isinstance(r, list) else [r])]
+    describe_cameras(found)
     aps = autopilots(found)
     if aps:
         found["autopilot_streams"] = autopilot_streams(aps[0]["url"])
     return found
+
+
+def describe_cameras(found: dict) -> None:
+    """One frame of each USB / network camera (navera_common.cameras.describe): colour or thermal,
+    ground or sky. Network cameras join found["cameras"]["list"]."""
+    from navera_common import cameras
+    cams = found.setdefault("cameras", {})
+    ip = [c for c in found.get("ip_cameras") or [] if c.get("kind") == "ip"]
+    known = {c["id"] for c in cams.get("list") or []}
+    cams["list"] = cameras.describe(list(cams.get("list") or []) + [c for c in ip if c["id"] not in known])
+    cams["notes"] = sorted({n for c in found.get("ip_cameras") or [] for n in c.get("notes") or []})
 
 
 def mavlink_urls(env) -> List[str]:
@@ -716,13 +747,21 @@ def decide(found: dict, env) -> dict:
             ros, ros_domain = {}, None
     ros_imu = _pick(ros.get("sensor_msgs/msg/Imu", []), ("imu", "data"))
     ros_gps = _pick([t for t in ros.get("sensor_msgs/msg/NavSatFix", []) if t != "/navera/fix"], ("gps", "fix"))
-    ros_cam = _pick([t for t in ros.get("sensor_msgs/msg/Image", [])
-                     if not re.search(r"depth|disparity|thermal|ir/|compressed", t)],
-                    ("down", "nadir", "bottom", "camera", "image_raw"))
     ros_alt = _pick(ros.get("sensor_msgs/msg/Range", []), ("down", "altitude", "range"))
-    # cameras: the star camera and an imposed device are not candidates for the day camera
-    taken = {os.path.realpath(get(k)) for k in ("NAVERA_STAR_CAMERA_DEVICE",) if get(k)}
-    usb = [c for c in cams.get("usb") or [] if os.path.realpath(c) not in taken and c not in taken]
+    # cameras (navera_common.cameras): USB, CSI, network and the vehicle's ROS image topics, each
+    # given its job; the Insta360 kit, when there, is the day camera
+    from navera_common import cameras as camlib
+    down_words = ("down", "nadir", "bottom", "camera", "image_raw")
+    ros_cams = sorted(ros_cameras(ros), key=lambda c: -sum(w in c["id"].lower() for w in down_words))
+    if "list" in cams:
+        clist = [c for c in cams["list"] if c.get("kind") in ("usb", "csi", "ip")]
+    else:                                       # a report written before camera descriptions
+        clist = [dict(kind="usb", id=c, name=os.path.basename(c), spectrum=None, size=[0, 0]) for c in
+                 cams.get("usb") or []] + [dict(kind="csi", id=c, name=c, sensor=str(i), spectrum="rgb", size=[0, 0])
+                                           for i, c in enumerate(cams.get("csi") or [])]
+    clist += ros_cams
+    kit = bool(cams.get("insta360")) and auto("NAVERA_CAMERA_INPUT") and not get("NAVERA_CAMERA_DEVICE")
+    roles = camlib.assign_roles(clist, env, day_taken=kit)
 
     rep.insert(0, "found: " + (", ".join(filter(None, [
         "box IMU" if "imu" in i2c else None, "box clock" if "rtc" in i2c else None,
@@ -733,8 +772,9 @@ def decide(found: dict, env) -> dict:
         f"network GPS {net_gps[0]['url']} ({_proto(net_gps[0]['protocol'])})" if net_gps else None,
         f"autopilot {ap['url']} (system {ap['sysid']})" if ap else None,
         f"ROS vehicle on domain {ros_domain}" if ros_domain is not None else None,
-        f"USB camera {os.path.basename(usb[0])}" if usb else None,
-        f"CSI camera {cams['csi'][0]}" if cams.get("csi") else None,
+        ", ".join(f"{c['kind'].upper() if c['kind'] != 'ros' else 'ROS'} camera {c['name']}"
+                  f"{' (thermal)' if c.get('spectrum') == 'thermal' else ''}"
+                  for c in clist if c["kind"] != "ros" or c is roles["roles"].get("day")) or None,
         "Insta360 One R in USB Android mode (camera + IMU kit)" if cams.get("insta360") else None])) or "nothing"))
     for s in serial:
         if s.get("kind") == "busy":
@@ -815,30 +855,29 @@ def decide(found: dict, env) -> dict:
             if ap and not gps1_ok and g1 not in (None, 0) and not own_feed(g1):
                 why += " (the autopilot's first GPS not read: NAVERA_GPS_MONITOR_GPS1=0)"
         rep.append(f"GPS: {out['NAVERA_GPS_SOURCE']} — {why}")
-    # camera
+    # cameras: day (ground, colour), thermal (ground, night), star (sky)
     if auto("NAVERA_CAMERA_INPUT"):
         written = get("NAVERA_CAMERA_DEVICE")
+        day = roles["roles"].get("day")
         if written:
             out["NAVERA_CAMERA_INPUT"], why = "usb", f"the device written in navera.env ({written})"
-        elif cams.get("insta360"):
+        elif kit:
             # in Android mode the One R is no webcam; only the kit's process can read it
             out["NAVERA_CAMERA_INPUT"], why = "insta360", "the Insta360 One R in USB Android mode (the Insta360 kit)"
-        elif usb:
-            out.update(NAVERA_CAMERA_INPUT="usb", NAVERA_CAMERA_DEVICE=usb[0])
-            why = f"USB {os.path.basename(usb[0])}"
-            if len(usb) > 1:
-                why += (" — CHECK several cameras (" + ", ".join(os.path.basename(c) for c in usb)
-                        + "): set NAVERA_CAMERA_DEVICE to the one looking down")
-        elif cams.get("csi"):
-            out.update(NAVERA_CAMERA_INPUT="csi", NAVERA_CAMERA_DEVICE="0")
-            why = f"CSI {cams['csi'][0]}"
-        elif ros_cam:
-            out.update(NAVERA_CAMERA_INPUT="ros", NAVERA_CAMERA_TOPIC=ros_cam)
-            why = (f"ROS {ros_cam} — CHECK it looks at the ground (else set NAVERA_CAMERA_MOUNT_RPY, "
-                   f"or fit NAVERA's camera)")
+        elif day:
+            out.update(camlib.role_settings("day", day, env))
+            why = f"{day['kind'].upper() if day['kind'] != 'ros' else 'ROS'} {day['name']}"
+            if day["kind"] == "ros":
+                why += " — CHECK it looks at the ground (else set NAVERA_CAMERA_MOUNT_RPY, or fit NAVERA's camera)"
         else:
             out["NAVERA_CAMERA_INPUT"], why = "usb", "NO camera found"
         rep.append(f"camera: {out['NAVERA_CAMERA_INPUT']} — {why}")
+    for role in ("thermal", "star"):
+        c = roles["roles"].get(role)
+        if c:
+            out.update(camlib.role_settings(role, c, env))
+    rep += [r for r in roles["report"] if not r.startswith("day camera:")]
+    rep += list(cams.get("notes") or [])
     if any("insta360" in os.path.basename(c).lower() for c in cams.get("usb") or []):
         rep.append("CHECK an Insta360 in WEBCAM mode: cropped strips and no IMU — for the Insta360 kit set its "
                    "USB mode to Android (camera menu), then replug")
@@ -894,6 +933,12 @@ def decide(found: dict, env) -> dict:
         idle.append("camera")
     if not ap and not get("NAVERA_VEHICLE_MAVLINK_URL"):
         idle.append("autopilot")
+    # a second camera plugged later (thermal for the night, or one looking up for the stars)
+    for role in ("thermal", "star"):
+        pre = camlib.ROLES[role]
+        if role not in roles["roles"] and not any(get(pre + k) for k in ("DEVICE", "TOPIC", "GST_PIPELINE")) \
+                and auto(pre + "INPUT"):
+            idle.append(f"{role}_camera")
     return {"settings": out, "report": rep, "idle": idle}
 
 
@@ -903,8 +948,13 @@ def write_env(settings: dict, path: str) -> None:
              "# Only for settings left to auto in /etc/navera/navera.env. Do not edit.\n"]
     for k in sorted(settings):
         v = str(settings[k])
-        if not re.fullmatch(r"[A-Z][A-Z0-9_]*", k) or re.search(r"[\x00-\x1f\x7f]", v):
+        # no control characters, and nothing a shell sourcing the file would expand ($, `)
+        if not re.fullmatch(r"[A-Z][A-Z0-9_]*", k) or re.search(r"[\x00-\x1f\x7f$`]", v):
             continue
+        if not re.fullmatch(r"[A-Za-z0-9_./:,@%+=-]*", v):
+            # a GStreamer pipeline ("a ! b"), a camera name with spaces: double-quoted, read the same
+            # way by systemd's EnvironmentFile, a shell's "." (check_boot.sh) and atomic_io.read_env
+            v = '"' + v.replace("\\", "\\\\").replace('"', '\\"') + '"'
         lines.append(f"{k}={v}\n")
     atomic_write(path, "".join(lines))          # temp + fsync + rename: power-cut safe
 

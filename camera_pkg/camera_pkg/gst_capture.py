@@ -5,7 +5,25 @@ The Jetson's CSI cameras are only reachable through GStreamer (nvarguscamerasrc)
 OpenCV wheel on the box is built without GStreamer: cv2.CAP_GSTREAMER cannot open them.
 This uses the system's GStreamer through its Python bindings (gi) instead.
 """
+import os
+import re
+
 import numpy as np
+
+SECRETS = ("NAVERA_IP_CAMERA_USER", "NAVERA_IP_CAMERA_PASSWORD")
+
+
+def expand_secrets(pipeline: str, environ=None) -> str:
+    """The pipeline with @NAVERA_IP_CAMERA_USER@ / @NAVERA_IP_CAMERA_PASSWORD@ replaced by their values
+    (quoted for gst_parse_launch). navera_common.cameras writes the names, never the password, into
+    discovered.env and the discovery report; the node fills them in here, at start. (@...@, not $...:
+    a systemd EnvironmentFile or a shell sourcing the file must not expand them.)"""
+    env = os.environ if environ is None else environ
+
+    def value(m):
+        v = str(env.get(m.group(1), "") or "")
+        return '"' + v.replace("\\", "\\\\").replace('"', '\\"') + '"'
+    return re.sub("@(" + "|".join(SECRETS) + ")@", value, pipeline)
 
 
 def csi_pipeline(width: int, height: int, sensor_id: int = 0, fps: int = 30) -> str:

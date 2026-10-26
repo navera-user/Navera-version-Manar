@@ -16,13 +16,18 @@ def boot(found, env=None):
     return {"found": found, "settings": d["settings"], "report": d["report"], "idle": d["idle"]}
 
 
+def needs(idle):
+    """The idle needs without the optional second cameras (thermal, star: idle on most boxes)."""
+    return [x for x in idle if x not in ("thermal_camera", "star_camera")]
+
+
 def test_a_usb_gps_plugged_after_boot_fills_the_idle_gps_only():
     doc = boot({"i2c": {"imu": {"bus": 1}}, "cameras": {"usb": ["/dev/v4l/by-id/cam-video-index0"]}})
-    assert doc["idle"] == ["gps", "autopilot"] and doc["settings"]["NAVERA_GPS_SOURCE"] == "none"
+    assert needs(doc["idle"]) == ["gps", "autopilot"] and doc["settings"]["NAVERA_GPS_SOURCE"] == "none"
     found = hotplug.merge(doc["found"], {"serial": [GPS]})
     r = hotplug.fill_idle(doc, found, {}, armed=None, stamp="12:00:00")
     s = r["settings"]
-    assert r["changed"] and r["idle"] == ["autopilot"]
+    assert r["changed"] and needs(r["idle"]) == ["autopilot"]
     assert (s["NAVERA_GPS_SOURCE"], s["NAVERA_GPS_PORT"], s["NAVERA_GPS_BAUD"]) == ("serial", "/dev/ttyUSB0", "230400")
     # the working sources are untouched
     for k in ("NAVERA_SENSOR_SOURCE", "NAVERA_CAMERA_INPUT", "NAVERA_CAMERA_DEVICE", "NAVERA_BOX_IMU"):
@@ -40,7 +45,7 @@ def test_a_working_gps_is_never_replaced():
 
 def test_never_switch_the_gps_while_armed_or_when_armed_is_unknown_with_an_autopilot():
     doc = boot({"serial": [AP], "autopilot_streams": STREAMS})
-    assert doc["idle"] == ["gps", "camera"] and doc["settings"]["NAVERA_VEHICLE_MAVLINK_URL"] == AP["url"]
+    assert needs(doc["idle"]) == ["gps", "camera"] and doc["settings"]["NAVERA_VEHICLE_MAVLINK_URL"] == AP["url"]
     found = hotplug.merge(doc["found"], {"serial": [GPS]})
     for armed, why in ((True, "armed"), (None, "not known yet")):
         r = hotplug.fill_idle(doc, found, {}, armed=armed)
@@ -52,7 +57,7 @@ def test_never_switch_the_gps_while_armed_or_when_armed_is_unknown_with_an_autop
 
 def test_an_autopilot_plugged_later_fills_the_link_and_the_attitude():
     doc = boot({})
-    assert set(doc["idle"]) == {"gps", "attitude", "camera", "autopilot"}
+    assert set(needs(doc["idle"])) == {"gps", "attitude", "camera", "autopilot"}
     found = hotplug.merge(doc["found"], {"serial": [AP]})
     found["autopilot_streams"] = dict(STREAMS, gps1_type=2, gps2_type=14)    # its GPS1 real, NAVERA = GPS2
     r = hotplug.fill_idle(doc, found, {}, armed=None)

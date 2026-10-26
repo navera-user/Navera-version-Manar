@@ -128,15 +128,18 @@ def live_camera_params(environ=None, prefix: str = "NAVERA_CAMERA_") -> dict:
     """
     env = os.environ if environ is None else environ
     get = lambda k, d="": str(env.get(k, "") or d).strip()     # noqa: E731
-    size = get(prefix + "SIZE", "1920x1080").lower().split("x")
+    # "auto": the camera's own size, from its first frame (a network stream, a ROS topic)
+    size = get(prefix + "SIZE", "1920x1080").lower()
+    size = ["0", "0"] if size == "auto" else size.split("x")
     if len(size) != 2 or not all(s.isdigit() for s in size):
-        raise ValueError(f"{prefix}SIZE={get(prefix + 'SIZE')!r}: expected WIDTHxHEIGHT, e.g. 1920x1080")
+        raise ValueError(f"{prefix}SIZE={get(prefix + 'SIZE')!r}: expected WIDTHxHEIGHT (e.g. 1920x1080) or auto")
     if get(prefix + "INPUT").lower() == "insta360":
         return insta360_camera_params(env, prefix)
     p = {"input": get(prefix + "INPUT", "usb").lower().replace("auto", "usb"),
          "device": get(prefix + "DEVICE", "/dev/video0"),
          "input_topic": get(prefix + "TOPIC", "/vehicle/camera/image_raw"),
          "width": int(size[0]), "height": int(size[1]),
+         "fourcc": get(prefix + "FOURCC", "MJPG"),
          "fps": float(get(prefix + "FPS", "1.0")),
          "capture_latency_s": float(get(prefix + "LATENCY_S", "0.0")),
          "calibration_file": get(prefix + "CALIBRATION"),
@@ -145,7 +148,9 @@ def live_camera_params(environ=None, prefix: str = "NAVERA_CAMERA_") -> dict:
          "gimbal": get(prefix + "GIMBAL", "false").lower() in ("1", "true", "yes"),
          # only part of the picture looks at the ground (a 360 camera's two lenses)
          "crop": get(prefix + "CROP")}
-    for key, k, lo, hi in ((prefix + "SIZE", "width", 64, 8192), (prefix + "SIZE", "height", 64, 8192),
+    auto_size = p["width"] == 0 and p["height"] == 0
+    for key, k, lo, hi in (() if auto_size else ((prefix + "SIZE", "width", 64, 8192),
+                                                 (prefix + "SIZE", "height", 64, 8192))) + (
                            (prefix + "FPS", "fps", 0.05, 30.0),
                            (prefix + "LATENCY_S", "capture_latency_s", 0.0, 2.0),
                            (prefix + "MAX_TILT_DEG", "max_tilt_deg", 5.0, 80.0),
@@ -154,12 +159,18 @@ def live_camera_params(environ=None, prefix: str = "NAVERA_CAMERA_") -> dict:
             raise ValueError(f"{key}: {k} {p[k]:g} out of range [{lo:g}, {hi:g}]")
     from navera_common.camera_model import parse_crop
     try:
-        parse_crop(p["crop"], p["width"], p["height"])
+        if auto_size and p["crop"]:
+            raise ValueError("a crop needs the camera's size: set the SIZE")
+        if not auto_size:
+            parse_crop(p["crop"], p["width"], p["height"])
     except ValueError as e:
         raise ValueError(f"{prefix}CROP: {e}") from None
     if p["input"] not in ("usb", "csi", "gst", "ros"):
         raise ValueError(f"{prefix}INPUT={p['input']!r}: expected usb, csi, gst, ros or insta360")
     p["gst_pipeline"] = get(prefix + "GST_PIPELINE")
+    if auto_size and p["input"] in ("usb", "csi"):
+        raise ValueError(f"{prefix}SIZE=auto is for a network stream or a ROS topic: a {p['input']} camera "
+                         "needs its WIDTHxHEIGHT (navera-discover writes it)")
     if p["input"] == "gst" and "name=sink" not in p["gst_pipeline"]:
         raise ValueError(f"{prefix}INPUT=gst needs {prefix}GST_PIPELINE ending in "
                          "'appsink name=sink' (BGR frames)")

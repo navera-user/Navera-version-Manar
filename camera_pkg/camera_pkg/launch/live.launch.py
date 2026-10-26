@@ -6,7 +6,8 @@ Settings (environment, /etc/navera/navera.env or the web page's settings.env):
     NAVERA_CAMERA_INPUT        usb | csi | gst | ros | insta360   (default usb)
     NAVERA_CAMERA_DEVICE       /dev/videoN for usb                 (default /dev/video0)
     NAVERA_CAMERA_TOPIC        sensor_msgs/Image topic for ros
-    NAVERA_CAMERA_SIZE         WIDTHxHEIGHT                        (default 1920x1080)
+    NAVERA_CAMERA_SIZE         WIDTHxHEIGHT, or auto (a stream's own) (default 1920x1080)
+    NAVERA_CAMERA_FOURCC       usb: the V4L2 format (default MJPG; Y16 / GREY: a thermal core)
     NAVERA_CAMERA_FPS          frames offered per second           (default 1)
     NAVERA_CAMERA_CALIBRATION  calibration YAML (navera_tools/calibrate_camera.py)
     NAVERA_CAMERA_HFOV_DEG     ideal lens, when not calibrated
@@ -19,7 +20,7 @@ Settings (environment, /etc/navera/navera.env or the web page's settings.env):
                                from (navera_common.vehicle.sensor_topics)
 
 Arguments: camera_type (day|thermal|star), ns (topic namespace), ready_topic,
-settings (NAVERA_CAMERA_ or NAVERA_STAR_CAMERA_), wait_for_ready,
+settings (NAVERA_CAMERA_, NAVERA_THERMAL_CAMERA_ or NAVERA_STAR_CAMERA_), wait_for_ready,
 respawn (false: the camera exiting ends the launch, so systemd restarts the whole pipeline;
 true: only the camera is started again, after respawn_delay_s — the localizer goes on, B23).
 NAVERA_CAMERA_INPUT may also be gst (NAVERA_CAMERA_GST_PIPELINE: any GStreamer source).

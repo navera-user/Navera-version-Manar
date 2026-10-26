@@ -122,8 +122,19 @@ def read_env(path: str) -> Dict[str, str]:
             continue
         k, v = s.split("=", 1)
         if _ENV_KEY.fullmatch(k.strip()):
-            out[k.strip()] = v
+            out[k.strip()] = unquote_env(v)
     return out
+
+
+def unquote_env(v: str) -> str:
+    """A value as systemd's EnvironmentFile reads it: "double" (\\ and \" escapes) or 'single' quotes
+    removed; anything else as written."""
+    v = v.strip()
+    if len(v) >= 2 and v[0] == v[-1] == '"':
+        return re.sub(r'\\(["\\])', r"\1", v[1:-1])
+    if len(v) >= 2 and v[0] == v[-1] == "'":
+        return v[1:-1]
+    return v
 
 
 def env_file_damaged(path: str) -> Optional[str]:

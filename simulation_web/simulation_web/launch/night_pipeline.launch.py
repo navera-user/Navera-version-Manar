@@ -29,6 +29,12 @@ from launch_ros.parameter_descriptions import ParameterValue
 
 def generate_launch_description():
     camera_share = get_package_share_directory('camera_pkg')
+    # the thermal camera: its own settings (NAVERA_THERMAL_CAMERA_*, written by navera-discover when it
+    # finds one, so that a box with a colour AND a thermal camera keeps both), else the camera's
+    # (NAVERA_CAMERA_*: a box whose only camera is thermal, set by hand)
+    thermal_own = bool((os.environ.get('NAVERA_THERMAL_CAMERA_INPUT') or '').strip())
+    thermal_settings = 'NAVERA_THERMAL_CAMERA_' if thermal_own else 'NAVERA_CAMERA_'
+    live = thermal_own or (os.environ.get('NAVERA_CAMERA') or 'replay') == 'live'
 
     default_mbtiles = (os.environ.get('NAVERA_MBTILES')
                        or '/home/navera/isaac_ros_common/vision_pkg/vision_pkg/dataset/sousse_satellite.mbtiles')
@@ -85,8 +91,9 @@ def generate_launch_description():
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(os.path.join(camera_share, 'launch', 'live.launch.py')),
             launch_arguments={'camera_type': 'thermal', 'ns': 'thermal',
-                              'ready_topic': '/night/localizer_ready'}.items(),
-        ) if (os.environ.get('NAVERA_CAMERA') or 'replay') == 'live' else IncludeLaunchDescription(
+                              'ready_topic': '/night/localizer_ready',
+                              'settings': thermal_settings}.items(),
+        ) if live else IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
                 os.path.join(camera_share, 'launch', 'thermal.launch.py')
             ),
