@@ -48,8 +48,11 @@ def generate_launch_description():
 
     return LaunchDescription([
         DeclareLaunchArgument('min_log_odds',   default_value='20.7'),
+        # a field of view only guessed (navera-discover: lens unknown) is no plate-solve hint: NaN, the
+        # node measures the width from the first solved sky and keeps it for this camera
         DeclareLaunchArgument('camera_fov_deg', default_value=(
-            (os.environ.get('NAVERA_STAR_CAMERA_HFOV_DEG') or 'nan') if live else 'nan')),
+            (os.environ.get('NAVERA_STAR_CAMERA_HFOV_DEG') or 'nan')
+            if live and (os.environ.get('NAVERA_STAR_CAMERA_LENS_SOURCE') or '').strip() != 'guess' else 'nan')),
         # Celestial solver config (defaults match the bundled etoiles.jpeg sample)
         DeclareLaunchArgument('solver_mode', default_value='geoloc'),
         DeclareLaunchArgument('tilt',        default_value=sample('75.46')),

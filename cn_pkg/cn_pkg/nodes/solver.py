@@ -126,7 +126,7 @@ def solve_image_b64_geoloc(image_b64: str, tilt: float, azimuth: float,
         _, out, err, timed_out = _run_group(cmd, 300)
         if timed_out:
             return {'success': False, 'error': 'drone_sky_prep timeout (300s)'}
-        log_odds = None
+        log_odds = field_width = None
         lat = lon = ra = dec = None
         method, R_icrs_cam = None, None
         for line in out.splitlines():
@@ -151,6 +151,10 @@ def solve_image_b64_geoloc(image_b64: str, tilt: float, azimuth: float,
                     lon = float(m.group(1))
                     if m.group(2) == 'W':
                         lon = -lon
+            elif 'Field width' in line:
+                m = re.search(r'([-+]?\d+\.?\d*)', line.split(':', 1)[-1])
+                if m:
+                    field_width = float(m.group(1))
             elif 'Log-odds' in line:
                 m = re.search(r'([-+]?\d+\.?\d*)', line.split(':', 1)[-1])
                 if m:
@@ -185,4 +189,6 @@ def solve_image_b64_geoloc(image_b64: str, tilt: float, azimuth: float,
             # "zenith" (camera rotation + IMU up, no compass) or "boresight" (tilt + compass azimuth)
             'method': method,
             'R_icrs_cam': R_icrs_cam,
+            # the star camera's field width the plate solve measured (degwidth), None if not read
+            'field_width_deg': field_width,
         }

@@ -243,6 +243,11 @@ if os.path.exists(WCS_FILE):
         _h = _fits.getheader(WCS_FILE)
         _c = _WCS(_h).pixel_to_world((_h["IMAGEW"] - 1) / 2.0, (_h["IMAGEH"] - 1) / 2.0)
         RA, DEC = float(_c.ra.deg), float(_c.dec.deg)
+        # the plate scale the stars gave: the star camera's field width, measured (solve-field's
+        # degwidth: scale x width) — the celestial node keeps it for this camera (no lens needed)
+        _cd = abs(float(_h.get("CD1_1", 0.0)) * float(_h.get("CD2_2", 0.0))
+                  - float(_h.get("CD1_2", 0.0)) * float(_h.get("CD2_1", 0.0))) ** 0.5
+        FIELD_WIDTH = _cd * float(_h["IMAGEW"]) if _cd > 0 else None
     except Exception as _e:                  # noqa: BLE001 — fall back to the log
         print(f"  WCS read failed ({_e}); using the solver's reported field centre")
 
@@ -303,6 +308,8 @@ print(f"│  Tilt  ({METHOD:6s})   : {TILT:.4f}°")
 print(f"│  Azimuth ({METHOD:6s}) : {AZIMUTH:.4f}°")
 if FOV_IN:
     print(f"│  FOV provided    : {FOV_IN}°")
+if globals().get("FIELD_WIDTH"):
+    print(f"│  Field width     : {FIELD_WIDTH:.3f}°  (measured from the stars)")
 print("├─────────────────────────────────────────────┤")
 print(f"│  Log-odds        : {LOG_ODDS}")
 _METHOD_TEXT = ("zenith (camera rotation + IMU up, no compass)" if FIX_METHOD == "zenith"

@@ -187,6 +187,10 @@ class CNSubscriber(Node):
 
         self.min_log_odds = float(self.get_parameter("min_log_odds").value)
         self.camera_fov_deg = float(self.get_parameter("camera_fov_deg").value)
+        # camera_fov_deg unknown (NaN: a star camera navera-discover found, lens not known): the field
+        # width the first plate solve measures is kept for this camera (state star_fov_<lens_key>) and
+        # narrows the next solves to +-5 %; a solve that fails with it is tried once with the wide search
+        self._fov_learned, self._fov_failed = {}, 0
         image_topic = self.get_parameter("image_topic").value
         meta_topic = self.get_parameter("meta_topic").value
         fix_topic = self.get_parameter("fix_topic").value
@@ -655,12 +659,13 @@ class CNSubscriber(Node):
                     t0 = time.monotonic()
                     if up_cam is not None:
                         result = cn_solver.solve_image_b64_geoloc(
-                            b64, tilt, azimuth, utc, float("nan"), float("nan"), self.camera_fov_deg, up_cam=up_cam)
+                            b64, tilt, azimuth, utc, float("nan"), float("nan"), self._fov_for(meta), up_cam=up_cam)
                         self._geoloc_tilt(result, up_cam, utc)
                     else:
                         result = cn_solver.solve_image_b64_geoloc(
-                            b64, tilt, azimuth, utc, prior_lat, prior_lon, self.camera_fov_deg)
+                            b64, tilt, azimuth, utc, prior_lat, prior_lon, self._fov_for(meta))
                     result["solve_s"] = round(time.monotonic() - t0, 1)
+                    self._learn_fov(meta, result)
             else:
                 result = cn_solver.solve_image_b64(b64)
             self._publish_result(seq_id, meta, result)
@@ -672,6 +677,39 @@ class CNSubscriber(Node):
                 self.pub_done.publish(Int32(data=int(seq_id)))
             except (TypeError, ValueError):
                 pass
+
+    def _fov_for(self, meta) -> float:
+        """The field width to give the plate solver: camera_fov_deg, else the one the stars measured
+        for this camera (NaN: the wide search — also once after a solve that failed with it)."""
+        if math.isfinite(self.camera_fov_deg):
+            return self.camera_fov_deg
+        key = meta.get("lens_key")
+        if not key or self._fov_failed:
+            return float("nan")
+        if key not in self._fov_learned:
+            from navera_common import state_store
+            kept = state_store.load(f"star_fov_{key}", 10 * 365 * 86400.0) or {}
+            self._fov_learned[key] = float(kept.get("field_width_deg") or float("nan"))
+        return self._fov_learned[key]
+
+    def _learn_fov(self, meta, result) -> None:
+        if math.isfinite(self.camera_fov_deg):
+            return
+        key, width = meta.get("lens_key"), result.get("field_width_deg")
+        if not result.get("success"):
+            self._fov_failed = 0 if self._fov_failed else 1      # every other frame: the wide search
+            return
+        self._fov_failed = 0
+        if not key or not width or not (1.0 < float(width) < 180.0):
+            return
+        old = self._fov_learned.get(key, float("nan"))
+        if math.isfinite(old) and abs(float(width) / old - 1.0) < 0.01:
+            return
+        self._fov_learned[key] = float(width)
+        from navera_common import state_store
+        state_store.save(f"star_fov_{key}", {"field_width_deg": float(width)})
+        self.get_logger().info(f"[cn] star camera field width measured from the stars: {float(width):.2f} deg "
+                               "(kept for this camera)")
 
     # ────────────────────────────────────────────────────────────
     # Publish result
