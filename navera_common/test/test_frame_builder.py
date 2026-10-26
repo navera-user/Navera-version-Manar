@@ -91,3 +91,17 @@ def test_a_fixed_camera_turning_fast_is_not_used_a_gimbal_is():
     assert meta["usable"] is True
     _, meta = FrameBuilder(cam, gimbal=True).build(nadir_scene(), 1, 0, q, rate_dps=45.0)
     assert meta["usable"] is True
+
+
+def test_the_frame_says_which_lens_and_attitude_made_it():
+    """camera_lens + R_world_cam: the in-flight lens calibration takes a published pixel back to the raw one
+    (and the mount identity's readable "lens" key, added by live_camera, must not overwrite it)."""
+    import math
+    from navera_common.camera_model import CameraModel, mount_identity
+    from navera_common.frame_builder import FrameBuilder
+    fb = FrameBuilder(CameraModel.ideal(70.0, (640, 480)), (0, 0, 0), 45.0, "day", False, True, 30.0)
+    q = (math.sin(math.radians(5) / 2), 0.0, 0.0, math.cos(math.radians(5) / 2))
+    _, meta = fb.build(np.zeros((480, 640, 3), np.uint8), 1, 10 ** 18, q, "imu", (100.0, 1.0, "baro"))
+    meta.update(mount_identity((0, 0, 0), "", 70.0, None))
+    assert meta["camera_lens"]["model"] == "pinhole" and len(meta["camera_lens"]["K_out"]) == 9
+    assert len(meta["R_world_cam"]) == 9 and meta["lens"] == "ideal 70.0 deg"

@@ -424,7 +424,7 @@ others). It looks for:
 | GPS receiver | serial ports `/dev/ttyTHS*`, `/dev/ttyUSB*`, `/dev/ttyACM*`, at 9600 to 921600 baud | valid NMEA **with satellite data** (GSV/GSA). An autopilot's NMEA output has none, so it is not mistaken for a receiver |
 | Autopilot (MAVLink) | the same serial ports, and the network on UDP 14550 and 14551 | a heartbeat **from an autopilot** (ground stations, cameras and other computers are ignored). NAVERA then asks it for attitude, rangefinder, height and its GPS types |
 | ROS 2 vehicle | ROS domain 0 and NAVERA's own domain | IMU, GPS, camera and rangefinder topics (section 3.3) |
-| Cameras | USB (`/dev/v4l/by-id/…`), CSI (Jetson camera inputs), and an Insta360 ONE R in USB "Android" mode (USB id `2e1a:0002`, read from the system's USB list: the camera is not opened) | an Insta360 in **webcam** mode is reported "CHECK … set its USB mode to Android" |
+| Cameras | USB (`/dev/v4l/by-id/…`, an HDMI capture stick too), CSI (Jetson camera inputs), **network cameras** (ONVIF on the wired interfaces — not Wi-Fi unless asked —, IPv4 and IPv6 link-local; the fixed addresses of common gimbal cameras such as SIYI `192.168.144.25`), the vehicle's ROS image topics, and an Insta360 ONE R in USB "Android" mode (USB id `2e1a:0002`, read from the system's USB list: the camera is not opened) | each camera is told **colour or thermal** and **ground or sky**, and given its job (section 6.0). An Insta360 in **webcam** mode is reported "CHECK … set its USB mode to Android" |
 
 It never opens a port another program holds, a system console port, or a login port. It only
 writes to a port once it has identified an autopilot there.
@@ -435,14 +435,16 @@ writes to a port once it has identified an autopilot there.
 |---|---|---|---|---|
 | **Attitude** (`NAVERA_SENSOR_SOURCE`) | box IMU (BNO085, if fitted) | autopilot | ROS IMU topic, then the Insta360 kit's own IMU | warning: pictures unusable |
 | **GPS** (`NAVERA_GPS_SOURCE`) | box GPS receiver | the autopilot's **second** GPS, only if it is a real receiver | ROS GPS topic | GPS service idle; NAVERA needs a GPS fix at start |
-| **Camera** (`NAVERA_CAMERA_INPUT`) | the Insta360 kit (One R in Android mode) | USB, then CSI | ROS image topic | warning |
+| **Day camera** (`NAVERA_CAMERA_INPUT`) | the Insta360 kit (One R in Android mode) | a colour camera looking down: USB, then CSI, then network | ROS image topic | warning |
+| **Thermal camera** (`NAVERA_THERMAL_CAMERA_INPUT`) | a thermal camera (USB core, network, ROS) | — | — | night pipeline replays samples |
+| **Star camera** (`NAVERA_STAR_CAMERA_INPUT`) | a colour camera looking **up** | — | — | celestial pipeline plays its sample sky |
 | **Output** | an autopilot found → NAVERA's position over MAVLink on the same link (`HIL_GPS` for PX4) | a ROS vehicle found → `/navera/fix` | — | message: set `NAVERA_NMEA_PORT` for an NMEA GPS input |
 
 More rules:
 
 - Several GPS receivers: the one with a fix, a wired port first; a warning asks you to choose.
-- Several USB cameras: the first one, with a warning. **Set `NAVERA_CAMERA_DEVICE`** to the one
-  looking down.
+- Several cameras: section 6.0 says how each gets its job; what NAVERA cannot tell apart is
+  reported with CHECK, never guessed silently.
 - A ROS camera is used with a warning "check it looks at the ground": NAVERA cannot know which way
   a camera points.
 - **The autopilot's second GPS** is used only if the autopilot's `GPS_TYPE2` says it is a real
@@ -450,8 +452,10 @@ More rules:
 - **PX4 autopilot found:** NAVERA sends its position as `HIL_GPS` (PX4 ignores `GPS_INPUT`) and
   the report checks the PX4 parameters it needs (section 5.6): a "CHECK PX4 …" line names each
   one to change on the autopilot.
-- **Detection runs once per boot.** A device plugged in later, or a vehicle computer that boots
-  after NAVERA, is not seen. Reboot, or:
+- **Detection runs at every boot, and a device plugged in later is picked up** by
+  `navera-hotplug` (a GPS, the autopilot, a camera — every 3 s for USB, every 60 s for network
+  cameras): only a job still empty is filled, a working source is never changed. A vehicle
+  computer that boots after NAVERA, or to redo everything:
   ```bash
   sudo systemctl restart navera-discover
   ```
@@ -461,13 +465,14 @@ More rules:
 
 | Situation | What to set in `navera.env` |
 |---|---|
-| Several cameras | `NAVERA_CAMERA_DEVICE=/dev/v4l/by-id/…` (the one looking down) |
+| Two colour cameras that look alike at boot (e.g. in a hangar) | point the sky one up in daylight and `sudo systemctl restart navera-discover`, or set `NAVERA_STAR_CAMERA_DEVICE` |
+| A network camera with a login | `NAVERA_IP_CAMERA_USER` and `NAVERA_IP_CAMERA_PASSWORD` (the box finds the camera and its streams) |
 | Several GPS receivers | `NAVERA_GPS_PORT` (and `NAVERA_GPS_BAUD`) |
 | Autopilot on an unusual address (another UDP port, TCP) | `NAVERA_DISCOVER_MAVLINK=udpin:0.0.0.0:14560` (comma-separated list) or directly `NAVERA_VEHICLE_MAVLINK_URL` |
 | Several autopilots answer | `NAVERA_VEHICLE_MAVLINK_URL` to choose |
-| Network (RTSP) camera | `NAVERA_CAMERA_INPUT=gst` and `NAVERA_CAMERA_GST_PIPELINE` (section 6.4) — not detected automatically |
+| A network camera that is not ONVIF and not a known gimbal | `NAVERA_CAMERA_INPUT=gst` and `NAVERA_CAMERA_GST_PIPELINE` (section 6.4) |
 | ROS vehicle on another domain | see Way C |
-| Every vehicle | `NAVERA_MAX_SPEED_KMH`, `NAVERA_WEB_TOKEN`, camera calibration |
+| Every vehicle | `NAVERA_MAX_SPEED_KMH`, `NAVERA_WEB_TOKEN` (the lens is calibrated in flight: section 6.2) |
 
 #### Overriding "auto"
 
@@ -1001,6 +1006,45 @@ Details: `docs/ARDUPILOT_INTEGRATION.md`, `docs/PX4_INTEGRATION.md`.
 
 ## 6. Cameras
 
+### 6.0 Plug and play: one, two or three cameras
+
+The client plugs the cameras in; at boot (and when a camera is plugged in later) NAVERA finds
+each one, tells what it is, and gives it a job:
+
+| Job | Settings | Which camera | Used by |
+|---|---|---|---|
+| **Day camera** | `NAVERA_CAMERA_*` | colour, looking **down** | day vision (the main source) |
+| **Thermal camera** | `NAVERA_THERMAL_CAMERA_*` | thermal, looking **down** | night vision |
+| **Star camera** | `NAVERA_STAR_CAMERA_*` | colour, looking **up** | celestial (stars, at night) |
+
+How NAVERA tells them apart:
+
+- **Thermal or colour:** the camera's maker and model (FLIR Boson, Lepton/PureThermal, Seek,
+  InfiRay, Hikvision thermal "DS-2TD", …), a grey-only picture format (Y16, GREY: a thermal core
+  gives temperatures, not colours), the stream's name (a bi-spectrum network camera has a
+  visible and a thermal stream), and finally the picture itself (one channel = thermal, reported
+  with CHECK). **Set a thermal camera to a grey palette (white-hot)**: a colour palette (ironbow…)
+  looks like a colour camera, and night vision works on grey.
+- **Looking down or up:** the name when it says (`down`, `nadir` / `sky`, `star`, `up` in a ROS
+  topic or stream name), else the picture: a day sky is bright, smooth and blue or white. Two
+  colour cameras are **compared** with each other (the more sky-like one looks up). At night,
+  in a dark hangar, or two cameras that look alike: CHECK, and only the day camera is set — point
+  the sky camera up in daylight and restart `navera-discover`, or set `NAVERA_STAR_CAMERA_DEVICE`.
+- **Network cameras** (ONVIF): the box finds the camera, asks it for its streams and their codec
+  (H.264 / H.265 / MJPEG), and writes the GStreamer pipeline itself (hardware decoding). A camera
+  with a login needs `NAVERA_IP_CAMERA_USER` and `NAVERA_IP_CAMERA_PASSWORD` in `navera.env`; the
+  password is **never** written into the discovered settings or the report (the pipeline names
+  `@NAVERA_IP_CAMERA_PASSWORD@`, filled in by the camera service at start).
+- **Size and format:** a USB camera's best mode (MJPG near 1920 × 1080; a thermal core at its own
+  size, 16-bit stretched to 8-bit); a network stream or ROS topic at its own size
+  (`NAVERA_CAMERA_SIZE=auto`).
+- A camera written in `navera.env` keeps its job and is never given another one.
+
+Day and night vision never run together (they do not both fit in the GPU's memory): with a day
+and a thermal camera, choose with `NAVERA_PIPELINE` (section 6.5).
+
+`python3 -m navera_common.cameras` lists the cameras and the jobs they would get (no change made).
+
 ### 6.1 Mounting
 
 - The day camera looks **straight down** (nadir), **top of the image towards the nose**. Then
@@ -1025,46 +1069,59 @@ Details: `docs/ARDUPILOT_INTEGRATION.md`, `docs/PX4_INTEGRATION.md`.
   # NAVERA_CAMERA_DEVICE=/dev/v4l/by-id/usb-<maker>_<model>_<serial>-video-index0
   ```
 
-### 6.2 Lens calibration (once per camera and resolution) — required
+### 6.2 Lens calibration — automatic, in flight
 
-Without a calibration NAVERA assumes a perfect lens. Before a real test, calibrate. (The Insta360
-kit is calibrated differently — its two fisheye lenses on a screen dot grid by IRIS, files copied
-in 3.1 step 4; this section is for the other cameras.)
+**No checkerboard is needed.** A camera NAVERA does not know starts with a guessed lens (its
+field of view from NAVERA's camera list when the model is known, else 70°), and NAVERA
+**calibrates the lens itself during the first flight's GPS phase** (NAVERA's rule: GPS at
+take-off):
+
+- while the GPS is trusted, every few seconds day vision matches a picture with the map near the
+  GPS position. Each match gives a few hundred points of the picture paired with points of the
+  map, seen from a known place (GPS) with a known attitude (IMU): **the map is the calibration
+  target**;
+- after ~12 such pictures (about 1 minute of flight over mapped ground, best with a turn), NAVERA
+  fits the lens — its field of view and its distortion, normal or fisheye — and keeps the new
+  lens only if it explains the pictures clearly better than the old one;
+- the new lens is **applied at once** (the next pictures) and **kept for this camera**: the next
+  flights start with it. It refines itself again on later flights (at most 3 updates per flight).
+
+The box check shows it: `lens calibration — calibrated in flight <date>: fisheye, 77 deg, 0.9 px
+over 14 views`, or `not calibrated yet: starts with 70 deg (a guess)`.
+
+Measured in simulation (Isaac Sim, `docs/VALIDATION_STATUS.md`): see "Lens calibrated in flight".
+Not yet measured with a real camera in flight.
+
+Limits: it needs map texture under the vehicle during the GPS phase (not over the sea or a
+uniform desert) and a height source (barometer, GPS). A height bias of a few percent is partly
+taken as a focal error (synthetic test: 5 % height bias → 1.2 % focal).
+
+**Bench calibration (optional, more precise, before delivery).** A file made with the
+checkerboard tool always wins over the in-flight calibration:
 
 1. Print a **9 × 6** (inner corners) checkerboard. Measure one square in mm. Stick it flat on a
    rigid board.
-2. Stop the vision service (it holds the camera):
-   ```bash
-   sudo systemctl stop navera-pipeline-day
-   ```
+2. Stop the vision service (it holds the camera): `sudo systemctl stop navera-pipeline-day`
 3. In the NAVERA shell (appendix B):
    ```bash
    python3 navera_tools/calibrate_camera.py \
        --device /dev/v4l/by-id/usb-<maker>_<model>_<serial>-video-index0 --size 1920x1080 \
        --board 9x6 --square-mm <measured> --model fisheye --out /var/lib/navera/camera.yaml
    ```
-   - `--model fisheye` for wide lenses (the Insta360); `--model pinhole` for a normal lens.
-     **The lens model is required** in the file: a fisheye read as pinhole gives a wrong field of
-     view (the Hikvision visible lens: 47° instead of 77°). Files made by this tool include it.
-   - 360 module: add the same `--crop top` (or `bottom`) as in `navera.env`.
-   - A network or CSI camera: take 20–40 photos of the board with it and use
-     `--images <folder>` instead of `--device`.
-4. Show the board at **30 positions**: corners and edges of the image, tilted up to ~45°, near
-   and far.
-5. Accept when the tool reports **RMS < 0.5 px** ("good"). 0.5–1 px is "usable"; above 1 px, redo it.
-6. Install it and point NAVERA at it:
-   ```bash
-   sudo install -m 0644 /var/lib/navera/camera.yaml /etc/navera/camera.yaml
-   sudoedit /etc/navera/navera.env      # NAVERA_CAMERA_CALIBRATION=/etc/navera/camera.yaml
-   sudo systemctl start navera-pipeline-day
-   ```
+   `--model fisheye` for wide lenses, `--model pinhole` for a normal lens (the model is required
+   in the file). A network or CSI camera: 20–40 photos of the board and `--images <folder>`.
+4. Show the board at **30 positions** (corners and edges, tilted up to ~45°, near and far);
+   accept **RMS < 0.5 px**.
+5. `NAVERA_CAMERA_CALIBRATION=/etc/navera/camera.yaml` in `navera.env`, then
+   `sudo systemctl start navera-pipeline-day`.
 
-**A calibration is saved per camera.** The file records the camera's serial name and the
-resolution. NAVERA **refuses** it with another camera ("calibrate this camera") — even another
-unit of the same model — and at another resolution than `NAVERA_CAMERA_SIZE`.
+A calibration file records the camera's serial name and resolution: NAVERA refuses it with
+another camera or another `NAVERA_CAMERA_SIZE`.
 
-Without any calibration, `NAVERA_CAMERA_HFOV_DEG` (field of view of an ideal lens, degrees) is
-the minimum: the box check fails with neither, and warns with the field of view only.
+The **thermal camera's** lens is not calibrated in flight (night vision has no point matches):
+NAVERA takes its field of view from its camera list, else warns — set
+`NAVERA_THERMAL_CAMERA_HFOV_DEG` from the lens datasheet. The **star camera** measures its own
+field of view from the stars on the first solved sky (section 6.6).
 
 ### 6.3 Camera delay (exposure → picture arrival)
 
@@ -1089,7 +1146,7 @@ corrects it only when its estimate is stable and clearly different.
 |---|---|---|
 | `usb` | a USB (UVC) camera, e.g. the **Insta360 ONE R in USB webcam mode** | detected automatically |
 | `csi` | a Jetson CSI camera (through GStreamer `nvarguscamerasrc`); `NAVERA_CAMERA_DEVICE` = sensor id (0) | detected automatically; supported in code, not tested with a real CSI camera |
-| `gst` | any GStreamer source: a network (RTSP) camera, a gimbal's video stream | **not detected automatically**; the pipeline must end in `appsink name=sink` with BGR |
+| `gst` | any GStreamer source: a network (RTSP) camera, a gimbal's video stream | ONVIF cameras and the known gimbal addresses are **detected automatically** (pipeline written by NAVERA); otherwise write the pipeline, ending in `appsink name=sink` with BGR |
 | `ros` | a `sensor_msgs/Image` topic of the vehicle | must look down (section 3.3) |
 | `insta360` | the IRIS kit: Insta360 ONE R in USB "Android" mode, read by `navera-insta360` (straight-down view + IMU) | detected automatically (USB id `2e1a:0002`); section 3.1 |
 
@@ -1107,7 +1164,10 @@ frame (measured 2026-10-22 in the hardware-in-the-loop test). Keep the byte-stre
 an H.265 camera: `rtph265depay ! video/x-h265,stream-format=byte-stream,alignment=au ! nvv4l2decoder`.
 
 Other camera settings: `NAVERA_CAMERA_SIZE` (default 1920x1080; must be a mode the camera
-delivers), `NAVERA_CAMERA_FPS` (pictures offered per second, default 1).
+delivers; `auto` for a network stream or a ROS topic: its own size), `NAVERA_CAMERA_FOURCC`
+(USB format, default MJPG; `Y16` / `GREY` for a thermal core), `NAVERA_CAMERA_FPS` (pictures
+offered per second, default 1). The thermal and star cameras have the same settings with their
+prefixes `NAVERA_THERMAL_CAMERA_` and `NAVERA_STAR_CAMERA_`.
 
 The Insta360's full-360 "Android" USB stream (both lenses and the camera's own IMU) is read at
 boot by `navera-insta360` (`NAVERA_CAMERA_INPUT=insta360`, section 3.1). Only one program can
@@ -1115,9 +1175,10 @@ hold the camera: not with IRIS's field tools, and not in webcam mode.
 
 ### 6.5 Night: thermal camera
 
-- The night pipeline replaces the day pipeline (they never run together). It uses the **same
-  camera settings** (`NAVERA_CAMERA_*`): for night, point them at the thermal camera and its
-  own calibration.
+- The night pipeline replaces the day pipeline (they never run together). It reads the thermal
+  camera's own settings `NAVERA_THERMAL_CAMERA_*` (set by `navera-discover` when it finds one, so
+  a box with a colour **and** a thermal camera keeps both); without them, the `NAVERA_CAMERA_*`
+  settings (a box whose only camera is thermal, set by hand).
 - Switch to night:
   ```bash
   sudo sed -i 's/^NAVERA_PIPELINE=.*/NAVERA_PIPELINE=night/' /etc/navera/navera.env
@@ -1133,8 +1194,12 @@ hold the camera: not with IRIS's field tools, and not in webcam mode.
 ### 6.6 Stars: celestial navigation (experimental)
 
 - Without a star camera configured, the celestial service plays a **sample sky** (demonstration).
-- A real star camera: set `NAVERA_STAR_CAMERA_INPUT` and the other `NAVERA_STAR_CAMERA_*` settings
-  (appendix A). It needs the IMU and a **trusted time** (1 s of clock error = ~0.5 km).
+- A real star camera: a colour camera looking up is found by `navera-discover` (section 6.0), or
+  set `NAVERA_STAR_CAMERA_INPUT` and the other `NAVERA_STAR_CAMERA_*` settings (appendix A). It
+  needs the IMU and a **trusted time** (1 s of clock error = ~0.5 km).
+- **Its lens is measured from the stars:** with its field of view unknown, the first sky is
+  solved with a wide search (slower, up to a few minutes); the field width the stars give is kept
+  for this camera and narrows the next solves to ±5 %.
 - **Time for the stars** (no battery clock needed). Operating rule: the GPS is good at take-off.
   NAVERA then takes the GPS receiver's UTC (only while the arbiter trusts the GPS: not refused,
   not suspected of spoofing) and keeps it with the box's own steady clock for the rest of the
@@ -1471,11 +1536,12 @@ A commented-out line (`#`) means "use the default". The `/mission` page writes a
 | `NAVERA_CAMERA_DEVICE` | found by auto (/dev/video0) | the `/dev/v4l/by-id/…` name; CSI: sensor id |
 | `NAVERA_CAMERA_GST_PIPELINE` | — | GStreamer source for gst (in quotes) |
 | `NAVERA_CAMERA_TOPIC` | /vehicle/camera/image_raw | image topic for ros |
-| `NAVERA_CAMERA_SIZE` | 1920x1080 | resolution |
+| `NAVERA_CAMERA_SIZE` | 1920x1080 (found by auto) | resolution; `auto` = a network stream's or ROS topic's own |
+| `NAVERA_CAMERA_FOURCC` | MJPG (found by auto) | USB picture format; Y16 / GREY for a thermal core |
 | `NAVERA_CAMERA_CROP` | none | top, bottom, left, right or x,y,w,h (360 camera) |
 | `NAVERA_CAMERA_FPS` | 1 | pictures per second offered to vision (0.05–30) |
-| `NAVERA_CAMERA_CALIBRATION` | empty | lens calibration file (**required before a real test**) |
-| `NAVERA_CAMERA_HFOV_DEG` | empty | field of view when there is no calibration (5–170) |
+| `NAVERA_CAMERA_CALIBRATION` | empty | bench lens calibration file (optional: without it the lens is calibrated in flight, 6.2) |
+| `NAVERA_CAMERA_HFOV_DEG` | found by auto (camera list, else 70) | starting field of view when there is no calibration file (5–170) |
 | `NAVERA_CAMERA_MOUNT_RPY` | 0,0,0 | camera mounting; 0,0,0 = straight down, image top to the nose |
 | `NAVERA_CAMERA_GIMBAL` | false | true when a gimbal holds the camera level |
 | `NAVERA_CAMERA_MAX_TILT_DEG` | 45 | pictures tilted more are not used (5–80) |
@@ -1502,7 +1568,10 @@ A commented-out line (`#`) means "use the default". The `/mission` page writes a
 | `NAVERA_DAY_MATCHER` | auto | auto (learned, SIFT fallback), learned, local, retrieval |
 | `NAVERA_DAY_HFOV_DEG` *web* | none | field of view of **replayed** pictures only (not the live camera) |
 | `NAVERA_THERMAL_HFOV_DEG` *web* | none | thermal field of view for pictures that do not state it |
-| `NAVERA_STAR_CAMERA_INPUT`, `_DEVICE`, `_SIZE`, `_FPS`, `_CALIBRATION`, `_HFOV_DEG`, `_GST_PIPELINE` | unset (sample sky) | a live star camera (experimental) |
+| `NAVERA_STAR_CAMERA_INPUT`, `_DEVICE`, `_SIZE`, `_FPS`, `_CALIBRATION`, `_HFOV_DEG`, `_GST_PIPELINE` | found by auto, else unset (sample sky) | a live star camera (experimental) |
+| `NAVERA_THERMAL_CAMERA_INPUT`, `_DEVICE`, `_SIZE`, `_FOURCC`, `_FPS`, `_CALIBRATION`, `_HFOV_DEG`, `_GST_PIPELINE`, `_TOPIC` | found by auto, else the `NAVERA_CAMERA_*` ones | the thermal camera of night vision (6.5) |
+| `NAVERA_IP_CAMERA_USER` / `NAVERA_IP_CAMERA_PASSWORD` | empty | login of the network cameras (ONVIF / RTSP); never copied into the discovered settings |
+| `NAVERA_DISCOVER_IP_CAMERAS` | 1 | 0: do not look for network cameras; wifi: also on Wi-Fi (default: wired interfaces only) |
 | `NAVERA_STAR_CAMERA_ELEVATION_DEG` / `_AZIMUTH_DEG` | 90 / 0 | star camera pointing |
 | `NAVERA_MAGNETIC_DECLINATION_DEG` | 0 | celestial only, for an attitude source in magnetic north; leave unset with the box IMU |
 | `NAVERA_ATTITUDE_SIGMA_DEG` | unknown | IMU attitude accuracy (sets the celestial accuracy) |

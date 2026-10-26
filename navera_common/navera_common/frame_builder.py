@@ -17,9 +17,10 @@ Meta keys (all optional except frame_id and image_stamp_ns):
   usable / reason    false + why when the frame cannot be used (e.g. camera too tilted)
   gps_lat, gps_lon   the GPS at exposure, for recording and evaluation ONLY — vision never
                      reads them (gps_valid stays false: a live frame is never ground truth)
-  lens               the lens the frame was made with: model, K, D, size (raw), K_out (published)
+  camera_lens        the lens the frame was made with: model, K, D, size (raw), K_out (published)
+                     ("lens" is the mount identity's readable lens, camera_model.mount_identity)
   R_world_cam        the camera attitude the frame was straightened with (9 numbers, row-major)
-                     — with lens, a published pixel can be taken back to the raw camera pixel
+                     — with camera_lens, a published pixel can be taken back to the raw camera pixel
                      (day_pkg.lens_selfcal: the in-flight lens calibration)
 """
 import math
@@ -70,7 +71,7 @@ class FrameBuilder:
                     timestamp=time.strftime("%H:%M:%S", time.gmtime(exposure_ns / 1e9)),
                     image_file=f"live_{int(frame_id):06d}.jpg", usable=True,
                     straightened=False, attitude_source="none", heading_deg=None,
-                    mount_yaw_deg=self.mount[2], lens=self.lens_meta)
+                    mount_yaw_deg=self.mount[2], camera_lens=self.lens_meta)
         if altitude is not None:
             meta.update(altitude_m=round(altitude[0], 2), altitude_sigma_m=round(altitude[1], 2),
                         altitude_source=altitude[2])

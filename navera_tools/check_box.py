@@ -10,6 +10,7 @@ Each line is PASS, WARN (works, but check it) or FAIL (fix before testing). Exit
 0 = no FAIL. Nothing is changed on the box.
 """
 import argparse
+import glob
 import json
 import math
 import os
@@ -37,7 +38,8 @@ def load_discovered():
             line = line.strip()
             if line and not line.startswith("#") and "=" in line:
                 k, v = line.split("=", 1)
-                os.environ[k] = v
+                from navera_common.atomic_io import unquote_env
+                os.environ[k] = unquote_env(v)
     except OSError:
         pass
 
@@ -106,8 +108,7 @@ def check_settings():
             report(OK, "lens calibration", "Insta360 kit: a computed straight view (ideal lens); the 360 "
                                            "lenses' calibration is checked below")
         else:
-            report(WARN, "lens calibration", "none: the lens is taken as distortion-free "
-                                             "(navera_tools/calibrate_camera.py)")
+            report(*lens_state(cam, os.environ))
         from navera_common.vehicle import camera_mount_advice
         try:
             v = max_speed_mps_from_env()
@@ -117,6 +118,42 @@ def check_settings():
         report(WARN if advice else OK, "camera mount",
                advice or ("gimbal (level)" if cam["gimbal"] else "fixed: tilt fine for this vehicle and speed"))
     return t, cam
+
+
+def lens_state(cam, env):
+    """(level, "lens calibration", detail) of a camera without a calibration file: the lens calibrated in
+    flight for it (day_pkg.lens_selfcal, state lens_auto_*), else the starting value it flies with."""
+    from navera_common import state_store
+    kept = []
+    for f in sorted(glob.glob(os.path.join(state_store.state_dir(), "lens_auto_*.json"))):
+        d = state_store.load(os.path.basename(f)[:-5], float("inf")) or {}
+        lens = d.get("lens") or {}
+        if lens.get("image_width") and (cam["width"] in (0, lens["image_width"])):
+            kept.append(d)
+    src = str(env.get("NAVERA_CAMERA_LENS_SOURCE", "") or "").strip()
+    start = f"{cam.get('camera_hfov_deg', float('nan')):g} deg " + (
+        "(from the camera database)" if src == "database" else "(a guess: camera not known)" if src == "guess"
+        else "(NAVERA_CAMERA_HFOV_DEG)")
+    if kept:
+        d = max(kept, key=lambda x: x.get("saved_at", 0))
+        return (OK, "lens calibration", f"calibrated in flight {d.get('date')}: {d['lens'].get('model')}, "
+                                         f"{d.get('hfov_deg')} deg, {d.get('rms_px')} px over {d.get('views')} views; "
+                                         f"starting value {start}")
+    return (WARN, "lens calibration", f"not calibrated yet: starts with {start} — calibrated automatically "
+                                      "during the first flight's GPS phase (needs ~1 min of flight with GPS over "
+                                      "mapped ground, best with a turn); or navera_tools/calibrate_camera.py")
+
+
+def check_other_cameras(env=None):
+    """The thermal and star cameras' lens (the jobs navera-discover gave are in its report above)."""
+    env = os.environ if env is None else env
+    for role, pre in (("thermal", "NAVERA_THERMAL_CAMERA_"), ("star", "NAVERA_STAR_CAMERA_")):
+        if str(env.get(pre + "INPUT", "") or "").strip() and \
+                str(env.get(pre + "LENS_SOURCE", "") or "").strip() == "guess":
+            report(WARN, f"{role} camera lens",
+                   (f"field of view guessed ({env.get(pre + 'HFOV_DEG')} deg): set {pre}HFOV_DEG from the lens "
+                    "datasheet (night vision scales the thermal picture with it)") if role == "thermal" else
+                   "field of view unknown: measured from the stars on the first solved sky, then kept")
 
 
 def insta360_used(env=None) -> bool:
@@ -502,6 +539,7 @@ def main():
     check_discovery()
     check_config()
     topics, cam = check_settings()
+    check_other_cameras()
     check_insta360()
     check_files()
     if a.camera and cam:

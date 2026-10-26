@@ -44,6 +44,7 @@ from navera_common.prior import GpsPrior
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 from rclpy.executors import ExternalShutdownException, MultiThreadedExecutor
 from rclpy.node import Node
+from rcl_interfaces.msg import ParameterDescriptor
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
 
 from sensor_msgs.msg import Image, Imu, NavSatFix, NavSatStatus, Range
@@ -358,7 +359,8 @@ class DaySubscriber(Node):
         # camera applies it at once and at every start. "auto": only a lens not calibrated with a file
         # (navera-discover's starting value, or NAVERA_CAMERA_HFOV_DEG); "on": also a calibrated one;
         # "off". At most lens_selfcal_max_updates lenses applied per flight.
-        self.declare_parameter("lens_selfcal", "auto")
+        # any type: `-p lens_selfcal:=off` arrives as the boolean false (YAML), "auto" as a string
+        self.declare_parameter("lens_selfcal", "auto", ParameterDescriptor(dynamic_typing=True))
         self.declare_parameter("lens_selfcal_min_views", 12)
         self.declare_parameter("lens_selfcal_every_views", 8)
         self.declare_parameter("lens_selfcal_max_updates", 3)
@@ -2548,7 +2550,12 @@ class DaySubscriber(Node):
     # ────────────────────────────────────────────────────────────
     def _init_lens_cal(self):
         p_ = lambda n: self.get_parameter(n).value               # noqa: E731
-        self.lens_mode = str(p_("lens_selfcal")).strip().lower()
+        mode = p_("lens_selfcal")
+        self.lens_mode = {True: "on", False: "off"}.get(mode, str(mode).strip().lower()) \
+            if isinstance(mode, bool) else str(mode).strip().lower()
+        if self.lens_mode not in ("auto", "on", "off"):
+            self.get_logger().error(f"[day] lens_selfcal={mode!r}: expected auto, on or off — auto used")
+            self.lens_mode = "auto"
         self.lens_cal = LensSelfCal(min_views=int(p_("lens_selfcal_min_views"))) if self.lens_mode != "off" else None
         self.lens_every = int(p_("lens_selfcal_every_views"))
         self.lens_max_updates = int(p_("lens_selfcal_max_updates"))
@@ -2560,25 +2567,31 @@ class DaySubscriber(Node):
     def _lens_sample(self, res, meta, img, g, t):
         """A GPS-check match as a view for the lens calibration; a fit started when enough are new."""
         cal = getattr(self, "lens_cal", None)
-        lens, key = lens_of_meta(meta), meta.get("lens_key")
-        if cal is None or lens is None or not key or self._lens_updates >= self.lens_max_updates:
+        if cal is None or self._lens_updates >= self.lens_max_updates:
             return
+        lens, key = lens_of_meta(meta), meta.get("lens_key")
         if self.lens_mode == "auto" and meta.get("lens_source") == "calibrated":
             return
         pairs = list_pairs(res)
-        if pairs is None:
-            return
-        g0 = self._gps_hist.at(t - 1.0)
-        speed = haversine_m(g0[0], g0[1], g[0], g[1]) if g0 is not None else 0.0
-        try:
-            why = cal.add_view(lens, meta.get("R_world_cam"), pairs[0], pairs[1], g[:2], float(meta["altitude_m"]),
-                               speed, float(lens["size"][0]) / float(img.shape[1]), t)
-        except (KeyError, TypeError, ValueError) as e:
-            why = f"unusable ({e})"
+        why = None
+        if lens is None or not key:
+            why = "the frames carry no lens description (camera node too old?)"
+        elif pairs is None:
+            why = "the match gave no point pairs"
+        else:
+            g0 = self._gps_hist.at(t - 1.0)
+            speed = haversine_m(g0[0], g0[1], g[0], g[1]) if g0 is not None else 0.0
+            try:
+                why = cal.add_view(lens, meta.get("R_world_cam"), pairs[0], pairs[1], g[:2],
+                                   float(meta["altitude_m"]), speed, float(lens["size"][0]) / float(img.shape[1]), t)
+            except (KeyError, TypeError, ValueError) as e:
+                why = f"unusable ({e})"
         if why is not None:
-            self.get_logger().debug(f"[day] lens view not kept: {why}")
+            self.get_logger().info(f"[day] lens calibration: view not used: {why}", throttle_duration_sec=60.0)
             return
         self._lens_new += 1
+        self.get_logger().info(f"[day] lens calibration: {len(cal.views)} views (fit from {cal.min_views})",
+                               throttle_duration_sec=20.0)
         if cal.ready() and not self._lens_fitting and (cal.last is None or self._lens_new >= self.lens_every):
             self._lens_new, self._lens_fitting = 0, True
             threading.Thread(target=self._lens_fit, args=(key,), daemon=True).start()

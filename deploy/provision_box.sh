@@ -7,7 +7,8 @@
 #
 # Run after deploy/install.sh, from the release directory. It:
 #   1. writes the box identity to /etc/navera/box.env (serial, customer, release, date);
-#   2. installs the camera calibration (--lens) into /var/lib/navera and points navera.env at it,
+#   2. sets the live camera (NAVERA_CAMERA=live), installs the camera calibration (--lens, optional:
+#      without it the lens is calibrated in flight) into /var/lib/navera and points navera.env at it,
 #      and the bench-measured camera delay (--camera-delay, NAVERA_CAMERA_LATENCY_S);
 #   3. sets the mission map package (--map-bundle) and any extra settings (--env-extra, KEY=VALUE lines);
 #   4. runs the box checks (navera_tools/check_box.py) and writes the record
@@ -56,6 +57,8 @@ printf 'NAVERA_BOX_SERIAL=%s\nNAVERA_BOX_CUSTOMER=%q\nNAVERA_BOX_RELEASE=%s\nNAV
     "$serial" "$customer" "$release" "$date_utc" > "$R/etc/navera/box.env"
 
 lens_sha=""
+# a delivered box flies its real cameras (navera-discover finds them; the dev default replays samples)
+set_env NAVERA_CAMERA live
 if [ -n "$lens" ]; then
     [ -f "$lens" ] || { echo "no lens file $lens" >&2; exit 2; }
     dst="$lib/$(basename "$lens")"

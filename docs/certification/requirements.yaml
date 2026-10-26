@@ -1044,6 +1044,56 @@ requirements:
     - {level: A, value: 'Isaac endurance 2026-10-22 (F39): GPS lost 12 s after reaching altitude; the 24 sigma samples of the climb all forgotten by the 60 s rollback: 30 m stated for ~14 m errors', ref: 'endur_2h logs/day.log'}
   status: verified-UT
 
+- id: NAV-FUN-31
+  category: FUN
+  title: 'Plug-and-play cameras: found, described and given a job'
+  text: 'navera-discover (and navera-hotplug for a camera plugged in later) shall find the USB / UVC, CSI and network cameras (ONVIF WS-Discovery on the wired interfaces, IPv4 and IPv6 link-local, with the WS-UsernameToken login of NAVERA_IP_CAMERA_USER / _PASSWORD; the fixed addresses of common gimbal cameras) and the vehicle''s ROS image topics; tell colour from thermal (maker / model list, grey-only V4L2 format, stream name, then a grey picture reported with CHECK) and ground from sky (the name, else the picture, two colour cameras compared with each other); and fill the day (NAVERA_CAMERA_*), thermal (NAVERA_THERMAL_CAMERA_*) and star (NAVERA_STAR_CAMERA_*) settings left unset, with the camera''s size, V4L2 format, the RTSP stream''s codec and a hardware-decoding pipeline, and a starting field of view. A camera written in navera.env keeps its job and is no candidate for another; what cannot be told apart is reported with CHECK, never guessed; probing reads only (a frame in a child process with a time limit, never a device another process holds, never the Insta360 kit); a network password is never written into discovered.env or the report. The live camera shall take a stream''s own size (SIZE auto) and turn 16-bit / grey pictures into 8-bit BGR; the night pipeline shall read the thermal camera''s own settings.'
+  code:
+    - navera_common/navera_common/cameras.py::assign_roles
+    - navera_common/navera_common/cameras.py::role_settings
+    - navera_common/navera_common/cameras.py::network_cameras
+    - navera_common/navera_common/cameras.py::onvif_streams
+    - navera_common/navera_common/cameras.py::rtsp_describe
+    - navera_common/navera_common/cameras.py::picture_traits
+    - navera_common/navera_common/cameras.py::usb_cameras
+    - navera_common/navera_common/discovery.py::describe_cameras
+    - navera_common/navera_common/discovery.py::write_env
+    - navera_common/navera_common/hotplug.py::fill_idle
+    - camera_pkg/camera_pkg/gst_capture.py::expand_secrets
+    - camera_pkg/camera_pkg/nodes/live_camera.py::LiveCamera._adopt
+    - camera_pkg/camera_pkg/nodes/live_camera.py::LiveCamera.to_bgr8
+  match:
+    - 'test_cameras\.py::'
+    - 'test_discovery\.py::test_cameras'
+    - 'test_discovery\.py::test_a_pipeline_in_discovered_env'
+    - 'test_live_camera_auto\.py::test_the_size|test_live_camera_auto\.py::test_a_16_bit'
+  evidence:
+    - {level: UT, value: '2026-10-26: roles for colour + thermal, two colour cameras (sky picture vs ground picture, names, look-alike -> CHECK), ROS topics, written devices, the Insta360 kit beside a sky camera; ONVIF bi-spectrum camera with digest login (refused / needed), RTSP DESCRIBE with digest auth -> codec; pipeline secrets never in the settings, read back the same by Python and a shell; 16-bit thermal to 8-bit; size from the first frame'}
+  status: verified-UT
+  note: 'no real network, thermal or second camera plugged into the box yet (the Hikvision bi-spectrum camera is the first to try); picture-based thermal / sky detection measured on public and synthetic pictures only'
+
+- id: NAV-FUN-32
+  category: FUN
+  title: 'Day camera lens calibrated in flight against the map'
+  text: 'Without a lens calibration file, the day pipeline shall calibrate the camera lens (focal, radial k1 k2, pinhole or fisheye: both tried for a lens not yet calibrated) from the GPS-check matches while the GPS is trusted — the frame points taken back through the straightening and the frame''s lens to raw pixels, the map points placed from the GPS position and height with priors on the per-view position, attitude and shared mount — and apply a fit only when it lowers the total cost to at most cost_ratio_max of the current lens'', the points reach min_radius_frac of the image and the focal is determined within focal_sigma_max; an applied lens shall be published (latched) and used by the live camera from the next frame, kept for this camera (lens_key: device / stream, size, crop, starting lens) for the next starts, and never replace a calibration file; at most lens_selfcal_max_updates per flight. The star camera''s field width, when not configured, shall be measured from the first solved sky and kept for that camera.'
+  code:
+    - day_pkg/day_pkg/lens_selfcal.py::LensSelfCal.fit
+    - day_pkg/day_pkg/lens_selfcal.py::LensSelfCal.add_view
+    - day_pkg/day_pkg/lens_selfcal.py::raw_pixels
+    - day_pkg/day_pkg/nodes/day_subscriber.py::DaySubscriber._lens_sample
+    - day_pkg/day_pkg/nodes/day_subscriber.py::DaySubscriber._lens_fit
+    - camera_pkg/camera_pkg/nodes/live_camera.py::LiveCamera._on_lens
+    - camera_pkg/camera_pkg/nodes/live_camera.py::LiveCamera._lens_key
+    - cn_pkg/cn_pkg/nodes/cn_subscriber.py::CNSubscriber._learn_fov
+  match:
+    - 'test_lens_selfcal\.py::'
+    - 'test_live_camera_auto\.py::test_the_size'
+    - 'test_star_fov_learned\.py::'
+  evidence:
+    - {level: UT, value: '2026-10-26 synthetic GPS-check views (true lens distorted, 62-110 deg, assumed ideal 70 deg, IMU 0.3 deg noise, mount 1 deg off, GPS 2 m, height 1 %): lens within 1.5 % of the image width everywhere, focal within 2 %; a 110 deg fisheye recognised; the right lens left unchanged; a 5 % height bias moved the focal 1.2 %'}
+  status: verified-UT
+  note: 'Isaac Sim closed loop to add (lens_guess campaign condition); not yet with a real camera in flight; the thermal camera lens is not calibrated in flight'
+
 - id: NAV-FUN-25
   category: FUN
   title: 'Compass-free celestial fix for a narrow star camera with a known mount'

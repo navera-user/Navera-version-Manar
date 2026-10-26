@@ -234,12 +234,14 @@ WSD_PROBE = ('<?xml version="1.0" encoding="UTF-8"?><e:Envelope xmlns:e="http://
 SKIP_IFACES = re.compile(r"^(lo|docker|l4tbr|tailscale|wg|tun|virbr|veth|br-|can|usb\d)")
 
 
-def wired_interfaces() -> List[dict]:
+def wired_interfaces(wifi: bool = False) -> List[dict]:
     """[{name, ipv4: [(addr, prefix)], index}] of the interfaces that are up (no loopback/VPN/docker).
-    Wi-Fi is kept: a gimbal camera on a Wi-Fi bridge is a camera like any other."""
+    Wi-Fi only with wifi=True (NAVERA_DISCOVER_IP_CAMERAS=wifi): on a hangar or office Wi-Fi a security
+    camera would answer like the vehicle's own; drone cameras are on the vehicle's Ethernet."""
     out = []
     for name in sorted(os.listdir("/sys/class/net")):
-        if SKIP_IFACES.match(name):
+        if SKIP_IFACES.match(name) or (not wifi and (name.startswith("wl") or
+                                                     os.path.isdir(f"/sys/class/net/{name}/wireless"))):
             continue
         try:
             if open(f"/sys/class/net/{name}/operstate").read().strip() not in ("up", "unknown"):
@@ -461,7 +463,7 @@ def network_cameras(env, wait_s: float = 2.5) -> List[dict]:
     """The network cameras' video streams: [{kind: ip, id: uri, name, spectrum, pipeline, ...}]."""
     user = str(env.get("NAVERA_IP_CAMERA_USER", "") or "").strip()
     pw = str(env.get("NAVERA_IP_CAMERA_PASSWORD", "") or "")
-    ifaces = wired_interfaces()
+    ifaces = wired_interfaces(wifi=str(env.get("NAVERA_DISCOVER_IP_CAMERAS", "") or "").strip().lower() == "wifi")
     out, notes = [], []
     for dev in ws_discovery(ifaces, wait_s):
         d = onvif_streams(dev, user, pw)

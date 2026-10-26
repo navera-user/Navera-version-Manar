@@ -87,6 +87,13 @@ CONDITIONS = {
                      "--cam-args '-p capture_latency_s:=1.3' --set ROLL_LIMIT_DEG=25,RLL2SRV_RMAX=30,"
                      "RLL2SRV_TCONST=0.8,PTCH2SRV_RMAX_UP=15,PTCH2SRV_RMAX_DN=15,PTCH_LIM_MAX_DEG=15,"
                      "PTCH_LIM_MIN_DEG=-15,NAVL1_PERIOD=25,WP_RADIUS=250,WP_LOITER_RAD=2500,RTL_RADIUS=1000"),
+    # plug and play: the camera's lens NOT given (navera-discover's 70 deg guess; the simulated camera is the
+    # Hikvision visible fisheye, 77 deg): calibrated in flight against the map while GPS is trusted
+    "lens_guess": ("baseline, lens unknown: 70 deg ideal guess, calibrated in flight (day_pkg.lens_selfcal)",
+                   SHORT + " --cam-args '-p calibration_file:=\"\" -p camera_hfov_deg:=70.0'"),
+    "lens_guess_nocal": ("baseline, lens unknown: 70 deg ideal guess, in-flight calibration OFF",
+                         SHORT + " --cam-args '-p calibration_file:=\"\" -p camera_hfov_deg:=70.0'"
+                         " --day-args '-p lens_selfcal:=off'"),
     "worst_copter": ("dusk + dust 3 km + rain + wind 10 + outage 30 (full mission)",
                      FULL + " --time 17:15 --wind 10 --turb 3 --link-args '-p haze_visibility_m:=3000 "
                      "-p haze_rgb:=0.8/0.62/0.4 -p rain:=0.5 -p outages:=60/30'"),

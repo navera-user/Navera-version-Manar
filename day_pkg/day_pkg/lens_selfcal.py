@@ -324,7 +324,7 @@ def calibration_dict(lens: dict, summary: dict, camera: str = "") -> dict:
 
 def lens_of_meta(meta: dict) -> Optional[dict]:
     """The lens description live_camera puts in each frame's meta (None for older frames)."""
-    lens = meta.get("lens")
+    lens = meta.get("camera_lens")
     return lens if isinstance(lens, dict) and lens.get("K") and lens.get("K_out") else None
 
 

@@ -32,8 +32,8 @@ should be recent (< 5 years); night needs a thermal camera.
 | Computer | NVIDIA Jetson Orin Nano 8 GB (Super), JetPack 6.2 |
 | Power | ~8.5 W average, 12 W peak (module); input per carrier board |
 | Temperature | 72 °C junction under continuous load at room temperature, no throttling |
-| Camera (IRIS kit) | Insta360 One R (camera + built-in IMU) — or customer USB / CSI / network camera |
-| Optional | thermal camera (night), DS3231 clock |
+| Camera (IRIS kit) | Insta360 One R (camera + built-in IMU) — or the customer's camera: USB, CSI, network (ONVIF / RTSP), ROS 2 |
+| Optional | a second camera: thermal (night) or looking up (stars); DS3231 clock |
 | Storage | NVMe SSD (maps, logs) |
 
 ## Interfaces (detected automatically at power-on and when plugged in)
@@ -41,6 +41,9 @@ should be recent (< 5 years); night needs a thermal camera.
 - **GPS in:** NMEA or u-blox (serial/USB, or listening on the autopilot's GPS wire), DroneCAN
   (CAN bus), network GPS, the autopilot's own GPS, ROS 2.
 - **GPS out:** MAVLink, NMEA serial, ROS 2 (`/navera/fix`).
+- **Cameras:** plug and play — each camera found (USB, CSI, network, ROS), told colour / thermal and
+  ground / sky, and given its job (day, night, stars); the lens is calibrated in flight against the
+  map during the GPS phase (no checkerboard), the star camera's from the stars.
 - **Robots:** ROS 2 Humble, joins the vehicle's ROS network automatically.
 - **Operator:** web page (status, map, mission preparation).
 
@@ -49,6 +52,6 @@ should be recent (< 5 years); night needs a thermal camera.
 - GPS spoofing / jamming detection; honest accuracy on every position.
 - Survives a software crash in flight (restart in ~1 s, autopilot kept fed).
 - Offline mission package with integrity check; release archives with checksums.
-- 1,097 automated tests; 85 requirements, each linked to tests.
+- 1,150+ automated tests; 89 requirements, each linked to tests.
 
 *IRIS Systems — Integrated Robotics and Intelligent Systems.*
