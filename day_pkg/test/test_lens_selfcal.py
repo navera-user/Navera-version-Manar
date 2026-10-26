@@ -25,7 +25,7 @@ def quat(roll, pitch, yaw):
             math.cos(r) * math.cos(p) * math.cos(y) + math.sin(r) * math.sin(p) * math.sin(y))
 
 
-def make_views(true_model, true_f, k1, k2, assumed: CameraModel, n_views=16, seed=1, height_bias=0.0):
+def make_views(true_model, true_f, k1, k2, assumed: CameraModel, n_views=16, seed=1, height_bias=0.0, reach=1.0):
     rng = np.random.default_rng(seed)
     views = []
     lens = dict(model=assumed.model, K=assumed.K.ravel().tolist(), D=assumed.D.tolist(), size=[W, H],
@@ -35,7 +35,8 @@ def make_views(true_model, true_f, k1, k2, assumed: CameraModel, n_views=16, see
         att = (rng.uniform(-12, 12), rng.uniform(-12, 12), rng.uniform(0, 360))
         R_true = camera_rotation(quat(*att), (1.0, -0.5, 0.0))
         R_imu = camera_rotation(quat(*(a + rng.normal(0, 0.3) for a in att)), (0.0, 0.0, 0.0))
-        raw = np.c_[rng.uniform(5, W - 5, 300), rng.uniform(5, H - 5, 300)]
+        mx, my = (1 - reach) * W / 2 + 5, (1 - reach) * H / 2 + 5      # matches only near the centre
+        raw = np.c_[rng.uniform(mx, W - mx, 300), rng.uniform(my, H - my, 300)]
         # true rays: invert the true lens numerically (bisection on the radius)
         x = (raw[:, 0] - W / 2) / true_f
         y = (raw[:, 1] - H / 2) / true_f
@@ -84,7 +85,7 @@ def test_a_wrong_ideal_lens_is_recovered_from_gps_check_views(hfov_true, k1, k2)
         assert cal.add_view(v["lens"], v["R"], v["fp"], v["ml"], v["gps"], v["h"]) is None
     out = cal.fit()
     assert out["accepted"], out
-    assert out["cost_ratio"] < 0.6 and out["rms_after_px"] <= out["rms_before_px"]
+    assert out["chi2_gain"] >= 25 and out["rms_after_px"] <= out["rms_before_px"]
     # within a few pixels of the true lens everywhere (the focal to ~1 %: the heights are 1 % noisy)
     assert radial_error_px(out["lens"], "pinhole", f_true, k1, k2) < 0.015 * W
     assert abs(out["focal_px"] / f_true - 1) < 0.02
@@ -100,6 +101,18 @@ def test_a_fisheye_is_recognised_from_an_ideal_guess():
     assert out["accepted"] and out["model"] == "fisheye", out
     assert radial_error_px(out["lens"], "fisheye", f_true, 0.02, -0.01) < 0.015 * W
     assert abs(out["hfov_deg"] - 110.0) < 3.0
+
+
+def test_a_wide_fisheye_seen_only_near_the_centre_is_still_a_fisheye():
+    """Real matches rarely reach the corners (Isaac Sim: a 92 deg fisheye fitted as a pinhole bent 200+ px in
+    the corners): when both models explain the points alike, the one with the smaller distortion terms."""
+    f_true = (W / 2) / math.radians(46.0)                     # 92 deg equidistant fisheye
+    cal = LensSelfCal(min_views=12, min_radius_frac=0.5)
+    for v in make_views("fisheye", f_true, 0.0, 0.0, CameraModel.ideal(70.0, (W, H)), seed=9, reach=0.7):
+        cal.add_view(v["lens"], v["R"], v["fp"], v["ml"], v["gps"], v["h"])
+    out = cal.fit()
+    assert out["accepted"] and out["model"] == "fisheye", out
+    assert radial_error_px(out["lens"], "fisheye", f_true, 0.0, 0.0) < 0.015 * W      # right in the corners too
 
 
 def test_the_right_lens_is_not_changed():
@@ -137,17 +150,19 @@ def test_views_need_points_and_height_and_a_lens():
     assert cal.fit() is None                                  # not enough views
 
 
-def test_a_new_lens_drops_the_views_made_with_the_old_one():
+def test_views_are_kept_across_a_lens_change_and_the_newest_lens_is_the_current_one():
+    """The points are raw camera pixels: a frame made with another lens gives the same views."""
     assumed = CameraModel.ideal(70.0, (W, H))
     f_true = (W / 2) / math.tan(math.radians(84.0) / 2)
     cal = LensSelfCal(min_views=3)
     vs = make_views("pinhole", f_true, -0.2, 0.05, assumed, n_views=4)
     for v in vs:
         cal.add_view(v["lens"], v["R"], v["fp"], v["ml"], v["gps"], v["h"])
-    assert len(cal.views) == 4
-    other = dict(vs[0]["lens"], K=[600, 0, 640, 0, 600, 360, 0, 0, 1], K_out=[600, 0, 640, 0, 600, 360, 0, 0, 1])
-    cal.add_view(other, vs[0]["R"], vs[0]["fp"], vs[0]["ml"], vs[0]["gps"], vs[0]["h"])
-    assert len(cal.views) == 1
+    other = CameraModel.ideal(80.0, (W, H))
+    w = make_views("pinhole", f_true, -0.2, 0.05, other, n_views=1, seed=4)[0]
+    cal.add_view(w["lens"], w["R"], w["fp"], w["ml"], w["gps"], w["h"])
+    assert len(cal.views) == 5 and cal.lens is w["lens"]
+    assert np.allclose(cal.views[-1]["raw"], cal.views[-1]["raw"])       # (raw pixels, lens-independent)
 
 
 def test_raw_pixels_undo_the_straightening_and_the_lens():

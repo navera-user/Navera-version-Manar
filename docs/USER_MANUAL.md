@@ -1080,11 +1080,14 @@ take-off):
   GPS position. Each match gives a few hundred points of the picture paired with points of the
   map, seen from a known place (GPS) with a known attitude (IMU): **the map is the calibration
   target**;
-- after ~12 such pictures (about 1 minute of flight over mapped ground, best with a turn), NAVERA
-  fits the lens — its field of view and its distortion, normal or fisheye — and keeps the new
-  lens only if it explains the pictures clearly better than the old one;
-- the new lens is **applied at once** (the next pictures) and **kept for this camera**: the next
-  flights start with it. It refines itself again on later flights (at most 3 updates per flight).
+- after ~12 such pictures (well under a minute of flight over mapped ground), NAVERA fits the
+  lens — its field of view and its distortion, normal or fisheye — using the height from the
+  barometer or the GPS (never the height the picture gives: that one is computed with the lens);
+  it offers the new lens only if it explains the pictures significantly better than the old one;
+- the new lens is then **on trial**: applied to the next pictures, and **kept for this camera**
+  only if the next GPS checks place the vehicle no worse than before. Otherwise — or if the GPS is
+  lost before the trial ends — the old lens comes back. A kept lens is used from the start of the
+  next flights, and refines itself again (at most 3 trials per flight).
 
 The box check shows it: `lens calibration — calibrated in flight <date>: fisheye, 77 deg, 0.9 px
 over 14 views`, or `not calibrated yet: starts with 70 deg (a guess)`.

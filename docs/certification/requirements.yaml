@@ -1075,18 +1075,24 @@ requirements:
 - id: NAV-FUN-32
   category: FUN
   title: 'Day camera lens calibrated in flight against the map'
-  text: 'Without a lens calibration file, the day pipeline shall calibrate the camera lens (focal, radial k1 k2, pinhole or fisheye: both tried for a lens not yet calibrated) from the GPS-check matches while the GPS is trusted — the frame points taken back through the straightening and the frame''s lens to raw pixels, the map points placed from the GPS position and height with priors on the per-view position, attitude and shared mount — and apply a fit only when it lowers the total cost to at most cost_ratio_max of the current lens'', the points reach min_radius_frac of the image and the focal is determined within focal_sigma_max; an applied lens shall be published (latched) and used by the live camera from the next frame, kept for this camera (lens_key: device / stream, size, crop, starting lens) for the next starts, and never replace a calibration file; at most lens_selfcal_max_updates per flight. The star camera''s field width, when not configured, shall be measured from the first solved sky and kept for that camera.'
+  text: 'Without a lens calibration file, the day pipeline shall calibrate the camera lens (focal, radial k1 k2, pinhole or fisheye: both tried for a lens not yet calibrated) from the GPS-check matches while the GPS is trusted — the frame points taken back through the straightening and the frame''s lens to raw pixels, the map points placed from the GPS position and height with priors on the per-view position, attitude and shared mount — using a height that does not come from the image (rangefinder, vehicle height above home, GPS minus the ground); offer a fit only when the drop of its clipped squared pixel residuals, in units of their own robust variance, is at least min_chi2_gain, the points reach min_radius_frac of the image, the focal is determined within focal_sigma_max and the lens moves some pixel by min_shift_px; of two models explaining the points alike, the one with the smaller distortion terms. An offered lens shall be on trial: published (latched), used by the live camera from the next frame, and kept for this camera (lens_key: device / stream, size, crop, starting lens) only if the median of the next lens_trial_checks GPS-check errors is within lens_trial_margin of the last ones with the old lens; otherwise, or when the GPS is lost first, the old lens shall be published back; a fit ending after the GPS loss shall not be applied; never over a calibration file; at most lens_selfcal_max_updates trials per flight. The star camera''s field width, when not configured, shall be measured from the first solved sky and kept for that camera.'
   code:
     - day_pkg/day_pkg/lens_selfcal.py::LensSelfCal.fit
     - day_pkg/day_pkg/lens_selfcal.py::LensSelfCal.add_view
     - day_pkg/day_pkg/lens_selfcal.py::raw_pixels
     - day_pkg/day_pkg/nodes/day_subscriber.py::DaySubscriber._lens_sample
     - day_pkg/day_pkg/nodes/day_subscriber.py::DaySubscriber._lens_fit
+    - day_pkg/day_pkg/nodes/day_subscriber.py::DaySubscriber._lens_check
+    - day_pkg/day_pkg/nodes/day_subscriber.py::DaySubscriber._lens_trial_end
+    - navera_common/navera_common/altitude.py::AltitudeEstimator.reference
     - camera_pkg/camera_pkg/nodes/live_camera.py::LiveCamera._on_lens
     - camera_pkg/camera_pkg/nodes/live_camera.py::LiveCamera._lens_key
     - cn_pkg/cn_pkg/nodes/cn_subscriber.py::CNSubscriber._learn_fov
   match:
     - 'test_lens_selfcal\.py::'
+    - 'test_lens_trial\.py::'
+    - 'test_altitude\.py::test_the_reference_height'
+    - 'test_frame_builder\.py::test_the_frame_says_which_lens'
     - 'test_live_camera_auto\.py::test_the_size'
     - 'test_star_fov_learned\.py::'
   evidence:

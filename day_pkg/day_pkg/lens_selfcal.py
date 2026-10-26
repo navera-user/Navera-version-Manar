@@ -19,10 +19,12 @@ camera calibration (Zhang) whose target is the ground:
     unknowns     f, k1, k2, with weak priors around the current lens.
 
 Solved by scipy least squares (soft-L1 loss, sparse Jacobian: each view's nuisances touch only
-its points). The fit is offered (fit() returns it) only when it explains the views clearly better
-than the current lens (its total cost — pixels and the nuisances' priors — at most cost_ratio_max of
-the current lens' with the poses fitted: a focal error alone is half absorbed by per-view heights,
-which the pixel error alone does not show), with enough views (min_views) and points spread over the
+its points). The fit is offered (fit() returns it) only when it explains the points significantly better than
+the current lens with the poses fitted: the drop of the squared pixel residuals (each clipped at
+3 robust sigmas), in units of the residuals' own robust variance, at least min_chi2_gain — real map
+matches are noisy (Isaac Sim 2026-10-26: ~6 px, the map's pixel is ~3 frame pixels at 280 m), so the
+noise is measured, not assumed — the pixel RMS lower, the two lenses at least min_shift_px apart
+somewhere in the image (else the change does not matter), with enough views (min_views) and points spread over the
 image (min_radius_frac of the half-diagonal reached), and the focal is determined to focal_sigma_max.
 
 What it separates only partly: the focal against a height error common to all views (a barometer
@@ -76,6 +78,38 @@ def hfov_deg(model: str, f: float, k1: float, k2: float, width: int) -> float:
     return math.degrees(2.0 * th)
 
 
+def lens_shift_px(lens: dict, model: str, f: float, cx: float, cy: float, k1: float, k2: float) -> float:
+    """The largest distance (px) between where the current lens and a new one put the same ray, over a grid
+    of the image."""
+    w, h = int(lens["size"][0]), int(lens["size"][1])
+    g = np.stack(np.meshgrid(np.linspace(0, w - 1, 9), np.linspace(0, h - 1, 7)), -1).reshape(-1, 2)
+    old = CameraModelLite(lens)
+    ray = old.rays(g)
+    new = project(model, f, cx, cy, k1, k2, ray)
+    return float(np.max(np.hypot(*(new - g).T)))
+
+
+class CameraModelLite:
+    """Raw pixel -> camera ray of a lens description (frame meta camera_lens)."""
+
+    def __init__(self, lens: dict):
+        self.K = np.asarray(lens["K"], float).reshape(3, 3)
+        self.D = np.asarray(lens.get("D") or [], float)
+        self.model = lens.get("model", "pinhole")
+
+    def rays(self, px: np.ndarray) -> np.ndarray:
+        import cv2
+        pts = np.asarray(px, np.float64).reshape(-1, 1, 2)
+        if self.model == "fisheye":
+            d = np.zeros(4)
+            d[:min(4, self.D.size)] = self.D[:4]
+            und = cv2.fisheye.undistortPoints(pts, self.K, d)
+        else:
+            und = cv2.undistortPoints(pts, self.K, self.D if self.D.size else None)
+        und = und.reshape(-1, 2)
+        return np.c_[und, np.ones(len(und))]
+
+
 def rodrigues(v: np.ndarray) -> np.ndarray:
     th = float(np.linalg.norm(v))
     if th < 1e-12:
@@ -122,15 +156,17 @@ class LensSelfCal:
     def __init__(self, min_views: int = 12, max_views: int = 40, points_per_view: int = 120,
                  min_points: int = 40, att_sigma_deg: float = 1.0, mount_sigma_deg: float = 5.0,
                  pos_sigma_m: float = 4.0, delay_sigma_s: float = 0.1, height_sigma_frac: float = 0.04,
-                 pixel_sigma: float = 1.5, cost_ratio_max: float = 0.6, focal_sigma_max: float = 0.03,
+                 pixel_sigma: float = 1.5, min_chi2_gain: float = 25.0, min_shift_px: float = 1.0,
+                 focal_sigma_max: float = 0.05, model_tie: float = 0.03,
                  min_radius_frac: float = 0.6, max_tilt_deg: float = 30.0):
         self.min_views, self.points_per_view, self.min_points = min_views, points_per_view, min_points
         self.att_sigma, self.mount_sigma = math.radians(att_sigma_deg), math.radians(mount_sigma_deg)
         self.pos_sigma_m, self.delay_sigma_s, self.height_sigma_frac = pos_sigma_m, delay_sigma_s, height_sigma_frac
-        self.pixel_sigma, self.cost_ratio_max, self.focal_sigma_max = pixel_sigma, cost_ratio_max, focal_sigma_max
+        self.pixel_sigma, self.focal_sigma_max = pixel_sigma, focal_sigma_max
+        self.min_chi2_gain, self.min_shift_px, self.model_tie = min_chi2_gain, min_shift_px, model_tie
         self.min_radius_frac, self.max_tilt_deg = min_radius_frac, max_tilt_deg
         self.views = deque(maxlen=max_views)
-        self.lens = None                     # the lens of the views kept (a new lens drops them)
+        self.lens = None                     # the lens of the newest frame (the one in use)
         self.last = None                     # the last fit's summary
         self.rng = np.random.default_rng(0)
 
@@ -154,9 +190,8 @@ class LensSelfCal:
         tilt = math.degrees(math.acos(max(-1.0, min(1.0, -float((R @ np.array([0.0, 0.0, 1.0]))[2])))))
         if tilt > self.max_tilt_deg:
             return f"tilted {tilt:.0f} deg"
-        key = self._lens_key(lens)
-        if self.lens is not None and key != self._lens_key(self.lens):
-            self.views.clear()               # the frames are now made with another lens
+        # a view is kept across lens changes: its points are RAW camera pixels (taken back through the lens
+        # the frame was made with), the same whichever lens is applied; the newest lens is the current one
         self.lens = lens
         if len(fp) > self.points_per_view:
             keep = self.rng.choice(len(fp), self.points_per_view, replace=False)
@@ -168,11 +203,6 @@ class LensSelfCal:
                                pos_sigma=self.pos_sigma_m + abs(float(speed_mps)) * self.delay_sigma_s,
                                t=time.time() if t is None else float(t)))
         return None
-
-    @staticmethod
-    def _lens_key(lens: dict):
-        return (lens.get("model"), tuple(np.round(np.asarray(lens["K"], float).ravel(), 3)),
-                tuple(np.round(np.asarray(lens.get("D") or [], float), 6)), tuple(lens["size"]))
 
     def ready(self) -> bool:
         return len(self.views) >= self.min_views
@@ -247,15 +277,22 @@ class LensSelfCal:
                           f_scale=2.0, args=(views, model, cx, cy, f0, k0, False), max_nfev=60, x_scale="jac")
         # 2) the lens too — for a lens never calibrated (no distortion yet) both models, the better
         # kept: a 100-deg fisheye is not a pinhole with k1, k2, nor a 60-deg lens a fisheye
+        # Two that explain the points alike (cost within model_tie): the one with the smaller distortion
+        # terms — the matches rarely reach the corners, where a pinhole polynomial mimicking a fisheye
+        # bends away (Isaac Sim 2026-10-26: a 92 deg fisheye fitted as a pinhole, 1-2 px off in the centre,
+        # 200+ px in the corners; the fisheye model with k ~ 0 is right everywhere)
         candidates = [model] + ([("pinhole" if model == "fisheye" else "fisheye")] if not any(D[:2]) else [])
-        a = None
+        fits = []
         for m in candidates:
             x1 = np.r_[1.0, k0[0], k0[1], b.x]
             r = least_squares(self._residuals, x1, jac_sparsity=self._sparsity(views, True), loss="soft_l1",
                               f_scale=2.0, args=(views, m, cx, cy, f0, k0, True), max_nfev=120, x_scale="jac")
-            if a is None or r.cost < a.cost:
-                a, model = r, m
+            fits.append((r, m))
+        best = min(r.cost for r, _ in fits)
+        alike = [(r, m) for r, m in fits if r.cost <= best * (1.0 + self.model_tie)]
+        a, model = min(alike, key=lambda rm: abs(rm[0].x[1]) + abs(rm[0].x[2]))
         out["model"] = model
+        out["model_costs"] = {m: round(float(r.cost), 1) for r, m in fits}
         rms_b, rms_a = self._rms(b.fun, views), self._rms(a.fun, views)
         f, k1, k2 = float(a.x[0] * f0), float(a.x[1]), float(a.x[2])
         try:
@@ -266,9 +303,14 @@ class LensSelfCal:
         except (np.linalg.LinAlgError, ValueError, MemoryError):
             s_f, s_k1 = float("inf"), float("inf")
         hfov = hfov_deg(model, f, k1, k2, w)
-        cost_ratio = float(a.cost / max(b.cost, 1e-9))
-        out.update(rms_before_px=round(rms_b, 2), rms_after_px=round(rms_a, 2), cost_ratio=round(cost_ratio, 3),
-                   focal_px=round(f, 1),
+        pb, pa = self._pixel_residuals(b.fun, views), self._pixel_residuals(a.fun, views)
+        noise = max(1.4826 * float(np.median(np.abs(pa))), 0.3)          # px, robust, per coordinate
+        clip = 3.0 * noise
+        gain = float(np.sum(np.minimum(np.abs(pb), clip) ** 2 - np.minimum(np.abs(pa), clip) ** 2)) / noise ** 2
+        s_f *= noise / self.pixel_sigma                                  # the covariance assumed pixel_sigma
+        shift = lens_shift_px(lens, model, f, cx, cy, k1, k2)
+        out.update(rms_before_px=round(rms_b, 2), rms_after_px=round(rms_a, 2), noise_px=round(noise, 2),
+                   chi2_gain=round(gain, 1), shift_px=round(shift, 1), focal_px=round(f, 1),
                    focal_change=round(f / f0 - 1.0, 4), focal_sigma=round(s_f, 4), k1=round(k1, 5), k2=round(k2, 5),
                    k1_sigma=round(s_k1, 5), hfov_deg=round(hfov, 2),
                    mount_deg=[round(math.degrees(v), 2) for v in a.x[3:6]])
@@ -277,9 +319,11 @@ class LensSelfCal:
             why = f"the fit did not converge ({a.message})"
         elif reach < self.min_radius_frac:
             why = f"points reach only {reach:.0%} of the image half-diagonal (min {self.min_radius_frac:.0%})"
-        elif not (cost_ratio <= self.cost_ratio_max):
-            why = (f"no clear improvement: cost {cost_ratio:.0%} of the current lens' (needs <= "
-                   f"{self.cost_ratio_max:.0%}; {rms_a:.2f} px vs {rms_b:.2f} px)")
+        elif not (gain >= self.min_chi2_gain and rms_a < rms_b):
+            why = (f"no clear improvement: {rms_a:.2f} px vs {rms_b:.2f} px with the current lens, gain {gain:.0f} "
+                   f"(needs >= {self.min_chi2_gain:.0f}; noise {noise:.1f} px)")
+        elif shift < self.min_shift_px:
+            why = f"the new lens moves no pixel by more than {shift:.1f} px: not worth changing"
         elif s_f > self.focal_sigma_max:
             why = f"focal not determined (sigma {s_f:.1%} > {self.focal_sigma_max:.0%})"
         elif not (15.0 < hfov < 175.0) or (model == "pinhole" and not self._monotonic(k1, k2, w, h, f)):
@@ -292,6 +336,15 @@ class LensSelfCal:
                                image_width=w, image_height=h)
         self.last = out
         return out
+
+    @staticmethod
+    def _pixel_residuals(fun: np.ndarray, views) -> np.ndarray:
+        r, i = [], 0
+        for v in views:
+            m = 2 * len(v["raw"])
+            r.append(fun[i:i + m])
+            i += m + 6
+        return np.concatenate(r) * 1.0 if r else np.zeros(0)
 
     def _rms(self, fun: np.ndarray, views) -> float:
         n = sum(2 * len(v["raw"]) for v in views)

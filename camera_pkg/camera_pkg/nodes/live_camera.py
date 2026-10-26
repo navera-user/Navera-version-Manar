@@ -319,9 +319,11 @@ class LiveCamera(Node):
         self.builder = FrameBuilder(cam, (p("mount_roll_deg"), p("mount_pitch_deg"), p("mount_yaw_deg")),
                                     float(p("max_tilt_deg")), p("camera_type"), bool(p("gimbal")),
                                     bool(p("require_attitude")), float(p("max_rate_dps")))
-        self.lens_source = "in-flight calibration"
-        self.get_logger().warn(f"lens calibrated in flight applied: {cam.model}, field of view "
-                               f"{cam.out_hfov_deg:.1f} deg published ({d.get('views')} views, {d.get('rms_px')} px)")
+        self.lens_source = str(d.get("lens_source") or "in-flight calibration")
+        self.get_logger().warn(("lens put back (the in-flight one was not kept): " if d.get("revert") else
+                                "lens calibrated in flight applied: ") + f"{cam.model}, field of view "
+                               f"{cam.out_hfov_deg:.1f} deg published"
+                               + ("" if d.get("revert") else f" ({d.get('views')} views, {d.get('rms_px')} px)"))
 
     def _adopt(self, img) -> bool:
         """A frame's size checked against the camera's (the first frame sets it when the size is the
@@ -597,6 +599,10 @@ class LiveCamera(Node):
             meta["attitude_delay_s"] = round(shift, 4)          # attitude taken this long before the stamp
             meta.update(self.mount_ident)                       # what a learned mount calibration belongs to
             meta.update(lens_key=self.lens_key, lens_source=self.lens_source)   # the in-flight lens calibration
+            ref = self.alt.reference(te)                        # its height must not come from the image
+            if ref is not None:
+                meta.update(altitude_ref_m=round(ref[0], 2), altitude_ref_sigma_m=round(ref[1], 2),
+                            altitude_ref_source=ref[2])
             meta["delay_monitor"] = self.delay_mon.state()     # the delay's change since start (no GPS needed)
             if self.delay_mon.significant:
                 self.get_logger().warn(f"camera delay changed by {self.delay_mon.change_s:+.3f} s since the start "

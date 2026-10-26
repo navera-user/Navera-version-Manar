@@ -258,6 +258,20 @@ class AltitudeEstimator:
             refs["gps"] = g - self.ground
         return refs
 
+    def reference(self, t: float) -> Optional[Tuple[float, float, str]]:
+        """(agl, sigma, source) from the sources that do not come from the image: a rangefinder, else the
+        vehicle's height above home, else GPS minus the ground — the height the in-flight lens calibration
+        needs (an image height is computed with the lens being calibrated: a lens 10 % off read the
+        height 10 % off and the fit kept the error, Isaac Sim 2026-10-26). None when none is known."""
+        m = self.measured.at(t)
+        if m is not None:
+            return m[0], m[1], "measured"
+        refs = self._refs(t)
+        for kind in ("vehicle", "gps"):
+            if kind in refs:
+                return refs[kind], self._ref_sigma(kind, refs[kind]), REF_LABEL[kind]
+        return None
+
     def estimate(self, t: float) -> Optional[Tuple[float, float, str]]:
         m = self.measured.at(t)
         if m is not None:

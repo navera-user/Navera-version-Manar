@@ -252,3 +252,17 @@ def test_an_uncertain_position_reads_the_dem_over_its_disc():
     assert src == "vehicle altitude - DEM" and agl == pytest.approx(100.0, abs=0.5)    # a plane: mean = centre
     slope_m = 100.0 / (0.01 * 111320.0)                     # m per m northwards
     assert 0.3 * slope_m * 300.0 < (sigma ** 2 - 4.0 ** 2 - 3.0 ** 2 - (4.0 ** 2 + 1.0)) ** 0.5 < slope_m * 300.0
+
+
+def test_the_reference_height_never_comes_from_the_image():
+    """reference(): the in-flight lens calibration's height (an image height is made with the lens itself)."""
+    a = AltitudeEstimator()
+    a.add_gps(0.0, 50.0)
+    a.add_gps(10.0, 250.0)
+    a.add_vision(10.0, 230.0, 2.0)                  # the image says 230 m (a lens 9 % off would)
+    assert a.estimate(10.0)[0] == pytest.approx(230.0)
+    agl, _, src = a.reference(10.0)
+    assert (agl, src) == (200.0, "GPS - ground")
+    a.add_relative(10.0, 198.0)                     # the vehicle's barometer, above home
+    assert a.reference(10.0)[:1] == (198.0,) and a.reference(10.0)[2] == "vehicle altitude above home"
+    assert AltitudeEstimator().reference(0.0) is None
