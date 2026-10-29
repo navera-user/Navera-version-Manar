@@ -69,7 +69,7 @@ def test_apply_product_ssh_off_and_dry_run(tmp_path):
 def fw(env, *args):
     base = {k: '' for k in ('NAVERA_VEHICLE_MAVLINK_URL', 'NAVERA_MAVLINK_URL', 'NAVERA_FW_ALLOW_FROM',
                             'NAVERA_FW_ALLOW_TCP', 'NAVERA_FW_ALLOW_UDP', 'NAVERA_PRODUCT_SSH', 'NAVERA_WEB_PORT')}
-    base.update(ROS_LOCALHOST_ONLY='1', ROS_DOMAIN_ID='42')
+    base.update(ROS_LOCALHOST_ONLY='1', ROS_DOMAIN_ID='42', NAVERA_FW_CAMERAS='0')
     base.update(env)
     return sh(['bash', FW, *args], env=base)
 
@@ -92,6 +92,15 @@ def test_firewall_follows_the_settings():
     assert '-s 192.168.144.0/24 -p udp -m multiport --dports 14550,7900:8149,5600 -j ACCEPT' in v4
     assert 'dports' not in v6                                # IPv4-only sources: nothing open on IPv6
     assert 'ignored port' in out.stderr
+
+
+def test_firewall_lets_plug_and_play_cameras_in_by_default():
+    out = fw({'NAVERA_FW_CAMERAS': ''}, '--print').stdout       # unset: on
+    assert '-p udp -m multiport --dports 5600,8554 -j ACCEPT' in out      # pushed RTP / GoPro MPEG-TS
+    assert '-p udp -m multiport --sports 3702,3956 -j ACCEPT' in out      # ONVIF / GigE Vision answers
+    out = fw({'NAVERA_FW_CAMERAS': '', 'NAVERA_FW_ALLOW_FROM': '192.168.144.0/24'}, '--print').stdout
+    assert '-s 192.168.144.0/24 -p udp -m multiport --sports 3702,3956 -j ACCEPT' in out
+    assert '-p udp -m multiport --sports' not in fw({}, '--print').stdout  # NAVERA_FW_CAMERAS=0
 
 
 def test_firewall_rules_load_in_a_namespace():

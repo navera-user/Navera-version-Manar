@@ -21,6 +21,11 @@
 #   ROS_LOCALHOST_ONLY, ROS_DOMAIN_ID
 #                            ROS 2 on the network (LOCALHOST_ONLY not 1): the DDS ports of that
 #                            domain (UDP 7400+250*id .. +249), all domains for ROS_DOMAIN_ID=auto
+#   NAVERA_FW_CAMERAS        1 (default): what plug-and-play cameras send to the box — streams the
+#                            camera pushes (UDP 5600 RTP: SIYI-type gimbals, MAVLink-announced
+#                            streams; UDP 8554 MPEG-TS: a GoPro on USB) and the answers to the camera
+#                            searches (from UDP 3702 ONVIF WS-Discovery, from UDP 3956 GigE Vision:
+#                            a multicast / broadcast probe's answer is not a tracked reply); 0: none
 #   NAVERA_FW_ALLOW_TCP / NAVERA_FW_ALLOW_UDP   more ports or ranges, comma-separated (5600, 9000-9010)
 #   NAVERA_FW_ALLOW_FROM     restrict all the above to these sources (comma-separated
 #                            addresses / CIDR, IPv4 or IPv6: the vehicle network); empty = any
@@ -64,6 +69,11 @@ if [ "${ROS_LOCALHOST_ONLY:-0}" != 1 ]; then
     udp="$udp,7400-65535"                 # auto: the domain of a vehicle found at boot
   fi
 fi
+udp_from=""
+if [ "${NAVERA_FW_CAMERAS:-1}" != 0 ]; then
+  udp="$udp,5600,8554"
+  udp_from="3702,3956"
+fi
 tcp=$(ports "$tcp,${NAVERA_FW_ALLOW_TCP:-}"); udp=$(ports "${udp#,},${NAVERA_FW_ALLOW_UDP:-}")
 
 v4=(); v6=()
@@ -73,17 +83,17 @@ for s in ${allow_from//,/ }; do
   elif [[ "$s" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}(/[0-9]{1,2})?$ ]]; then v4+=("$s")
   else echo "navera_firewall: ignored source '$s'" >&2; fi
 done
-rules() {   # rules <4|6> <tcp|udp> <ports> → accept lines (per source when restricted)
-  local fam=$1 proto=$2 list=${3//-/:} src
+rules() {   # rules <4|6> <tcp|udp> <ports> [dports|sports] → accept lines (per source when restricted)
+  local fam=$1 proto=$2 list=${3//-/:} side=${4:-dports} src
   [ -n "$list" ] || return 0
   local srcs=()
   if [ ${#v4[@]} -gt 0 ] || [ ${#v6[@]} -gt 0 ]; then
     if [ "$fam" = 4 ]; then srcs=(${v4[@]+"${v4[@]}"}); else srcs=(${v6[@]+"${v6[@]}"}); fi
     for src in ${srcs[@]+"${srcs[@]}"}; do
-      echo "-A NAVERA-IN -s $src -p $proto -m multiport --dports $list -j ACCEPT"
+      echo "-A NAVERA-IN -s $src -p $proto -m multiport --$side $list -j ACCEPT"
     done
   else
-    echo "-A NAVERA-IN -p $proto -m multiport --dports $list -j ACCEPT"
+    echo "-A NAVERA-IN -p $proto -m multiport --$side $list -j ACCEPT"
   fi
 }
 
@@ -104,6 +114,7 @@ ruleset() {   # ruleset <4|6>  → iptables-restore input
   fi
   rules "$1" tcp "$tcp"
   rules "$1" udp "$udp"
+  rules "$1" udp "$udp_from" sports
   echo "-A NAVERA-IN -j DROP"
   echo "COMMIT"
 }
@@ -114,12 +125,12 @@ load() {   # load <4|6> : the chain, then the jump from INPUT (once, first)
   "$ipt" -C INPUT -j NAVERA-IN 2>/dev/null || "$ipt" -I INPUT 1 -j NAVERA-IN
 }
 
-summary="tcp ${tcp:-none}; udp ${udp:-none}; from ${allow_from:-any}"
+summary="tcp ${tcp:-none}; udp ${udp:-none}; udp from ports ${udp_from:-none}; from ${allow_from:-any}"
 case "$MODE" in
   print) echo "## IPv4"; ruleset 4; echo "## IPv6"; ruleset 6 ;;
   check) lock=$(mktemp); trap 'rm -f "$lock"' EXIT
          export XTABLES_LOCKFILE="$lock"
-         export -f ruleset rules load; export tcp udp
+         export -f ruleset rules load; export tcp udp udp_from
          v4s="${v4[*]:-}" v6s="${v6[*]:-}" unshare -rn bash -c \
            'v4=($v4s); v6=($v6s); set -e; load 4; load 6; iptables -S NAVERA-IN >/dev/null' \
            && echo "firewall rules OK ($summary)" ;;

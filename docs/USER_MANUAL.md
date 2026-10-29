@@ -4,7 +4,7 @@ For the **integrator** who installs NAVERA on a vehicle and the **operator** who
 You do not need to be a software developer. Commands to type are shown in grey boxes. Settings
 are lines in one text file, `/etc/navera/navera.env` (appendix A lists them).
 
-Release covered: the NAVERA software as of 2026-10-22, reference box Jetson Orin Nano 8 GB.
+Release covered: NAVERA **0.7.0** (2026-10-29), reference box Jetson Orin Nano 8 GB.
 The detailed engineering documents are named at the end of each section, for your technical team.
 
 > **Status of this release — read this first**
@@ -12,8 +12,12 @@ The detailed engineering documents are named at the end of each section, for you
 > - **NAVERA has not flown yet.** Every accuracy figure comes from a bench, from replayed
 >   real flights of other cameras, or from simulation (`docs/VALIDATION_STATUS.md`).
 > - **NAVERA has not yet been connected to a real autopilot.** The ArduPilot connection is
->   verified in ArduPilot's simulator (SITL) only. PX4 is **not tested**, and PX4 cannot
->   receive NAVERA's vision positions today (section 5.6).
+>   verified in ArduPilot's simulator (SITL) only; PX4 receives NAVERA's positions as `HIL_GPS`,
+>   verified in PX4 SITL 1.15 only (section 5.6).
+> - **Cameras:** found and given their job by themselves (section 6.0); on real hardware only one
+>   camera has been tested so far (a Hikvision bi-spectrum camera, on the bench). An unknown lens
+>   starts from a guess and is calibrated during the first flight's GPS phase (simulation: 12.9 m
+>   median after the GPS cut with an unknown lens, ~5 m with a bench-calibrated one).
 > - **By default, NAVERA does not send its vision positions to the autopilot.** When GPS is
 >   lost, the autopilot receives "no fix" and its own failsafe acts. Sending vision positions
 >   is a setting you switch on deliberately, with an accuracy you have measured (section 5.4).
@@ -84,8 +88,8 @@ vision > celestial**. A good GPS always wins. When GPS is lost or refused, visio
    says "no position". It does **not** integrate the IMU into a position (no inertial navigation).
 3. **NAVERA is fully offline in flight.** The map package of the route is prepared **before
    departure** (section 7). No internet, no network link is needed in the air.
-4. **Autopilots:** ArduPilot is supported (verified in simulation only). PX4: only as a plain
-   GPS pass-through over NMEA; not tested (section 5.6).
+4. **Autopilots:** ArduPilot is supported (verified in simulation only). PX4: NAVERA's position
+   as `HIL_GPS`, verified in PX4 SITL only (section 5.6).
 5. **Day camera vision is the main source.** At **night you need a thermal camera** (night
    vision, not flown yet). **Star (celestial) navigation is experimental** and coarse
    (kilometres).
@@ -164,7 +168,7 @@ platform** must provide so that the box can be plugged in for a test.
 | A **BNO085** I²C IMU on the box | legacy, still supported | Gives a full attitude (with magnetometer) when the vehicle cannot share one |
 | Star camera | a USB camera pointing up | Experimental (section 1, rule 5) |
 
-**Not supported yet:** inertial navigation; PX4 receiving vision positions; two vision
+**Not supported yet:** inertial navigation; two vision
 pipelines at once (day and night cannot run together); a computer other than the Jetson Orin
 Nano 8 GB; NAVERA controlling a gimbal.
 
@@ -1272,7 +1276,9 @@ In flight NAVERA needs no network at all.
 | **The licence must allow storing the tiles offline in a product** | Many public tile services forbid it. **Esri World Imagery may be used for evaluation and development only**, not on a delivered product. Free 10 m imagery is legal but too coarse. A ~1 m product map needs a commercial licence (or the client's own licensed imagery) |
 | **Avoid long stretches with no landmarks** | Sea, lakes, sand, uniform fields: nothing to match. Prefer a route over varied ground or along a coast |
 
-The delivered map covers **Sousse only**. For any other area you need tiles for the route.
+The delivered maps cover **Sousse** (35.55–36.1° N, 10.3–10.9° E) and **eastern Tunisia** in part
+(tiles within 35.55–37.1° N, 9.6–11.15° E; `mission_bundle.py plan` reports any tile missing on a
+route). For any other area you need tiles for the route.
 
 ### 7.3 Preparing the map on the web page (`/mission`)
 
@@ -1520,7 +1526,7 @@ First run `python3 navera_tools/check_box.py` (NAVERA shell). Then look at the s
 | **Fixed camera on a fast multirotor** | Pictures too tilted: fit a gimbal |
 | **One vision pipeline at a time** | Day or night, not both (8 GB memory) |
 | **PX4** | GPS pass-through over NMEA only; no vision positions |
-| **Map coverage** | Delivered map: Sousse only. Other areas need their own map, with a licence that allows offline use |
+| **Map coverage** | Delivered maps: Sousse and part of eastern Tunisia (section 7). Other areas need their own map, with a licence that allows offline use |
 | **Detection once per boot** | Late devices or vehicle computers are not seen |
 
 ---

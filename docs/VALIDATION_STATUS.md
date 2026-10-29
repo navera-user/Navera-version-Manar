@@ -1,7 +1,8 @@
 # NAVERA — Validation status and known limitations
 
-**Release 0.2 — field validation pending.** Last updated 2026-10-23 (the dated sections below
-give each measurement's date; the summary and the known limitations reflect all of them).
+**Release 0.7.0 — field validation pending (no NAVERA flight yet).** Last updated 2026-10-29 (the
+dated sections below give each measurement's date; the summary and the known limitations reflect
+all of them).
 
 This document states what has been measured, how, and what still has to be validated in
 the field. Every number below comes from a run on the Jetson Orin Nano (bench, replay and
@@ -13,6 +14,9 @@ been measured. Open engineering items are tracked in
 
 | Capability | Status | Evidence |
 |---|---|---|
+| Release 0.7.0 as shipped (2026-10-29) | **Archive built and tested as delivered; staged install; offline mission package; one GPS-denied simulated flight** | 1197 tests pass from the archive; staged install check PASS (8 units, restart after kill); mission package of a 5.3 km Sousse route built from the delivered map, checked with the network cut: PASS (all files, 574 tiles, models load offline; day matching 6/6 on frames rendered from the map: proves the package, not accuracy); Isaac Sim, unknown lens, GPS cut ~250 s: completed, 92 % frames matched, output 12.9 m median / 20 m p90 / 61 m max, 0 wrong, 3/362 beyond 3σ |
+| Plug-and-play cameras (0.6.0–0.7.0) | **Unit-tested for every link type; one real camera on the bench** | USB, CSI, ONVIF, RTSP scan (IPv4 + IPv6 link-local), SIYI/Skydroid/Herelink addresses, MAVLink camera protocol, GoPro USB, GigE/USB3 Vision (Aravis): fake-device tests; RTP/UDP, MPEG-TS UDP/TCP decoded in hardware from live test streams; Aravis simulated camera read. Real: Hikvision DS-2TD2617B-3/PA (ONVIF off) → day = visible 2688×1520, thermal = 1280×720, 3/3 runs, streams 20/20 frames from the written settings. Every other real camera untested |
+| Lens calibrated in flight (0.6.0) | **Simulation only, one scenario** | Isaac Sim, 70° guess on a 92.5° fisheye: 12.8 m without → 7.2 m after 5 flights (true lens 4.8–5.4 m); the thermal lens is not calibrated in flight (the star camera only learns its field width from the stars) |
 | GPS pass-through, fix arbitration, operator display | Working, bench-tested | Scripted tests, virtual serial port, simulated sensors |
 | Automatic restart after a crash | Mechanism verified; not yet reboot-tested on a deployed unit | Node exit → launch exit, verified |
 | Day vision — local feature matching (default since 2026-10-01) | **Accurate on aerial test frames; measured with NAVERA's camera on a screen bench only (not flown)** | 32/33 frames within 9 m (median 4 m), no wrong position accepted, 0.16 s/frame |

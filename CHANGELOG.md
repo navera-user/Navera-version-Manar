@@ -4,6 +4,17 @@ Measured numbers come from simulation (Isaac Sim + ArduPilot/PX4 SITL), bench, o
 data from other vehicles; **no NAVERA flight yet**. Details: `docs/VALIDATION_STATUS.md`,
 requirements: `docs/certification/REQUIREMENTS.md`, known problems: the shared problems list.
 
+## 0.7.1 — 2026-10-29 (delivery fixes from an independent readiness review; no real flight yet)
+- **Product firewall lets plug-and-play cameras in** (`NAVERA_FW_CAMERAS=1`, default): UDP 5600
+  (pushed RTP: SIYI-type gimbals, MAVLink-announced streams) and 8554 (GoPro MPEG-TS), and the
+  answers to the camera searches (from UDP 3702 ONVIF, 3956 GigE Vision). Before, product mode let
+  in only RTSP over TCP.
+- Client documents brought to 0.7.0: manual status block (PX4 via HIL_GPS in SITL, cameras, lens),
+  map coverage (Sousse + part of eastern Tunisia), VALIDATION_STATUS header and summary rows
+  (release checks, plug-and-play cameras, lens in flight).
+- The release archive leaves out internal files (CLAUDE.md, AUDIT.md, archive/, .vscode,
+  the internal box-preparation procedure).
+
 ## 0.7.0 — 2026-10-29 (simulation/bench-validated, one real camera on the bench; no real flight yet)
 - **More drone cameras found by themselves** (`navera_common/cameras.py`): RTSP cameras without
   ONVIF on the wired subnet (Viewpro, Topotek…: RTSP port + the usual stream paths); streams the

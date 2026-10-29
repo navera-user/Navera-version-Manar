@@ -1,0 +1,6 @@
+# kept out of the release archive (deploy/make_release.sh: git archive)
+CLAUDE.md export-ignore
+AUDIT.md export-ignore
+archive/ export-ignore
+.vscode/ export-ignore
+docs/commercial/PREPARE_BOX_FOR_SALE.md export-ignore
