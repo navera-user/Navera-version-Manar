@@ -45,3 +45,23 @@ def test_resolve_prior_on_a_simulated_session(tmp_path, capsys):
     rows = [json.loads(line) for line in out.read_text().splitlines()]
     assert [r["mode"] for r in rows] == ["lost-in-space", "prior"]
     assert rows[1]["p_chance"] <= rows[0]["p_chance"]
+
+
+def test_starcheck_sees_stars_only_where_they_are(tmp_path):
+    try:
+        from navera_tools.sim import celestial360_conditions as cc
+    except ImportError:
+        pytest.skip("simulator not on the path")
+    from scipy.spatial import cKDTree
+    from navera_tools.field import allsky, starcheck
+    tree = cKDTree(allsky.Catalogue(limit_mag=4.5, path=allsky.BUNDLED_CATALOGUE).vec)
+    cond = cc.Condition("baseline mag<=3")
+    sc = cc.Scene(cond, 0)
+    up, _ = cc.solver_up(sc)
+    stars = starcheck.check(cc.render(sc), up, sc.utc, cond.lat, cond.lon, tree)
+    assert stars["excess"] >= 10
+    junk_cond = cc.Condition("JUNK 60 random points", junk=True, effects={"random_points": 60})
+    jsc = cc.Scene(junk_cond, 0)
+    jup, _ = cc.solver_up(jsc)
+    junk = starcheck.check(cc.render(jsc), jup, jsc.utc, junk_cond.lat, junk_cond.lon, tree)
+    assert junk["excess"] < 5
