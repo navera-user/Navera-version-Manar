@@ -1308,10 +1308,10 @@ one star sets it. Hypotheses: zenith grid (0.25 deg) over the prior disc x seed 
 the same altitude; Bonferroni chance on the matches of each hypothesis as tried (before any fit), with the
 catalogue's local density; the fix still comes from the stars (free Wahba fit), same `accept()` gate, refused
 if the stars put the zenith outside the prior. Bright planets join the catalogue (`LOCATE_PLANETS`).
-- Honesty (synthetic junk rays, 20-60 per frame): 0 accepted in 3 900 trials; at n = 20, prior 0.3 deg,
+- Honesty (synthetic junk rays, 20-60 per frame): 0 accepted in 2 600 trials; at n = 20, prior 0.3 deg,
   2 000 trials: p <= 0.1 in 0.55 %, none <= 0.01 (the bound is conservative).
 - Gain (synthetic, 8 stars among 40 junk points, the 5 brightest junk): prior 0.3 deg (~33 km) gives
-  p 4e-6..6e-4 where lost-in-space gives 0.02-0.65 (0 of 12 accepted) — 9+ of 12 accepted, all right;
+  p 5e-8..6e-4 where lost-in-space gives 0.001-0.65 (0 of 12 accepted) — 9+ of 12 accepted, all right;
   prior 1 deg ~1e4 hypotheses, 3 deg ~7e4 (close to lost-in-space's ~1e5): the gain shrinks with the radius.
 - Tonight's real frames (lost-in-space / prior 10 km + 0.5 deg for 'up'): 218 single frames and 3 deep
   stacks, 0 fixes and 0 wrong for both; with a wrong prior (Tunis, 140 km off, 30 km radius) 111 frames,
