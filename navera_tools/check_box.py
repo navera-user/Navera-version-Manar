@@ -132,7 +132,7 @@ def lens_state(cam, env):
             kept.append(d)
     src = str(env.get("NAVERA_CAMERA_LENS_SOURCE", "") or "").strip()
     start = f"{cam.get('camera_hfov_deg', float('nan')):g} deg " + (
-        "(from the camera database)" if src == "database" else "(a guess: camera not known)" if src == "guess"
+        "(from the camera database)" if src == "database" else "(announced by the camera)" if src == "camera" else "(a guess: camera not known)" if src == "guess"
         else "(NAVERA_CAMERA_HFOV_DEG)")
     if kept:
         d = max(kept, key=lambda x: x.get("saved_at", 0))

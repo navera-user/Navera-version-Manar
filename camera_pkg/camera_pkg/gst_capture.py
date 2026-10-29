@@ -26,6 +26,23 @@ def expand_secrets(pipeline: str, environ=None) -> str:
     return re.sub("@(" + "|".join(SECRETS) + ")@", value, pipeline)
 
 
+def start_camera(urls: str, timeout_s: float = 3.0) -> list:
+    """GET each of the space-separated URLs (NAVERA_*_START_URL), in order: a camera that streams only
+    once told to (a GoPro's webcam mode). Best effort: [(url, HTTP status or None)]."""
+    import urllib.error
+    import urllib.request
+    out = []
+    for u in str(urls or "").split():
+        try:
+            with urllib.request.urlopen(u, timeout=timeout_s) as r:
+                out.append((u, r.status))
+        except urllib.error.HTTPError as e:
+            out.append((u, e.code))
+        except (OSError, ValueError):
+            out.append((u, None))
+    return out
+
+
 def csi_pipeline(width: int, height: int, sensor_id: int = 0, fps: int = 30) -> str:
     return (f"nvarguscamerasrc sensor-id={sensor_id} ! "
             f"video/x-raw(memory:NVMM),width={width},height={height},framerate={fps}/1 ! "

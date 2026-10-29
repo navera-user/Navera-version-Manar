@@ -249,15 +249,18 @@ def wired_interfaces(wifi: bool = False) -> List[dict]:
             idx = socket.if_nametoindex(name)
         except OSError:
             continue
-        v4 = []
-        try:
-            txt = subprocess.run(["ip", "-4", "-o", "addr", "show", "dev", name], capture_output=True,
-                                 text=True, timeout=3).stdout
-            v4 = [(a, int(p)) for a, p in re.findall(r"inet (\d+\.\d+\.\d+\.\d+)/(\d+)", txt)]
-        except (OSError, subprocess.SubprocessError):
-            pass
-        out.append(dict(name=name, index=idx, ipv4=v4))
+        out.append(dict(name=name, index=idx, ipv4=ipv4_of(name)))
     return out
+
+
+def ipv4_of(name: str) -> List[Tuple[str, int]]:
+    """[(address, prefix)] of one interface."""
+    try:
+        txt = subprocess.run(["ip", "-4", "-o", "addr", "show", "dev", name], capture_output=True,
+                             text=True, timeout=3).stdout
+    except (OSError, subprocess.SubprocessError):
+        return []
+    return [(a, int(p)) for a, p in re.findall(r"inet (\d+\.\d+\.\d+\.\d+)/(\d+)", txt)]
 
 
 def ws_discovery(ifaces: List[dict], wait_s: float = 2.5) -> List[dict]:
@@ -453,10 +456,30 @@ def gst_rtsp_pipeline(uri: str, codec: str, auth: bool) -> str:
         dec = "rtpjpegdepay ! jpegdec ! videoconvert"
     else:
         c = "h265" if codec == "H265" else "h264"
-        dec = (f"rtp{c}depay ! video/x-{c},stream-format=byte-stream,alignment=au ! nvv4l2decoder ! nvvidconv ! "
-               "video/x-raw,format=BGRx ! videoconvert")
-    return (f"rtspsrc location={clean} protocols=tcp latency=0{cred} ! {dec} ! video/x-raw,format=BGR ! "
-            "appsink name=sink drop=true max-buffers=1 sync=false")
+        dec = f"rtp{c}depay ! {_hw_decode(c)}"
+    return f"rtspsrc location={clean} protocols=tcp latency=0{cred} ! {dec} ! {SINK}"
+
+
+SINK = "video/x-raw,format=BGR ! appsink name=sink drop=true max-buffers=1 sync=false"
+
+
+def _hw_decode(c: str) -> str:
+    return (f"video/x-{c},stream-format=byte-stream,alignment=au ! nvv4l2decoder ! nvvidconv ! "
+            "video/x-raw,format=BGRx ! videoconvert")
+
+
+def udp_pipeline(port: int, codec: str = "H264", ts: bool = False) -> str:
+    """A stream the camera SENDS to the box: RTP (ts=False) or MPEG-TS (ts=True) over UDP."""
+    c = "h265" if codec == "H265" else "h264"
+    src = (f"udpsrc port={int(port)} ! tsdemux ! {c}parse ! " if ts else
+           f"udpsrc port={int(port)} ! application/x-rtp,media=video,clock-rate=90000,encoding-name={c.upper()} ! "
+           f"rtp{c}depay ! ")
+    return f"{src}{_hw_decode(c)} ! {SINK}"
+
+
+def tcp_ts_pipeline(host: str, port: int, codec: str = "H264") -> str:
+    c = "h265" if codec == "H265" else "h264"
+    return f"tcpclientsrc host={host} port={int(port)} ! tsdemux ! {c}parse ! {_hw_decode(c)} ! {SINK}"
 
 
 def network_cameras(env, wait_s: float = 2.5) -> List[dict]:
@@ -499,9 +522,319 @@ def network_cameras(env, wait_s: float = 2.5) -> List[dict]:
             out.append(dict(kind="ip", id=uri, name=label, spectrum=spectrum, hfov_deg=hfov, lens_model=model,
                             size=[0, 0], codec=desc["codec"], auth=False,
                             pipeline=gst_rtsp_pipeline(uri, desc["codec"], False)))
+    if str(env.get("NAVERA_DISCOVER_RTSP_SCAN", "1") or "1").strip().lower() not in ("0", "off", "false", "no"):
+        scanned, more = rtsp_scan(ifaces, user, pw, skip_hosts={stream_host(c["id"]) for c in out})
+        out += scanned
+        notes += more
+    out += gopro_cameras()
+    gen, more = genicam_cameras(ifaces)
+    out += gen
+    notes += more
     for c in out:
         c["notes"] = notes
     return out if out else ([dict(kind="note", notes=notes)] if notes else [])
+
+
+# ── cameras with their own way of talking ──────────────────────────────────
+# RTSP paths asked of a host that has an RTSP port open and did not answer ONVIF (a gimbal camera
+# with its own firmware: Viewpro, Topotek, Gremsy, A8-type modules...), the most common first.
+# DESCRIBE only: nothing is changed on the camera.
+RTSP_PATHS = ("", "/main.264", "/video1", "/stream=0", "/stream=1", "/live", "/stream0", "/stream1", "/ch0",
+              "/0", "/live/0", "/h264", "/main", "/live/ch00_0", "/11", "/Streaming/Channels/101",
+              "/cam/realmonitor?channel=1&subtype=0", "/fpv_stream")
+RTSP_PORTS = (554, 8554)
+
+
+def stream_host(uri: str) -> str:
+    m = re.match(r"\w+://(?:[^@/]*@)?(\[[^\]]+\]|[^:/]+)", str(uri))
+    return m.group(1).strip("[]") if m else ""
+
+
+def _port_open(host: str, port: int, timeout: float) -> bool:
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except OSError:
+        return False
+
+
+def rtsp_scan(ifaces: List[dict], user: str = "", password: str = "", skip_hosts=(),
+              timeout: float = 0.4, ports=RTSP_PORTS) -> Tuple[List[dict], List[str]]:
+    """([cameras], [notes]) of the RTSP cameras that do not answer ONVIF: every host of the box's
+    wired subnets (the /24 around each address at most) with an RTSP port open is asked for the
+    usual stream paths. ~3 s for a /24."""
+    from concurrent.futures import ThreadPoolExecutor
+    own, hosts = set(), []
+    for f in ifaces:
+        for a, p in f["ipv4"]:
+            own.add(a)
+            hosts += [str(h) for h in ipaddress.ip_network(f"{a}/{max(int(p), 24)}", strict=False).hosts()]
+    targets = [(h, port) for h in dict.fromkeys(hosts) if h not in own and h not in set(skip_hosts)
+               for port in ports]
+    if not targets:
+        return [], []
+    with ThreadPoolExecutor(64) as ex:
+        live = [t for t, ok in zip(targets, ex.map(lambda t: _port_open(t[0], t[1], timeout), targets)) if ok]
+
+    def ask(t):
+        for path in RTSP_PATHS:
+            uri = f"rtsp://{t[0]}:{t[1]}{path}"
+            d = rtsp_describe(uri, user, password, timeout=2.0)
+            if d is None:
+                return None
+            if d["status"] in (200, 401):
+                return uri, d
+        return None
+    with ThreadPoolExecutor(16) as ex:
+        answers = [a for a in ex.map(ask, live) if a]
+    out, notes, seen = [], [], set()
+    for uri, d in answers:
+        host = stream_host(uri)
+        if host in seen:
+            continue
+        seen.add(host)
+        if d["status"] == 401:
+            notes.append(f"CHECK network camera at {host} (RTSP): "
+                         + ("password refused — check NAVERA_IP_CAMERA_USER / _PASSWORD" if user else
+                            "it needs its login: set NAVERA_IP_CAMERA_USER and NAVERA_IP_CAMERA_PASSWORD"))
+            continue
+        out.append(dict(kind="ip", id=uri, name=f"RTSP camera {host}", spectrum=None, hfov_deg=None,
+                        lens_model="pinhole", size=[0, 0], codec=d["codec"], auth=bool(user), scanned=True,
+                        pipeline=gst_rtsp_pipeline(uri, d["codec"] if d["codec"] != "?" else "H264", bool(user))))
+    return out, notes
+
+
+# MAVLink camera protocol (a camera, or the autopilot for a gimbal it drives, announces its stream)
+MAV_TYPE_CAMERA = 30
+MAV_CMD_REQUEST_MESSAGE = 512
+VIDEO_STREAM_INFORMATION = 269
+VIDEO_STREAM_FLAGS_THERMAL = 2
+
+
+def mavlink_stream_camera(s: dict, user: str = "", password: str = "") -> Optional[dict]:
+    """A camera description from one VIDEO_STREAM_INFORMATION (its fields as a dict), None if the
+    stream cannot be read (an unknown type, no address)."""
+    uri = str(s.get("uri") or "").replace("\x00", "").strip()
+    typ, codec = int(s.get("type", 0) or 0), {2: "H265"}.get(int(s.get("encoding", 0) or 0), "H264")
+    m = re.search(r":(\d+)(?:/|$)", uri) or re.fullmatch(r"(\d+)", uri)
+    if typ == 0 and uri.startswith("rtsp://"):
+        d = rtsp_describe(uri, user, password, timeout=2.0) or {}
+        if d.get("codec") in ("H264", "H265", "JPEG"):
+            codec = d["codec"]
+        auth = bool(user) or d.get("status") == 401        # rtspsrc sends the login only if asked
+        pipeline = gst_rtsp_pipeline(uri, codec, auth)
+    elif typ in (1, 3) and m:
+        auth, pipeline = False, udp_pipeline(int(m.group(1)), codec, ts=typ == 3)
+    elif typ == 2 and m and stream_host(uri):
+        auth, pipeline = False, tcp_ts_pipeline(stream_host(uri), int(m.group(1)), codec)
+    else:
+        return None
+    name = str(s.get("name") or "").replace("\x00", "").strip() or f"stream {s.get('stream_id', 1)}"
+    thermal = bool(int(s.get("flags", 0) or 0) & VIDEO_STREAM_FLAGS_THERMAL) or bool(re.search(THERMAL_WORDS, name, re.I))
+    hfov = float(s.get("hfov", 0) or 0)
+    w, h = int(s.get("resolution_h", 0) or 0), int(s.get("resolution_v", 0) or 0)
+    _, db_hfov, model = lens_info(name)
+    return dict(kind="ip", id=uri, name=f"MAVLink camera {name}".strip(), spectrum="thermal" if thermal else None,
+                hfov_deg=hfov if 5 <= hfov <= 170 else db_hfov, lens_source="camera" if 5 <= hfov <= 170 else None,
+                lens_model=model, size=[w, h] if w and h else [0, 0], codec=codec, auth=auth, pipeline=pipeline,
+                mavlink=True)
+
+
+def mavlink_cameras(url: str, env=None, wait_s: float = 4.0) -> List[dict]:
+    """The video streams announced over MAVLink (camera protocol v2): VIDEO_STREAM_INFORMATION asked
+    of the autopilot (ArduPilot / PX4 answer for a gimbal camera they drive) and of every camera
+    component heard (HEARTBEAT type CAMERA)."""
+    env = os.environ if env is None else env
+    try:
+        from navera_output.mavlink_url import connect
+        from pymavlink.dialects.v20 import ardupilotmega as v2
+        m = connect(url, 1, 191)
+        # VIDEO_STREAM_INFORMATION (id 269) exists only in MAVLink 2: this link's parser speaks it
+        # (the box's other links keep pymavlink's default)
+        m.mav = v2.MAVLink(m, srcSystem=1, srcComponent=191)
+        m.mav.robust_parsing = m.robust_parsing
+        m.WIRE_PROTOCOL_VERSION = v2.WIRE_PROTOCOL_VERSION
+    except Exception:                                     # noqa: BLE001
+        return []
+    streams = {}
+    try:
+        if m.wait_heartbeat(timeout=3) is None:
+            return []
+        asked = {}
+
+        def ask(sysid, comp):
+            asked[(sysid, comp)] = True
+            m.mav.command_long_send(sysid, comp, MAV_CMD_REQUEST_MESSAGE, 0, VIDEO_STREAM_INFORMATION,
+                                    0, 0, 0, 0, 0, 0)
+        ask(m.target_system, m.target_component)
+        end, again = time.time() + wait_s, time.time() + wait_s / 2
+        while time.time() < end:
+            if again and time.time() > again:             # a request lost on a radio / UDP link
+                again = None
+                for k in list(asked):
+                    ask(*k)
+            msg = m.recv_match(blocking=True, timeout=0.3)
+            if msg is None:
+                continue
+            t = msg.get_type()
+            src = (msg.get_srcSystem(), msg.get_srcComponent())
+            if t == "HEARTBEAT" and msg.type == MAV_TYPE_CAMERA and src not in asked:
+                ask(*src)
+            elif t == "VIDEO_STREAM_INFORMATION":
+                d = msg.to_dict()
+                streams[(src, d.get("stream_id"))] = d
+    except Exception:                                     # noqa: BLE001 — a broken link: what was heard
+        pass
+    finally:
+        try:
+            m.close()
+        except Exception:                                 # noqa: BLE001
+            pass
+    user = str(env.get("NAVERA_IP_CAMERA_USER", "") or "").strip()
+    pw = str(env.get("NAVERA_IP_CAMERA_PASSWORD", "") or "")
+    out = [mavlink_stream_camera(d, user, pw) for _, d in sorted(streams.items(), key=lambda x: str(x[0]))]
+    return [c for c in out if c]
+
+
+# GoPro HERO9 and later on USB: a network interface (USB NCM), the camera at 172.2X.1YZ.51 (the last
+# digits of its serial), HTTP on port 8080; webcam mode sends MPEG-TS over UDP to the box, port 8554
+# (Open GoPro). Linear lens mode: the least distortion.
+GOPRO_ADDR = re.compile(r"172\.2\d\.1\d\d\.\d+$")
+
+
+def http_get(url: str, timeout: float = 2.0) -> Optional[int]:
+    """The HTTP status of a GET, None: no answer."""
+    import urllib.error
+    import urllib.request
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as r:
+            return r.status
+    except urllib.error.HTTPError as e:
+        return e.code
+    except (OSError, ValueError):
+        return None
+
+
+def gopro_start_urls(ip: str) -> str:
+    base = f"http://{ip}:8080/gopro"
+    return f"{base}/camera/control/wired_usb?p=1 {base}/webcam/start?res=12&fov=4"
+
+
+def gopro_cameras(addresses=None) -> List[dict]:
+    """The GoPros on USB (addresses: [(interface address, prefix)], default every interface's)."""
+    if addresses is None:
+        addresses = [a for n in sorted(os.listdir("/sys/class/net")) for a in ipv4_of(n)]
+    out = []
+    for a, _ in addresses:
+        if not GOPRO_ADDR.match(a):
+            continue
+        ip = a.rsplit(".", 1)[0] + ".51"
+        if ip == a or http_get(f"http://{ip}:8080/gopro/webcam/status") is None:
+            continue
+        out.append(dict(kind="ip", id=f"gopro://{ip}", name=f"GoPro (USB, {ip})", spectrum="rgb", hfov_deg=None,
+                        lens_model="pinhole", size=[1920, 1080], codec="H264", auth=False,
+                        start_url=gopro_start_urls(ip), pipeline=udp_pipeline(8554, "H264", ts=True)))
+    return out
+
+
+# GigE Vision / USB3 Vision (GenICam) industrial cameras — Basler, Teledyne FLIR, Allied Vision,
+# Hikrobot, Daheng, Lucid, radiometric FLIR A-series... — through Aravis (open source, no maker SDK)
+GVCP_PORT = 3956
+ARAVIS_INSTALL = "sudo apt install gir1.2-aravis-0.8 aravis-tools"
+
+
+def load_aravis():
+    """The Aravis module (gi), or None when it is not installed."""
+    try:
+        import gi
+        gi.require_version("Aravis", "0.8")
+        from gi.repository import Aravis
+        return Aravis
+    except (ImportError, ValueError, AttributeError):
+        return None
+
+
+def gvcp_discovery(ifaces: List[dict], wait_s: float = 1.0) -> List[dict]:
+    """[{ip, maker, model}] of the GigE Vision cameras answering a GVCP discovery broadcast."""
+    out = {}
+    for f in ifaces:
+        for a, _ in f["ipv4"]:
+            try:
+                s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+                s.bind((a, 0))
+                s.sendto(struct.pack(">BBHHH", 0x42, 0x11, 0x0002, 0, 1), ("255.255.255.255", GVCP_PORT))
+            except OSError:
+                continue
+            end = time.monotonic() + wait_s
+            while time.monotonic() < end:
+                s.settimeout(max(0.05, end - time.monotonic()))
+                try:
+                    data, peer = s.recvfrom(1024)
+                except OSError:
+                    break
+                d = gvcp_ack(data, peer[0])
+                if d:
+                    out[peer[0]] = d
+            s.close()
+    return list(out.values())
+
+
+def gvcp_ack(data: bytes, peer: str) -> Optional[dict]:
+    """{ip, maker, model} of a GVCP discovery answer (the bootstrap registers after an 8-byte header)."""
+    if len(data) < 8 + 136 or struct.unpack(">H", data[2:4])[0] != 0x0003:
+        return None
+    p = data[8:]
+    return dict(ip=socket.inet_ntoa(p[36:40]) if any(p[36:40]) else peer, maker=_cstr(p[72:104]),
+                model=_cstr(p[104:136]))
+
+
+def usb3vision_devices(sysfs: str = "/sys/bus/usb/devices") -> List[str]:
+    """Names of the USB3 Vision cameras plugged in (interface class EF, subclass 05)."""
+    out = []
+    for d in sorted(glob.glob(os.path.join(sysfs, "*:*"))):
+        try:
+            cls = open(os.path.join(d, "bInterfaceClass")).read().strip().lower()
+            sub = open(os.path.join(d, "bInterfaceSubClass")).read().strip().lower()
+        except OSError:
+            continue
+        if (cls, sub) == ("ef", "05"):
+            dev = d.rsplit(":", 1)[0]                     # 2-1:1.0 -> the device 2-1
+            name = " ".join(_read(os.path.join(dev, f)) for f in ("manufacturer", "product")).strip()
+            out.append(name or os.path.basename(dev))
+    return sorted(set(out))
+
+
+def _read(path: str) -> str:
+    try:
+        return open(path).read().strip()
+    except OSError:
+        return ""
+
+
+def genicam_cameras(ifaces: List[dict], aravis=None) -> Tuple[List[dict], List[str]]:
+    """([cameras], [notes]) of the GigE Vision / USB3 Vision cameras: listed by Aravis when it is
+    installed, else only seen (GVCP broadcast, USB class) and reported with the command that adds it."""
+    ar = aravis if aravis is not None else load_aravis()
+    if ar is None:
+        seen = [f"{d['maker']} {d['model']} ({d['ip']}, GigE Vision)".strip() for d in gvcp_discovery(ifaces)]
+        seen += [f"{n} (USB3 Vision)" for n in usb3vision_devices()]
+        return [], [f"CHECK industrial camera {n} found: it needs Aravis (open source, no maker software) — "
+                    f"{ARAVIS_INSTALL}, then restart navera-discover" for n in seen]
+    out = []
+    try:
+        ar.update_device_list()
+        for i in range(ar.get_n_devices()):
+            proto = str(ar.get_device_protocol(i) or "")
+            if proto.lower() == "fake":
+                continue
+            name = " ".join(str(x or "") for x in (ar.get_device_vendor(i), ar.get_device_model(i))).strip()
+            spectrum, hfov, model = lens_info(name)
+            out.append(dict(kind="aravis", id=str(ar.get_device_id(i)), name=name or str(ar.get_device_id(i)),
+                            protocol=proto, spectrum=spectrum, hfov_deg=hfov, lens_model=model, size=[0, 0]))
+    except Exception:                                     # noqa: BLE001 — Aravis present but broken
+        return [], []
+    return out, []
 
 
 # ── what a picture says ────────────────────────────────────────────────────
@@ -553,8 +886,13 @@ if kind == "usb":
             frame = f
 else:
     sys.path.insert(0, sys.argv[6])
-    from camera_pkg.gst_capture import GstCapture, expand_secrets
-    cap = GstCapture(expand_secrets(src))
+    if kind == "aravis":
+        from camera_pkg.aravis_capture import AravisCapture
+        cap = AravisCapture(src)
+    else:
+        from camera_pkg.gst_capture import GstCapture, expand_secrets, start_camera
+        start_camera(sys.argv[7] if len(sys.argv) > 7 else "")
+        cap = GstCapture(expand_secrets(src), timeout_s=5.0)
     frame = None
     for _ in range(4):
         ok, f = cap.read()
@@ -576,10 +914,11 @@ def sample_frame(cam: dict, timeout_s: float = 12.0):
         if held_by(cam["id"]):
             return None
         args = [cam["id"], "usb", cam.get("fourcc") or "", str(cam["size"][0]), str(cam["size"][1]), ""]
-    elif cam["kind"] == "ip":
+    elif cam["kind"] in ("ip", "aravis"):
         here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         pkg = next((p for p in sys.path if os.path.isdir(os.path.join(p, "camera_pkg"))), here)
-        args = [cam["pipeline"], "gst", "", "0", "0", pkg]
+        args = ([cam["pipeline"], "gst", "", "0", "0", pkg, cam.get("start_url", "")] if cam["kind"] == "ip"
+                else [cam["id"], "aravis", "", "0", "0", pkg])
     else:
         return None
     try:
@@ -594,7 +933,7 @@ def sample_frame(cam: dict, timeout_s: float = 12.0):
 def describe(cams: List[dict], sample: bool = True) -> List[dict]:
     """Add the picture's traits (sample=True: one frame each) and settle the spectrum."""
     for c in cams:
-        if c["kind"] not in ("usb", "ip"):
+        if c["kind"] not in ("usb", "ip", "aravis"):
             continue
         img = sample_frame(c) if sample else None
         if img is None:
@@ -643,7 +982,7 @@ def assign_roles(cams: List[dict], env, day_taken: bool = False) -> dict:
     if day_taken:
         imposed.setdefault("day", "the Insta360 kit")
     taken = {os.path.realpath(v) if v.startswith("/dev/") else v for v in imposed.values()}
-    free = [c for c in cams if c.get("kind") in ("usb", "csi", "ip", "ros")
+    free = [c for c in cams if c.get("kind") in ("usb", "csi", "ip", "aravis", "ros")
             and (os.path.realpath(c["id"]) if str(c["id"]).startswith("/dev/") else c["id"]) not in taken]
     thermal = [c for c in free if c.get("spectrum") == "thermal" and _looks(c) != "sky"]
     colour = [c for c in free if c not in thermal]
@@ -718,16 +1057,20 @@ def role_settings(role: str, cam: dict, env) -> Dict[str, str]:
         out.update({pre + "INPUT": "csi", pre + "DEVICE": cam.get("sensor", "0")})
     elif cam["kind"] == "ip":
         out.update({pre + "INPUT": "gst", pre + "GST_PIPELINE": cam["pipeline"]})
+        if cam.get("start_url"):
+            out[pre + "START_URL"] = cam["start_url"]
+    elif cam["kind"] == "aravis":
+        out.update({pre + "INPUT": "aravis", pre + "DEVICE": cam["id"]})
     elif cam["kind"] == "ros":
         out.update({pre + "INPUT": "ros", pre + "TOPIC": cam["id"]})
     size = cam.get("size") or [0, 0]
     if size[0] and size[1]:
         out[pre + "SIZE"] = f"{int(size[0])}x{int(size[1])}"
-    elif cam["kind"] in ("ip", "ros"):
+    elif cam["kind"] in ("ip", "aravis", "ros"):
         out[pre + "SIZE"] = "auto"                        # the stream's own size, read at start
     if not get(pre + "CALIBRATION") and not get(pre + "HFOV_DEG"):
         out[pre + "HFOV_DEG"] = f"{cam.get('hfov_deg') or GUESS_HFOV_DEG:g}"
-        out[pre + "LENS_SOURCE"] = "database" if cam.get("hfov_deg") else "guess"
+        out[pre + "LENS_SOURCE"] = cam.get("lens_source") or ("database" if cam.get("hfov_deg") else "guess")
     out[pre + "SPECTRUM"] = cam.get("spectrum") or "rgb"
     out[pre + "NAME"] = re.sub(r"[^\w .:/+()-]", "", str(cam.get("name", "")))[:80]
     return {k: v for k, v in out.items() if not get(k) or get(k).lower() == "auto"}
@@ -739,8 +1082,13 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="List the cameras plugged into this box and their jobs.")
     ap.add_argument("--no-sample", action="store_true", help="do not read a frame from each camera")
     ap.add_argument("--no-network", action="store_true")
+    ap.add_argument("--mavlink", default="", help="also ask this autopilot link for its cameras' streams "
+                                                  "(e.g. udpin:0.0.0.0:14550, /dev/ttyTHS1:921600)")
     a = ap.parse_args(argv)
     cams = usb_cameras() + csi_cameras() + ([] if a.no_network else network_cameras(os.environ))
+    cams += mavlink_cameras(a.mavlink) if a.mavlink else []
+    for n in sorted({n for c in cams for n in c.get("notes") or []}):
+        print(n)
     cams = describe([c for c in cams if c["kind"] != "note"], sample=not a.no_sample)
     for c in cams:
         print(json.dumps({k: v for k, v in c.items() if k not in ("formats", "notes")}, default=str))

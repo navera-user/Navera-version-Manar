@@ -424,7 +424,7 @@ others). It looks for:
 | GPS receiver | serial ports `/dev/ttyTHS*`, `/dev/ttyUSB*`, `/dev/ttyACM*`, at 9600 to 921600 baud | valid NMEA **with satellite data** (GSV/GSA). An autopilot's NMEA output has none, so it is not mistaken for a receiver |
 | Autopilot (MAVLink) | the same serial ports, and the network on UDP 14550 and 14551 | a heartbeat **from an autopilot** (ground stations, cameras and other computers are ignored). NAVERA then asks it for attitude, rangefinder, height and its GPS types |
 | ROS 2 vehicle | ROS domain 0 and NAVERA's own domain | IMU, GPS, camera and rangefinder topics (section 3.3) |
-| Cameras | USB (`/dev/v4l/by-id/…`, an HDMI capture stick too), CSI (Jetson camera inputs), **network cameras** (ONVIF on the wired interfaces — not Wi-Fi unless asked —, IPv4 and IPv6 link-local; the fixed addresses of common gimbal cameras such as SIYI `192.168.144.25`), the vehicle's ROS image topics, and an Insta360 ONE R in USB "Android" mode (USB id `2e1a:0002`, read from the system's USB list: the camera is not opened) | each camera is told **colour or thermal** and **ground or sky**, and given its job (section 6.0). An Insta360 in **webcam** mode is reported "CHECK … set its USB mode to Android" |
+| Cameras | USB (`/dev/v4l/by-id/…`, an HDMI capture stick too), CSI (Jetson camera inputs), **network cameras** (ONVIF on the wired interfaces — not Wi-Fi unless asked —, IPv4 and IPv6 link-local; the fixed addresses of common gimbal cameras such as SIYI `192.168.144.25`; any other RTSP camera on the box's wired subnet, by its RTSP port and the usual stream paths), the streams the vehicle announces over **MAVLink** (camera protocol: `VIDEO_STREAM_INFORMATION`, asked of the autopilot and of every camera component), a **GoPro** (HERO9 and later) on USB, **GigE Vision / USB3 Vision** industrial cameras (through Aravis), the vehicle's ROS image topics, and an Insta360 ONE R in USB "Android" mode (USB id `2e1a:0002`, read from the system's USB list: the camera is not opened) | each camera is told **colour or thermal** and **ground or sky**, and given its job (section 6.0). An Insta360 in **webcam** mode is reported "CHECK … set its USB mode to Android" |
 
 It never opens a port another program holds, a system console port, or a login port. It only
 writes to a port once it has identified an autopilot there.
@@ -470,7 +470,7 @@ More rules:
 | Several GPS receivers | `NAVERA_GPS_PORT` (and `NAVERA_GPS_BAUD`) |
 | Autopilot on an unusual address (another UDP port, TCP) | `NAVERA_DISCOVER_MAVLINK=udpin:0.0.0.0:14560` (comma-separated list) or directly `NAVERA_VEHICLE_MAVLINK_URL` |
 | Several autopilots answer | `NAVERA_VEHICLE_MAVLINK_URL` to choose |
-| A network camera that is not ONVIF and not a known gimbal | `NAVERA_CAMERA_INPUT=gst` and `NAVERA_CAMERA_GST_PIPELINE` (section 6.4) |
+| A network camera found by none of the ways above (another stream path, a stream it sends to the box) | `NAVERA_CAMERA_INPUT=gst` and `NAVERA_CAMERA_GST_PIPELINE` (section 6.4) |
 | ROS vehicle on another domain | see Way C |
 | Every vehicle | `NAVERA_MAX_SPEED_KMH`, `NAVERA_WEB_TOKEN` (the lens is calibrated in flight: section 6.2) |
 
@@ -1035,6 +1035,12 @@ How NAVERA tells them apart:
   with a login needs `NAVERA_IP_CAMERA_USER` and `NAVERA_IP_CAMERA_PASSWORD` in `navera.env`; the
   password is **never** written into the discovered settings or the report (the pipeline names
   `@NAVERA_IP_CAMERA_PASSWORD@`, filled in by the camera service at start).
+- **Other drone cameras:** a gimbal camera without ONVIF is found by its RTSP port on the box's
+  wired subnet (the usual stream paths are asked; `NAVERA_DISCOVER_RTSP_SCAN=0` turns it off); a
+  camera the vehicle announces over MAVLink (PX4 / ArduPilot camera protocol) comes with its own
+  name, size and field of view (`LENS_SOURCE=camera`); a GoPro on USB is told to stream at each
+  start (`NAVERA_CAMERA_START_URL`, written by NAVERA: webcam mode, 1080p, linear lens); an
+  industrial GigE Vision / USB3 Vision camera is read through Aravis (`NAVERA_CAMERA_INPUT=aravis`).
 - **Size and format:** a USB camera's best mode (MJPG near 1920 × 1080; a thermal core at its own
   size, 16-bit stretched to 8-bit); a network stream or ROS topic at its own size
   (`NAVERA_CAMERA_SIZE=auto`).
@@ -1153,7 +1159,8 @@ corrects it only when its estimate is stable and clearly different.
 |---|---|---|
 | `usb` | a USB (UVC) camera, e.g. the **Insta360 ONE R in USB webcam mode** | detected automatically |
 | `csi` | a Jetson CSI camera (through GStreamer `nvarguscamerasrc`); `NAVERA_CAMERA_DEVICE` = sensor id (0) | detected automatically; supported in code, not tested with a real CSI camera |
-| `gst` | any GStreamer source: a network (RTSP) camera, a gimbal's video stream | ONVIF cameras and the known gimbal addresses are **detected automatically** (pipeline written by NAVERA); otherwise write the pipeline, ending in `appsink name=sink` with BGR |
+| `gst` | any GStreamer source: a network (RTSP) camera, a gimbal's video stream, a MAVLink-announced stream (RTSP, RTP/UDP, MPEG-TS over UDP or TCP), a GoPro on USB | ONVIF cameras, the known gimbal addresses, other RTSP cameras on the wired subnet, MAVLink streams and GoPros are **detected automatically** (pipeline written by NAVERA); otherwise write the pipeline, ending in `appsink name=sink` with BGR. `NAVERA_CAMERA_START_URL`: URLs (space-separated) fetched before the stream opens |
+| `aravis` | a **GigE Vision / USB3 Vision** industrial camera (Basler, Teledyne FLIR, Allied Vision, Hikrobot, Daheng, Lucid, FLIR A-series thermal…), no maker software; `NAVERA_CAMERA_DEVICE` = its Aravis id (empty: the first) | detected automatically; colour, raw Bayer (debayered) or grey 8–16 bit; auto exposure / gain where the camera has them. Supported in code, **not yet tested with a real camera** |
 | `ros` | a `sensor_msgs/Image` topic of the vehicle | must look down (section 3.3) |
 | `insta360` | the IRIS kit: Insta360 ONE R in USB "Android" mode, read by `navera-insta360` (straight-down view + IMU) | detected automatically (USB id `2e1a:0002`); section 3.1 |
 
@@ -1165,10 +1172,29 @@ NAVERA_CAMERA_INPUT=gst
 NAVERA_CAMERA_GST_PIPELINE="rtspsrc location=rtsp://<user>:<password>@<camera-ip>:554/Streaming/Channels/201 latency=0 ! rtph264depay ! video/x-h264,stream-format=byte-stream,alignment=au ! nvv4l2decoder ! nvvidconv ! video/x-raw,format=BGRx ! videoconvert ! video/x-raw,format=BGR ! appsink name=sink drop=true max-buffers=1 sync=false"
 ```
 
-The box decodes H.264 / H.265 in hardware (`nvv4l2decoder`) and has no `h264parse` or software
-decoder, so a pipeline with `decodebin` finds no decoder for an RTSP camera and never delivers a
+The box decodes H.264 / H.265 in hardware (`nvv4l2decoder`) and has no software decoder (`h264parse`
+and the MPEG-TS demuxer come with `gstreamer1.0-plugins-bad`, installed by `deploy/install.sh` for
+GoPro and MPEG-TS streams), so a pipeline with `decodebin` finds no decoder for an RTSP camera and never delivers a
 frame (measured 2026-10-22 in the hardware-in-the-loop test). Keep the byte-stream caps shown;
 an H.265 camera: `rtph265depay ! video/x-h265,stream-format=byte-stream,alignment=au ! nvv4l2decoder`.
+
+Which drone cameras (status of the code — **none of these tested with the real camera yet**,
+except the Insta360):
+
+| Camera | Connection | With NAVERA |
+|---|---|---|
+| SIYI (A8 mini, ZR10, ZR30, ZT6, ZT30), Skydroid (C10, C12, C20), Herelink air unit | Ethernet | automatic (known address) |
+| Viewpro, Topotek and other gimbals with their own firmware | Ethernet (RTSP) | automatic (RTSP port on the wired subnet) if their address is in the box's subnet |
+| ONVIF cameras (Hikvision, Dahua, Axis, many gimbals) | Ethernet | automatic; a login in `navera.env` |
+| Any camera the autopilot or camera announces over MAVLink | Ethernet / UDP | automatic |
+| FLIR Boson, Lepton (PureThermal), InfiRay / iRay USB modules, USB webcams | USB (UVC) | automatic |
+| Raspberry Pi / Arducam CSI modules | CSI | automatic once the Jetson sees the sensor (its driver enabled once) |
+| GoPro HERO9 and later | USB-C | automatic |
+| Basler, Teledyne FLIR Blackfly, Allied Vision, other GenICam cameras | GigE / USB3 | automatic through Aravis |
+| Analog FPV cameras (Caddx, RunCam, Foxeer) | analog | a USB video grabber (UVC); a low-quality picture |
+| HDMI cameras (mapping cameras, FLIR Vue Pro HDMI) | HDMI | an HDMI→USB capture box (UVC) |
+| GMSL cameras | GMSL | the maker's adapter board and Jetson driver |
+| DJI O3 / O4, Walksnail, HDZero digital FPV; DJI Zenmuse payloads | closed links | **not possible**: no video for a computer (Zenmuse: DJI Payload SDK) |
 
 Other camera settings: `NAVERA_CAMERA_SIZE` (default 1920x1080; must be a mode the camera
 delivers; `auto` for a network stream or a ROS topic: its own size), `NAVERA_CAMERA_FOURCC`

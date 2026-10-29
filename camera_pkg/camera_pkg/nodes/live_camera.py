@@ -83,10 +83,14 @@ class LiveCamera(Node):
     def __init__(self, **kwargs):
         super().__init__("live_camera", **kwargs)
         self.declare_parameter("camera_type", "day")
-        self.declare_parameter("input", "usb")                 # usb | csi | gst | ros | insta360
+        self.declare_parameter("input", "usb")                 # usb | csi | gst | aravis | ros | insta360
         # input gst: any GStreamer pipeline ending in "appsink name=sink" giving BGR frames
         # (an IP/RTSP camera, a gimbal's video stream...)
         self.declare_parameter("gst_pipeline", "")
+        # gst: URLs (space-separated) fetched before the pipeline opens — a camera that streams only once
+        # told to (a GoPro's webcam mode)
+        self.declare_parameter("start_url", "")
+        # input aravis: a GigE Vision / USB3 Vision camera, device = its Aravis id ("" = the first one)
         self.declare_parameter("device", "/dev/video0")
         self.declare_parameter("input_topic", "/vehicle/camera/image_raw")
         # 0 x 0: the camera's own size, taken from its first frame (a network stream, a ROS topic)
@@ -284,8 +288,10 @@ class LiveCamera(Node):
         import hashlib
         import re
         p = lambda n: self.get_parameter(n).value               # noqa: E731
-        src = {"usb": p("device"), "csi": p("device"), "ros": p("input_topic"),
+        src = {"usb": p("device"), "csi": p("device"), "aravis": p("device"), "ros": p("input_topic"),
                "gst": re.sub(r"user-(id|pw)=\S+", "", str(p("gst_pipeline")))}.get(self.input, self.input)
+        if self.input == "gst" and p("start_url"):
+            src = f"{src} {p('start_url')}"                     # two GoPros share the pipeline, not the address
         if self.input == "usb":
             from navera_common.vehicle import camera_identity
             src = camera_identity(str(src)) or src
@@ -479,8 +485,15 @@ class LiveCamera(Node):
     def _grab_loop(self, device: str):
         import cv2
         if self.input == "gst":
-            from camera_pkg.gst_capture import GstCapture, expand_secrets
+            from camera_pkg.gst_capture import GstCapture, expand_secrets, start_camera
+            for url, status in start_camera(str(self.get_parameter("start_url").value)):
+                self.get_logger().info(f"camera start: {url} -> {status if status is not None else 'no answer'}")
             cap = GstCapture(expand_secrets(str(self.get_parameter("gst_pipeline").value)), timeout_s=5.0)
+        elif self.input == "aravis":
+            from camera_pkg.aravis_capture import AravisCapture
+            cap = AravisCapture(str(device), timeout_s=5.0, width=self.w, height=self.h)
+            if cap.error:
+                self.get_logger().error(f"industrial camera {device or '(first)'}: {cap.error}")
         elif self.input == "csi":
             # through GStreamer directly: the box's OpenCV has no GStreamer support.
             # device: the CSI sensor id ("0", "1"), default 0
@@ -501,7 +514,7 @@ class LiveCamera(Node):
                 cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.h)
             cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)                 # newest frame, not a queue
         if not cap.isOpened():
-            self.get_logger().fatal(f"cannot open the camera ({device if self.input == 'usb' else 'CSI'}) — "
+            self.get_logger().fatal(f"cannot open the camera ({device if self.input in ('usb', 'aravis') else self.input}) — "
                                     "exiting so the service restarts")
             self.context.try_shutdown()
             return

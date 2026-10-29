@@ -600,8 +600,9 @@ def discover(env=None, ros_wait_s: float = 8.0) -> dict:
 
     run("i2c", probe_i2c)
     run("cameras", probe_cameras)
-    if str(env.get("NAVERA_DISCOVER_IP_CAMERAS", "1")).strip().lower() not in ("0", "off", "false", "no"):
-        from navera_common import cameras
+    from navera_common import cameras
+    ip_on = str(env.get("NAVERA_DISCOVER_IP_CAMERAS", "1")).strip().lower() not in ("0", "off", "false", "no")
+    if ip_on:
         found["ip_cameras"] = []
         run("ip_cameras", lambda: cameras.network_cameras(env))
     for p in serial_ports():
@@ -622,10 +623,13 @@ def discover(env=None, ros_wait_s: float = 8.0) -> dict:
     for t in threads:
         t.join(timeout=60)
     found["ip_cameras"] = [c for r in found.get("ip_cameras") or [] for c in (r if isinstance(r, list) else [r])]
-    describe_cameras(found)
     aps = autopilots(found)
     if aps:
         found["autopilot_streams"] = autopilot_streams(aps[0]["url"])
+        if ip_on:
+            # first: a stream the vehicle announces carries its name and lens
+            found["ip_cameras"] = cameras.mavlink_cameras(aps[0]["url"], env) + found["ip_cameras"]
+    describe_cameras(found)
     return found
 
 
@@ -634,9 +638,18 @@ def describe_cameras(found: dict) -> None:
     ground or sky. Network cameras join found["cameras"]["list"]."""
     from navera_common import cameras
     cams = found.setdefault("cameras", {})
-    ip = [c for c in found.get("ip_cameras") or [] if c.get("kind") == "ip"]
+    ip, hosts = [], set()
     known = {c["id"] for c in cams.get("list") or []}
-    cams["list"] = cameras.describe(list(cams.get("list") or []) + [c for c in ip if c["id"] not in known])
+    for c in found.get("ip_cameras") or []:
+        if c.get("kind") not in ("ip", "aravis") or c["id"] in known:
+            continue
+        host = cameras.stream_host(c["id"])
+        if c.get("scanned") and host in hosts:
+            continue                                      # the same camera, found by its name first
+        known.add(c["id"])
+        hosts.add(host)
+        ip.append(c)
+    cams["list"] = cameras.describe(list(cams.get("list") or []) + ip)
     cams["notes"] = sorted({n for c in found.get("ip_cameras") or [] for n in c.get("notes") or []})
 
 

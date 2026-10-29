@@ -72,7 +72,8 @@ def probe(new: Dict[str, List[str]], env, rescan: Optional[dict] = None) -> dict
         # what the new cameras are (one frame each, in a child process) and the network cameras
         from navera_common import cameras
         added_usb = [c for c in cameras.usb_cameras() if c["id"] in set(new.get("cameras", []))]
-        ip = [c for c in cameras.network_cameras(env) if c.get("kind") == "ip"] if rescan.get("ip_cameras") else []
+        ip = ([c for c in cameras.network_cameras(env) if c.get("kind") in ("ip", "aravis")]
+              if rescan.get("ip_cameras") else [])
         frag["cameras"]["list"] = cameras.describe(added_usb + ip)
     ports = dict.fromkeys(new.get("serial", []) + rescan.get("serial", []))
     jobs = [("serial", disc.probe_serial_port, p) for p in ports]

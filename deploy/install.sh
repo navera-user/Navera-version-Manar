@@ -95,7 +95,10 @@ if [ "$APT" = 1 ]; then
   say "system packages"
   run apt-get update -q
   run apt-get install -y -q git rsync python3-pip python3-colcon-common-extensions python3-yaml \
-      python3-gi gir1.2-gstreamer-1.0 ros-humble-cv-bridge ros-humble-rosbag2-py libusb-1.0-0
+      python3-gi gir1.2-gstreamer-1.0 ros-humble-cv-bridge ros-humble-rosbag2-py libusb-1.0-0 \
+      gstreamer1.0-plugins-bad gir1.2-aravis-0.8 aravis-tools
+  # plugins-bad: MPEG-TS streams and H.264 parsing (a GoPro on USB, a MAVLink camera's TS stream);
+  # Aravis: GigE Vision / USB3 Vision industrial cameras without the makers' software
   if echo "$UNITS" | grep -q navera-pipeline-cn; then
     run apt-get install -y -q astrometry.net astrometry-data-tycho2-10-19
   fi

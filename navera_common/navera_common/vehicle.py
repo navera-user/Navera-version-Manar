@@ -165,9 +165,12 @@ def live_camera_params(environ=None, prefix: str = "NAVERA_CAMERA_") -> dict:
             parse_crop(p["crop"], p["width"], p["height"])
     except ValueError as e:
         raise ValueError(f"{prefix}CROP: {e}") from None
-    if p["input"] not in ("usb", "csi", "gst", "ros"):
-        raise ValueError(f"{prefix}INPUT={p['input']!r}: expected usb, csi, gst, ros or insta360")
+    if p["input"] not in ("usb", "csi", "gst", "aravis", "ros"):
+        raise ValueError(f"{prefix}INPUT={p['input']!r}: expected usb, csi, gst, aravis, ros or insta360")
     p["gst_pipeline"] = get(prefix + "GST_PIPELINE")
+    p["start_url"] = get(prefix + "START_URL")
+    if p["input"] == "aravis":
+        p["device"] = get(prefix + "DEVICE")                 # an Aravis camera id, "" = the first one
     if auto_size and p["input"] in ("usb", "csi"):
         raise ValueError(f"{prefix}SIZE=auto is for a network stream or a ROS topic: a {p['input']} camera "
                          "needs its WIDTHxHEIGHT (navera-discover writes it)")

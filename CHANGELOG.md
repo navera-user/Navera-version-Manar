@@ -4,6 +4,19 @@ Measured numbers come from simulation (Isaac Sim + ArduPilot/PX4 SITL), bench, o
 data from other vehicles; **no NAVERA flight yet**. Details: `docs/VALIDATION_STATUS.md`,
 requirements: `docs/certification/REQUIREMENTS.md`, known problems: the shared problems list.
 
+## Unreleased
+- **More drone cameras found by themselves** (`navera_common/cameras.py`): RTSP cameras without
+  ONVIF on the wired subnet (Viewpro, Topotek…: RTSP port + the usual stream paths); streams the
+  vehicle announces over MAVLink (camera protocol, `VIDEO_STREAM_INFORMATION`: RTSP, RTP/UDP,
+  MPEG-TS over UDP / TCP, with its name, size, field of view and thermal flag); a GoPro on USB
+  (webcam mode started at each start: `NAVERA_*_START_URL`); GigE Vision / USB3 Vision industrial
+  cameras through Aravis (`NAVERA_*_INPUT=aravis`, `camera_pkg/aravis_capture.py`: colour, Bayer,
+  grey 8–16 bit) — without Aravis they are reported with the install command.
+- install.sh adds `gstreamer1.0-plugins-bad` (MPEG-TS, H.264 parsing) and Aravis.
+- Verified: unit tests (fake RTSP / MAVLink camera / GoPro HTTP / Aravis), the RTP/UDP pipeline
+  decoded in hardware on the Orin Nano (1280×720). Not tested: any of these with a real camera;
+  the MPEG-TS pipelines (plugins-bad not yet on the dev box).
+
 ## 0.6.0 — 2026-10-26 (simulation/bench-validated; no real flight yet)
 - **Plug-and-play cameras** (`navera_common/cameras.py`): navera-discover and hot-plug find USB /
   UVC, CSI, network (ONVIF WS-Discovery, IPv4 + IPv6 link-local, login from
