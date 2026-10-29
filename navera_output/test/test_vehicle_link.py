@@ -73,7 +73,8 @@ def test_system_time_becomes_a_time_reference_only_once_the_autopilot_has_a_time
 
 def test_global_position_velocity_is_published_enu():
     """open3: the autopilot's EKF velocity for the day node's carry (GLOBAL_POSITION_INT vx north, vy east,
-    vz down, cm/s -> TwistStamped ENU m/s)."""
+    vz down, cm/s -> TwistStamped ENU m/s).
+    """
     from types import SimpleNamespace
     from builtin_interfaces.msg import Time
     from navera_output.nodes.vehicle_link_node import global_position_velocity

@@ -18,8 +18,13 @@ else — including a stale or silent arbiter — is an explicit "no fix".
 
 Parameters:
     rate_hz              (5.0)   output rate
-    nmea_port            ("")    serial device for NMEA, "" = disabled
+    nmea_port            ("")    serial device for the GPS emulation (NMEA or UBX), "" = disabled
     nmea_baud            (9600)
+    nmea_protocol        ("nmea") nmea: GGA + RMC; ubx: u-blox NAV-PVT etc. (navera_output.ubx_out),
+                                 for flight controllers that take a u-blox GPS (PX4, INAV, Betaflight,
+                                 ArduPilot GPS_TYPE 2). UBX carries the accuracy: vision positions go out
+                                 under forward_degraded as over MAVLink (nmea_forward_degraded not needed)
+    ubx_estimated_satellites (0) satellite count stated in UBX with a non-GNSS position
     mavlink_url          ("")    e.g. "serial:/dev/ttyTHS2:921600" (navera_output.mavlink_url) or
                                  "udpout:127.0.0.1:14550"; "" = disabled
     mavlink_message      ("auto") gps_input (ArduPilot) | hil_gps (PX4) | auto: hil_gps once the
@@ -103,7 +108,7 @@ from rclpy.duration import Duration
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 
-from navera_output import mavlink_out, mavlink_url, nmea
+from navera_output import mavlink_out, mavlink_url, nmea, ubx_out
 from navera_output.map_guard import MapGuard
 from navera_output.policy import (KIND_ESTIMATED, KIND_FIX, KIND_NONE, Config, Held, bridge, bridgeable,
                                   decide, for_nmea, hold, reacquire)
@@ -157,6 +162,8 @@ class VehicleOutputNode(Node):
         declare_float(self, "rate_hz", 5.0)
         self.declare_parameter("nmea_port", "")
         self.declare_parameter("nmea_baud", 9600)
+        self.declare_parameter("nmea_protocol", "nmea")
+        self.declare_parameter("ubx_estimated_satellites", 0)
         self.declare_parameter("mavlink_url", "")
         self.declare_parameter("mavlink_message", "auto")
         self.declare_parameter("mavlink_system_id", 1)
@@ -216,11 +223,18 @@ class VehicleOutputNode(Node):
             raise ValueError(f"rate_hz must be > 0 (got {rate})")
 
         self._serial = None
+        self._proto = str(self.get_parameter("nmea_protocol").value).strip().lower() or "nmea"
+        if self._proto not in ("nmea", "ubx"):
+            raise ValueError(f"nmea_protocol must be nmea or ubx (got {self._proto!r})")
+        self._ubx_sats = int(self.get_parameter("ubx_estimated_satellites").value)
+        self._ubx = ubx_out.Responder() if self._proto == "ubx" else None
         port = str(self.get_parameter("nmea_port").value)
         if port:
             import serial
             self._serial = serial.Serial(port, int(self.get_parameter("nmea_baud").value),
                                          timeout=1, write_timeout=1)
+            if self._ubx is not None:
+                self.create_timer(0.02, self._answer_ubx)       # the driver waits for its ACKs
         self._mav = None
         self._msg_mode = str(self.get_parameter("mavlink_message").value).strip().lower() or "auto"
         if self._msg_mode not in MAVLINK_MESSAGES:
@@ -266,17 +280,35 @@ class VehicleOutputNode(Node):
         self.create_subscription(TwistStamped, "/navera/sensors/gps_vel", self._on_gps_vel, 10)
         self.create_timer(1.0 / rate, self._tick)
         self.get_logger().info(
-            f"vehicle output: nmea={port or 'off'} mavlink={url or 'off'}"
+            f"vehicle output: {self._proto}={port or 'off'} mavlink={url or 'off'}"
             f"{' (' + self._msg_mode + ')' if url else ''} ros={topic or 'off'} rate={rate:.1f}Hz "
             f"forward_degraded={self.cfg.forward_degraded}")
         self._nmea_degraded = bool(self.get_parameter("nmea_forward_degraded").value)
-        if self._serial is not None and self.cfg.forward_degraded:
+        if self._serial is not None and self.cfg.forward_degraded and self._proto == "nmea":
             if self._nmea_degraded:
                 self.get_logger().warn("nmea_forward_degraded: vision positions go out over NMEA, which "
                                        "carries no accuracy — the autopilot will trust them as a precise GPS")
             else:
                 self.get_logger().info("degraded positions: MAVLink/ROS only; NMEA says 'no fix' for them "
                                        "(NMEA carries no accuracy)")
+
+    def _answer_ubx(self) -> None:
+        """Acknowledge the flight controller's u-blox configuration (ubx_out.Responder)."""
+        try:
+            n = self._serial.in_waiting
+            if not n:
+                return
+            reply, baud = self._ubx.feed(self._serial.read(n))
+            if reply:
+                self._serial.write(reply)
+                self._serial.flush()
+            if baud and baud != self._serial.baudrate:
+                self.get_logger().info(f"UBX: the flight controller set the GPS port to {baud} baud")
+                self._serial.baudrate = baud
+        except Exception as e:     # serial unplugged...
+            self.get_logger().fatal(f"output failed: {e} — exiting so the service restarts")
+            self.failed = True
+            self.context.try_shutdown()
 
     def _on_link_status(self, msg) -> None:
         try:
@@ -383,8 +415,12 @@ class VehicleOutputNode(Node):
         self._check_drift(out)
         # stamped with the measurement instant: GPS_INPUT time, NMEA time, NavSatFix stamp
         t_utc = datetime.now(timezone.utc) - timedelta(seconds=out.age_s)
+        if out.gnss and math.isfinite(out.alt_msl_m):
+            self._held_alt_msl = out.alt_msl_m
         try:
-            if self._serial is not None:
+            if self._serial is not None and self._ubx is not None:
+                self._serial.write(ubx_out.position_messages(out, t_utc, self._held_alt_msl, self._ubx_sats))
+            elif self._serial is not None:
                 nmea_out = for_nmea(out, self._nmea_degraded)
                 spd = crs = math.nan
                 if out.has_velocity:
@@ -393,8 +429,6 @@ class VehicleOutputNode(Node):
                 self._serial.write((nmea.gga(nmea_out, t_utc) + nmea.rmc(nmea_out, t_utc, spd, crs))
                                    .encode("ascii"))
             if self._mav is not None:
-                if out.gnss and math.isfinite(out.alt_msl_m):
-                    self._held_alt_msl = out.alt_msl_m
                 if self._msg == "hil_gps":
                     self._mav.mav.hil_gps_send(**mavlink_out.hil_gps_fields(out, t_utc, self._held_alt_msl))
                 else:
