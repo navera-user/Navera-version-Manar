@@ -370,3 +370,21 @@ def test_the_discovery_keeps_one_entry_per_camera_the_named_one_first(monkeypatc
     discovery.describe_cameras(found)
     assert [c["name"] for c in found["cameras"]["list"]] == [
         "MAVLink camera EO", "SIYI gimbal camera", "RTSP camera 192.168.2.119", "Basler"]
+
+
+def test_the_real_aravis_reads_its_simulated_camera():
+    """Aravis' own simulated GenICam camera (Mono8 at start), when Aravis is installed."""
+    import pytest
+    from camera_pkg import aravis_capture as ac
+    try:
+        ar = ac.load_aravis()
+    except (ImportError, ValueError):
+        pytest.skip("Aravis not installed (sudo apt install gir1.2-aravis-0.8)")
+    ar.enable_interface("Fake")
+    cap = ac.AravisCapture("Fake_1", timeout_s=3.0, aravis=ar)
+    try:
+        assert cap.isOpened(), cap.error
+        ok, img = cap.read()
+        assert ok and img.ndim == 2 and img.shape[0] > 0 and img.max() > img.min()
+    finally:
+        cap.release()

@@ -13,9 +13,10 @@ requirements: `docs/certification/REQUIREMENTS.md`, known problems: the shared p
   cameras through Aravis (`NAVERA_*_INPUT=aravis`, `camera_pkg/aravis_capture.py`: colour, Bayer,
   grey 8–16 bit) — without Aravis they are reported with the install command.
 - install.sh adds `gstreamer1.0-plugins-bad` (MPEG-TS, H.264 parsing) and Aravis.
-- Verified: unit tests (fake RTSP / MAVLink camera / GoPro HTTP / Aravis), the RTP/UDP pipeline
-  decoded in hardware on the Orin Nano (1280×720). Not tested: any of these with a real camera;
-  the MPEG-TS pipelines (plugins-bad not yet on the dev box).
+- Verified on the Orin Nano: unit tests (fake RTSP / MAVLink camera / GoPro HTTP / Aravis); the
+  RTP/UDP (1280×720), MPEG-TS over UDP (1920×1080, the GoPro's) and over TCP (1280×720) pipelines
+  decoded in hardware from a live test stream; Aravis' simulated GenICam camera read in Mono8,
+  BayerRG8, RGB8 and Mono16. Not tested: any of these with a real camera.
 
 ## 0.6.0 — 2026-10-26 (simulation/bench-validated; no real flight yet)
 - **Plug-and-play cameras** (`navera_common/cameras.py`): navera-discover and hot-plug find USB /
