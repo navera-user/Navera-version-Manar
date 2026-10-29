@@ -12,6 +12,13 @@ requirements: `docs/certification/REQUIREMENTS.md`, known problems: the shared p
   (webcam mode started at each start: `NAVERA_*_START_URL`); GigE Vision / USB3 Vision industrial
   cameras through Aravis (`NAVERA_*_INPUT=aravis`, `camera_pkg/aravis_capture.py`: colour, Bayer,
   grey 8–16 bit) — without Aravis they are reported with the install command.
+- **First real-camera test** (Hikvision DS-2TD2617B-3/PA bi-spectrum on Ethernet, ONVIF off as
+  shipped): five bugs found and fixed — frame sampling never worked (np.save to a pipe), the RTSP
+  digest login must stay on its connection (and retry once: logins arriving together), IPv6
+  link-local cameras scanned and one camera counted once (MAC), channels told apart by their stream
+  (a camera answering any path), a grey thermal picture with a coloured overlay is grey. Result:
+  day = visible 2688×1520, thermal = 1280×720, password in no written file, both streams 20/20
+  frames from the written settings.
 - install.sh adds `gstreamer1.0-plugins-bad` (MPEG-TS, H.264 parsing) and Aravis.
 - Verified on the Orin Nano: unit tests (fake RTSP / MAVLink camera / GoPro HTTP / Aravis); the
   RTP/UDP (1280×720), MPEG-TS over UDP (1920×1080, the GoPro's) and over TCP (1280×720) pipelines

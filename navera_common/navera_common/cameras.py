@@ -411,40 +411,78 @@ def rtsp_describe(uri: str, user: str = "", password: str = "", timeout: float =
     host, port = m.group(1).strip("[]"), int(m.group(2) or 554)
     clean = re.sub(r"rtsp://[^@/]*@", "rtsp://", uri)
 
-    def ask(auth: str = "") -> Tuple[int, str]:
-        with socket.create_connection((host, port), timeout=timeout) as s:
-            s.sendall(f"DESCRIBE {clean} RTSP/1.0\r\nCSeq: 2\r\nAccept: application/sdp\r\n{auth}\r\n".encode())
-            data, t_end = b"", time.monotonic() + timeout
-            while time.monotonic() < t_end:
-                b = s.recv(65536)
-                if not b:
-                    break
-                data += b
-                head, _, body = data.partition(b"\r\n\r\n")
-                n = re.search(rb"Content-Length:\s*(\d+)", head, re.I)
-                if _ and len(body) >= (int(n.group(1)) if n else 0):
-                    break
+    conn = {}
+
+    def ask(auth: str = "", cseq: int = 2) -> Tuple[int, str]:
+        # the login goes on the connection that got the challenge: some cameras (Hikvision) tie
+        # the nonce to it and refuse it on a new one
+        reused = "s" in conn
+        s = conn.get("s")
+        if s is None:
+            s = conn["s"] = socket.create_connection((host, port), timeout=timeout)
+        try:
+            s.sendall(f"DESCRIBE {clean} RTSP/1.0\r\nCSeq: {cseq}\r\nAccept: application/sdp\r\n{auth}\r\n".encode())
+        except OSError:
+            if not reused:
+                raise
+            conn.pop("s").close()
+            return ask(auth, cseq)
+        data, t_end = b"", time.monotonic() + timeout
+        while time.monotonic() < t_end:
+            b = s.recv(65536)
+            if not b:
+                conn.pop("s").close()                     # closed by the camera: a new one if asked again
+                break
+            data += b
+            head, _, body = data.partition(b"\r\n\r\n")
+            n = re.search(rb"Content-Length:\s*(\d+)", head, re.I)
+            if _ and len(body) >= (int(n.group(1)) if n else 0):
+                break
+        if not data and reused:                           # the camera had closed it: a new connection
+            return ask(auth, cseq)
         txt = data.decode("utf-8", "replace")
         code = re.match(r"RTSP/1.0 (\d+)", txt)
         return (int(code.group(1)) if code else 0), txt
     try:
-        code, txt = ask()
-        if code == 401 and user:
-            ch = re.search(r'WWW-Authenticate:\s*Digest\s+(.*)', txt, re.I)
-            if ch:
-                kv = dict(re.findall(r'(\w+)="([^"]*)"', ch.group(1)))
-                ha1 = hashlib.md5(f"{user}:{kv.get('realm', '')}:{password}".encode()).hexdigest()
-                ha2 = hashlib.md5(f"DESCRIBE:{clean}".encode()).hexdigest()
-                resp = hashlib.md5(f"{ha1}:{kv.get('nonce', '')}:{ha2}".encode()).hexdigest()
-                auth = (f'Authorization: Digest username="{user}", realm="{kv.get("realm", "")}", '
-                        f'nonce="{kv.get("nonce", "")}", uri="{clean}", response="{resp}"\r\n')
-            else:
-                auth = "Authorization: Basic " + base64.b64encode(f"{user}:{password}".encode()).decode() + "\r\n"
-            code, txt = ask(auth)
+        d = _rtsp_describe(ask, clean, user, password)
+        if d["status"] == 401 and user:
+            # refused although logged in: some cameras (Hikvision) mix up the nonces of logins that
+            # arrive together — once more on a new connection before calling the password wrong
+            if conn.get("s"):
+                conn.pop("s").close()
+            time.sleep(0.3)
+            d = _rtsp_describe(ask, clean, user, password)
+        return d
     except OSError:
         return None
+    finally:
+        if conn.get("s"):
+            conn["s"].close()
+
+
+def _rtsp_describe(ask, clean: str, user: str, password: str) -> dict:
+    """DESCRIBE, then again with the login when challenged: {status, codec}."""
+    code, txt = ask()
+    if code == 401 and user:
+        ch = re.search(r'WWW-Authenticate:\s*Digest\s+(.*)', txt, re.I)
+        if ch:
+            kv = dict(re.findall(r'(\w+)="([^"]*)"', ch.group(1)))
+            ha1 = hashlib.md5(f"{user}:{kv.get('realm', '')}:{password}".encode()).hexdigest()
+            ha2 = hashlib.md5(f"DESCRIBE:{clean}".encode()).hexdigest()
+            resp = hashlib.md5(f"{ha1}:{kv.get('nonce', '')}:{ha2}".encode()).hexdigest()
+            auth = (f'Authorization: Digest username="{user}", realm="{kv.get("realm", "")}", '
+                    f'nonce="{kv.get("nonce", "")}", uri="{clean}", response="{resp}"\r\n')
+        else:
+            auth = "Authorization: Basic " + base64.b64encode(f"{user}:{password}".encode()).decode() + "\r\n"
+        code, txt = ask(auth, 3)
     codec = re.search(r"a=rtpmap:\d+\s+(H264|H265|HEVC|JPEG)", txt, re.I)
-    return dict(status=code, codec=(codec.group(1).upper().replace("HEVC", "H265") if codec else "?"))
+    size = re.search(r"a=(?:x-dimensions:|framesize:\d+\s+)(\d+)[,-](\d+)", txt)
+    # what tells two streams apart: their encoder parameters (SPS/PPS) and size, not their path (a
+    # camera may answer any path with its default stream)
+    sprop = re.search(r"sprop-(?:parameter-sets|vps|sps)=([^;\s]+)", txt)
+    return dict(status=code, codec=(codec.group(1).upper().replace("HEVC", "H265") if codec else "?"),
+                size=[int(size.group(1)), int(size.group(2))] if size else [0, 0],
+                fingerprint=f"{sprop.group(1) if sprop else ''} {size.group(0) if size else ''}".strip())
 
 
 def gst_rtsp_pipeline(uri: str, codec: str, auth: bool) -> str:
@@ -569,6 +607,9 @@ def rtsp_scan(ifaces: List[dict], user: str = "", password: str = "", skip_hosts
         for a, p in f["ipv4"]:
             own.add(a)
             hosts += [str(h) for h in ipaddress.ip_network(f"{a}/{max(int(p), 24)}", strict=False).hosts()]
+    # a camera whose static IPv4 is in another subnet (a factory 192.168.1.64 on a box at
+    # 192.168.77.10) still answers on its IPv6 link-local address: the wired neighbours
+    hosts += ipv6_neighbours(ifaces)
     targets = [(h, port) for h in dict.fromkeys(hosts) if h not in own and h not in set(skip_hosts)
                for port in ports]
     if not targets:
@@ -578,7 +619,7 @@ def rtsp_scan(ifaces: List[dict], user: str = "", password: str = "", skip_hosts
 
     def ask(t):
         for path in RTSP_PATHS:
-            uri = f"rtsp://{t[0]}:{t[1]}{path}"
+            uri = f"{_rtsp_base(t[0], t[1])}{path}"
             d = rtsp_describe(uri, user, password, timeout=2.0)
             if d is None:
                 return None
@@ -587,21 +628,98 @@ def rtsp_scan(ifaces: List[dict], user: str = "", password: str = "", skip_hosts
         return None
     with ThreadPoolExecutor(16) as ex:
         answers = [a for a in ex.map(ask, live) if a]
+    macs = neighbour_macs()
+    answers.sort(key=lambda x: ":" in stream_host(x[0]))  # IPv4 first: one camera answers on both
     out, notes, seen = [], [], set()
     for uri, d in answers:
         host = stream_host(uri)
-        if host in seen:
+        key = macs.get(host.split("%")[0]) or eui64_mac(host) or host
+        if key in seen:
             continue
-        seen.add(host)
+        seen.add(key)
         if d["status"] == 401:
             notes.append(f"CHECK network camera at {host} (RTSP): "
                          + ("password refused — check NAVERA_IP_CAMERA_USER / _PASSWORD" if user else
                             "it needs its login: set NAVERA_IP_CAMERA_USER and NAVERA_IP_CAMERA_PASSWORD"))
             continue
-        out.append(dict(kind="ip", id=uri, name=f"RTSP camera {host}", spectrum=None, hfov_deg=None,
-                        lens_model="pinhole", size=[0, 0], codec=d["codec"], auth=bool(user), scanned=True,
-                        pipeline=gst_rtsp_pipeline(uri, d["codec"] if d["codec"] != "?" else "H264", bool(user))))
+        streams = _channels(re.match(r"rtsp://(\[[^\]]+\]|[^/]+)", uri).group(0), uri, d, user, password)
+        for i, (u, dd) in enumerate(streams):
+            codec = dd["codec"] if dd["codec"] != "?" else "H264"
+            out.append(dict(kind="ip", id=u, name=f"RTSP camera {host}" + (f" channel {i + 1}" if i else ""),
+                            spectrum=None, hfov_deg=None, lens_model="pinhole", size=dd.get("size") or [0, 0],
+                            codec=dd["codec"],
+                            auth=bool(user), scanned=True, bispectrum=len(streams) > 1,
+                            pipeline=gst_rtsp_pipeline(u, codec, bool(user))))
     return out, notes
+
+
+# the numbered channels of a camera with several video sources (a bi-spectrum camera: Hikvision
+# visible 101 / thermal 201), asked even when the bare address already answers (its default stream)
+CHANNEL_FAMILIES = (("/Streaming/Channels/101", "/Streaming/Channels/201", "/Streaming/Channels/301"),
+                    ("/stream=0", "/stream=1"), ("/video1", "/video2"))
+
+
+def _channels(base: str, uri: str, d: dict, user: str, password: str) -> List[Tuple[str, dict]]:
+    """[(uri, describe)] of the camera's video channels; [(uri, d)] when it has no numbered ones.
+    A channel counts only if its stream differs (encoder parameters, size) from the ones before:
+    a camera answering any path with its default stream gives one channel, not three."""
+    for fam in CHANNEL_FAMILIES:
+        got, prints = [], set()
+        for path in fam:
+            dd = rtsp_describe(base + path, user, password, timeout=2.0)
+            if not dd or dd["status"] != 200:
+                break
+            if dd.get("fingerprint") and dd["fingerprint"] in prints:
+                continue
+            prints.add(dd.get("fingerprint"))
+            got.append((base + path, dd))
+        if got:
+            return got
+    return [(uri, d)]
+
+
+def neighbour_macs() -> Dict[str, str]:
+    """{address: MAC} of the box's IPv4 and IPv6 neighbours (one camera, two addresses)."""
+    try:
+        txt = subprocess.run(["ip", "neigh", "show"], capture_output=True, text=True, timeout=3).stdout
+    except (OSError, subprocess.SubprocessError):
+        return {}
+    return {a: m.lower() for a, m in re.findall(r"^(\S+) .*?lladdr ([0-9a-fA-F:]{17})", txt, re.M)}
+
+
+def eui64_mac(host: str) -> str:
+    """The MAC inside an IPv6 link-local address made from it (…:a614:37ff:fe84:d176 → a4:14:37:84:d1:76)."""
+    try:
+        b = ipaddress.IPv6Address(host.split("%")[0]).packed[8:]
+    except ValueError:
+        return ""
+    if b[3:5] != b"\xff\xfe":
+        return ""
+    return ":".join(f"{x:02x}" for x in (b[0] ^ 0x02, b[1], b[2], b[5], b[6], b[7]))
+
+
+def _rtsp_base(host: str, port: int) -> str:
+    return f"rtsp://[{host}]:{port}" if ":" in host else f"rtsp://{host}:{port}"
+
+
+def ipv6_neighbours(ifaces: List[dict], wait_s: float = 1.0) -> List[str]:
+    """The IPv6 link-local addresses answering on each wired interface ("fe80::...%iface"): an
+    all-nodes ping fills the neighbour table, which is then read."""
+    out = []
+    for f in ifaces:
+        name = f.get("name")
+        if not name:
+            continue
+        try:
+            subprocess.run(["ping", "-6", "-c", "2", "-i", "0.3", "-W", str(wait_s), f"ff02::1%{name}"],
+                           capture_output=True, timeout=wait_s + 3)
+            txt = subprocess.run(["ip", "-6", "neigh", "show", "dev", name], capture_output=True, text=True,
+                                 timeout=3).stdout
+        except (OSError, subprocess.SubprocessError):
+            continue
+        out += [f"{a}%{name}" for a, state in re.findall(r"^(fe80:\S+)\s.*?(\S+)\s*$", txt, re.M)
+                if state.upper() not in ("FAILED", "INCOMPLETE")]
+    return list(dict.fromkeys(out))
 
 
 # MAVLink camera protocol (a camera, or the autopilot for a gimbal it drives, announces its stream)
@@ -856,7 +974,9 @@ def picture_traits(img) -> dict:
         grey, mono, blue = small.reshape(120, 160), True, 0.0
     else:
         b, g, r = (small[..., i].astype(np.float32) for i in range(3))
-        mono = float(np.percentile(np.abs(b - g) + np.abs(g - r), 98)) < 6.0
+        # 90th percentile: a thermal camera's own overlays (a coloured measurement box, text) are a few
+        # percent of the pixels; a colour camera's picture is coloured nearly everywhere
+        mono = float(np.percentile(np.abs(b - g) + np.abs(g - r), 90)) < 6.0
         grey = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
         blue = float(np.mean(b - r) / 255.0)
     gf = grey.astype(np.float32)
@@ -901,7 +1021,10 @@ else:
 cap.release()
 if frame is None:
     sys.exit(3)
-np.save(sys.stdout.buffer, frame)
+import io
+buf = io.BytesIO()                  # np.save needs a seekable file: a pipe is not one
+np.save(buf, frame)
+sys.stdout.buffer.write(buf.getvalue())
 """
 
 
@@ -947,6 +1070,14 @@ def describe(cams: List[dict], sample: bool = True) -> List[dict]:
             # one channel and nothing else saying colour: thermal, to be confirmed (a monochrome
             # visible camera exists, rarely on a drone)
             c["spectrum"], c["spectrum_guess"] = ("thermal" if t["mono"] else "rgb"), True
+    # a two-sensor camera (visible + thermal channels of one address): its grey channel beside a
+    # colour one is the thermal sensor, not a guess
+    for c in cams:
+        if c.get("bispectrum") and c.get("spectrum_guess") and c["spectrum"] == "thermal":
+            host = stream_host(c["id"])
+            if any(o is not c and o.get("bispectrum") and stream_host(o["id"]) == host and
+                   (o.get("traits") or {}).get("mono") is False for o in cams):
+                c["spectrum_guess"] = False
     return cams
 
 

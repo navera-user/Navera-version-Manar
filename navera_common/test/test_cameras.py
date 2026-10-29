@@ -231,7 +231,8 @@ def test_rtsp_describe_with_digest_login_gives_the_codec():
     s = rtsp_server("admin", "pw")
     try:
         url = f"rtsp://127.0.0.1:{s.getsockname()[1]}/Streaming/Channels/101"
-        assert cameras.rtsp_describe(url, "admin", "pw") == {"status": 200, "codec": "H265"}
+        d = cameras.rtsp_describe(url, "admin", "pw")
+        assert (d["status"], d["codec"]) == (200, "H265")
         assert cameras.rtsp_describe(url, "admin", "bad")["status"] == 401
         assert cameras.rtsp_describe("rtsp://127.0.0.1:1/x") is None            # nothing there
     finally:

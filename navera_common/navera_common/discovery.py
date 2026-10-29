@@ -647,7 +647,8 @@ def describe_cameras(found: dict) -> None:
         if c.get("scanned") and host in hosts:
             continue                                      # the same camera, found by its name first
         known.add(c["id"])
-        hosts.add(host)
+        if not c.get("scanned"):
+            hosts.add(host)                               # a scanned camera's own channels all stay
         ip.append(c)
     cams["list"] = cameras.describe(list(cams.get("list") or []) + ip)
     cams["notes"] = sorted({n for c in found.get("ip_cameras") or [] for n in c.get("notes") or []})

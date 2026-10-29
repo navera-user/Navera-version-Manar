@@ -365,11 +365,15 @@ def test_the_discovery_keeps_one_entry_per_camera_the_named_one_first(monkeypatc
         dict(kind="ip", id="udp://0.0.0.0:5600", name="MAVLink camera EO", mavlink=True),
         dict(kind="ip", id="rtsp://192.168.144.25:8554/main.264", name="SIYI gimbal camera"),
         dict(kind="ip", id="rtsp://192.168.144.25:8554/video1", name="RTSP camera 192.168.144.25", scanned=True),
-        dict(kind="ip", id="rtsp://192.168.2.119:554/", name="RTSP camera 192.168.2.119", scanned=True),
+        dict(kind="ip", id="rtsp://192.168.2.119:554/Streaming/Channels/101", name="RTSP camera 192.168.2.119",
+             scanned=True),
+        dict(kind="ip", id="rtsp://192.168.2.119:554/Streaming/Channels/201", name="RTSP camera 192.168.2.119 channel 2",
+             scanned=True),
         dict(kind="aravis", id="Basler-123", name="Basler")]}
     discovery.describe_cameras(found)
     assert [c["name"] for c in found["cameras"]["list"]] == [
-        "MAVLink camera EO", "SIYI gimbal camera", "RTSP camera 192.168.2.119", "Basler"]
+        "MAVLink camera EO", "SIYI gimbal camera", "RTSP camera 192.168.2.119", "RTSP camera 192.168.2.119 channel 2",
+        "Basler"]
 
 
 def test_the_real_aravis_reads_its_simulated_camera():
@@ -388,3 +392,104 @@ def test_the_real_aravis_reads_its_simulated_camera():
         assert ok and img.ndim == 2 and img.shape[0] > 0 and img.max() > img.min()
     finally:
         cap.release()
+
+
+def nonce_per_connection_server(user, password, channels):
+    """An RTSP server like a Hikvision: a new nonce on each connection, the login accepted only on
+    the connection that got it; any path answers with the default channel's stream."""
+    import hashlib
+    s = socket.socket()
+    s.bind(("127.0.0.1", 0))
+    s.listen(16)
+
+    def serve_one(c):
+        nonce = os.urandom(8).hex()
+        while True:
+            try:
+                req = c.recv(65536).decode()
+            except OSError:
+                break
+            m = re.match(r"DESCRIBE (\S+)", req)
+            if not m:
+                break
+            uri = m.group(1)
+            r = re.search(r'response="([0-9a-f]+)"', req)
+            ha1 = hashlib.md5(f"{user}:cam:{password}".encode()).hexdigest()
+            ha2 = hashlib.md5(f"DESCRIBE:{uri}".encode()).hexdigest()
+            if r and r.group(1) == hashlib.md5(f"{ha1}:{nonce}:{ha2}".encode()).hexdigest():
+                path = re.sub(r"rtsp://[^/]+", "", uri)
+                w, h, sps = channels.get(path, channels["default"])
+                sdp = (f"v=0\r\nm=video 0 RTP/AVP 96\r\na=x-dimensions:{w},{h}\r\na=rtpmap:96 H264/90000\r\n"
+                       f"a=fmtp:96 packetization-mode=1; sprop-parameter-sets={sps},aO48sA==\r\n")
+                c.sendall(f"RTSP/1.0 200 OK\r\nCSeq: 3\r\nContent-Length: {len(sdp)}\r\n\r\n{sdp}".encode())
+            else:
+                c.sendall(f'RTSP/1.0 401 Unauthorized\r\nCSeq: 2\r\nWWW-Authenticate: Digest realm="cam", '
+                          f'nonce="{nonce}"\r\n\r\n'.encode())
+        c.close()
+
+    def serve():
+        while True:
+            try:
+                c, _ = s.accept()
+            except OSError:
+                return
+            threading.Thread(target=serve_one, args=(c,), daemon=True).start()
+    threading.Thread(target=serve, daemon=True).start()
+    return s, s.getsockname()[1]
+
+
+def test_a_bispectrum_camera_answering_any_path_gives_its_two_real_channels():
+    vis, ir = (2688, 1520, "Z2QAMqws"), (1280, 720, "Z2QAH6ws")
+    srv, port = nonce_per_connection_server("admin", "pw", {
+        "default": vis, "/Streaming/Channels/101": vis, "/Streaming/Channels/201": ir,
+        "/Streaming/Channels/301": ir})
+    try:
+        d = cameras.rtsp_describe(f"rtsp://127.0.0.1:{port}/Streaming/Channels/201", "admin", "pw")
+        assert d["status"] == 200 and d["size"] == [1280, 720]
+        assert cameras.rtsp_describe(f"rtsp://127.0.0.1:{port}/x", "admin", "bad")["status"] == 401
+        cams, notes = cameras.rtsp_scan([{"ipv4": [("127.0.0.0", 31)]}], "admin", "pw", ports=(port,))
+    finally:
+        srv.close()
+    assert notes == [] and [c["id"].split(str(port))[1] for c in cams] == [
+        "/Streaming/Channels/101", "/Streaming/Channels/201"]      # 301 is 201 again: left out
+    assert [c["size"] for c in cams] == [[2688, 1520], [1280, 720]] and all(c["bispectrum"] for c in cams)
+
+
+def test_one_camera_on_ipv4_and_ipv6_is_one_camera():
+    assert cameras.eui64_mac("fe80::a614:37ff:fe84:d176%eth0") == "a4:14:37:84:d1:76"
+    assert cameras.eui64_mac("fe80::f23:aaee:522e:8ddc") == ""          # a random (privacy) address
+    assert cameras.eui64_mac("192.168.1.64") == ""
+
+
+def test_a_grey_thermal_picture_with_a_coloured_overlay_box_is_grey():
+    img = np.full((720, 1280, 3), 100, np.uint8)
+    img[200:260, 200:330] = 240                                       # a warm object
+    img[16:20, 32:1246] = img[700:704, 32:1246] = (255, 0, 0)         # the camera's blue rule box
+    img[16:704, 32:36] = img[16:704, 1242:1246] = (255, 0, 0)
+    assert cameras.picture_traits(img)["mono"] is True
+    col = np.random.default_rng(0).integers(0, 255, (720, 1280, 3)).astype(np.uint8)
+    assert cameras.picture_traits(col)["mono"] is False
+
+
+def test_a_frame_is_really_sampled_through_the_child_process():
+    """The child process writes the frame to a pipe (np.save needs a seekable file: it once failed
+    there for every camera, unseen by the tests that faked sample_frame)."""
+    pytest = __import__("pytest")
+    try:
+        import gi
+        gi.require_version("Gst", "1.0")
+    except (ImportError, ValueError):
+        pytest.skip("no GStreamer")
+    pipe = ("videotestsrc num-buffers=10 ! video/x-raw,width=320,height=240 ! videoconvert ! "
+            + cameras.SINK)
+    img = cameras.sample_frame(dict(kind="ip", pipeline=pipe))
+    assert img is not None and img.shape == (240, 320, 3)
+
+
+def test_the_grey_channel_of_a_two_sensor_camera_is_its_thermal_sensor_not_a_guess(monkeypatch):
+    grey = np.full((120, 160, 3), 90, np.uint8)
+    colour = np.random.default_rng(1).integers(0, 255, (120, 160, 3)).astype(np.uint8)
+    pics = {"rtsp://10.0.0.5:554/Streaming/Channels/101": colour, "rtsp://10.0.0.5:554/Streaming/Channels/201": grey}
+    monkeypatch.setattr(cameras, "sample_frame", lambda c: pics[c["id"]])
+    cams = cameras.describe([dict(kind="ip", id=u, spectrum=None, size=[0, 0], bispectrum=True) for u in pics])
+    assert [c["spectrum"] for c in cams] == ["rgb", "thermal"] and cams[1]["spectrum_guess"] is False
