@@ -25,7 +25,10 @@
 #                            camera pushes (UDP 5600 RTP: SIYI-type gimbals, MAVLink-announced
 #                            streams; UDP 8554 MPEG-TS: a GoPro on USB) and the answers to the camera
 #                            searches (from UDP 3702 ONVIF WS-Discovery, from UDP 3956 GigE Vision:
-#                            a multicast / broadcast probe's answer is not a tracked reply); 0: none
+#                            a multicast / broadcast probe's answer is not a tracked reply), only to
+#                            the box's ephemeral ports 32768-60999 where its probes are sent from;
+#                            0: none. A GigE Vision camera's VIDEO goes to a port Aravis picks:
+#                            set NAVERA_FW_ALLOW_UDP (or NAVERA_FW_ALLOW_FROM the camera)
 #   NAVERA_FW_ALLOW_TCP / NAVERA_FW_ALLOW_UDP   more ports or ranges, comma-separated (5600, 9000-9010)
 #   NAVERA_FW_ALLOW_FROM     restrict all the above to these sources (comma-separated
 #                            addresses / CIDR, IPv4 or IPv6: the vehicle network); empty = any
@@ -84,16 +87,17 @@ for s in ${allow_from//,/ }; do
   else echo "navera_firewall: ignored source '$s'" >&2; fi
 done
 rules() {   # rules <4|6> <tcp|udp> <ports> [dports|sports] → accept lines (per source when restricted)
-  local fam=$1 proto=$2 list=${3//-/:} side=${4:-dports} src
+  local fam=$1 proto=$2 list=${3//-/:} side=${4:-dports} src to=""
+  [ "$side" = sports ] && to=" -m $proto --dport 32768:60999"   # answers to the box's own probes only
   [ -n "$list" ] || return 0
   local srcs=()
   if [ ${#v4[@]} -gt 0 ] || [ ${#v6[@]} -gt 0 ]; then
     if [ "$fam" = 4 ]; then srcs=(${v4[@]+"${v4[@]}"}); else srcs=(${v6[@]+"${v6[@]}"}); fi
     for src in ${srcs[@]+"${srcs[@]}"}; do
-      echo "-A NAVERA-IN -s $src -p $proto -m multiport --$side $list -j ACCEPT"
+      echo "-A NAVERA-IN -s $src -p $proto$to -m multiport --$side $list -j ACCEPT"
     done
   else
-    echo "-A NAVERA-IN -p $proto -m multiport --$side $list -j ACCEPT"
+    echo "-A NAVERA-IN -p $proto$to -m multiport --$side $list -j ACCEPT"
   fi
 }
 

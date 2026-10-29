@@ -1,6 +1,6 @@
 # NAVERA — Validation status and known limitations
 
-**Release 0.7.0 — field validation pending (no NAVERA flight yet).** Last updated 2026-10-29 (the
+**Release 0.7.2 — field validation pending (no NAVERA flight yet).** Last updated 2026-10-29 (the
 dated sections below give each measurement's date; the summary and the known limitations reflect
 all of them).
 
@@ -1849,7 +1849,7 @@ holds the only results from the real sensors. No sensor recording (log, bag) was
    then NAVERA gives no position until a frame matches again (`max_dead_reckon_s`,
    `dead_reckon_max_sigma_m`; the product launch uses the node's 120 s since F32).
 4. **One pipeline at a time.** Day and night cannot both be loaded within 8 GB.
-5. **Map coverage is Sousse only** (z13–z19 MBTiles). Other areas need their own map, or
+5. **Map coverage is Sousse and part of eastern Tunisia** (z13–z19 MBTiles, USER_MANUAL §7). Other areas need their own map, or
    tiles downloaded through `NAVERA_TILE_URL` when a route is generated on `/mission`
    (deploy/README.md §8). The imagery licence must allow offline commercial use.
    **At sea** there are no landmarks: away from the coast vision gives nothing beyond the

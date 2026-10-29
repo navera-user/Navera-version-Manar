@@ -4,6 +4,13 @@ Measured numbers come from simulation (Isaac Sim + ArduPilot/PX4 SITL), bench, o
 data from other vehicles; **no NAVERA flight yet**. Details: `docs/VALIDATION_STATUS.md`,
 requirements: `docs/certification/REQUIREMENTS.md`, known problems: the shared problems list.
 
+## 0.7.2 — 2026-10-29 (second readiness review; no real flight yet)
+- Product firewall: the camera-search answers (from UDP 3702 / 3956) are accepted only on the box's
+  ephemeral ports 32768–60999 (a source port alone was a way past the firewall); a GigE Vision
+  camera's video needs `NAVERA_FW_ALLOW_UDP` / `NAVERA_FW_ALLOW_FROM` (documented).
+- Docs: ~5 m with the true lens is a simulation figure; PX4 via HIL_GPS in the hardware table;
+  map coverage limitation; release 0.7.2.
+
 ## 0.7.1 — 2026-10-29 (delivery fixes from an independent readiness review; no real flight yet)
 - **Product firewall lets plug-and-play cameras in** (`NAVERA_FW_CAMERAS=1`, default): UDP 5600
   (pushed RTP: SIYI-type gimbals, MAVLink-announced streams) and 8554 (GoPro MPEG-TS), and the

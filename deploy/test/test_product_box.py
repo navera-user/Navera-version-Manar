@@ -97,9 +97,10 @@ def test_firewall_follows_the_settings():
 def test_firewall_lets_plug_and_play_cameras_in_by_default():
     out = fw({'NAVERA_FW_CAMERAS': ''}, '--print').stdout       # unset: on
     assert '-p udp -m multiport --dports 5600,8554 -j ACCEPT' in out      # pushed RTP / GoPro MPEG-TS
-    assert '-p udp -m multiport --sports 3702,3956 -j ACCEPT' in out      # ONVIF / GigE Vision answers
+    # ONVIF / GigE Vision answers, to the box's ephemeral ports only (not a way past the firewall)
+    assert '-p udp -m udp --dport 32768:60999 -m multiport --sports 3702,3956 -j ACCEPT' in out
     out = fw({'NAVERA_FW_CAMERAS': '', 'NAVERA_FW_ALLOW_FROM': '192.168.144.0/24'}, '--print').stdout
-    assert '-s 192.168.144.0/24 -p udp -m multiport --sports 3702,3956 -j ACCEPT' in out
+    assert '-s 192.168.144.0/24 -p udp -m udp --dport 32768:60999 -m multiport --sports 3702,3956 -j ACCEPT' in out
     assert '-p udp -m multiport --sports' not in fw({}, '--print').stdout  # NAVERA_FW_CAMERAS=0
 
 

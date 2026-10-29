@@ -4,7 +4,7 @@ For the **integrator** who installs NAVERA on a vehicle and the **operator** who
 You do not need to be a software developer. Commands to type are shown in grey boxes. Settings
 are lines in one text file, `/etc/navera/navera.env` (appendix A lists them).
 
-Release covered: NAVERA **0.7.0** (2026-10-29), reference box Jetson Orin Nano 8 GB.
+Release covered: NAVERA **0.7.2** (2026-10-29), reference box Jetson Orin Nano 8 GB.
 The detailed engineering documents are named at the end of each section, for your technical team.
 
 > **Status of this release — read this first**
@@ -17,7 +17,7 @@ The detailed engineering documents are named at the end of each section, for you
 > - **Cameras:** found and given their job by themselves (section 6.0); on real hardware only one
 >   camera has been tested so far (a Hikvision bi-spectrum camera, on the bench). An unknown lens
 >   starts from a guess and is calibrated during the first flight's GPS phase (simulation: 12.9 m
->   median after the GPS cut with an unknown lens, ~5 m with a bench-calibrated one).
+>   median after the GPS cut with an unknown lens, ~5 m with the true lens, also in simulation).
 > - **By default, NAVERA does not send its vision positions to the autopilot.** When GPS is
 >   lost, the autopilot receives "no fix" and its own failsafe acts. Sending vision positions
 >   is a setting you switch on deliberately, with an accuracy you have measured (section 5.4).
@@ -142,7 +142,7 @@ platform** must provide so that the box can be plugged in for a test.
 
 | Item | Exact models / settings the code supports | Why |
 |---|---|---|
-| An **autopilot** with a free telemetry port | **ArduPilot** (Copter, Plane, Rover 4.5 verified in SITL), MAVLink 2 (`SERIALn_PROTOCOL = 2`), 3.3 V TTL TELEM port; or MAVLink on the network (UDP 14550 / 14551) | NAVERA's position goes to it as GPS 1 (`GPS_TYPE = 14`); its attitude, barometric height and armed state come back. PX4: GPS pass-through over NMEA only (section 5.6) |
+| An **autopilot** with a free telemetry port | **ArduPilot** (Copter, Plane, Rover 4.5 verified in SITL), MAVLink 2 (`SERIALn_PROTOCOL = 2`), 3.3 V TTL TELEM port; or MAVLink on the network (UDP 14550 / 14551) | NAVERA's position goes to it as GPS 1 (`GPS_TYPE = 14`); its attitude, barometric height and armed state come back. PX4: NAVERA's position as `HIL_GPS` (PX4 SITL only, section 5.6) |
 | A **TELEM cable** to the Jetson: a **3.3 V USB-to-serial adapter** (FTDI-type, appears as `/dev/ttyUSB*` with a `/dev/serial/by-id/` name) and a cable to the TELEM connector (e.g. JST-GH on Pixhawk-class boards) | The adapter is detected automatically; never RS-232 or 5 V logic |
 | **Attitude** for the camera (recommended) | the autopilot's attitude over MAVLink (detected automatically, preferred when present), or the vehicle's ROS 2 IMU (ENU, yaw from true north, ≥ 25 Hz) | A **fixed** camera needs roll and pitch at each picture. The IRIS kit computes them from the Insta360's own IMU (3.1); the autopilot's filter (GPS, compass, vehicle dynamics) is better during long accelerations |
 | A **GPS fix at take-off** | IRIS's receiver on the box, or the autopilot's **second** GPS (a real receiver, `GPS_TYPE2` ≠ 14), or a ROS `NavSatFix` with covariance | NAVERA starts from it; the autopilot needs it to set its origin |
