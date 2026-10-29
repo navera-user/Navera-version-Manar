@@ -4,7 +4,7 @@ Measured numbers come from simulation (Isaac Sim + ArduPilot/PX4 SITL), bench, o
 data from other vehicles; **no NAVERA flight yet**. Details: `docs/VALIDATION_STATUS.md`,
 requirements: `docs/certification/REQUIREMENTS.md`, known problems: the shared problems list.
 
-## Unreleased
+## 0.7.0 — 2026-10-29 (simulation/bench-validated, one real camera on the bench; no real flight yet)
 - **More drone cameras found by themselves** (`navera_common/cameras.py`): RTSP cameras without
   ONVIF on the wired subnet (Viewpro, Topotek…: RTSP port + the usual stream paths); streams the
   vehicle announces over MAVLink (camera protocol, `VIDEO_STREAM_INFORMATION`: RTSP, RTP/UDP,
