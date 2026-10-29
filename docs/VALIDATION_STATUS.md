@@ -1279,6 +1279,46 @@ fixes (it removes the dominant error); (4) keep the raw recorder on — the real
 (how many stars a video frame shows) is the remaining unknown; (5) a refusal is the expected
 answer under cloud or bright moon, not a fault.
 
+### Celestial 360: first real night, Sousse (2026-10-29/30) — why no fix, and the prior-aided solver
+
+**Set-up:** Insta360 One RS on an inside windowsill in Sousse (~35.83 N 10.64 E, within ~10 km), still all
+night; its IMU says the right lens looks at the zenith. Sessions `~/navera-field/2026-10-29_{1853,1902,1928,2300}`.
+
+**What limits the fix (measured):**
+- The camera sees about **half of the upper hemisphere** as sky: the up-looking lens shows the room's ceiling
+  on one side and the window on the other; the other lens looks down at the street. The texture in the
+  window half decorrelates in minutes (r 0.96 over 10 s, ~0 over 8 min) while the room half stays (0.85):
+  it is **moving cloud lit by the city/moon**. No moon in any frame (moon at 37-60 deg altitude in the east:
+  the window does not face it).
+- **No real star pattern in any frame of the night so far** (`navera_tools/field/starcheck.py`: true place
+  known, heading scanned, against 6 wrong places with the same spots): 0 of 72 single frames (4 sessions)
+  and 0 of 3 deep stacks scored above the wrong places (true place 3-7 matches, wrong places 4-11). The
+  check is sensitive: the catalogue injected into a real frame of the night at 6 DN for a magnitude-3 star
+  scored 51 against 7. The 4-11 "stars" of the 6 s stacks and the 7-10 "matches" of the solver are junk.
+- **Deep stacking** (`deepstack.py`, every decoded frame, 30 fps): 30 s = 901 frames; noise 1.0 DN single →
+  0.157 DN mean (6.4x, not the 30x of independent frames: H.264 P-frames repeat their reference's noise,
+  so ~40 independent samples in 30 s, ~2 magnitudes deeper than one frame). Under tonight's cloud it showed
+  the room and the cloud texture, no star (spots 79-84, all junk by starcheck).
+- So tonight's limit is **physical (cloud + half the sky hidden), not the detector, the lens model or the
+  identification**. The single-frame star depth of this camera on a real sky is still unmeasured.
+
+**Prior-aided identification (`allsky.identify_prior`, `locate(prior=...)`):** the product starts with GPS;
+a rough position (last GPS / last fix, grown by the distance flown) and 'up' leave only the heading unknown:
+one star sets it. Hypotheses: zenith grid (0.25 deg) over the prior disc x seed ray x catalogue stars at
+the same altitude; Bonferroni chance on the matches of each hypothesis as tried (before any fit), with the
+catalogue's local density; the fix still comes from the stars (free Wahba fit), same `accept()` gate, refused
+if the stars put the zenith outside the prior. Bright planets join the catalogue (`LOCATE_PLANETS`).
+- Honesty (synthetic junk rays, 20-60 per frame): 0 accepted in 3 900 trials; at n = 20, prior 0.3 deg,
+  2 000 trials: p <= 0.1 in 0.55 %, none <= 0.01 (the bound is conservative).
+- Gain (synthetic, 8 stars among 40 junk points, the 5 brightest junk): prior 0.3 deg (~33 km) gives
+  p 4e-6..6e-4 where lost-in-space gives 0.02-0.65 (0 of 12 accepted) — 9+ of 12 accepted, all right;
+  prior 1 deg ~1e4 hypotheses, 3 deg ~7e4 (close to lost-in-space's ~1e5): the gain shrinks with the radius.
+- Tonight's real frames (lost-in-space / prior 10 km + 0.5 deg for 'up'): 218 single frames and 3 deep
+  stacks, 0 fixes and 0 wrong for both; with a wrong prior (Tunis, 140 km off, 30 km radius) 111 frames,
+  0 fixes. The prior's best chance on the real junk was 0.1 (lost-in-space 6.6e-4 with rms 0.25, refused).
+- Not yet shown on real stars: the real-sky archive (MASCOT/ALPACA) is on the data disk, not mounted on
+  2026-10-30. Next: `realsky_validate` with a prior on the shallow copies, and tonight's dawn frames if it clears.
+
 ### Celestial: field-test readiness fixes (2026-10-22)
 
 Problems B11, D8/D12, D11, F10, F14, F18, F19, F27 of the problems log, before the first real-sky drive
