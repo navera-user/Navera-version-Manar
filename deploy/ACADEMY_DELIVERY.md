@@ -13,7 +13,7 @@ GPU/AI training and Sim Lite are refused while NAVERA flies, and whenever NAVERA
 | Settings | `/etc/navera-academy/academy.env` |
 | Service | `navera-academy.service`, user `academy`, at boot; MemoryMax 1.5 GB, CPUWeight/IOWeight 10, Nice 10; student sandboxes together ≤ 3 GB (`user-<uid>.slice`), killed before NAVERA |
 | Address | `http://navera-42ef.local:8300/` — on the setup Wi-Fi `http://10.42.0.1:8300/` (no public access, no Funnel) |
-| Accounts | local only (no Google/GitHub/Facebook). `teacher` = the box's teacher; students are created on `/teacher` as lines `login, Full name, password` |
+| Accounts | local only (no Google/GitHub/Facebook). `teacher` = the box's teacher; students are created on `/teacher` as lines `login, Full name, password`. No self sign-up, join code, class QR or poster on the box |
 | Firewall | 8300 added to `NAVERA_FW_ALLOW_TCP` in `/etc/navera/navera.env` (if `NAVERA_FW_ALLOW_FROM` is set, only those networks reach it) |
 
 ## Install (after NAVERA is installed and in product mode; BEFORE the dev account is deleted)

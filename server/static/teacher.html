@@ -399,7 +399,7 @@ async function loadAdmin() {
   $('orgName').value = o.name; $('tCode').textContent = o.teacher_code || '—';
   $('orgLogo').style.display = o.logo ? '' : 'none'; $('logoDel').style.display = o.logo ? '' : 'none'; if (o.logo) $('orgLogo').src = o.logo_url;
   $('orgSetup').style.display = o.name ? 'none' : '';
-  $('orgSetup').innerHTML = o.name ? '' : '<h2>👋 Set up your organisation</h2><p>Write its name below (and add its logo): it appears on class posters and certificates. Then create a class, or share the teacher invitation code with your teachers.</p>';
+  $('orgSetup').innerHTML = o.name ? '' : ME.product ? '<h2>👋 Set up your organisation</h2><p>Write its name below (and add its logo): it appears on certificates. Then create a class and its student accounts.</p>' : '<h2>👋 Set up your organisation</h2><p>Write its name below (and add its logo): it appears on class posters and certificates. Then create a class, or share the teacher invitation code with your teachers.</p>';
   const t = await api('/api/admin/teachers');
   const pend = t.teachers.filter(x => x.status === 'pending');
   $('pendingBox').style.display = pend.length ? '' : 'none';
