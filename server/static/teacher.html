@@ -161,14 +161,7 @@
       <div class="box">
         <h2>Accounts and sign-in</h2>
         <label class="opt"><input type="checkbox" id="allowSignup"> Students and teachers can create their own accounts</label>
-        <div id="oauthState" style="margin-top:12px"></div>
-        <details style="margin-top:10px"><summary style="cursor:pointer;font-weight:600">How to switch on Google and GitHub sign-in</summary>
-          <ol style="line-height:1.7;color:var(--muted);font-size:14px">
-            <li>Give the academy a public address with HTTPS — Google and GitHub refuse private addresses like 192.168.x.x.</li>
-            <li>Google: Google Cloud Console → APIs &amp; Services → Credentials → "OAuth client ID" (Web application), redirect URI <code>https://YOUR-ADDRESS/auth/google/callback</code>.</li>
-            <li>GitHub: Settings → Developer settings → OAuth Apps → New, callback URL <code>https://YOUR-ADDRESS/auth/github/callback</code>.</li>
-            <li>Save the keys with <code>python3 ~/navera-academy/tools/set_oauth.py google</code> (or <code>github</code>) — the buttons switch on immediately.</li>
-          </ol></details>
+        <p style="color:var(--muted);font-size:14px">Local accounts only: no outside sign-in service. Passwords are stored hashed on this box.</p>
       </div>
     </div>
   </div>
@@ -473,7 +466,6 @@ $('rebase').onclick = async () => {
 async function loadSettings() {
   const st = await api('/api/admin/settings');
   $('allowSignup').checked = st.settings.allow_signup;
-  $('oauthState').innerHTML = ['google', 'github'].map(k => `<span class="badge ${st.oauth[k] ? 'passed' : ''}" style="margin-right:8px">${k === 'google' ? 'Google' : 'GitHub'}: ${st.oauth[k] ? 'ready' : 'not set up'}</span>`).join('') + '<span class="badge passed">E-mail: ready</span>';
 }
 $('allowSignup').onchange = async () => { await api('/api/admin/settings', {method: 'POST', body: {allow_signup: $('allowSignup').checked}}); };
 $('logout').onclick = async () => { await api('/api/logout', {method: 'POST', body: {}}); location.href = '/'; };

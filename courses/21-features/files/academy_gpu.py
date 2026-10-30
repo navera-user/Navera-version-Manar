@@ -36,6 +36,9 @@ def gpu_slot(wait_s=600.0, quiet=False):
         return
     folder, _, n = spec.rpartition(":")
     n = max(1, int(n or 1))
+    why = flight_lock()
+    if why:
+        raise FlightLock(f"AI training is refused right now: {why}. Run it again once the vehicle has landed.")
     deadline, told = time.monotonic() + wait_s, False
     while True:
         for i in range(n):
@@ -61,6 +64,20 @@ def gpu_slot(wait_s=600.0, quiet=False):
         time.sleep(2.0)
 
 
+class FlightLock(RuntimeError):
+    """NAVERA (on the same box) is flying, or cannot tell: GPU/AI training is refused until it has landed."""
+
+
+def flight_lock():
+    """The platform's reason to refuse GPU work now (file FLIGHT_LOCK in the slot folder), or None."""
+    folder = os.environ.get("ACADEMY_GPU_SLOTS", "").rpartition(":")[0]
+    try:
+        with open(os.path.join(folder, "FLIGHT_LOCK")) as f:
+            return f.read().strip() or "NAVERA is flying"
+    except OSError:
+        return None
+
+
 class NoGpuSlot(RuntimeError):
     """No GPU slot came free in time and the mission said the CPU is not an option."""
 
@@ -71,6 +88,9 @@ def torch_device(wait_s=3600.0, quiet=False, cpu_ok=True):
 
     cpu_ok=False (a training too slow for the CPU): instead of falling back, raise NoGpuSlot with a clear
     message, so the student retries later rather than training for hours."""
+    why = flight_lock()
+    if why:
+        raise FlightLock(f"AI training is refused right now: {why}. Run it again once the vehicle has landed.")
     limit_threads()
     try:
         import torch

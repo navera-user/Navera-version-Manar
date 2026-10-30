@@ -8,17 +8,23 @@ import os
 HOME = os.path.expanduser("~")
 ACADEMY = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-REAL_REPO = os.path.join(HOME, "Navera")              # read only, never modified
-BASE = os.path.join(ACADEMY, "base")                  # the students' starting point (git, tag "base")
+# Product box (deploy/install_academy.sh): code read only in /opt/navera-academy, everything that changes in
+# ACADEMY_VAR (/var/lib/navera-academy), the service runs as the system user "academy". Dev: all under the checkout.
+PRODUCT = os.environ.get("ACADEMY_PRODUCT", "0") == "1"
+VAR = os.environ.get("ACADEMY_VAR") or ACADEMY
+DATA_DIR = os.environ.get("ACADEMY_DATA") or (os.path.join(VAR, "data") if PRODUCT else os.path.expanduser("~/academy-data"))
+
+REAL_REPO = os.environ.get("ACADEMY_NAVERA_REPO") or os.path.join(HOME, "Navera")   # read only, never modified
+BASE = os.path.join(VAR, "base")                      # the students' starting point (git, tag "base"); optional on the box
 COURSES = os.path.join(ACADEMY, "courses")            # NN-slug/{lesson.md, lab.md, files/, check.py, meta.json}
-STUDENTS = os.path.join(ACADEMY, "students")          # <name>/home  (mounted as /home/student)
-STATE = os.path.join(ACADEMY, "state")                # users.json, progress.json, bookings.json
+STUDENTS = os.path.join(VAR, "students")              # <name>/home  (mounted as /home/student)
+STATE = os.path.join(VAR, "state")                    # users.json, progress.json, bookings.json
 # GPU slots shared by every sandbox (lock files): at most GPU_SLOTS trainings on the GPU at once
 # (one training ≈ 1.2 GB on top of ≈ 2.7 GB used by the system, 7.6 GB in all; measured 2026-10-15).
 GPU_SLOT_DIR = os.path.join(STATE, "gpu_slots")
 GPU_SLOTS = 3
 S_GPU_SLOTS = "/run/academy_gpu"
-LOGS = os.path.join(ACADEMY, "logs")
+LOGS = os.path.join(VAR, "logs")
 
 # Paths of NAVERA left out of the students' copy (personal paths / old experiments).
 BASE_EXCLUDE = ("archive/", "vision_pkg/")
@@ -35,9 +41,9 @@ S_DATA = "/data"
 
 # Read-only data shared with the sandboxes: (host path, sandbox path).
 # The course's map: OpenStreetMap data rendered by datasets/_map/make_map.sh (© OpenStreetMap contributors).
-OSM_MAP = os.path.expanduser("~/academy-data/osm_sousse.mbtiles")
+OSM_MAP = os.path.join(DATA_DIR, "osm_sousse.mbtiles")
 # Pretrained models given as data (third-party, e.g. DINOv2 ViT-S/14, Apache-2.0): never NAVERA code.
-MODELS = os.path.expanduser("~/academy-data/models")
+MODELS = os.path.join(DATA_DIR, "models")
 
 
 def navera_allowed(name):
@@ -62,11 +68,11 @@ def data_mounts(navera=True):
         host = os.path.realpath(os.path.expanduser(host))
         if os.path.exists(host):
             m.append((host, inside))
-    if navera:                       # NAVERA_WORKSPACE holds NAVERA code: never for a student without access
+    if navera and not PRODUCT:       # NAVERA_WORKSPACE holds NAVERA code: never for a student without access
         add("~/navera_data", S_DATA + "/navera_data")
     add(OSM_MAP, S_DATA + "/map.mbtiles")           # OpenStreetMap, rendered by datasets/_map
     add(MODELS, S_DATA + "/models")                 # pretrained models (design §7.5)
-    if navera:
+    if navera and not PRODUCT:       # dev only: on the box NAVERA's own files belong to NAVERA
         add("~/ardupilot", S_DATA + "/ardupilot")
         add("~/.navera_sim/bsc5.dat", S_DATA + "/bsc5.dat")
         # astrometry.net was unpacked without root; its scripts hold absolute paths.
@@ -85,7 +91,9 @@ def missing_data():
             for p, w in need.items() if not os.path.exists(os.path.realpath(os.path.expanduser(p)))]
 
 
-PYTHON_USER_SITE = os.path.join(HOME, ".local", "lib")   # pip --user packages (torch, cv2 extras…)
+# pip --user packages (flask, torch, cv2 extras…): on the box a copy under /opt/navera-academy/pyuser
+PYTHON_USER_BASE = os.environ.get("ACADEMY_PYTHONUSERBASE") or os.path.join(HOME, ".local")
+PYTHON_USER_SITE = os.path.join(PYTHON_USER_BASE, "lib")
 
 PORT = int(os.environ.get("ACADEMY_PORT", "8300"))
 # per student sandbox. On the Jetson, GPU memory counts against it: one GPU training (missions 21–25) peaks at
@@ -102,7 +110,7 @@ def domain_for(index):
     return STUDENT_DOMAINS[index % len(STUDENT_DOMAINS)]
 
 # Exclusive resources a student books from the dashboard.
-RESOURCES = {
+RESOURCES_DEV = {
     # the full simulator (real ArduPilot): teacher only — students fly Sim Lite in their browser, no booking
     "sim": {"title": "Full mission simulator (ports 8181, 8190, SITL)", "ports": [8181, 8190, 8443, 5760, 5762],
             "teacher_only": True},
@@ -111,3 +119,12 @@ RESOURCES = {
     "sensors": {"title": "IMU / RTC / serial GPS (I2C, ttyTHS)", "devices": ["/dev/i2c-1", "/dev/i2c-7",
                                                                               "/dev/ttyTHS1", "/dev/ttyTHS2"]},
 }
+
+# On the NAVERA box the camera, the sensors and NAVERA's simulator ports belong to NAVERA (flight safety first):
+# nothing to book there.
+RESOURCES = {} if PRODUCT else RESOURCES_DEV
+
+# NAVERA's web bridge on the same box: GPU training and Sim Lite are refused while NAVERA flies (flightgate.py).
+NAVERA_STATE_URL = os.environ.get("ACADEMY_NAVERA_STATE_URL", "http://127.0.0.1:8181/api/mission/state")
+# dev Jetson without NAVERA running: ACADEMY_FLIGHT_GATE=off. Product: always on (unit sets nothing → on).
+FLIGHT_GATE = os.environ.get("ACADEMY_FLIGHT_GATE", "on") != "off" or PRODUCT

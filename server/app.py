@@ -34,6 +34,7 @@ import certs
 import config
 import orgs
 import simlite
+import flightgate
 import webtools
 import netns
 import sandbox
@@ -292,24 +293,16 @@ def api_login():
     return reply({"ok": True, "role": u["role"], "status": u.get("status", "active")})
 
 
-# ---------------------------------------------------------------- accounts: sign-up, preferences, Google/GitHub
+# ---------------------------------------------------------------- accounts (local only): sign-up, preferences
 EMAIL_RE = re.compile(r"^[^@\s]{1,64}@[^@\s]{1,190}\.[a-z]{2,24}$", re.I)
 _signups = {}          # ip -> [times]: at most SIGNUP_PER_HOUR new accounts per device per hour
 SIGNUP_PER_HOUR = 30   # a whole class may sign up from one school address
 
 
 def settings():
-    s = {"allow_signup": True}
+    s = {"allow_signup": not config.PRODUCT}     # on the NAVERA box the teacher creates the accounts
     s.update(_load("settings.json", {}))
     return s
-
-
-def oauth_conf():
-    """state/oauth.json: {"base_url": "https://academy.example.com",
-    "google": {"client_id": "…", "client_secret": "…"}, "github": {"client_id": "…", "client_secret": "…"}}"""
-    c = _load("oauth.json", {})
-    ok = lambda p: bool(c.get("base_url") and (c.get(p) or {}).get("client_id") and (c.get(p) or {}).get("client_secret"))
-    return c, {p: ok(p) for p in OAUTH}
 
 
 def _text(v, n=80):
@@ -318,7 +311,7 @@ def _text(v, n=80):
     return re.sub(r"\s+", " ", v).strip()[:n]
 
 
-def new_student(display, email=None, password=None, provider=None, provider_id=None, klass=None, role="student", status=None):
+def new_student(display, email=None, password=None, klass=None, role="student", status=None, login=None):
     """Create an account (login name derived from the e-mail) and its sandbox. Returns the login name."""
     display = _text(display, 60)
     with _lock:
@@ -339,9 +332,6 @@ def new_student(display, email=None, password=None, provider=None, provider_id=N
                "pw": generate_password_hash(password) if password else None}
         if email:
             rec["email"] = email.lower()
-        if provider:
-            rec["provider"] = provider
-            rec["provider_id"] = provider_id
         if klass:
             rec["class"] = klass
         if status:
@@ -354,10 +344,9 @@ def new_student(display, email=None, password=None, provider=None, provider_id=N
 
 @app.get("/api/auth/options")
 def api_auth_options():
-    _, ready = oauth_conf()
     o = orgs.org()
     return jsonify(signup=settings()["allow_signup"], need_class=bool(orgs.classes()), org=o.get("name", ""),
-                   logo=f"/org/logo.png?v={o.get('logo_v', 0)}" if o.get("logo") else "", **ready)
+                   logo=f"/org/logo.png?v={o.get('logo_v', 0)}" if o.get("logo") else "")
 
 
 def _class_seats_used(cid):
@@ -496,78 +485,10 @@ def api_prefs_set():
     return jsonify(ok=True)
 
 
-OAUTH = {
-    "google": {"auth": "https://accounts.google.com/o/oauth2/v2/auth", "token": "https://oauth2.googleapis.com/token",
-               "user": "https://openidconnect.googleapis.com/v1/userinfo", "scope": "openid email profile"},
-    "github": {"auth": "https://github.com/login/oauth/authorize", "token": "https://github.com/login/oauth/access_token",
-               "user": "https://api.github.com/user", "scope": "read:user user:email"},
-}
-
-
-@app.get("/auth/<provider>")
-def auth_start(provider):
-    conf, ready = oauth_conf()
-    if provider not in OAUTH or not ready.get(provider):
-        return redirect("/?auth_error=" + provider + "_not_configured")
-    from urllib.parse import urlencode
-    state = secrets.token_urlsafe(24)
-    session["oauth_state"] = state
-    session["join_code"] = request.args.get("code", "")[:20]
-    q = {"client_id": conf[provider]["client_id"], "redirect_uri": conf["base_url"].rstrip("/") + f"/auth/{provider}/callback",
-         "response_type": "code", "scope": OAUTH[provider]["scope"], "state": state}
-    if provider == "google":
-        q["prompt"] = "select_account"
-    return redirect(OAUTH[provider]["auth"] + "?" + urlencode(q))
-
-
-@app.get("/auth/<provider>/callback")
-def auth_callback(provider):
-    import requests as rq
-    conf, ready = oauth_conf()
-    if provider not in OAUTH or not ready.get(provider):
-        return redirect("/?auth_error=" + provider + "_not_configured")
-    if not request.args.get("code") or request.args.get("state") != session.pop("oauth_state", None):
-        return redirect("/?auth_error=cancelled")
-    redirect_uri = conf["base_url"].rstrip("/") + f"/auth/{provider}/callback"
-    data = {"client_id": conf[provider]["client_id"], "client_secret": conf[provider]["client_secret"],
-            "code": request.args["code"], "redirect_uri": redirect_uri, "grant_type": "authorization_code"}
-    try:
-        tok = rq.post(OAUTH[provider]["token"], data=data, headers={"Accept": "application/json"}, timeout=15).json()
-        auth = {"Authorization": "Bearer " + tok["access_token"], "Accept": "application/json"}
-        info = rq.get(OAUTH[provider]["user"], headers=auth, timeout=15).json()
-        # only an address the provider has verified may join an existing account
-        if provider == "google":
-            email = (info.get("email") or "").lower() if info.get("email_verified") else ""
-        else:
-            mails = rq.get("https://api.github.com/user/emails", headers=auth, timeout=15).json()
-            email = next((m["email"].lower() for m in mails if m.get("primary") and m.get("verified")), "")
-            info["name"] = info.get("name") or info.get("login")
-    except Exception:
-        return redirect("/?auth_error=provider_failed")
-    pid = str(info.get("sub") or info.get("id") or "")
-    u = users()
-    name = next((k for k, v in u.items() if (email and (v.get("email") or "") == email)
-                 or (v.get("provider") == provider and v.get("provider_id") == pid)), None)
-    if not name:
-        if not settings()["allow_signup"]:
-            return redirect("/?auth_error=signup_closed")
-        c, err = _class_for_join(session.pop("join_code", ""))
-        if err:
-            return redirect("/?auth_error=need_class_code")
-        try:
-            name = new_student(info.get("name") or email, email=email or None, provider=provider, provider_id=pid,
-                               klass=c["id"] if c else None)
-        except ValueError:
-            return redirect("/?auth_error=full")
-    session.clear(); session["user"] = name; session.permanent = True
-    return redirect("/teacher" if is_staff(users()[name]) else "/")
-
-
 @app.get("/api/admin/settings")
 @login_required("admin")
 def api_admin_settings():
-    _, ready = oauth_conf()
-    return jsonify(settings=settings(), oauth=ready)
+    return jsonify(settings=settings())
 
 
 @app.post("/api/admin/settings")
@@ -964,7 +885,7 @@ def _ports_busy(ports):
 @login_required()
 def web_tool(tool, sub):
     """Simulator and operator view inside the page, under the academy's address (see webtools.py)."""
-    if tool not in webtools.PORTS:
+    if tool not in webtools.PORTS or config.PRODUCT:   # on the NAVERA box these ports are the real NAVERA: never proxied
         abort(404)
     if not config.navera_allowed(request.user) and (config.RESOURCES["sim"].get("teacher_only") or _holder("sim") != request.user):
         return webtools.message("The full simulator is for the teacher",
@@ -974,9 +895,28 @@ def web_tool(tool, sub):
 
 
 # ---------------------------------------------------------------- Sim Lite (runs in the browser)
+def _flight_refused():
+    """423 while NAVERA flies or cannot tell (flightgate.py): Sim Lite and AI training wait for the landing."""
+    why = flightgate.refusal()
+    if why:
+        return jsonify(error=f"Refused for flight safety: {why}. Sim Lite and AI training are available again "
+                             "once the vehicle has landed and is disarmed.", flight_lock=True, reason=why), 423
+    return None
+
+
+@app.get("/api/flight_gate")
+@login_required()
+def api_flight_gate():
+    why = flightgate.refusal()
+    return jsonify(allowed=why is None, reason=why or "")
+
+
 @app.get("/api/simlite/code")
 @login_required()
 def api_simlite_code():
+    refused = _flight_refused()
+    if refused:
+        return refused
     # NAVERA Lite for everyone (no NAVERA access needed): the student's own parts; the course's FINISHED parts only for
     # missions the student has passed (staff and students given NAVERA access: all of them, and src=course)
     full = is_staff(request.urec) or config.navera_allowed(request.user)
@@ -1006,6 +946,9 @@ def api_simlite_script_save():
 @app.get("/api/simlite/scenario")
 @login_required()
 def api_simlite_scenario():
+    refused = _flight_refused()
+    if refused:
+        return refused
     lesson = request.args.get("lesson", "")
     if lesson in lesson_ids():
         err = lock_error(request.user, lesson)
@@ -1028,6 +971,9 @@ def api_simlite_scenario():
 @app.post("/api/simlite/flight")
 @login_required()
 def api_simlite_flight():
+    refused = _flight_refused()
+    if refused:
+        return refused
     d = request.get_json(force=True)
     lesson = str(d.get("lesson", ""))
     if lesson in lesson_ids():
@@ -1225,7 +1171,7 @@ def api_admin_students():
         out.append({"name": name, "display": rec.get("display", name), "index": rec["index"], "class": rec.get("class") or "",
                     "last": last or rec.get("created", ""), "certificate": c["id"] if c and not c.get("revoked") else "",
                     "email": rec.get("email"), "navera": bool(rec.get("navera_access")),
-                    "open_missions": rec.get("open_missions") or [], "provider": rec.get("provider", "email" if rec.get("email") else "teacher"),
+                    "open_missions": rec.get("open_missions") or [], "provider": "email" if rec.get("email") else "teacher",
                     "passed": sum(1 for v in pr.values() if v.get("status") == "passed"),
                     "started": sum(1 for v in pr.values() if v.get("status") == "started"),
                     "lessons": n, "progress": pr,
@@ -1897,12 +1843,13 @@ def _netns_reaper():
 
 
 if __name__ == "__main__":
-    if not workspaces.base_info():
+    if not workspaces.base_info() and not config.PRODUCT:
         raise SystemExit("no base yet: python3 -c 'import workspaces; workspaces.build_base(\"<commit>\")'")
     ensure_teacher()
     workspaces.create_student("teacher")
     threading.Thread(target=_netns_reaper, daemon=True).start()
+    threading.Thread(target=flightgate.monitor, daemon=True).start()
     if not orgs.configured():
         orgs.setup_code()               # printed on the sticker; asked on the first-start page
     print(f"NAVERA Academy on http://{_host_ip()}:{config.PORT}")
-    app.run(host="0.0.0.0", port=config.PORT, threaded=True)
+    app.run(host=os.environ.get("ACADEMY_HOST", "0.0.0.0"), port=config.PORT, threaded=True)

@@ -101,7 +101,7 @@ def create_student(name):
     os.makedirs(os.path.join(config.STUDENTS, name, "backups"), exist_ok=True)
     nav = os.path.join(home, "navera")
     if config.navera_allowed(name):
-        if not os.path.exists(nav):
+        if not os.path.exists(nav) and base_info():     # the NAVERA box ships without a base: no copy then
             _clone(nav)
     elif os.path.exists(nav):            # real NAVERA is not part of the course: keep a backup, remove the copy
         backup(name)

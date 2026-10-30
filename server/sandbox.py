@@ -29,7 +29,7 @@ def student_env(name, index, heavy=False, domain=None, navera=None):
         "TERM": "xterm-256color",
         "LANG": "C.UTF-8",
         "PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
-        "PYTHONUSERBASE": os.path.join(config.HOME, ".local"),
+        "PYTHONUSERBASE": config.PYTHON_USER_BASE,
         "ROS_DOMAIN_ID": dom,
         "ROS_LOCALHOST_ONLY": "1",
         # system + pip-user matplotlib are mixed: hide the harmless "Unable to import Axes3D" warning
@@ -94,7 +94,8 @@ def bwrap_argv(name, home, index, command, resources=(), heavy=False, writable_b
     a += ["--tmpfs", "/home", "--tmpfs", "/media", "--tmpfs", "/mnt"]
     if os.path.exists("/run/systemd/resolve"):
         a += ["--ro-bind", "/run/systemd/resolve", "/run/systemd/resolve"]   # DNS (pip, git)
-    for d in GPU_DEVICES:
+    import flightgate                    # no GPU while NAVERA flies (or cannot tell): flightgate.py
+    for d in (GPU_DEVICES if flightgate.gpu_allowed() else []):
         if os.path.exists(d):
             a += ["--dev-bind", d, d]
     for r in resources:
