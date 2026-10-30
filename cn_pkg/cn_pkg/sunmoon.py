@@ -236,14 +236,15 @@ def _ray(lens: Lens, x: float, y: float) -> np.ndarray:
 
 
 def detect_discs(gray: np.ndarray, up_imu: Sequence[float], lenses: Optional[List[Lens]] = None,
-                 sat: int = SATURATED, min_alt_deg: float = MIN_ALT_DEG, max_theta_deg: float = 95.0) -> List[Disc]:
+                 sat: int = SATURATED, min_alt_deg: float = MIN_ALT_DEG, max_theta_deg: float = 95.0,
+                 ref_width: float = 3840.0) -> List[Disc]:
     """Every compact saturated blob above min_alt_deg in either fisheye circle, with its circle-fitted centre."""
     import cv2
     lenses = lenses or default_lenses()
     up = _unit(up_imu)
     g = gray if gray.ndim == 2 else cv2.cvtColor(gray, cv2.COLOR_BGR2GRAY)
     h, w = g.shape
-    sx = w / 3840.0                                            # frames other than 3840x1920: scale the lens model
+    sx = w / ref_width                                         # frames other than the lens model's width: scale
     m = (g >= sat).astype(np.uint8)
     n, lab, stats, cents = cv2.connectedComponentsWithStats(m, 8)
     out = []
@@ -353,17 +354,17 @@ def sunward_image_dir(ray, up, limb_angle_deg: float, lens: Lens) -> np.ndarray:
 
 
 def refine_centre(gray: np.ndarray, disc: Disc, up_imu, lens: Lens, body: str, fraction: float = 1.0,
-                  limb_angle_deg: float = 0.0, semidiameter_deg: float = 0.26) -> Disc:
+                  limb_angle_deg: float = 0.0, semidiameter_deg: float = 0.26, ref_width: float = 3840.0) -> Disc:
     """The disc's centre from its halo (halo_fit); the Moon's halo centre moved back from its light centroid to
     the disc's centre. Without a usable halo: the bright-limb fit (Moon) or the clipped blob's circle (Sun)."""
     import cv2
     g = gray if gray.ndim == 2 else cv2.cvtColor(gray, cv2.COLOR_BGR2GRAY)
-    sx = g.shape[1] / 3840.0
+    sx = g.shape[1] / ref_width
     up = _unit(up_imu)
     hf = halo_fit(g, disc.x, disc.y, disc.radius_px)
     if hf is None:
         if body == "moon":
-            return refine_moon_limb(gray, disc, up_imu, limb_angle_deg, lens, fraction)
+            return refine_moon_limb(gray, disc, up_imu, limb_angle_deg, lens, fraction, ref_width=ref_width)
         return disc
     x, y, sig = hf
     method = "halo"
@@ -379,7 +380,7 @@ def refine_centre(gray: np.ndarray, disc: Disc, up_imu, lens: Lens, body: str, f
 
 
 def refine_moon_limb(gray: np.ndarray, disc: Disc, up_imu, limb_angle_deg: float, lens: Lens,
-                     fraction: float, sat: int = SATURATED) -> Disc:
+                     fraction: float, sat: int = SATURATED, ref_width: float = 3840.0) -> Disc:
     """Moon: the centre from the bright limb only (edge points whose outward normal is within 80 deg of the
     sunward direction), with the circle's radius free. limb_angle_deg: BodyPlace.bright_limb_angle (from 'up'
     towards the Sun, about the line of sight). A nearly full Moon (> 0.9 lit) keeps the full-circle fit."""
@@ -387,7 +388,7 @@ def refine_moon_limb(gray: np.ndarray, disc: Disc, up_imu, limb_angle_deg: float
     if fraction > 0.9:
         return disc
     g = gray if gray.ndim == 2 else cv2.cvtColor(gray, cv2.COLOR_BGR2GRAY)
-    sx = g.shape[1] / 3840.0
+    sx = g.shape[1] / ref_width
     up = _unit(up_imu)
     sdir = sunward_image_dir(disc.ray, up, limb_angle_deg, lens)
     r0 = int(max(6, disc.radius_px * 3))
@@ -435,7 +436,8 @@ def azimuth_of(ray_imu: np.ndarray, up_imu, north_imu) -> float:
 
 def sight_from_frame(gray: np.ndarray, up_imu, utc: str, prior: Tuple[float, float, float], body: str = "auto",
                      north_imu=None, sigma_heading_deg: float = 5.0, lenses: Optional[List[Lens]] = None,
-                     sigma_bias_deg: Optional[float] = None) -> Tuple[Optional[Sight], dict]:
+                     sigma_bias_deg: Optional[float] = None, ref_width: float = 3840.0,
+                     pressure_hpa: float = 1010.0, temp_c: float = 10.0) -> Tuple[Optional[Sight], dict]:
     """The Sun or Moon in one frame, gated by the ephemeris at the prior (lat, lon, sigma_km). Returns (sight or
     None, report). body 'auto': the Sun when it is above the horizon at the prior, else the Moon."""
     lenses = lenses or default_lenses()
@@ -450,7 +452,10 @@ def sight_from_frame(gray: np.ndarray, up_imu, utc: str, prior: Tuple[float, flo
         rep["why"] = f"{body} below {MIN_ALT_DEG} deg at the prior ({h_c:.1f})"
         return None, rep
     sb = math.hypot(SIGMA_UP_DEG, SIGMA_LENS_DEG) if sigma_bias_deg is None else sigma_bias_deg
-    discs = detect_discs(gray, up_imu, lenses)
+    discs = detect_discs(gray, up_imu, lenses, ref_width=ref_width)
+    pf = (pressure_hpa / 1010.0) * (283.0 / (273.0 + temp_c))   # refraction scales with the air's density
+    for d in discs:
+        d.alt_deg = d.alt_app_deg - refraction_deg(d.alt_app_deg) * pf
     rep["candidates"] = len(discs)
     ok = []
     for d in discs:
@@ -477,7 +482,8 @@ def sight_from_frame(gray: np.ndarray, up_imu, utc: str, prior: Tuple[float, flo
     lens = next(L for L in lenses if L.name == d.lens)
     frac = place.illuminated_fraction()
     limb = place.bright_limb_angle(lat, lon) if body == "moon" else 0.0
-    d = refine_centre(gray, d, up_imu, lens, body, frac, limb, place.semidiameter_deg(lat, lon))
+    d = refine_centre(gray, d, up_imu, lens, body, frac, limb, place.semidiameter_deg(lat, lon), ref_width)
+    d.alt_deg = d.alt_app_deg - refraction_deg(d.alt_app_deg) * pf
     if body == "moon":
         rep["moon_lit"] = round(frac, 3)
     s = Sight(body, utc, d.alt_deg, math.hypot(SIGMA_FRAME_DEG, d.centroid_sigma_px * d.deg_per_px), az,

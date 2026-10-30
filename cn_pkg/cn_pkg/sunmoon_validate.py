@@ -311,6 +311,69 @@ def run_real(a):
     return total
 
 
+SKY = os.environ.get("NAVERA_TESTDATA_SKY", "/media/shadow-team/ADATA SD620/NAVERA_TESTDATA/sky")
+
+
+def run_mascot(a):
+    """Real Moon frames of ESO Paranal's MASCOT all-sky camera (8 s, star-calibrated lens and mount from other
+    nights, navera_tools/bench/realsky_validate): the detector, the halo/phase centre and the ephemeris on a real
+    Moon at every phase. 'up' is the camera's fixed mount (no IMU error here); azimuth with the mount's north."""
+    root = os.path.dirname(os.path.dirname(HERE))
+    if root not in sys.path:
+        sys.path.insert(0, root)
+    from navera_tools.bench import realsky_validate as rv
+    cam = rv.CAMERAS["mascot"]
+    truth = (cam["lat"], cam["lon"])
+    cals = [json.load(open(os.path.join(SKY, "results", n))) for n in ("mascot_lens.json", "mascot_lens_2023-02.json")]
+    full = None
+    rows = [json.loads(line) for line in open(os.path.join(SKY, "results", "mascot.jsonl"))]
+    rows = [r for r in rows if (r.get("moon_alt") or -90) > 5][::a.every]
+    out, csv_rows = [], []
+    for k, r in enumerate(rows):
+        path = os.path.join(SKY, "eso_mascot", "raw", r["frame"])
+        if not os.path.exists(path):
+            continue
+        best = None
+        for c in cals:
+            img, utc, exp = rv.load_frame(path, cam, c["mirror"])
+            lens = rv.lens_from(c, img.shape)
+            if full is None:
+                from cn_pkg import allsky
+                full = allsky.Catalogue(limit_mag=4.5, max_sep_deg=1.0, path=allsky.BUNDLED_CATALOGUE)
+            alt, az = rv.star_altaz(full.vec, utc, cam)
+            R, n = rv.per_frame_mount(img, lens, np.array(c["R_cam_enu"]), alt, az)
+            if best is None or n > best[1]:
+                best = (R, n, lens, img, utc)
+        R, n, lens, img, utc = best
+        up = R @ np.array([0, 0, 1.0])
+        north = R @ np.array([0, 1.0, 0]) if a.heading else None
+        utc_s = utc.replace("T", " ")
+        plat, plon = offset_prior(truth, a.prior_km, k)
+        s, rep = sm.sight_from_frame(img, up, utc_s, (plat, plon, a.prior_km), body="moon", lenses=[lens],
+                                     ref_width=img.shape[1], pressure_hpa=cam["pressure_hpa"], temp_c=10.0,
+                                     north_imu=north, sigma_heading_deg=1.0)
+        h_true = sm.body_place("moon", utc_s).altaz(*truth, cam["elev_m"] / 1000.0)[0]
+        row = {"frame": r["frame"], "utc": utc_s, "moon_illum": r["moon_illum"], "alt_true": round(h_true, 3),
+               "mount_stars": n, "sight": s is not None, **{k2: v for k2, v in rep.items() if k2 != "utc"}}
+        if s is not None:
+            fix = sm.fuse([s], (plat, plon, a.prior_km))
+            row.update(err_alt_deg=round(s.alt_deg - h_true, 3), fix_err_km=round(sm.distance_km(fix.lat, fix.lon,
+                       *truth), 1), mahal=round(fix.mahalanobis(*truth), 2), sigma_km=round(fix.sigma_major_km, 1))
+            csv_rows.append(fix_row(f"sunmoon-moon-1sight-prior{a.prior_km:g}km{'-az' if a.heading else ''}",
+                                    "eso_mascot", r["frame"], utc_s, fix, truth))
+        out.append(row)
+        print(json.dumps(row), flush=True)
+    append_csv(a.csv, csv_rows)
+    s_ = [r for r in out if r["sight"]]
+    if s_:
+        e = np.array([r["err_alt_deg"] for r in s_])
+        mh = np.array([r["mahal"] for r in s_])
+        print(f"MASCOT moon: {len(out)} frames, {len(s_)} sights, altitude error mean {e.mean():+.3f} rms "
+              f"{np.sqrt(np.mean(e ** 2)):.3f} deg (|err| p90 {np.percentile(np.abs(e), 90):.3f}), fix err median "
+              f"{np.median([r['fix_err_km'] for r in s_]):.1f} km, beyond 3 sigma {int((mh > 3).sum())}")
+    return out
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -332,9 +395,16 @@ def main(argv=None):
     p.add_argument("--prior-km", type=float, default=30.0)
     p.add_argument("--since-utc", help="only frames from this UTC time on (YYYY-mm-dd HH:MM)")
     p.add_argument("--csv", help="append every position to this CSV (positions for the user)")
+    p = sub.add_parser("mascot")
+    p.add_argument("--every", type=int, default=1)
+    p.add_argument("--prior-km", type=float, default=150.0)
+    p.add_argument("--heading", action="store_true", help="also use the azimuth (the mount's north as a compass)")
+    p.add_argument("--csv")
     a = ap.parse_args(argv)
     if a.cmd == "synth":
         run_synth(a)
+    elif a.cmd == "mascot":
+        run_mascot(a)
     else:
         run_real(a)
 
