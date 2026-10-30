@@ -7,7 +7,7 @@ segmentation network (cn_pkg.starseg), on a held-out session's real frames.
 Each test frame is used twice: as recorded (it holds no starlight: every spot above MIN_ALT is junk -> junk
 spots/frame) and with K synthetic stars per amplitude (AMPS, peak DN) at random places above MIN_ALT in both lens
 circles, >= 20 px apart, Gaussian or Moffat PSF sigma 0.7-1.3 px, rounded to 8 bit (recall: a spot within
-MATCH_PX of the star). Detectors: threshold k = 6 (production), 5, 4; network peaks at prob 0.5 / 0.7 / 0.9;
+MATCH_PX of the star). Detectors: threshold k = 6 (production), 5, 4; network peaks above each of --probs;
 network as a filter on the production detector's (k = 6) and k = 4 spots. Reports runtime of each on this machine.
 """
 import argparse
@@ -74,6 +74,7 @@ def main(argv=None) -> int:
     ap.add_argument("--per-amp", type=int, default=40)
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--out")
+    ap.add_argument("--probs", default="0.5,0.9,0.97,0.99", help="network thresholds to report")
     a = ap.parse_args(argv)
     import cv2
     import numpy as np
@@ -87,9 +88,10 @@ def main(argv=None) -> int:
     rows = [rows[i] for i in np.linspace(0, len(rows) - 1, a.frames).astype(int)]
 
     dets = {f"thr k={k:g}": ("thr", k, None) for k in (6.0, 5.0, 4.0)}
-    dets.update({f"net p>{p:g}": ("net", None, p) for p in (0.5, 0.7, 0.9)})
-    dets.update({f"thr k=6 + net filter p>{p:g}": ("filter", 6.0, p) for p in (0.5, 0.9)})
-    dets.update({f"thr k=4 + net filter p>{p:g}": ("filter", 4.0, p) for p in (0.5, 0.9)})
+    probs = [float(v) for v in a.probs.split(",")]
+    dets.update({f"net p>{p:g}": ("net", None, p) for p in probs})
+    dets.update({f"thr k=6 + net filter p>{p:g}": ("filter", 6.0, p) for p in probs[:2]})
+    dets.update({f"thr k=4 + net filter p>{p:g}": ("filter", 4.0, p) for p in probs[:2]})
     junk = {d: 0 for d in dets}
     found = {d: {amp: 0 for amp in AMPS} for d in dets}
     total = {amp: 0 for amp in AMPS}
@@ -107,7 +109,7 @@ def main(argv=None) -> int:
             t0 = time.time()
             p = net.prob(img, starseg.lens_box(L, img.shape))
             pk = {pm: net.spots(img, L, up_imu=up, min_alt=MIN_ALT, max_spots=10000, prob_min=pm, prob=p)
-                  for pm in (0.5, 0.7, 0.9)}
+                  for pm in probs}
             secs["net"] += time.time() - t0
             H, W = p.shape
             pmax = cv2.dilate(p, np.ones((5, 5), np.uint8))

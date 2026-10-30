@@ -88,6 +88,7 @@ class StarSeg:
         self.half = self.device == "cuda"
         if self.half:
             self.net.half()
+            torch.backends.cudnn.benchmark = True              # the tiles repeat the same few shapes
 
     def prob(self, gray: np.ndarray, box: Optional[Tuple[int, int, int, int]] = None) -> np.ndarray:
         """Star probability over gray (or over box = x0, y0, x1, y1 only; zero elsewhere), tiled."""
