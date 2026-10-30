@@ -587,7 +587,8 @@ def _planets_cached(cat: Catalogue, utc: str, prior=None) -> Catalogue:
 def locate(frame: np.ndarray, up_imu: np.ndarray, utc: str, cat: Catalogue,
            lenses: Optional[List[Lens]] = None, f_scales: Sequence[float] = (1.0,),
            min_alt: Optional[float] = None, max_spots: Optional[int] = None, match_deg: Optional[float] = None,
-           retry_spots: int = 25, prior: Optional[Sequence[float]] = None, spot_finder=None) -> dict:
+           retry_spots: int = 25, prior: Optional[Sequence[float]] = None, spot_finder=None,
+           *, attempt: int = 1) -> dict:
     """Latitude, longitude from the whole sky above the camera. f_scales: focal lengths to try
     (x each lens's f); the best one is reported so the caller can keep it.
 
@@ -605,6 +606,10 @@ def locate(frame: np.ndarray, up_imu: np.ndarray, utc: str, cat: Catalogue,
 
     spot_finder: optional replacement for detect_spots with the same signature and output (e.g. the star
     segmentation network, cn_pkg.starseg); it only chooses which spots are tried, every gate stays the same.
+
+    p_chance counts every trial behind the answer: the rotations tried at each focal length actually tried,
+    times those focal lengths, times `attempt` (the retry on the brightest spots is the 2nd attempt, so its
+    p_chance is doubled — it would otherwise be a second free draw). attempt is internal: callers leave it.
     """
     import cv2
     min_alt = LOCATE_MIN_ALT if min_alt is None else min_alt
@@ -659,10 +664,12 @@ def locate(frame: np.ndarray, up_imu: np.ndarray, utc: str, cat: Catalogue,
         z_prior = zenith_icrs(float(prior[0]), float(prior[1]), utc)
         out["prior_radius_deg"] = round(float(prior[2]), 3)
     best = None
+    n_tried = 0                                               # focal lengths whose identification ran
     for fs in f_scales:
         rays, sel = rays_for(fs)
         if len(rays) < 3:
             continue
+        n_tried += 1
         if z_prior is not None:
             r = identify_prior(rays, up, z_prior, float(prior[2]), cat, match_deg=match_deg)
             r = None if r is None else r[:5]
@@ -674,8 +681,8 @@ def locate(frame: np.ndarray, up_imu: np.ndarray, utc: str, cat: Catalogue,
         out["why"] = f"no star pattern identified ({out['spots']} spots)"
         return out
     fs, (R, idx, kidx, rms, p_chance), sel = best
-    # p_chance is conditioned on all the rotations tried, over every focal length
-    p_chance = min(1.0, p_chance * len(f_scales))
+    # p_chance is conditioned on all the rotations tried, over every focal length tried and every attempt
+    p_chance = min(1.0, p_chance * n_tried * max(1, int(attempt)))
     n_used = len(sel)
     tree, chord = cat._tree, 2 * math.sin(math.radians(match_deg) / 2)
 
@@ -753,7 +760,7 @@ def locate(frame: np.ndarray, up_imu: np.ndarray, utc: str, cat: Catalogue,
         out["why"] = "rejected: " + why
         if retry_spots and n_used > retry_spots:              # junk among the spots: try again on the brightest only
             r2 = locate(frame, up_imu, utc, cat, lenses, f_scales, min_alt, retry_spots, match_deg, retry_spots=0,
-                        prior=prior, spot_finder=spot_finder)
+                        prior=prior, spot_finder=spot_finder, attempt=attempt + 1)
             if r2.get("solved"):
                 r2["retried_with"] = retry_spots
                 return r2
