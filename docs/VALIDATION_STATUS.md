@@ -1688,6 +1688,41 @@ speed_accuracy vs SITL truth (DataFlash GPS/GPA vs SIM2, vision phase, 4 flights
 0.90–1.06 (plane: honest), 0.46–0.51 (copter: stated ~2x too large, never too small: 2–3 % beyond
 2 sigma, 14 % expected) — conservative, left as is. SIMULATION only.
 
+### Isaac Sim closed loop: the 60 m/s jet in 35 deg turns, camera delay learned in flight (2026-10-30)
+
+SIMULATION only (Isaac Sim, ArduPlane SITL 4.5.7 `plane-jet`, scene `kalaa_wide`, 500 m, body-fixed camera,
+true frame delay 1.3 s NOT given to NAVERA, GPS cut 75 s after altitude, ~5 min denied, RTL; branch
+`wip/plane60-turns`, results `~/navera_results/p*_plane60_*` on the PC). Conditions `plane60_turns` (3 km
+diamond, four 90 deg turns, bank up to 35 deg, roll rate up to 40 deg/s) and its control `plane60_noturn`
+(2.5 km circle, bank ~8 deg). Output = /navera/position vs truth while GPS is cut, until landing.
+
+| run | code | output med / RMS / max | time > 50 m | p95 | good GPS refused before the cut | delay applied |
+|---|---|---|---|---|---|---|
+| p1 turns (2026-10-29, stopped at 557 s) | 5ae2930 | 97 / 99 / 178 m | 99 % | 127 m | yes, 51 s before | never (1.23 +- 0.39 s) |
+| p0 control | 5ae2930 | 99 / 105 / 188 m | 100 % | 143 m | yes, 88 s before | never (1.07 +- 0.62 s) |
+| p2 turns | + delay z rule, dating term | 12.7 / 23.4 / 159 m | 3.1 % | 44 m | no | 1.46 +- 0.24 s |
+| p2 control | same | 15.9 / 24.4 / 150 m | 2.9 % | 37 m | no | 1.27 +- 0.20 s |
+| p3 turns | + no-frame carry dated | 12.0 / 20.6 / 161 m | 1.1 % | 27 m | no | 1.37 +- 0.15 s |
+| p3 control | same | 16.6 / 25.3 / 104 m | 4.7 % | 49 m | no | 1.28 +- 0.20 s |
+| p4 turns | + no stale odometry step | 14.2 / 25.3 / 157 m | 2.7 % | 42 m | no | 1.33 +- 0.20 s |
+| p4 control | same | 19.5 / 28.2 / 109 m | 6.7 % | 53 m | no | 1.34 +- 0.18 s |
+
+Map fixes at their exposure: 11-15 m median in every run, before and after; 0 measured fixes beyond 3 sigma
+at the exposure. The 2026-10-29 failure was the dating, not the matcher: the unknown 1.3 s delay was
+estimated (1.25 +- 0.24 s) but never applied (staged cap 65 m/s x 0.23 s > 10 m), every fix ~80 m behind,
+and the growth test then refused the GOOD GPS as a slow spoof when a turn rotated that lag (162 m in 25 s).
+Fixes: latency_cal applies a staged delay at least 3 of its sigmas from 0 (latency_partial_min_z);
+GpsDriftTrend takes out the velocity-shaped offset of a wrongly dated fix (gps_trend_dating_s 1 s; a slow
+spoof through turns still refused, synthetic 72-90 m instead of 42-72 m); the no-frame carry is dated
+now - delay and never re-adds a used odometry step. Recovery after a turn (output back below 30 m for
+10 s): +2 to +42 s in p3/p4 (before: never). **Still open:** the remaining > 50 m outputs (1-7 % of the
+time, single spikes up to 160 m) are frames whose arrival came 0.5-2.2 s later than the learned delay
+(Isaac frame stalls: 13-48 such frames per run, they hold 12-25 of the 13-27 fixes > 50 m); NAVERA dates
+a frame by arrival - delay, so stream jitter x 60 m/s lands directly in the fix, and the right fixes
+after it are refused for 1-3 s as too far from the carry. Needs a per-frame exposure stamp (camera
+hardware time) or jitter detection. The autopilot-EKF log (ekf.csv) of these runs holds logging artefacts
+(km-off rows), not used here.
+
 ### 24-hour soak on the Jetson (Orin Nano 8 GB, 2026-10-24/25)
 
 `navera_tools/isaac/memory_soak.sh <run> 1440 --no-trace`: the full day pipeline (stand-in render
