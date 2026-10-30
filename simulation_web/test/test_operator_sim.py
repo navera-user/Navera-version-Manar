@@ -18,6 +18,7 @@ class _Stub:
     _source_label = NaveraWebBridge._source_label
     _camera_warning = NaveraWebBridge._camera_warning
     _with_map = staticmethod(NaveraWebBridge._with_map)
+    forwarding_state = NaveraWebBridge.forwarding_state
 
     def __init__(self, details=""):
         now = time.monotonic()
