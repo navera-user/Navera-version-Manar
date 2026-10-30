@@ -56,7 +56,7 @@ gps_node ───────────────────────�
 | `night_pkg` | `night_subscriber.py` (+`night_localizer.py`) | Night localization — **STHN** homography |
 | `cn_pkg` | `cn_subscriber.py` | Celestial — astrometry.net plate-solving |
 | `gps_pkg` | `gps_node.py` | GPS driver (NMEA serial, checksummed) → estimator |
-| `imu_pkg` | `imu_node.py` | Optional box IMU driver (BNO085, I²C bus 1 @ 0x4A); the reference IRIS kit's IMU is the **Insta360 One R camera's own IMU** (`camera_pkg` `insta360_imu_node`, gyro + accelerometer, no magnetometer — integration in progress, problem F37) |
+| `imu_pkg` | `imu_node.py` | Optional box IMU driver (BNO085, I²C bus 1 @ 0x4A); the reference IRIS kit's IMU is the **Insta360 One R camera's own IMU** (`camera_pkg` `insta360_node`: the One R in USB Android mode is the camera AND the IMU, gyro + accelerometer, no magnetometer; boot service `navera-insta360`, `NAVERA_SENSOR_SOURCE=insta360`, F37) |
 | `rtc_pkg` | `rtc_node.py` | Real-time clock (DS3231, I²C bus 1 @ 0x68) |
 | `navera_estimator` | `estimator_node.py` | Position arbiter: GPS > day > night > celestial |
 | `navera_msgs` / `navera_common` | — | Message contracts / shared helpers (lifecycle, geodesy) |

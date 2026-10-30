@@ -180,3 +180,24 @@ def test_whole_test_replays_through_the_server(tmp_path):
     phone = [json.loads(x) for x in open(os.path.join(out, "phone.jsonl"))]
     assert frames and all(fr.get("mode") == "360" for fr in frames) and len(phone) >= 6
     assert os.path.exists(os.path.join(out, "report.json"))
+
+
+def test_raw_recording_pauses_when_the_disk_is_nearly_full(tmp_path, monkeypatch):
+    """B37: no disk-full guard — the raw stream (~14 GB/h) could fill the disk under the test."""
+    monkeypatch.setattr(iu, "RAW_DISK_CHECK_S", 0.0)
+    free = [10 << 30]
+    rec = iu.RawRecorder(str(tmp_path / "raw"), min_free_bytes=3 << 30, disk_free=lambda: free[0])
+    pk = _stream(iu.KIND_IMU, 1, b"\x00" * 100)
+    rec.put(1.0, pk)
+    time.sleep(0.3)
+    assert rec.records == 1 and rec.error is None
+    free[0] = 1 << 30
+    for k in range(5):
+        rec.put(2.0 + k, pk)
+    time.sleep(0.3)
+    st = rec.stats()
+    assert rec.records == 1 and st["drops"] == 5 and "disk nearly full" in st["error"] and rec.disk_paused
+    free[0] = 10 << 30                                       # space freed: records again
+    rec.put(9.0, pk)
+    st = rec.close()
+    assert st["records"] == 2 and st["error"] is None

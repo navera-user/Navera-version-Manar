@@ -2,9 +2,10 @@
 
 > **Reference kit.** The IRIS reference kit no longer fits a BNO085: its IMU is the **Insta360
 > One R camera's own IMU** (gyroscope + accelerometer, ~500 Hz, no magnetometer and no attitude
-> quaternion), read over the camera's USB link by `camera_pkg`'s `insta360_imu_node`
-> (`/navera/sensors/insta360/imu`). Its integration into the boot services is in progress
-> (problem F37). The BNO085 described here stays supported and auto-detected, as an option.
+> quaternion), read over the camera's USB link by `camera_pkg`'s `insta360_node`
+> (`/navera/sensors/insta360/imu`, attitude from `camera_pkg/insta360_attitude.py`), started at
+> boot by `navera-insta360` and selected with `NAVERA_SENSOR_SOURCE=insta360` (or `auto`)
+> — deploy/README.md §5.1 (F37). The BNO085 described here stays supported and auto-detected, as an option.
 > GPS: any NMEA serial receiver (a u-blox NEO-M8N gave a fix on the box), or the autopilot's /
 > the vehicle's ROS GPS.
 

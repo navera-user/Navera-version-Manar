@@ -247,3 +247,36 @@ def test_a_scoped_ipv6_link_local_address_keeps_its_interface():
 
 def test_v4l2_query_of_a_missing_device_is_none():
     assert cameras.v4l2_query("/dev/does-not-exist") is None
+
+
+def test_rtsp_describe_reconnects_when_a_reused_connection_was_reset(monkeypatch):
+    """The camera closes the connection after its 401: the login's read on the reused socket can raise
+    ECONNRESET (seen as a flaky probe returning None); it must reconnect instead."""
+    s = rtsp_server("admin", "pw")
+    real = socket.create_connection
+    made = []
+
+    class ResetOnSecondRead:
+        def __init__(self, sock):
+            self.sock, self.reads = sock, 0
+
+        def recv(self, n):
+            self.reads += 1
+            if self.reads == 2:
+                raise ConnectionResetError(104, "Connection reset by peer")
+            return self.sock.recv(n)
+
+        def __getattr__(self, name):
+            return getattr(self.sock, name)
+
+    def create(*a, **k):
+        c = real(*a, **k)
+        made.append(c)
+        return ResetOnSecondRead(c) if len(made) == 1 else c
+    monkeypatch.setattr(cameras.socket, "create_connection", create)
+    try:
+        url = f"rtsp://127.0.0.1:{s.getsockname()[1]}/Streaming/Channels/101"
+        d = cameras.rtsp_describe(url, "admin", "pw")
+        assert d is not None and (d["status"], d["codec"]) == (200, "H265") and len(made) >= 2
+    finally:
+        s.close()

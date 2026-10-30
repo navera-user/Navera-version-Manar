@@ -12,7 +12,9 @@ than the defaults at a later round is reverted. At END: one report-only round, a
 removed so the next test starts from the defaults. Never touches the tilt calibration.
 
 One replay at a time, nice 19, so the live solver keeps its CPU; a round waits while the load average is above
-MAX_LOAD or the median solve time of the last 5 min is above MAX_SOLVE_S. Every decision: an 'autolab' event in
+MAX_LOAD, the median solve time of the last 5 min is above MAX_SOLVE_S or the free memory is short (B37: MEM_*,
+below; a replay is also stopped when memory runs low, and the kernel kills it before the server). Every decision:
+an 'autolab' event in
 the test's events.jsonl, <test>/autolab_round_N.md, a line in ~/navera-field/AUTOLAB.txt (shown in STATUS.txt)
 and in ALERTS.log. Off with NAVERA_AUTOLAB=0 or the file ~/navera-field/autolab_off.
 """
@@ -37,6 +39,15 @@ MAX_SOLVE_S = 5.0
 MEDIAN_TOL_KM = 0.5
 WRONG_KM = 50.0
 POLL_S = 30.0
+# Memory (B37: two END replays of 2.6 GB each OOM-killed the live server mid-recording). A replay job needs about
+# MEM_PER_JOB_GB; the END round (whole test) starts only when its jobs fit above MEM_RESERVE_GB of MemAvailable (it
+# drops to one job, else waits), a live round (5 min) only above MEM_RESERVE_GB + MEM_LIVE_ROUND_GB;
+# the replay is stopped when MemAvailable falls under MEM_RESERVE_GB, and it runs
+# with oom_score_adj 1000 so that, if memory still runs out, the kernel kills the replay and not the server.
+MEM_PER_JOB_GB = 3.0
+MEM_RESERVE_GB = 1.5
+MEM_LIVE_ROUND_GB = 1.0
+MEM_POLL_S = 2.0
 
 # The preset expert variants, most promising first (each: module constants live_lab --set and livectl accept).
 # Stars: a lower detection threshold / more spots / fewer stars needed find more stars on a hazy or bright sky;
@@ -84,12 +95,43 @@ def busy(folder, now):
     load = os.getloadavg()[0]
     if load > MAX_LOAD:
         return f"load {load:.1f} > {MAX_LOAD}"
+    avail = mem_available_gb()
+    if avail is not None and avail < MEM_RESERVE_GB + MEM_LIVE_ROUND_GB:
+        return f"free memory {avail:.1f} GB < {MEM_RESERVE_GB + MEM_LIVE_ROUND_GB:g} GB"
     from navera_tools.field.supervisor import read_jsonl
     ss = sorted(f["solve_s"] for f in read_jsonl(os.path.join(folder, "frames.jsonl"), tail=400_000)
                 if isinstance(f, dict) and isinstance(f.get("solve_s"), (int, float)) and now - f.get("t", 0) <= 300)
     if ss and ss[len(ss) // 2] > MAX_SOLVE_S:
         return f"median solve {ss[len(ss) // 2]:.1f} s > {MAX_SOLVE_S}"
     return None
+
+
+def mem_available_gb(path="/proc/meminfo"):
+    """MemAvailable in GB, or None when unknown."""
+    try:
+        with open(path) as f:
+            for line in f:
+                if line.startswith("MemAvailable:"):
+                    return int(line.split()[1]) / 1e6
+    except (OSError, ValueError, IndexError):
+        pass
+    return None
+
+
+def jobs_that_fit(want, avail_gb):
+    """How many replay jobs (at most want) fit in avail_gb above the reserve; want when the memory is unknown."""
+    if avail_gb is None:
+        return want
+    return max(0, min(int(want), int((avail_gb - MEM_RESERVE_GB) // MEM_PER_JOB_GB)))
+
+
+def _replay_first_to_die():
+    """Child preexec: the kernel's OOM killer picks the replay (and its workers) before the live server (B37)."""
+    try:
+        with open("/proc/self/oom_score_adj", "w") as f:
+            f.write("1000")
+    except OSError:
+        pass
 
 
 # ── which ─────────────────────────────────────────────────────────────────────
@@ -178,12 +220,40 @@ def run_lab(folder, out, runs, last_min, jobs=1):
             cmd += ["--variant", name + ":" + ",".join(f"{k}={json.dumps(v)}" for k, v in sets.items())]
     env = dict(os.environ, PYTHONPATH=os.pathsep.join([ROOT, os.path.join(ROOT, "navera_common"),
                                                         os.path.join(ROOT, "cn_pkg"), os.environ.get("PYTHONPATH", "")]))
-    p = subprocess.run(["nice", "-n", "19"] + cmd, capture_output=True, text=True, env=env, cwd=ROOT, timeout=5400)
+    p = _run_guarded(["nice", "-n", "19"] + cmd, env, out, timeout=5400)
     try:
         lab = json.load(open(os.path.join(out, "lab.json")))
     except (OSError, ValueError):
         raise RuntimeError(f"live_lab failed (rc {p.returncode}): {p.stderr[-400:]}")
     return {r["name"]: r.get("score") for r in lab.get("runs", [])}
+
+
+def _run_guarded(cmd, env, out, timeout, mem=mem_available_gb, poll_s=None):
+    """Run the replay, stop it (whole process group) when MemAvailable falls under MEM_RESERVE_GB or at timeout."""
+    import signal
+    os.makedirs(out, exist_ok=True)
+    poll_s = MEM_POLL_S if poll_s is None else poll_s
+    with open(os.path.join(out, "lab_stderr.txt"), "w+") as err:
+        p = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=err, env=env, cwd=ROOT,
+                             preexec_fn=_replay_first_to_die, start_new_session=True)
+        t_end, why = time.time() + timeout, None
+        while p.poll() is None:
+            avail = mem()
+            if avail is not None and avail < MEM_RESERVE_GB:
+                why = f"stopped: only {avail:.1f} GB memory left (reserve {MEM_RESERVE_GB} GB for the live test)"
+            elif time.time() > t_end:
+                why = f"stopped: over {timeout} s"
+            if why:
+                try:
+                    os.killpg(p.pid, signal.SIGKILL)
+                except OSError:
+                    pass
+                p.wait()
+                raise RuntimeError(f"live_lab {why}")
+            time.sleep(poll_s)
+        err.seek(0)
+        p.stderr = err.read()
+    return p
 
 
 def set_live(root, add=None, remove=()):
@@ -243,7 +313,7 @@ def save_state(folder, st):
     os.replace(tmp, os.path.join(folder, "autolab_state.json"))
 
 
-def do_round(root, folder, k, st, lab=run_lab, final=False):
+def do_round(root, folder, k, st, lab=run_lab, final=False, jobs=None):
     """One round: replay, score, decide, apply (live rounds only), report. Returns the decision dict."""
     applied = st.get("applied")
     runs = [("baseline", {})]
@@ -251,7 +321,8 @@ def do_round(root, folder, k, st, lab=run_lab, final=False):
         runs.append(("current", applied["sets"]))
     runs += list(VARIANTS) + list(REPORT_ONLY) if final else round_variants(k, applied)
     out = os.path.join(folder, "autolab", f"round_{k + 1}" if not final else "end")
-    scores = lab(folder, out, runs, None if final else LAST_MIN, 2 if final else 1)
+    jobs = (2 if final else 1) if jobs is None else jobs
+    scores = lab(folder, out, runs, None if final else LAST_MIN, jobs)
     action, name, why = decide(scores, applied) if not final else ("report", None, "END: report only")
     sets = dict(VARIANTS).get(name, {}) if action == "apply" else {}
     if action == "revert":
@@ -294,16 +365,25 @@ def step(root, now=None, lab=run_lab):
         if meta.get("ended"):
             if st.get("end_done"):
                 return None
-            st["end_done"] = True
             if st.get("applied"):                    # the next test starts from the defaults
                 set_live(root, remove=list(st["applied"]["sets"]))
                 append_event(folder, action="removed at END", variant=st["applied"]["name"])
                 note(root, f"{os.path.basename(folder)} END: removed {st['applied']['name']}")
                 st["applied"] = None
+            if now - meta["ended"] >= 3600:          # report round only right after the test
+                st["end_done"] = True
+                save_state(folder, st)
+                return None
+            jobs = jobs_that_fit(2, mem_available_gb())
+            if jobs == 0:                            # B37: never start a replay the memory cannot hold
+                if st.get("waiting") != "end":
+                    st["waiting"] = "end"
+                    note(root, f"{os.path.basename(folder)} END round waits: not enough free memory")
+                save_state(folder, st)
+                return None
+            st["end_done"] = True
             save_state(folder, st)
-            if now - meta["ended"] < 3600:           # report round only right after the test
-                return do_round(root, folder, len(ROUNDS_MIN), st, lab, final=True)
-            return None
+            return do_round(root, folder, len(ROUNDS_MIN), st, lab, final=True, jobs=jobs)
         k = due_round(meta["started"], now, st["done"])
         if k is None:
             return None
