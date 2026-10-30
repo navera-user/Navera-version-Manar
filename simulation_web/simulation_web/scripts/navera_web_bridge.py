@@ -76,6 +76,7 @@ from simulation_web import mission_prep
 
 MISSION_FILE_MAX = 512 * 1024       # bytes: an imported autopilot mission file
 # NAVERA units restarted by "Apply settings" (try-restart: only those running)
+_LOGS_BUSY = threading.Lock()   # one log archive at a time (memory)
 NAVERA_UNITS = ["navera-estimator.service", "navera-imu.service", "navera-insta360.service",
                 "navera-pipeline-day.service", "navera-pipeline-night.service", "navera-pipeline-cn.service",
                 "navera-output.service"]   # the autopilot switch (NAVERA_FORWARD_DEGRADED)
@@ -811,14 +812,20 @@ class NaveraWebBridge(Node):
                 if path == "/api/logs.tar.gz":
                     if not self.authorize_read(bridge._control_token):
                         return None
+                    # one archive at a time: each holds the journal in memory (review M1)
+                    if not _LOGS_BUSY.acquire(blocking=False):
+                        return self.send_json(429, {"error": "a log archive is being made"})
                     try:
-                        f = log_bundle.build()
-                    except (log_bundle.ArchiveTooLarge, OSError) as e:
-                        return self.send_json(500, {"error": str(e)})
-                    with f:
-                        size = os.fstat(f.fileno()).st_size
-                        name = time.strftime("navera_logs_%Y%m%d_%H%M%S.tar.gz")
-                        return self.send_stream("application/gzip", f, size, name)
+                        try:
+                            f = log_bundle.build()
+                        except (log_bundle.ArchiveTooLarge, OSError) as e:
+                            return self.send_json(500, {"error": str(e)})
+                        with f:
+                            size = os.fstat(f.fileno()).st_size
+                            name = time.strftime("navera_logs_%Y%m%d_%H%M%S.tar.gz")
+                            return self.send_stream("application/gzip", f, size, name)
+                    finally:
+                        _LOGS_BUSY.release()
 
                 if path == "/api/mission/state":
                     client = self.client_address[0] if self.client_address else ""

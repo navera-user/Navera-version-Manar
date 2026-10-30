@@ -93,8 +93,12 @@ def journal(budget: int, cmd: Sequence[str] = JOURNAL_CMD, timeout_s: float = JO
     try:
         data, dropped = read_tail(chunks(), budget)
     finally:
-        timed_out = p.poll() is None
-        if timed_out:
+        try:                                    # finished output: let journalctl exit by itself
+            p.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            pass
+        timed_out = p.poll() is None and time.monotonic() >= t_end
+        if p.poll() is None:
             p.kill()
         err = p.stderr.read(4096).decode("utf-8", "replace").strip() if p.stderr else ""
         p.wait()
