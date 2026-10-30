@@ -183,6 +183,11 @@ BOX_ADDR = os.environ.get("NAVERA_WIFI_ADDRESS", "10.42.0.1/24").split("/")[0]
 PORTAL_LOG = os.environ.get("NAVERA_PORTAL_LOG", "")      # diagnostics: one line per request
 
 
+def _is_box_name(host: str) -> bool:
+    """An address or name that means the box itself (an IP literal, a .local name, no dot)."""
+    return (host.replace(".", "").isdigit() or host.endswith(".local") or "." not in host)
+
+
 def _log(client, host, path, agent):
     if not PORTAL_LOG:
         return
@@ -229,7 +234,7 @@ def make_handler(seen=None):
             if probe and seen.seen(self._client()):
                 code, body, ctype = probe        # page already shown: tell the phone it is online
                 return self._send(code, body, ctype=ctype)
-            if host and host != BOX_ADDR:
+            if host and not _is_box_name(host):
                 # any other site (a phone's online check, a page the user had open): redirect to the
                 # box, the answer phones read as "sign-in Wi-Fi" and open by themselves
                 return self._send(302, b"", [("Location", f"http://{BOX_ADDR}/")])

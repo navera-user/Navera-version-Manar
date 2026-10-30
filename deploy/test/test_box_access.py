@@ -49,9 +49,11 @@ def test_setup_page_and_wifi_request(tmp_path, monkeypatch):
     (tmp_path / 'state.json').write_text('{"mode": "hotspot"}')
     srv = serve(portal_mod.make_handler())
     p = srv.server_address[1]
-    for path in ('/generate_204', '/hotspot-detect.html', '/'):            # every address: the setup page
-        st, _, body = request(p, 'GET', path, {'Host': 'connectivitycheck.gstatic.com'})
-        assert st == 200 and 'ClientNet' in body and 'Open NAVERA' in body
+    for path in ('/generate_204', '/hotspot-detect.html', '/'):            # any outside site: redirected
+        st, hdr, _ = request(p, 'GET', path, {'Host': 'connectivitycheck.gstatic.com'})
+        assert st == 302 and hdr['Location'] == f'http://{portal_mod.BOX_ADDR}/'
+    st, _, body = request(p, 'GET', '/', {'Host': portal_mod.BOX_ADDR})     # the box itself: the page
+    assert st == 200 and 'ClientNet' in body and 'Open NAVERA' in body
     hdr = {'Content-Type': 'application/x-www-form-urlencoded'}
     st, _, body = request(p, 'POST', '/wifi', hdr, b'ssid=ClientNet&other=&password=short')
     assert st == 400 and not (tmp_path / 'request.json').exists()
@@ -81,11 +83,11 @@ def test_phone_checks_captive_until_page_shown_then_online(tmp_path, monkeypatch
     p = srv.server_address[1]
     probes = [('/generate_204', 'connectivitycheck.gstatic.com'), ('/hotspot-detect.html', 'captive.apple.com'),
               ('/connecttest.txt', 'www.msftconnecttest.com'), ('/ncsi.txt', 'www.msftncsi.com')]
-    for path, host in probes:                      # not shown yet: "captive" (the setup page), twice
+    for path, host in probes:                      # not shown yet: "captive" (redirect to the box), twice
         for _ in range(2):
-            st, _, body = request(p, 'GET', path, {'Host': host})
-            assert st == 200 and 'Open NAVERA' in body
-    st, _, body = request(p, 'GET', '/', {'Host': 'captive.apple.com'})
+            st, hdr, _ = request(p, 'GET', path, {'Host': host})
+            assert st == 302 and hdr['Location'] == f'http://{portal_mod.BOX_ADDR}/'
+    st, _, body = request(p, 'GET', '/', {'Host': portal_mod.BOX_ADDR})
     assert portal_mod.SEEN_PATH in body             # the page asks the browser for its beacon
     c = http.client.HTTPConnection('127.0.0.1', p, timeout=10)
     c.request('GET', portal_mod.SEEN_PATH)
