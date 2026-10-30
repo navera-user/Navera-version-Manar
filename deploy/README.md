@@ -1217,11 +1217,12 @@ The box has one Wi-Fi card: it is either on the client's Wi-Fi or its own setup 
    comes back and its page says why. Away from the client's Wi-Fi (in the field) the setup Wi-Fi
    comes back after `NAVERA_WIFI_JOIN_S` (45 s); with nobody on it, the saved networks are tried
    again every `NAVERA_WIFI_RETRY_S` (300 s).
-3. **Changes from the page:** on the box's Wi-Fi networks (`NAVERA_WEB_TRUST_NETS=wifi,...`:
-   the setup Wi-Fi and the client's Wi-Fi it joined) and on IRIS's maintenance VPN, settings
-   and missions can be changed without the control code: joining those networks already took
-   their password. Elsewhere the code (`NAVERA_WEB_TOKEN`) is still asked. Changes are refused
-   in flight either way.
+3. **Changes from the page:** on the box's own setup Wi-Fi (`NAVERA_WEB_TRUST_NETS=hotspot`,
+   the default: its subnet, only while the hotspot is up) settings and missions can be changed
+   without the control code: joining it already took its password. On the client's Wi-Fi and on
+   IRIS's maintenance VPN the code (`NAVERA_WEB_TOKEN`) is asked, unless they are added by hand
+   (`wifi`, `100.64.0.0/10`). Pages of other web sites can never post control requests (Origin
+   check). Changes are refused in flight either way.
 4. **IRIS maintenance from the office (Tailscale, nothing for the client to install):** once
    per box, at provisioning, with internet:
 

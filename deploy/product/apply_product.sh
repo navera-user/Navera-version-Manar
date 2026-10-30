@@ -142,8 +142,9 @@ say "7. access: Wi-Fi (client network or setup hotspot), setup page, access card
 [ -z "$(getenv NAVERA_HOTSPOT)" ] && setenv NAVERA_HOTSPOT 1
 [ -z "$(getenv NAVERA_WIFI_SSID)" ] && setenv NAVERA_WIFI_SSID NAVERA
 [ -z "$(getenv NAVERA_WIFI_PASSWORD)" ] && setenv NAVERA_WIFI_PASSWORD navera-iris
-# control without the code from the box's Wi-Fi networks and IRIS's maintenance VPN (Tailscale)
-[ -z "$(getenv NAVERA_WEB_TRUST_NETS)" ] && setenv NAVERA_WEB_TRUST_NETS "wifi,100.64.0.0/10"
+# control without the code only from the box's own setup hotspot (its subnet, while it is up);
+# a client Wi-Fi ("wifi") or the maintenance VPN (100.64.0.0/10) is trusted only when set by hand
+[ -z "$(getenv NAVERA_WEB_TRUST_NETS)" ] && setenv NAVERA_WEB_TRUST_NETS "hotspot"
 run install -d -m 0755 "$R/usr/local/lib/navera"
 run install -m 0755 "$SRC/deploy/product/navera_hotspot.sh" "$R/usr/local/sbin/navera_hotspot.sh"
 run install -m 0755 "$SRC/deploy/product/navera_wifi.py" "$R/usr/local/lib/navera/navera_wifi.py"

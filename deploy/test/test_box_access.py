@@ -139,6 +139,6 @@ def test_apply_product_sets_up_access(tmp_path):
         assert (r / f'etc/systemd/system/multi-user.target.wants/{u}.service').is_symlink()
     assert os.access(r / 'usr/local/lib/navera/navera_portal.py', os.X_OK)
     assert os.access(r / 'usr/local/lib/navera/navera_wifi.py', os.X_OK)
-    assert '\nNAVERA_WEB_TRUST_NETS=wifi,100.64.0.0/10\n' in env
+    assert '\nNAVERA_WEB_TRUST_NETS=hotspot\n' in env       # not the client Wi-Fi, not the VPN
     p2 = sh([os.path.join(PRODUCT, 'apply_product.sh'), '--root', str(r)])
     assert p2.returncode == 0 and (r / 'etc/navera/navera.env').read_text().count('\nNAVERA_HOTSPOT=') == 1
