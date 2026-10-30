@@ -1,0 +1,14 @@
+[Unit]
+Description=NAVERA public link: Tailscale Funnel to the access gate (navera_remote.sh)
+# Installed by deploy/install.sh --product (deploy/product/). Fails harmlessly without Tailscale login.
+After=tailscaled.service network-online.target navera-access-gate.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+EnvironmentFile=-/etc/navera/navera.env
+ExecStart=/usr/local/sbin/navera_remote.sh
+
+[Install]
+WantedBy=multi-user.target
