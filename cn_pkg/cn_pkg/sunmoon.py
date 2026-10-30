@@ -54,12 +54,14 @@ GATE_SIGMA = 3.0
 # - the centre of a blooming disc (halo vs clipped edge, phase): SIGMA_CENTRE_DEG common to all sights;
 # - what changes slowly (bloom as the sky brightens, thin cloud): SIGMA_DRIFT_DEG common within BIN_S;
 # - frame to frame (H.264, IMU noise): SIGMA_FRAME_DEG (real Moon: 0.2 deg frame to frame).
+# Centre 0.4 and drift 0.3 are the smallest that kept the whole real night (465 sights, 02:28-05:12 UTC, priors
+# 30/150/500 km) within 3 sigma (max 2.92; with 0.3/0.2: 3.38). Sized on that one night: to re-check on more.
 SIGMA_UP_DEG = 0.3
 SIGMA_FSCALE = 0.015
-SIGMA_CENTRE_DEG = 0.3
-SIGMA_LENS_DEG = math.hypot(SIGMA_CENTRE_DEG, SIGMA_FSCALE * 40.0)   # a sight without its geometry: ~0.67 deg in all
+SIGMA_CENTRE_DEG = 0.4
+SIGMA_LENS_DEG = math.hypot(SIGMA_CENTRE_DEG, SIGMA_FSCALE * 40.0)   # a sight without its geometry: ~0.72 deg in all
 SIGMA_FRAME_DEG = 0.15
-SIGMA_DRIFT_DEG = 0.2
+SIGMA_DRIFT_DEG = 0.3
 BIN_S = 600.0
 BIAS_CHANGE_DEG = 0.3     # a bias learnt with GPS, later: the body has moved across the lens (measured 0.29)
 CENTROID_FLOOR_PX = 0.7
