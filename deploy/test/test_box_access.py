@@ -137,17 +137,18 @@ def test_firewall_opens_hotspot_services_only_with_the_hotspot():
 
 def test_access_card_has_the_wifi_code(tmp_path):
     env = tmp_path / 'navera.env'
-    env.write_text('NAVERA_WIFI_SSID=NAVERA\nNAVERA_WIFI_PASSWORD=navera-iris\n')
+    env.write_text('NAVERA_WIFI_SSID=NAVERA-3FA9\nNAVERA_WIFI_PASSWORD=Kp7mWx4zQa9t\nNAVERA_HOSTNAME=navera-3fa9\n')
     p = sh([sys.executable, os.path.join(REPO, 'navera_tools', 'access_card.py'), '--out', str(tmp_path / 'c'),
             '--env', str(env)])
     assert p.returncode == 0, p.stderr
     html = (tmp_path / 'c' / 'access_card.html').read_text()
-    assert 'Wi-Fi: NAVERA' in html and 'http://10.42.0.1:8181/' in html
+    assert 'Wi-Fi: NAVERA-3FA9' in html and 'Password: Kp7mWx4zQa9t' in html and 'http://10.42.0.1:8181/' in html
+    assert 'http://navera-3fa9.local:8181/' in html and 'navera.local' not in html
     assert sorted(os.listdir(tmp_path / 'c')) == ['access_card.html', 'qr_wifi.png']
     cv2 = pytest.importorskip('cv2')
     img = cv2.imread(str(tmp_path / 'c' / 'qr_wifi.png'), cv2.IMREAD_GRAYSCALE)
     small = cv2.resize(img, None, fx=0.4, fy=0.4, interpolation=cv2.INTER_AREA)
-    assert cv2.QRCodeDetector().detectAndDecode(small)[0] == 'WIFI:T:WPA;S:NAVERA;P:navera-iris;;'
+    assert cv2.QRCodeDetector().detectAndDecode(small)[0] == 'WIFI:T:WPA;S:NAVERA-3FA9;P:Kp7mWx4zQa9t;;'
 
 
 def test_apply_product_sets_up_access(tmp_path):
@@ -156,15 +157,36 @@ def test_apply_product_sets_up_access(tmp_path):
     r = fake_root(tmp_path)
     p = sh([os.path.join(PRODUCT, 'apply_product.sh'), '--root', str(r)])
     assert p.returncode == 0, p.stdout + p.stderr
+    (r / 'etc/machine-id').write_text('3fa9c0d1e2b34a5c6d7e8f9012345678\n')
+    p = sh([os.path.join(PRODUCT, 'apply_product.sh'), '--root', str(r)])     # with this box's machine id
+    assert p.returncode == 0, p.stdout + p.stderr
     env = (r / 'etc/navera/navera.env').read_text()
-    assert '\nNAVERA_HOTSPOT=1\n' in env and '\nNAVERA_WIFI_SSID=NAVERA\n' in env
+    assert '\nNAVERA_HOTSPOT=1\n' in env
+    import re
+    val = dict(ln.split('=', 1) for ln in env.splitlines() if ln.startswith('NAVERA_') and '=' in ln)
+    # per-box access (the first run had no machine id: values of its own, kept)
+    assert re.fullmatch(r'NAVERA-[0-9A-F]{4}', val['NAVERA_WIFI_SSID'])
+    assert re.fullmatch(r'[A-HJ-NP-Za-km-z2-9]{12}', val['NAVERA_WIFI_PASSWORD'])
+    assert val['NAVERA_HOSTNAME'] == 'navera-' + val['NAVERA_WIFI_SSID'][-4:].lower()
+    assert val['NAVERA_WIFI_PASSWORD'] != 'navera-iris' and val['NAVERA_WIFI_PASSWORD'] not in p.stdout
     for u in ('navera-wifi', 'navera-portal'):
         assert (r / f'etc/systemd/system/multi-user.target.wants/{u}.service').is_symlink()
     assert os.access(r / 'usr/local/lib/navera/navera_portal.py', os.X_OK)
     assert os.access(r / 'usr/local/lib/navera/navera_wifi.py', os.X_OK)
     assert '\nNAVERA_WEB_TRUST_NETS=hotspot\n' in env       # not the client Wi-Fi, not the VPN
     p2 = sh([os.path.join(PRODUCT, 'apply_product.sh'), '--root', str(r)])
-    assert p2.returncode == 0 and (r / 'etc/navera/navera.env').read_text().count('\nNAVERA_HOTSPOT=') == 1
+    env2 = (r / 'etc/navera/navera.env').read_text()
+    assert p2.returncode == 0 and env2.count('\nNAVERA_HOTSPOT=') == 1
+    for k in ('NAVERA_WIFI_SSID', 'NAVERA_WIFI_PASSWORD', 'NAVERA_HOSTNAME'):     # kept on a rerun
+        assert env2.count(f'\n{k}=') == 1 and f'\n{k}={val[k]}\n' in env2
+    # a fresh box: the name comes from its machine id
+    r2 = fake_root(tmp_path / 'b')
+    (r2 / 'etc/machine-id').write_text('3fa9c0d1e2b34a5c6d7e8f9012345678\n')
+    assert sh([os.path.join(PRODUCT, 'apply_product.sh'), '--root', str(r2)]).returncode == 0
+    env3 = (r2 / 'etc/navera/navera.env').read_text()
+    assert '\nNAVERA_WIFI_SSID=NAVERA-3FA9\n' in env3 and '\nNAVERA_HOSTNAME=navera-3fa9\n' in env3
+    pw3 = [ln for ln in env3.splitlines() if ln.startswith('NAVERA_WIFI_PASSWORD=')][0]
+    assert pw3 != f"NAVERA_WIFI_PASSWORD={val['NAVERA_WIFI_PASSWORD']}"       # random per box
 
 
 def test_wifi_manager_survives_nmcli_hangs_and_rechecks_the_hotspot(monkeypatch):

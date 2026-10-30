@@ -104,6 +104,7 @@ def main() -> int:
     password = env.get("NAVERA_WIFI_PASSWORD") or "navera-iris"
     addr = (env.get("NAVERA_WIFI_ADDRESS") or "10.42.0.1/24").split("/")[0]
     local = f"http://{addr}:{env.get('NAVERA_WEB_PORT') or '8181'}/"
+    host = env.get("NAVERA_HOSTNAME") or "navera"
 
     os.makedirs(a.out, exist_ok=True)
     wifi_png = qr_png(wifi_payload(ssid, password))
@@ -113,7 +114,7 @@ def main() -> int:
     cards = [("Scan → NAVERA setup opens", "<ol><li>Phone camera on this code, tap “Join”</li>"
               "<li>The setup page opens by itself</li>"
               "<li><b>Your Wi-Fi:</b> choose it, type its password, Connect — then everyone on your Wi-Fi "
-              "opens <b>http://navera.local:8181/</b></li>"
+              f"opens <b>http://{e(host)}.local:{e(env.get('NAVERA_WEB_PORT') or '8181')}/</b></li>"
               "<li><b>No Wi-Fi around:</b> tap “Open NAVERA” right there</li></ol>",
               wifi_png, f"Setup Wi-Fi: {e(ssid)}<br>Password: {e(password)}<br>Page: {e(local)}")]
     with open(os.path.join(a.out, "access_card.html"), "w") as f:

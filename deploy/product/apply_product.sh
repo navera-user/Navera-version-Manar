@@ -16,10 +16,11 @@
 #   4. the firewall (navera_firewall.sh, iris-firewall.service)
 #   5. services a sealed box does not use disabled (NAVERA_PRODUCT_DISABLE to choose)
 #   6. filesystem power-cut settings (deploy/setup_fs.sh: fsck.repair=yes)
-#   7. access: the box joins the client's Wi-Fi when it can, else raises its setup Wi-Fi (the same
-#      name and password on every box: the access card's QR code) whose setup page puts it on the
-#      client's Wi-Fi (navera_wifi.py, navera_hotspot.sh, navera_portal.py); hostname navera
-#      (http://navera.local:8181/); control without the code from those networks
+#   7. access: the box joins the client's Wi-Fi when it can, else raises its setup Wi-Fi (its own
+#      name NAVERA-XXXX and random password, made once per box: the access card's QR code) whose
+#      setup page puts it on the client's Wi-Fi (navera_wifi.py, navera_hotspot.sh,
+#      navera_portal.py); hostname navera-xxxx (http://navera-xxxx.local:8181/); control without
+#      the code from the setup hotspot only
 #   8. IRIS maintenance VPN (Tailscale), when NAVERA_TAILSCALE_AUTHKEY is given — deploy/README.md §14
 # The desktop is turned off by install.sh itself (--product implies --headless).
 # Every step says what it did; undo commands: deploy/README.md §13.4.
@@ -140,8 +141,18 @@ FS_ARGS=(); [ "$DRY" = 1 ] && FS_ARGS+=(--dry-run); [ -n "$R" ] && FS_ARGS+=(--r
 
 say "7. access: Wi-Fi (client network or setup hotspot), setup page, access card"
 [ -z "$(getenv NAVERA_HOTSPOT)" ] && setenv NAVERA_HOTSPOT 1
-[ -z "$(getenv NAVERA_WIFI_SSID)" ] && setenv NAVERA_WIFI_SSID NAVERA
-[ -z "$(getenv NAVERA_WIFI_PASSWORD)" ] && setenv NAVERA_WIFI_PASSWORD navera-iris
+# per-box setup Wi-Fi and hostname, made once (kept on a rerun): NAVERA-XXXX from the machine id,
+# a 12-character random password without look-alike characters (no 0 O 1 l I)
+box_tag=$(cat "$R/etc/machine-id" 2>/dev/null || cat /etc/machine-id 2>/dev/null || true)
+box_tag=$(printf '%s' "$box_tag" | tr -dc '0-9a-f' | cut -c1-4)
+[ "${#box_tag}" = 4 ] || box_tag=$(python3 -c 'import secrets; print(secrets.token_hex(2))')
+BOX_TAG_UP=$(printf '%s' "$box_tag" | tr 'a-f' 'A-F')
+[ -z "$(getenv NAVERA_WIFI_SSID)" ] && setenv NAVERA_WIFI_SSID "NAVERA-$BOX_TAG_UP"
+[ -z "$(getenv NAVERA_WIFI_PASSWORD)" ] && setenv NAVERA_WIFI_PASSWORD "$(python3 -c '
+import secrets
+a = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789"
+print("".join(secrets.choice(a) for _ in range(12)))')"
+[ -z "$(getenv NAVERA_HOSTNAME)" ] && setenv NAVERA_HOSTNAME "${NAVERA_HOSTNAME:-navera-$box_tag}"
 # control without the code only from the box's own setup hotspot (its subnet, while it is up);
 # a client Wi-Fi ("wifi") or the maintenance VPN (100.64.0.0/10) is trusted only when set by hand
 [ -z "$(getenv NAVERA_WEB_TRUST_NETS)" ] && setenv NAVERA_WEB_TRUST_NETS "hotspot"
@@ -154,7 +165,7 @@ else run install -d -m 1770 -o root -g navera /var/lib/navera/wifi; fi
 for u in navera-wifi navera-portal; do
   run install -m 0644 "$SRC/deploy/product/$u.service" "$R/etc/systemd/system/$u.service"
 done
-HOST="${NAVERA_HOSTNAME:-navera}"
+HOST="$(getenv NAVERA_HOSTNAME)"; HOST="${HOST:-navera-$box_tag}"
 if [ -n "$R" ]; then
   run "${SYSTEMCTL[@]}" enable navera-wifi.service navera-portal.service
   skip "hostnamectl set-hostname $HOST; systemctl restart iris-firewall navera-wifi navera-portal; access card"

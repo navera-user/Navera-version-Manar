@@ -67,6 +67,13 @@ def from_hotspot(client: str, env=os.environ) -> bool:
     return ip.version == net.version and ip in net
 
 
+def box_hostname(state=None, env=os.environ) -> str:
+    """The box's name on the client's Wi-Fi (http://<name>.local): navera_wifi.py's state, else
+    NAVERA_HOSTNAME, else navera."""
+    state = read_json("state.json") if state is None else state
+    return str(state.get("hostname") or env.get("NAVERA_HOSTNAME") or "navera")
+
+
 def page(body: str) -> bytes:
     return (f"<!doctype html><html lang='en'><head><meta charset='utf-8'>"
             f"<meta name='viewport' content='width=device-width, initial-scale=1'><title>NAVERA setup</title>"
@@ -79,7 +86,7 @@ def setup_page() -> bytes:
     port = os.environ.get("NAVERA_WEB_PORT", "8181")
     if state.get("mode") == "client":
         now = (f"Connected to <b>{e(state.get('ssid', ''))}</b>. On that Wi-Fi, NAVERA is at "
-               f"<b>http://{e(state.get('hostname', 'navera'))}.local:{e(port)}/</b> "
+               f"<b>http://{e(box_hostname(state))}.local:{e(port)}/</b> "
                f"or <b>http://{e(state.get('address', ''))}:{e(port)}/</b>.")
     elif state.get("message"):
         now = f"<span class='bad'>Last try: {e(state['message'])}</span>"
@@ -107,7 +114,7 @@ def joining_page(ssid: str) -> bytes:
 <h1>Connecting to {e(ssid)}…</h1>
 <section><p>The box now leaves this setup Wi-Fi and joins <b>{e(ssid)}</b> (about 30 seconds).</p>
 <ol><li>Put your phone back on <b>{e(ssid)}</b>.</li>
-<li>Open <b>http://navera.local:{e(port)}/</b> — everyone on that Wi-Fi can.</li></ol>
+<li>Open <b>http://{e(box_hostname())}.local:{e(port)}/</b> — everyone on that Wi-Fi can.</li></ol>
 <p class="muted">If the box cannot join (wrong password), the setup Wi-Fi comes back: scan the QR code
 again and this page shows the reason.</p></section>""")
 

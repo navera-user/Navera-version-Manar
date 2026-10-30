@@ -1203,16 +1203,20 @@ and `openssl pkey -in iris-release.key.pem -pubout -out iris-release.pub.pem`.
 The box has one Wi-Fi card: it is either on the client's Wi-Fi or its own setup Wi-Fi, never both
 (`navera_wifi.py`, `navera-wifi.service`, installed by `apply_product.sh` step 7).
 
-1. **First time (or no known Wi-Fi in range):** the setup Wi-Fi comes up — name `NAVERA`,
-   password `navera-iris` (`NAVERA_WIFI_SSID` / `NAVERA_WIFI_PASSWORD`), **the same on every box**,
-   so the access card's QR code is the same everywhere. A phone that scans it joins, and the setup
+1. **First time (or no known Wi-Fi in range):** the setup Wi-Fi comes up. **Each box has its own
+   Wi-Fi name and password**, made once by `apply_product.sh` step 7 and kept on a rerun: name
+   `NAVERA-XXXX` (4 hex characters of the machine id), a random 12-character password without
+   look-alike characters (`NAVERA_WIFI_SSID` / `NAVERA_WIFI_PASSWORD` in navera.env), hostname
+   `navera-xxxx` (`NAVERA_HOSTNAME`). They are on the QR code of that box's label (the access
+   card); `NAVERA` / `navera-iris` are only navera_hotspot.sh's development defaults. A phone that
+   scans it joins, and the setup
    page opens by itself (captive portal: `navera_portal.py`; the hotspot's DNS answers every name
    with 10.42.0.1 and the firewall sends its port 80 to the page). On it: the networks the box
    sees, a password field (**Connect**), and **Open NAVERA** (`http://10.42.0.1:8181/`, for the
    field where there is no other Wi-Fi).
 2. **Connect:** the box saves the client's Wi-Fi, leaves the setup Wi-Fi and joins it (~30 s).
    From then on it joins it by itself at every start. Everyone on that Wi-Fi opens NAVERA at
-   `http://navera.local:8181/` (hostname `NAVERA_HOSTNAME`, default navera; mDNS) and the box has
+   `http://navera-xxxx.local:8181/` (hostname `NAVERA_HOSTNAME`, per box; mDNS) and the box has
    internet: map downloads, IRIS maintenance. Wrong password or out of range: the setup Wi-Fi
    comes back and its page says why. Away from the client's Wi-Fi (in the field) the setup Wi-Fi
    comes back after `NAVERA_WIFI_JOIN_S` (45 s); with nobody on it, the saved networks are tried
@@ -1237,5 +1241,6 @@ The box has one Wi-Fi card: it is either on the client's Wi-Fi or its own setup 
    remove the box from the tailnet in the admin console to end access.
 
 **The access card:** `python3 navera_tools/access_card.py --out DIR` (made by step 7 in
-`/var/lib/navera/access_card/`): the setup Wi-Fi's QR code, the same for every box. Print it as
-the box's label. Off: `NAVERA_HOTSPOT=0`, then rerun step 7.
+`/var/lib/navera/access_card/`): that box's setup Wi-Fi QR code, its name, password and
+`http://navera-xxxx.local:8181/`. Print it as the box's label (it holds the box's Wi-Fi password:
+it stays with the box). Off: `NAVERA_HOTSPOT=0`, then rerun step 7.

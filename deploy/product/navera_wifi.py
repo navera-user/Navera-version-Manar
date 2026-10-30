@@ -273,7 +273,7 @@ def step(dev, mode, last_try, last_fail, join_s, retry_s):
         set_state(mode="client", ssid=con, address=address(dev), hostname=os.uname().nodename)
     else:
         set_state(mode="hotspot", ssid=os.environ.get("NAVERA_WIFI_SSID", "NAVERA"),
-                  address=address(dev), message=last_fail)
+                  address=address(dev), message=last_fail, hostname=os.uname().nodename)
     return mode, last_try, last_fail
 
 
