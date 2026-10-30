@@ -17,6 +17,8 @@ EnvironmentFile=-/etc/navera/navera.env
 EnvironmentFile=-/var/lib/navera/settings.env
 # What navera-discover found at boot, for the settings left to "auto" (loaded last).
 EnvironmentFile=-/var/lib/navera/discovered.env
+# The pipeline the automatic choice runs now (navera-pipeline-select), loaded last.
+EnvironmentFile=-/var/lib/navera/pipeline.env
 Type=simple
 User=navera
 Group=navera

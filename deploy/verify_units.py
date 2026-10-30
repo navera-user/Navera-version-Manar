@@ -52,7 +52,8 @@ HOME = '/home/navera'
 INTERNAL_VARS = {'NAVERA_WS', 'NAVERA_BOX_IMU', 'NAVERA_BOX_IMU_BUS', 'NAVERA_BOX_IMU_ADDR',
                  'NAVERA_BOX_RTC', 'NAVERA_BOX_RTC_BUS',    # written by navera-discover (discovered.env)
                  'NAVERA_DISCOVERED_ENV', 'NAVERA_IDLE_POLL_S',               # tests of navera_boot_lib.sh
-                 'NAVERA_WRITTEN_ROS_DOMAIN_ID', 'NAVERA_WRITTEN_ROS_LOCALHOST_ONLY'}   # navera_boot_hotplug.sh
+                 'NAVERA_WRITTEN_ROS_DOMAIN_ID', 'NAVERA_WRITTEN_ROS_LOCALHOST_ONLY',   # navera_boot_hotplug.sh
+                 'NAVERA_PIPELINE_ACTIVE'}                  # written by navera-pipeline-select (pipeline.env)
 DEFAULT_UNITS = ('navera-discover navera-hotplug navera-estimator navera-gps navera-imu navera-insta360 '
                  'navera-rtc navera-vehicle-link navera-pipeline-day navera-output navera-web')
 

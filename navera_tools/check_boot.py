@@ -184,7 +184,10 @@ PIPELINE_UNIT = {'day': 'navera-pipeline-day.service', 'night': 'navera-pipeline
 
 
 def auto_pipeline_unit():
-    """The pipeline unit the automatic choice runs now (navera-pipeline-select), or ''."""
+    """The pipeline unit the automatic choice runs now (navera-pipeline-select), or '' when the
+    choice is not running (then its file may be stale: not trusted)."""
+    if subprocess.run(['systemctl', 'is-active', '--quiet', 'navera-pipeline-select.service']).returncode != 0:
+        return ''
     try:
         with open(PIPELINE_STATE) as f:
             return PIPELINE_UNIT.get(json.load(f).get('pipeline', ''), '')
