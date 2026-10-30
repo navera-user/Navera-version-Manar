@@ -226,6 +226,14 @@ async function loadCode() {
   $('fileInfo').innerHTML = '📄 navera_lite — loading…';
   try {
     const r = await api('/api/simlite/code?src=' + S.src);
+    if (r.status === 423) {                // NAVERA (same box) is flying or cannot tell: flight safety first
+      const d = await r.json().catch(() => ({}));
+      S.locked = d.error || 'Refused for flight safety: NAVERA is flying.';
+      $('fileInfo').innerHTML = `📄 navera_lite <span class="no">⛔ ${esc(S.locked)}</span>`;
+      consoleLine('bad', '⛔ ' + S.locked);
+      return false;
+    }
+    S.locked = null;
     if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.error || 'please sign in again'); }
     const c = await r.json();
     await call('load', { files: c.files, parts: c.parts, profile: c.profile });
@@ -299,6 +307,7 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) chec
 let loop = null;
 async function fly(opts = {}) {
   if (S.starting || S.restarting) return;
+  if (S.locked && !(await loadCode())) { consoleLine('bad', '⛔ ' + S.locked); return; }
   S.lastOpts = opts;
   S.starting = true; S.queued = {}; setButtons();
   try { await startFlight(opts); } finally { S.starting = false; setButtons(); }

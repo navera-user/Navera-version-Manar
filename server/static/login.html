@@ -164,7 +164,6 @@ fetch('/api/auth/options').then(r => r.json()).then(o => {
   const j = new URLSearchParams(location.search).get('join');
   if (j) { $('tabUp').click(); $('uc').value = j; $('uc').dispatchEvent(new Event('input')); }
 });
-});
 </script>
 <span class="iris-foot irisfoot"><img src="/static/img/iris-icon.svg" alt=""><span class="iris-mark" role="img" aria-label="IRIS"><span>IRIS</span></span><span><small>Integrated Robotics and Intelligent Systems</small><small>iris-systems.tn</small></span></span>
 </body>

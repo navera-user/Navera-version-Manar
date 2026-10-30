@@ -92,7 +92,8 @@ if [ ! -d "$OPT/pyuser/lib" ]; then
     staged || chown -R root:root "$OPT/pyuser"
     echo "  packages copied from $PYUSER_FROM/lib ($(du -sh "$OPT/pyuser" | cut -f1))"
   else
-    echo "  WARNING: no $PYUSER_FROM/lib: the Academy needs flask, flask_sock, torch, cv2… for the academy user"
+    echo "  ERROR: no $PYUSER_FROM/lib: the Academy needs flask, flask_sock, torch, cv2… (--pyuser-from DIR)" >&2
+    staged || exit 1
   fi
 else
   echo "  packages kept ($OPT/pyuser)"
