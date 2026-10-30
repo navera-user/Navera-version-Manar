@@ -387,7 +387,7 @@ def _read_tile(conn, z, x, y):
         slot = _tile_cache[key]
         return None if slot is None else _tile_buf[slot]
     img = _read_tile_uncached(conn, z, x, y)
-    if TILE_CACHE_MAX <= 0:
+    if TILE_CACHE_MAX <= 0 or (img is None and getattr(conn, "uncache_missing", False)):
         return img
     if img is not None and img.shape != (256, 256, 3):
         img = cv2.resize(img if img.ndim == 3 else cv2.cvtColor(img, cv2.COLOR_GRAY2BGR), (256, 256))
@@ -410,6 +410,57 @@ def _read_tile(conn, z, x, y):
     while len(_tile_cache) > 4 * TILE_CACHE_MAX:     # absent tiles: keys only, bounded too
         _tile_cache.popitem(last=False)
     return None if slot is None else _tile_buf[slot]
+
+
+class TileSources:
+    """The onboard MBTiles first, then the tiles downloaded on the /mission page.
+
+    Extra files (NAVERA_TILE_CACHE) are opened read-only once they exist, so a map generated
+    after start-up is used at once; a tile missing everywhere is not cached as absent (it may be
+    downloaded later). Same interface as a sqlite3 connection for the tile query.
+    """
+
+    uncache_missing = True
+
+    def __init__(self, main: str, extra=()):
+        self._main = sqlite3.connect(main, check_same_thread=False)
+        self._extra = {p: None for p in extra if p and p != main}
+
+    def _extras(self):
+        for path, conn in self._extra.items():
+            if conn is None and os.path.exists(path):
+                try:
+                    conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True,
+                                           check_same_thread=False)
+                    self._extra[path] = conn
+                except sqlite3.Error:
+                    conn = None
+            if conn is not None:
+                yield conn
+
+    def execute(self, sql, params=()):
+        """Run the tile query on each source in turn; the first row found."""
+        row = self._main.execute(sql, params).fetchone()
+        if row is None:
+            for conn in self._extras():
+                try:
+                    row = conn.execute(sql, params).fetchone()
+                except sqlite3.Error:          # a cache being written / not yet a tile table
+                    row = None
+                if row is not None:
+                    break
+        return _Row(row)
+
+
+class _Row:
+    """The fetchone() of a sqlite3 cursor, for TileSources.execute."""
+
+    def __init__(self, row):
+        self._row = row
+
+    def fetchone(self):
+        """Return the row, or None."""
+        return self._row
 
 
 def _read_tile_uncached(conn, z, x, y):
@@ -539,6 +590,7 @@ class NightLocalizer:
         sthn_dir: str,
         weights: str,
         mbtiles: str,
+        extra_mbtiles=(),
         zoom: int = 17,
         device: str = None,
         conf_threshold: float = 0.30,
@@ -589,7 +641,7 @@ class NightLocalizer:
         self.sthn_backend = self._pick_backend(sthn_backend)
 
         # Open MBTiles
-        self._conn = sqlite3.connect(mbtiles, check_same_thread=False)
+        self._conn = TileSources(mbtiles, extra_mbtiles)
         logger.info(f"NightLocalizer ready | device={self.device} zoom={zoom} sthn={self.sthn_backend}")
 
     # ── Model loading ─────────────────────────────────────────────────────────

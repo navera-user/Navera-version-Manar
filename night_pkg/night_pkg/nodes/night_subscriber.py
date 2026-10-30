@@ -116,6 +116,12 @@ class NightSubscriber(Node):
             "mbtiles",
             os.environ.get("NAVERA_MBTILES",
                            "/home/navera/isaac_ros_common/vision_pkg/vision_pkg/dataset/sousse_satellite.mbtiles"))
+        # the tiles downloaded on the /mission page (any area the client prepares): read after
+        # the onboard map, so night works wherever a map was generated
+        self.declare_parameter("extra_mbtiles", os.environ.get(
+            "NAVERA_TILE_CACHE",
+            os.path.join(os.environ.get("NAVERA_AREAS_DIR", "/data/navera/areas"),
+                         "downloaded_tiles.mbtiles")))
         self.declare_parameter("zoom",            17)
         declare_float(self, "conf_threshold",  0.30)
         # D3 / D22: a night fix confirmed from two search centres states its sigma
@@ -284,6 +290,8 @@ class NightSubscriber(Node):
         try:
             self.localizer = NightLocalizer(
                 sthn_dir=sthn_dir, weights=weights, mbtiles=mbtiles,
+                extra_mbtiles=[p for p in str(self.get_parameter("extra_mbtiles").value).split(":")
+                               if p],
                 zoom=zoom, conf_threshold=self.conf_threshold,
                 min_match_ncc=_gate(self.get_parameter("min_match_ncc").value),
                 recheck_offset_m=_gate(self.get_parameter("recheck_offset_m").value),
