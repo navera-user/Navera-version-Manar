@@ -74,6 +74,8 @@ def _rotvec(w):
 
 
 RAW_ROTATE_BYTES = 1 << 30
+RAW_MIN_FREE_BYTES = 3 << 30      # B37: under this free disk the raw recording pauses (frames, events, the OS go on)
+RAW_DISK_CHECK_S = 5.0
 
 
 class RawRecorder:
@@ -84,11 +86,17 @@ class RawRecorder:
     stream kind byte (0x20 video, 0x30 IMU, 0x40 frame info, 0x10 other) or 0 for a non-stream packet; cam_ms the
     packet header's camera ms (0 for non-stream). A writer thread does the disk work, so the USB reader never waits
     on the disk; when the queue holds more than max_queue_bytes the packet is dropped and counted. Files rotate at
-    rotate_bytes; numbering goes on after the files already in the folder (a resumed test does not overwrite)."""
+    rotate_bytes; numbering goes on after the files already in the folder (a resumed test does not overwrite).
+    Disk guard (B37): while the disk holds less than min_free_bytes free (checked every RAW_DISK_CHECK_S), packets
+    are dropped and counted instead of written, error says why; recording resumes by itself once space is freed."""
 
-    def __init__(self, folder: str, rotate_bytes: int = RAW_ROTATE_BYTES, max_queue_bytes: int = 192 << 20):
+    def __init__(self, folder: str, rotate_bytes: int = RAW_ROTATE_BYTES, max_queue_bytes: int = 192 << 20,
+                 min_free_bytes: int = RAW_MIN_FREE_BYTES, disk_free=None):
         os.makedirs(folder, exist_ok=True)
         self.folder, self.rotate_bytes, self.max_queue_bytes = folder, rotate_bytes, max_queue_bytes
+        self.min_free_bytes = int(min_free_bytes)
+        self._disk_free = disk_free or (lambda: shutil.disk_usage(self.folder).free)
+        self._disk_checked, self.disk_paused = 0.0, False
         done = [n for n in os.listdir(folder) if n.startswith("raw360_") and n.endswith(".bin")]
         self._n = max([int(n[7:11]) for n in done if n[7:11].isdigit()] or [-1]) + 1
         self._q = collections.deque()
@@ -138,6 +146,11 @@ class RawRecorder:
                 self._q.clear()
                 self.queue_bytes = 0
                 closed = self._closed
+            if batch and self._disk_low():
+                with self._cv:
+                    self.drops += len(batch)
+                    self.drop_bytes += sum(len(b[3]) for b in batch)
+                batch = []
             try:
                 for t, kind, cam_ms, p in batch:
                     if self._f is None or self._fbytes >= self.rotate_bytes:
@@ -159,6 +172,24 @@ class RawRecorder:
                     self._f.close()
                     self._f = None
                 return
+
+    def _disk_low(self) -> bool:
+        """True while the disk is under min_free_bytes (looked up every RAW_DISK_CHECK_S)."""
+        now = time.time()
+        if now - self._disk_checked >= RAW_DISK_CHECK_S:
+            self._disk_checked = now
+            try:
+                free = self._disk_free()
+            except OSError:
+                return self.disk_paused
+            low = free < self.min_free_bytes
+            if low and not self.disk_paused:
+                self.error = (f"raw recording paused: disk nearly full ({free / 1e9:.1f} GB free, "
+                              f"keeps {self.min_free_bytes / 1e9:.1f} GB)")
+            elif not low and self.disk_paused:
+                self.error = None
+            self.disk_paused = low
+        return self.disk_paused
 
     def stats(self) -> dict:
         return {"folder": self.folder, "files": list(self.files), "mb": round(self.bytes / 1e6, 1), "records": self.records,
