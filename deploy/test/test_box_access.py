@@ -198,7 +198,7 @@ def test_firewall_opens_hotspot_services_only_with_the_hotspot():
     on = sh([fw, '--print'], {'NAVERA_HOTSPOT': '1'}).stdout
     assert '-i wl+ -p udp -m multiport --dports 53,67,5353 -j ACCEPT' in on
     assert '-i wl+ -s 10.42.0.0/24 -p tcp --dport 8182 -j ACCEPT' in on
-    assert '--dport 443 -j REJECT --reject-with tcp-reset' in on
+    assert '--dports 443,853 -j REJECT --reject-with tcp-reset' in on
     assert '-A NAVERA-PORTAL -i wl+ -s 10.42.0.0/24 -p tcp --dport 80 -j REDIRECT --to-ports 8182' in on
     assert '-i wl+ -p tcp --dport 8182' not in on                       # never from any Wi-Fi client
     other = sh([fw, '--print'], {'NAVERA_HOTSPOT': '1', 'NAVERA_WIFI_ADDRESS': '192.168.77.9/23'}).stdout
