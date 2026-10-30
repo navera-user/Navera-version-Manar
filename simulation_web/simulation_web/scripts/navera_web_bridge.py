@@ -655,8 +655,10 @@ class NaveraWebBridge(Node):
         return dict(settings=cur, keys={k: v[1] for k, v in mission_prep.SETTINGS.items()},
                     site={k: os.environ.get(k, "") for k in mission_prep.SETTINGS},
                     control=bool(self._control_token),
-                    # null on the ground; otherwise why heavy work must wait (read by the Academy)
-                    in_flight_refusal=self._in_flight_refusal("generate"), **jobs.state())
+                    # null on the ground; otherwise why heavy work must wait (read by the Academy).
+                    # The strictest rule ("apply"): an unknown armed state with NAVERA as the
+                    # flight controller's serial GPS counts as flying
+                    in_flight_refusal=self._in_flight_refusal("apply"), **jobs.state())
 
     def _on_vehicle_status(self, msg):
         try:

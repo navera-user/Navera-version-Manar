@@ -184,3 +184,6 @@ def test_mission_state_tells_the_academy_when_heavy_work_must_wait(monkeypatch):
     assert b.mission_state()["in_flight_refusal"] is None
     b._armed = True                                                  # armed: heavy work waits
     assert b.mission_state()["in_flight_refusal"]
+    monkeypatch.setenv("NAVERA_NMEA_PORT", "/dev/ttyTHS1")           # serial GPS, no MAVLink link:
+    b._armed, b._armed_rx = None, None                              # can't tell -> counts as flying
+    assert "armed state unknown" in b.mission_state()["in_flight_refusal"]
