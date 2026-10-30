@@ -33,6 +33,8 @@ This bridge serves TWO surfaces with deliberately different sources:
                                    vehicle settings, route (autopilot mission file or
                                    drawn), satellite map generation and activation
     GET  /api/mission/state      → settings, map job, active map
+    GET  /api/logs.tar.gz        → 24 h of NAVERA journal + settings, secrets removed, <= 50 MB
+                                   (simulation_web.log_bundle; trusted network, else the token)
     POST /api/mission/settings   → {changes:{KEY:value}} validated, written to the
                                    settings file (token)
     POST /api/mission/apply      → restart the running NAVERA units (token)
@@ -65,6 +67,7 @@ from sensor_msgs.msg import NavSatFix
 
 from navera_msgs.msg import NavStatus, PositionEstimate
 
+from simulation_web import log_bundle
 from simulation_web.web_common import (BridgeHandler, is_trusted, MBTilesReader, parse_tile_path,
                                        start_server, valid_latlon)
 from navera_common.geo import dead_reckon
@@ -131,6 +134,17 @@ def _resolve_resources_dir():
     # Source layout: .../simulation_web/simulation_web/scripts/  → ../resources
     here = os.path.dirname(os.path.realpath(__file__))
     return os.path.normpath(os.path.join(here, "..", "resources"))
+
+
+def _sigma_text(v) -> str:
+    """A sigma as the page shows it ("50" for 50.0, "" when unknown), so saved and running compare."""
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return ""
+    if not math.isfinite(f):
+        return ""
+    return f"{f:g}"
 
 
 class NaveraWebBridge(Node):
@@ -220,6 +234,10 @@ class NaveraWebBridge(Node):
                                  self._on_ready, ready_qos)
         self.create_subscription(NavSatFix, fix_topic,    self._on_fix,    10)
         self.create_subscription(String, "/navera/vehicle/status", self._on_vehicle_status, 10)
+        # the settings navera-output RUNS with (latched by vehicle_output_node), for forwarding_state
+        self._output_config = None
+        self.create_subscription(String, "/navera/output/config", self._on_output_config, QoSProfile(
+            depth=1, reliability=ReliabilityPolicy.RELIABLE, durability=DurabilityPolicy.TRANSIENT_LOCAL))
         # the operator's start position (page /mission), latched for vision restarted later
         self._pub_start = self.create_publisher(
             PositionEstimate, "/navera/operator/start_position",
@@ -446,13 +464,36 @@ class NaveraWebBridge(Node):
         out["autopilot_forwarding"] = self.forwarding_state()
         return out
 
+    def _on_output_config(self, msg):
+        try:
+            d = json.loads(msg.data)
+        except (ValueError, AttributeError):
+            return
+        if isinstance(d, dict):
+            self._output_config = d
+
     def forwarding_state(self):
-        """Whether the autopilot gets NAVERA's vision / celestial positions (page first)."""
+        """Whether the autopilot gets NAVERA's vision / celestial positions.
+
+        The RUNNING value: what navera-output publishes on /navera/output/config (latched). The saved
+        setting (page first, then the environment) is shown only when the output is not heard, or
+        beside the running one with pending_restart when it differs (applies at the next restart).
+        """
         cur, env = mission_prep.read_settings(), os.environ
         val = cur.get("NAVERA_FORWARD_DEGRADED", env.get("NAVERA_FORWARD_DEGRADED", "false"))
         sigma = cur.get("NAVERA_DEGRADED_SIGMA_M", env.get("NAVERA_DEGRADED_SIGMA_M", ""))
-        on = str(val).strip().lower() in ("1", "true", "yes", "on")
-        return {"on": on, "sigma_m": sigma if on else ""}
+        saved_on = str(val).strip().lower() in ("1", "true", "yes", "on")
+        saved = {"on": saved_on, "sigma_m": _sigma_text(sigma) if saved_on else ""}
+        run = getattr(self, "_output_config", None)
+        if not isinstance(run, dict) or "forward_degraded" not in run:
+            return dict(saved, running_known=False)
+        run_on = bool(run.get("forward_degraded"))
+        out = {"on": run_on, "sigma_m": _sigma_text(run.get("degraded_sigma_m")) if run_on else "",
+               "running_known": True}
+        if (saved["on"], saved["sigma_m"]) != (out["on"], out["sigma_m"]):
+            out["pending_restart"] = True
+            out["saved"] = saved
+        return out
 
     def operator_decision(self):
         """The arbiter's decision, rendered as JSON. This method decides NOTHING.
@@ -557,7 +598,8 @@ class NaveraWebBridge(Node):
     def _with_map(out, status):
         """The mission-area guard (NavStatus.map_area / map_edge_m): the operator is told when
         the vehicle nears or leaves the edge of the mission's map (day vision has nothing to
-        match past it). A translation, like the rest: the estimator decided."""
+        match past it). A translation, like the rest: the estimator decided.
+        """
         flag = getattr(status, "map_area", 0)
         edge = float(getattr(status, "map_edge_m", math.nan))
         if flag and math.isfinite(edge):
@@ -765,6 +807,18 @@ class NaveraWebBridge(Node):
 
                 if path == "/mission":
                     return self.send_file(os.path.join(bridge.resources_dir, "mission.html"))
+
+                if path == "/api/logs.tar.gz":
+                    if not self.authorize_read(bridge._control_token):
+                        return None
+                    try:
+                        f = log_bundle.build()
+                    except (log_bundle.ArchiveTooLarge, OSError) as e:
+                        return self.send_json(500, {"error": str(e)})
+                    with f:
+                        size = os.fstat(f.fileno()).st_size
+                        name = time.strftime("navera_logs_%Y%m%d_%H%M%S.tar.gz")
+                        return self.send_stream("application/gzip", f, size, name)
 
                 if path == "/api/mission/state":
                     client = self.client_address[0] if self.client_address else ""

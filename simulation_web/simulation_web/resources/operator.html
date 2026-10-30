@@ -158,7 +158,11 @@ function showForwarding(d){
   const f = d && d.autopilot_forwarding, el = document.getElementById('op-ap');
   if(!f || !el) return;
   el.classList.toggle('on', !!f.on);
-  document.getElementById('op-ap-v').textContent = f.on ? `ON (±${f.sigma_m} m)` : 'OFF';
+  let t = f.on ? `ON (±${f.sigma_m} m)` : 'OFF';
+  if(f.pending_restart && f.saved)
+    t += ` — saved ${f.saved.on ? `ON (±${f.saved.sigma_m} m)` : 'OFF'} (pending restart)`;
+  else if(f.running_known === false) t += ' (saved; output not heard)';
+  document.getElementById('op-ap-v').textContent = t;
 }
 function placeVehicle(lat, lon, color){
   if(!vehMarker){

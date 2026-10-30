@@ -135,3 +135,37 @@ def test_forwarding_settings_refused_with_serial_gps_and_no_link(monkeypatch):
     b._armed, b._armed_rx = False, time.monotonic()                               # the link says disarmed
     b.mission_action("settings", {"changes": {"NAVERA_FORWARD_DEGRADED": "off"}})
     assert writes[-1] == {"NAVERA_FORWARD_DEGRADED": "false"}
+
+
+def _fwd(monkeypatch, saved, running):
+    from simulation_web import mission_prep
+    monkeypatch.delenv("NAVERA_FORWARD_DEGRADED", raising=False)
+    monkeypatch.delenv("NAVERA_DEGRADED_SIGMA_M", raising=False)
+    monkeypatch.setattr(mission_prep, "read_settings", lambda *a: saved)
+    b = _Stub()
+    if running is not None:
+        msg = type("M", (), {"data": json.dumps(running)})()
+        NaveraWebBridge._on_output_config(b, msg)
+    return b.forwarding_state()
+
+
+def test_the_chip_shows_the_running_output_setting_not_the_saved_one(monkeypatch):
+    run = {"forward_degraded": True, "degraded_sigma_m": 50.0}
+    same = _fwd(monkeypatch, {"NAVERA_FORWARD_DEGRADED": "true", "NAVERA_DEGRADED_SIGMA_M": "50"}, run)
+    assert same == {"on": True, "sigma_m": "50", "running_known": True}
+    off_saved = _fwd(monkeypatch, {"NAVERA_FORWARD_DEGRADED": "false"}, run)
+    assert off_saved["on"] is True and off_saved["sigma_m"] == "50"           # what the autopilot gets NOW
+    assert off_saved["pending_restart"] is True and off_saved["saved"] == {"on": False, "sigma_m": ""}
+    sig = _fwd(monkeypatch, {"NAVERA_FORWARD_DEGRADED": "on", "NAVERA_DEGRADED_SIGMA_M": "30"}, run)
+    assert sig["sigma_m"] == "50" and sig["saved"]["sigma_m"] == "30" and sig["pending_restart"]
+    on_saved = _fwd(monkeypatch, {"NAVERA_FORWARD_DEGRADED": "on", "NAVERA_DEGRADED_SIGMA_M": "30"},
+                    {"forward_degraded": False, "degraded_sigma_m": None})
+    assert on_saved["on"] is False and on_saved["pending_restart"] and on_saved["saved"]["on"] is True
+
+
+def test_without_the_running_output_the_chip_falls_back_to_the_saved_setting(monkeypatch):
+    got = _fwd(monkeypatch, {"NAVERA_FORWARD_DEGRADED": "true", "NAVERA_DEGRADED_SIGMA_M": "40"}, None)
+    assert got == {"on": True, "sigma_m": "40", "running_known": False}
+    bad = _Stub()
+    NaveraWebBridge._on_output_config(bad, type("M", (), {"data": "not json"})())
+    assert getattr(bad, "_output_config", None) is None

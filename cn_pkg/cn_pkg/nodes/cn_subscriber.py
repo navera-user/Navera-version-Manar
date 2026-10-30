@@ -680,7 +680,8 @@ class CNSubscriber(Node):
 
     def _fov_for(self, meta) -> float:
         """The field width to give the plate solver: camera_fov_deg, else the one the stars measured
-        for this camera (NaN: the wide search — also once after a solve that failed with it)."""
+        for this camera (NaN: the wide search — also once after a solve that failed with it).
+        """
         if math.isfinite(self.camera_fov_deg):
             return self.camera_fov_deg
         key = meta.get("lens_key")

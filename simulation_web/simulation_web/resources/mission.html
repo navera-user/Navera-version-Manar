@@ -113,7 +113,7 @@ html[dir=rtl] .form{border-inline-end:0;border-inline-start:1px solid var(--line
     <label class="lbl" for="sSigma" data-i18n="sigma">Accuracy the autopilot assumes for NAVERA's position</label>
     <div class="in"><input id="sSigma" type="number" min="1" max="100" step="1"><span class="unit">m</span></div>
     <div class="note" data-i18n="sigmaH">Required when the autopilot uses NAVERA's position. Use the value measured on this vehicle (calibration flights). 1-100 m.</div>
-    <div class="btns"><button class="btn primary" id="save" data-i18n="save">Save</button><button class="btn" id="apply" data-i18n="apply">Apply now (restarts NAVERA, ~30 s)</button></div>
+    <div class="btns"><button class="btn primary" id="save" data-i18n="save">Save</button><button class="btn" id="apply" data-i18n="apply">Apply now (restarts NAVERA, ~30 s)</button><button class="btn" id="logs" data-i18n="logs">Download logs</button></div>
     <div class="notice" id="setMsg"></div>
   </section>
   <section class="hs">
@@ -162,7 +162,7 @@ const I18N = {
     hfov:'Champ de vision de la caméra thermique (horizontal)', dayHfov:'Champ de vision de la caméra de jour (horizontal)', dayHfovH:'Nécessaire à la vision de jour précise (correspondance locale) : avec l\'altitude, il donne l\'échelle de l\'image.', mount:'Montage de l\'IMU sur le véhicule', roll:'Roulis', pitch:'Tangage', yaw:'Lacet',
     mountH:'0 / 0 / 0 = IMU alignée avec le véhicule (x avant, y gauche, z haut). IMU tournée de 90° vers la gauche : lacet 90.',
     decl:'Déclinaison magnétique jusqu\'à la première position (facultatif)', declH:'Est positif. Dès qu\'une position est connue, NAVERA la calcule avec le modèle magnétique mondial.',
-    save:'Enregistrer', apply:'Appliquer maintenant (redémarre NAVERA, ~30 s)', route:'Trajet',
+    save:'Enregistrer', logs:'Télécharger les journaux', apply:'Appliquer maintenant (redémarre NAVERA, ~30 s)', route:'Trajet',
     routeH:'Importez la mission de l\'autopilote (.waypoints de Mission Planner ou .plan de QGroundControl) : la carte satellite suit alors exactement le trajet qu\'il volera.',
     import:'Importer un fichier de mission', noFile:'Aucun fichier choisi', or:'— ou —', drawH:'Cliquez sur la carte dans l\'ordre : départ, puis chaque point de passage, puis la destination. Appuyez ensuite sur « Utiliser ce trajet ».',
     useRoute:'Utiliser ce trajet', undo:'Retirer le dernier point', mNamePh:'Nom de la mission, ex. relevé côte de Sousse', mSave:'Enregistrer cette mission',
@@ -187,7 +187,7 @@ const I18N = {
     hfov:'زاوية رؤية الكاميرا الحرارية (أفقياً)', dayHfov:'زاوية رؤية الكاميرا النهارية (أفقياً)', dayHfovH:'ضرورية للرؤية النهارية الدقيقة (المطابقة المحلية): مع الارتفاع تعطي مقياس الصورة.', mount:'تركيب وحدة القياس على المركبة', roll:'الدوران', pitch:'الميل', yaw:'الاتجاه',
     mountH:'0 / 0 / 0 = الوحدة موازية للمركبة (x إلى الأمام، y إلى اليسار، z إلى الأعلى). وحدة مدارة 90° إلى اليسار: الاتجاه 90.',
     decl:'الانحراف المغناطيسي حتى أول موقع (اختياري)', declH:'الشرق موجب. بمجرد معرفة موقع، يحسبه NAVERA بالنموذج المغناطيسي العالمي.',
-    save:'حفظ', apply:'تطبيق الآن (يعيد تشغيل NAVERA، ~30 ث)', route:'المسار',
+    save:'حفظ', logs:'تنزيل السجلات', apply:'تطبيق الآن (يعيد تشغيل NAVERA، ~30 ث)', route:'المسار',
     routeH:'استورد مهمة الطيار الآلي (.waypoints من Mission Planner أو .plan من QGroundControl): تتبع خريطة الأقمار الصناعية حينها المسار الذي سيطيره بالضبط.',
     import:'استيراد ملف مهمة', noFile:'لم يُختر أي ملف', or:'— أو —', drawH:'انقر على الخريطة بالترتيب: الانطلاق، ثم كل نقطة عبور، ثم الوجهة. ثم اضغط «استعمال هذا المسار».',
     useRoute:'استعمال هذا المسار', undo:'حذف آخر نقطة', mNamePh:'اسم المهمة، مثلاً مسح ساحل سوسة', mSave:'حفظ هذه المهمة',
@@ -311,6 +311,20 @@ $('save').onclick = async () => {
   changes.NAVERA_IMU_MOUNT_RPY = r.every(v => v === '') ? '' : r.map(v => v || '0').join(',');
   try{ const d = await post('settings', {changes}); S.settings = d.settings; say('setMsg', 'ok', '✓ ' + t('saved', 'Saved. Apply to make NAVERA use it.')); }
   catch(e){ say('setMsg', 'bad', e.message); }
+};
+// Download logs: 24 h of NAVERA journal + settings, secrets removed (GET /api/logs.tar.gz). Free from a
+// trusted network, else the control code is sent as a header (never in the URL).
+$('logs').onclick = async () => {
+  say('setMsg', '', '…');
+  try{
+    const r = await fetch('/api/logs.tar.gz', {headers:{'X-Navera-Token':$('token').value}});
+    if(!r.ok){ let d = {}; try{ d = await r.json(); }catch(e){} throw new Error(d.error || `HTTP ${r.status}`); }
+    const cd = r.headers.get('Content-Disposition') || '', m = cd.match(/filename="([^"]+)"/);
+    const a = document.createElement('a'); a.href = URL.createObjectURL(await r.blob());
+    a.download = m ? m[1] : 'navera_logs.tar.gz'; document.body.appendChild(a); a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+    say('setMsg', 'ok', '✓ ' + t('logsOk', 'Logs downloaded.'));
+  }catch(e){ say('setMsg', 'bad', e.message); }
 };
 $('apply').onclick = async () => {
   $('apply').disabled = true;

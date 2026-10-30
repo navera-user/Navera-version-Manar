@@ -206,3 +206,45 @@ def test_planets_sit_where_they_are_seen(cat):
     assert len(withp.vec) == len(cat.vec) + len(got) and withp.names == list(got)
     assert len(withp.pair_sep) > len(cat.pair_sep) and len(cat.vec) < len(withp.vec)
     assert withp is cat.with_planets(utc, lat, lon)                 # cached (10 min)
+
+
+# ── p_chance counts every trial: focal lengths tried x attempts (review 2026-10-30) ──
+
+def test_p_chance_counts_the_focal_lengths_tried_and_the_attempt(cat):
+    cc = _sim()
+    cond = cc.Condition("baseline mag<=3")
+    sc = cc.Scene(cond, 0)
+    frame = cc.render(sc)
+    up, _ = cc.solver_up(sc)
+    prior = (cond.lat, cond.lon, 1.0)
+    one = allsky.locate(frame, up, sc.utc, cat, f_scales=(1.0,), prior=prior)
+    three = allsky.locate(frame, up, sc.utc, cat, f_scales=(1.0, 1.0, 1.0), prior=prior)
+    second = allsky.locate(frame, up, sc.utc, cat, f_scales=(1.0,), prior=prior, attempt=2)
+    assert one["solved"] and 0 < one["p_chance"] < 0.1
+    assert three["p_chance"] == pytest.approx(3 * one["p_chance"], rel=0.01)
+    assert second["p_chance"] == pytest.approx(2 * one["p_chance"], rel=0.01)
+
+
+def test_the_retry_on_the_brightest_spots_is_counted_as_a_second_attempt(cat, monkeypatch):
+    cc = _sim()
+    cond = cc.Condition("baseline mag<=3")
+    sc = cc.Scene(cond, 0)
+    frame = cc.render(sc)
+    up, _ = cc.solver_up(sc)
+    calls, real_locate, real_accept = [], allsky.locate, allsky.accept
+    seen = []
+
+    def spy(*a, **k):
+        calls.append(k.get("attempt", 1))
+        return real_locate(*a, **k)
+
+    def first_rejected(m, rms, p, dis=0.0):
+        seen.append(p)
+        return "forced" if len(seen) == 1 else real_accept(m, rms, p, dis)
+    monkeypatch.setattr(allsky, "locate", spy)
+    monkeypatch.setattr(allsky, "accept", first_rejected)
+    out = allsky.locate(frame, up, sc.utc, cat, f_scales=(1.0,), prior=(cond.lat, cond.lon, 1.0), retry_spots=8)
+    assert calls == [1, 2] and out.get("retried_with") == 8
+    alone = real_locate(frame, up, sc.utc, cat, f_scales=(1.0,), prior=(cond.lat, cond.lon, 1.0),
+                        max_spots=8, retry_spots=0)
+    assert out["p_chance"] == pytest.approx(min(1.0, 2 * alone["p_chance"]), rel=0.01)
