@@ -19,6 +19,14 @@ import sys
 import threading
 import time
 
+# run by hand or by provision_box.sh without the ROS workspace sourced: find NAVERA's own
+# packages (navera_common, navera_output, ...) in the source tree next to this script
+_SRC = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+for _pkg in sorted(os.listdir(_SRC)):
+    _dir = os.path.join(_SRC, _pkg)
+    if os.path.isfile(os.path.join(_dir, _pkg, "__init__.py")) and _dir not in sys.path:
+        sys.path.append(_dir)
+
 OK, WARN, FAIL = "PASS", "WARN", "FAIL"
 results = []
 
@@ -406,7 +414,12 @@ def check_camera_device(cam):
 
 
 def check_ros(topics, seconds):
-    import rclpy
+    try:
+        import rclpy
+    except ImportError:
+        report(FAIL, "ROS", "rclpy not found: run after `source /opt/ros/humble/setup.bash` and NAVERA's "
+               "install/setup.bash (provision_box.sh does it)")
+        return
     from geometry_msgs.msg import PointStamped
     from navera_msgs.msg import NavStatus
     from rclpy.qos import qos_profile_sensor_data

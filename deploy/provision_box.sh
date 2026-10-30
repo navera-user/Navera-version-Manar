@@ -88,8 +88,15 @@ checks="skipped (staged run)"
 check_rc=0
 if [ -z "$R" ]; then
     set +e
-    checks=$(cd "$src" && python3 navera_tools/check_box.py 2>&1 | tail -n 40)
+    # as the service user, with NAVERA's settings and the ROS workspace, as the services run
+    out=$(mktemp)
+    nhome=$(getent passwd navera | cut -d: -f6)
+    (cd "$src" && runuser -u navera -- bash -c 'set -a; . /etc/navera/navera.env 2>/dev/null; set +a
+        source /opt/ros/humble/setup.bash
+        [ -f "$1/isaac_ros_common/install/setup.bash" ] && source "$1/isaac_ros_common/install/setup.bash"
+        python3 navera_tools/check_box.py' _ "${nhome:-/home/navera}") >"$out" 2>&1
     check_rc=$?
+    checks=$(tail -n 40 "$out"); rm -f "$out"
     set -e
 fi
 
