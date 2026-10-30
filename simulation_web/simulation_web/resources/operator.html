@@ -53,6 +53,9 @@
   #op-src.offline .dot{background:#f85149;box-shadow:0 0 8px rgba(248,81,73,.7)}
 
   /* Détail sous le badge : mode, âge, raison (pour humains) */
+  #op-wifi{display:none;position:absolute;left:14px;top:96px;z-index:1000;
+    background:rgba(13,17,23,.78);backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.14);
+    border-radius:20px;padding:7px 14px;font:600 13px system-ui,sans-serif;color:#e6edf3;text-decoration:none}
   #op-mission{position:absolute;right:14px;bottom:14px;z-index:1000;
     background:rgba(13,17,23,.78);backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.14);
     border-radius:20px;padding:7px 14px;font:600 13px system-ui,sans-serif;color:#e6edf3;text-decoration:none}
@@ -88,6 +91,7 @@
 <body>
   <div id="op-map"></div>
   <a id="op-mission" href="/mission">Mission &amp; settings</a>
+  <a id="op-wifi" href="/">Wi-Fi setup</a>
   <div id="op-ap" title="Whether the autopilot navigates on NAVERA's position when GPS is lost (Mission &amp; settings)">Autopilot uses NAVERA position: <b id="op-ap-v">—</b></div>
 
   <div id="op-src" class="nofix">
@@ -309,6 +313,16 @@ async function poll(){
   }
 }
 poll();
+
+// On the box's own setup Wi-Fi (the page is served from the hotspot address): a way back to the
+// Wi-Fi setup page (port 80 there), e.g. after its window was closed.
+(function(){
+  if(location.hostname === '10.42.0.1'){
+    const a = document.getElementById('op-wifi');
+    a.href = 'http://' + location.hostname + '/';
+    a.style.display = 'block';
+  }
+})();
 </script>
 </body>
 </html>
