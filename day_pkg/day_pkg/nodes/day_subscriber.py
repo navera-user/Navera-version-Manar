@@ -955,6 +955,11 @@ class DaySubscriber(Node):
     def _process_frame(self, seq_id, img, meta):
         try:
             self._drain_gps()
+            # an odometry step left from an earlier frame is in that frame's output already: only this
+            # frame's own step (computed below) may carry it. A frame refused before the odometry (a
+            # 120 deg/s roll-out) re-added the last one: 33 m for 2.3 s at 63 m/s, 160 m behind (Isaac
+            # Sim p3_plane60_turns, 2026-10-30)
+            self._vo_step = None
             # GPS connu (CSV lat/lon réelles) → naviguer vers CE point, SANS prédire.
             # (la paire img/meta est déjà consommée dans _dispatch ; le finally
             #  ci-dessous release _busy_lock → la frame suivante est traitée normalement)
