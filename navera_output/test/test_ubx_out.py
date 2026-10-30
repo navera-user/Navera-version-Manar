@@ -97,6 +97,114 @@ def test_a_baud_change_is_returned_after_its_ack():
     assert baud == 115200 and frames(reply)[0][0] == ubx_out.ACK
     usb = struct.pack("<BBHIIHHHH", 3, 0, 0, 0, 0, 1, 1, 0, 0)                # USB port: no baud
     assert ubx_out.Responder().feed(ubx_out.frame(ubx_out.CFG, ubx_out.CFG_PRT, usb))[1] is None
-    valset = (struct.pack("<BBBB", 0, 1, 0, 0) + struct.pack("<IB", 0x10740001, 1)     # a 1-bit key first
-              + struct.pack("<II", ubx_out.CFG_UART1_BAUDRATE, 230400))
-    assert ubx_out.Responder().feed(ubx_out.frame(ubx_out.CFG, ubx_out.CFG_VALSET, valset))[1] == 230400
+    valset = (struct.pack("<BBBB", 0, 1, 0, 0) + struct.pack("<IB", 0x10740001, 1)     # protocol 27+: an M8
+              + struct.pack("<II", 0x40520001, 230400))                               # refuses it, no baud change
+    reply, baud = ubx_out.Responder().feed(ubx_out.frame(ubx_out.CFG, ubx_out.CFG_VALSET, valset))
+    assert baud is None and frames(reply) == [(ubx_out.ACK, ubx_out.ACK_NAK, bytes((ubx_out.CFG, ubx_out.CFG_VALSET)))]
+
+
+def poll(r, mid, payload=b"", cls=ubx_out.CFG):
+    """The frames `r` answers to one message."""
+    return frames(r.feed(ubx_out.frame(cls, mid, payload))[0])
+
+
+def answered(r, mid, payload=b""):
+    """The polled CFG value, checking it comes before its ACK."""
+    got = poll(r, mid, payload)
+    assert len(got) == 2 and got[0][:2] == (ubx_out.CFG, mid)
+    assert got[1] == (ubx_out.ACK, ubx_out.ACK_ACK, bytes((ubx_out.CFG, mid)))
+    return got[0][2]
+
+
+def test_cfg_prt_poll_names_uart1_at_the_current_baud():
+    r = ubx_out.Responder(38400)
+    p = answered(r, ubx_out.CFG_PRT)
+    assert len(p) == 20 and p[0] == ubx_out.UBX_PORT and struct.unpack_from("<I", p, 8)[0] == 38400
+    prt = struct.pack("<BBHIIHHHH", 1, 0, 0, 0x08D0, 230400, 1, 1, 0, 0)
+    r.feed(ubx_out.frame(ubx_out.CFG, ubx_out.CFG_PRT, prt))
+    assert struct.unpack_from("<I", answered(r, ubx_out.CFG_PRT, b"\x01"), 8)[0] == 230400
+
+
+def test_cfg_msg_rates_are_kept_and_read_back_on_uart1():
+    r = ubx_out.Responder()
+    p = answered(r, ubx_out.CFG_MSG, bytes((ubx_out.NAV, ubx_out.NAV_PVT)))
+    assert p == bytes((ubx_out.NAV, ubx_out.NAV_PVT, 0, 1, 0, 0, 0, 0))
+    assert answered(r, ubx_out.CFG_MSG, bytes((0x0A, 0x09)))[2 + ubx_out.UBX_PORT] == 0    # MON-HW: off
+    r.feed(ubx_out.frame(ubx_out.CFG, ubx_out.CFG_MSG, bytes((0x0A, 0x09, 5))))           # current port
+    r.feed(ubx_out.frame(ubx_out.CFG, ubx_out.CFG_MSG, bytes((ubx_out.NAV, ubx_out.NAV_POSLLH, 9, 0, 9, 9, 9, 9))))
+    assert answered(r, ubx_out.CFG_MSG, bytes((0x0A, 0x09)))[2 + ubx_out.UBX_PORT] == 5
+    assert ubx_out.NAV_POSLLH not in r.position_ids() and ubx_out.NAV_PVT in r.position_ids()
+
+
+def test_a_message_set_to_rate_0_is_no_longer_sent():
+    sent = frames(ubx_out.position_messages(gps_fix(), T, ids=(ubx_out.NAV_PVT, ubx_out.NAV_DOP)))
+    assert [mid for _, mid, _ in sent] == [ubx_out.NAV_PVT, ubx_out.NAV_DOP]
+
+
+def test_cfg_rate_poll_reads_back_the_rate_set():
+    r = ubx_out.Responder()
+    assert struct.unpack("<HHH", answered(r, ubx_out.CFG_RATE)) == (1000, 1, 1)
+    r.feed(ubx_out.frame(ubx_out.CFG, ubx_out.CFG_RATE, struct.pack("<HHH", 200, 1, 0)))
+    assert struct.unpack("<HHH", answered(r, ubx_out.CFG_RATE)) == (200, 1, 0)
+
+
+def test_cfg_nav5_applies_only_the_masked_fields():
+    r = ubx_out.Responder()
+    p = bytearray(answered(r, ubx_out.CFG_NAV5))
+    assert len(p) == 36 and p[2] == 0 and p[12] == 5                     # portable, 5 deg min elevation
+    p[0:2], p[2], p[12] = struct.pack("<H", 0x0001), 8, 15              # airborne <4g; min elev not masked
+    r.feed(ubx_out.frame(ubx_out.CFG, ubx_out.CFG_NAV5, bytes(p)))
+    q = answered(r, ubx_out.CFG_NAV5)
+    assert q[2] == 8 and q[12] == 5
+
+
+def test_cfg_sbas_poll_reads_back_the_mode_set():
+    r = ubx_out.Responder()
+    assert answered(r, ubx_out.CFG_SBAS)[0] == 0x01
+    r.feed(ubx_out.frame(ubx_out.CFG, ubx_out.CFG_SBAS, struct.pack("<BBBBI", 0, 7, 3, 0, 0)))
+    assert answered(r, ubx_out.CFG_SBAS)[0] == 0
+
+
+def test_cfg_gnss_lists_the_m8_systems_and_keeps_a_changed_block():
+    r = ubx_out.Responder()
+    p = answered(r, ubx_out.CFG_GNSS)
+    assert p[:4] == bytes((0, 32, 32, 7)) and len(p) == 4 + 7 * 8
+    assert [p[4 + 8 * i] for i in range(7)] == [0, 1, 2, 3, 4, 5, 6]
+    r.feed(ubx_out.frame(ubx_out.CFG, ubx_out.CFG_GNSS, bytes((0, 32, 32, 1)) + struct.pack("<BBBBI", 3, 8, 16, 0,
+                                                                                            0x01010001)))
+    q = answered(r, ubx_out.CFG_GNSS)
+    assert q == p[:4 + 3 * 8] + struct.pack("<BBBBI", 3, 8, 16, 0, 0x01010001) + p[4 + 4 * 8:]
+
+
+def test_cfg_tp5_poll_and_set():
+    r = ubx_out.Responder()
+    assert len(answered(r, ubx_out.CFG_TP5)) == 32
+    tp = bytearray(answered(r, ubx_out.CFG_TP5, b"\x00"))
+    tp[28:32] = struct.pack("<I", 0x3F)
+    r.feed(ubx_out.frame(ubx_out.CFG, ubx_out.CFG_TP5, bytes(tp)))
+    assert answered(r, ubx_out.CFG_TP5) == bytes(tp)
+
+
+def test_nav_svinfo_poll_says_m8_and_valget_is_refused():
+    r = ubx_out.Responder()
+    got = poll(r, ubx_out.NAV_SVINFO, cls=ubx_out.NAV)
+    assert got[0][:2] == (ubx_out.NAV, ubx_out.NAV_SVINFO) and got[0][2][5] & 0x07 == 4
+    valget = struct.pack("<BBH", 0, 0, 0) + struct.pack("<I", 0x20030001)
+    assert poll(r, ubx_out.CFG_VALGET, valget) == [(ubx_out.ACK, ubx_out.ACK_NAK,
+                                                    bytes((ubx_out.CFG, ubx_out.CFG_VALGET)))]
+
+
+def test_cfg_cfg_save_is_only_acknowledged():
+    r = ubx_out.Responder()
+    assert poll(r, ubx_out.CFG_CFG, bytes(12)) == [(ubx_out.ACK, ubx_out.ACK_ACK, bytes((ubx_out.CFG, 0x09)))]
+
+
+def test_mon_gnss_follows_the_enabled_systems():
+    r = ubx_out.Responder()
+    got = poll(r, ubx_out.MON_GNSS, cls=ubx_out.MON)
+    assert got[0][:2] == (ubx_out.MON, ubx_out.MON_GNSS) and len(got[0][2]) == 8
+    version, supported, default, enabled, simultaneous = got[0][2][:5]
+    assert (version, supported, enabled, simultaneous) == (0, 0x0F, 0x0B, 3)       # GPS, GLONASS, Galileo
+    r.feed(ubx_out.frame(ubx_out.CFG, ubx_out.CFG_GNSS, bytes((0, 32, 32, 1)) + struct.pack("<BBBBI", 6, 8, 14, 0,
+                                                                                            0x01010000)))
+    assert poll(r, ubx_out.MON_GNSS, cls=ubx_out.MON)[0][2][3] == 0x09                # GLONASS off
