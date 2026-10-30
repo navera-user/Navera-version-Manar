@@ -257,6 +257,15 @@ def fix_row(tool, sess, frame, utc, fix, truth):
             round(fix.sigma_major_km, 1), truth[0], truth[1], round(sm.distance_km(fix.lat, fix.lon, *truth), 1)]
 
 
+def across_z(fix, truth, sight):
+    """The fix's error across the body's line of position (along its azimuth), in its own sigma."""
+    az = math.radians(sm.body_place(sight.body, sight.utc).altaz(*truth)[1])
+    u = np.array([math.cos(az), math.sin(az)])
+    e = np.array([(fix.lat - truth[0]) * sm.KM_PER_DEG,
+                  (fix.lon - truth[1]) * sm.KM_PER_DEG * math.cos(math.radians(truth[0]))])
+    return float(e @ u / math.sqrt(u @ fix.cov_km2 @ u))
+
+
 def run_real(a):
     import cv2
     total = {"frames": 0, "sights": 0, "candidates": 0, "beyond_3sigma": 0}
@@ -287,12 +296,14 @@ def run_real(a):
                 continue
             fix = sm.fuse([s], (plat, plon, a.prior_km))
             mh = fix.mahalanobis(*truth)
+            za = across_z(fix, truth, s)
             total["beyond_3sigma"] += int(mh > 3)
+            total["across_beyond_3sigma"] = total.get("across_beyond_3sigma", 0) + int(abs(za) > 3)
             found.append(s)
             out_rows.append(fix_row(f"sunmoon-{s.body}-1sight-prior{a.prior_km:g}km", sess, r["image"], utc, fix,
                                     truth))
             print(f"  SIGHT {os.path.basename(sess)} {r['image']} {s.body} intercept {rep['intercept_deg']:+.2f} deg"
-                  f" fix err {out_rows[-1][-1]} km sigma {out_rows[-1][6]} km mahal {mh:.2f}")
+                  f" fix err {out_rows[-1][-1]} km sigma {out_rows[-1][6]} km mahal {mh:.2f} z across {za:+.2f}")
         if found:
             plat, plon = offset_prior(truth, a.prior_km, 12345)
             fix = sm.fuse(found, (plat, plon, a.prior_km))
