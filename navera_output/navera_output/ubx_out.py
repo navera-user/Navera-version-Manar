@@ -5,10 +5,12 @@ Unlike NMEA, UBX NAV-PVT carries the accuracy (hAcc, vAcc, sAcc): a vision posit
 its own stated accuracy, as over MAVLink, so the same forwarding rules apply (policy.decide).
 
 Sent per position: NAV-PVT (newer drivers) and NAV-POSLLH / NAV-STATUS / NAV-SOL / NAV-VELNED /
-NAV-DOP (older ones). A driver that configures its receiver sends CFG messages and waits for an
-ACK; every CFG message is acknowledged (nothing is actually configurable), MON-VER is answered
-(protocol 18, a u-blox M8: the drivers then use their M8 path), and a baud rate change asked by
-CFG-PRT or CFG-VALSET (UART1) is returned so the caller switches its port after the ACK.
+NAV-DOP (older ones), minus those the driver turned off (rate 0). A driver that configures its
+receiver sends CFG messages and waits for an ACK, and some read the configuration back (ArduPilot
+GPS_AUTO_CONFIG = 1): Responder answers as a u-blox M8 does (CFG polls answered with the value last
+set, MON-VER with protocol 18 and NAV-SVINFO with "M8", so the drivers use their M8 path; CFG-VALSET /
+VALGET, unknown to an M8, are refused), and a baud rate change asked by CFG-PRT (UART1) is returned so
+the caller switches its port after the ACK.
 
 A position without a measured height (vision / celestial) carries the last GNSS height sent with
 vAcc "unknown" (the autopilot must take its height from the barometer), as HIL_GPS does
@@ -19,7 +21,7 @@ Betaflight gps_rescue_min_sats; the accuracy fields remain the honest statement)
 import math
 import struct
 from datetime import datetime, timedelta, timezone
-from typing import List, Optional, Tuple
+from typing import Iterable, List, Optional, Tuple
 
 from navera_output.mavlink_out import gps_week_time
 from navera_output.policy import KIND_ESTIMATED, KIND_FIX, Output
@@ -30,7 +32,6 @@ NAV_POSLLH, NAV_STATUS, NAV_DOP, NAV_SOL, NAV_PVT, NAV_VELNED = 0x02, 0x03, 0x04
 ACK_ACK = 0x01
 CFG_PRT, CFG_VALSET = 0x00, 0x8A
 MON_VER = 0x04
-CFG_UART1_BAUDRATE = 0x40520001
 UERE_M = 2.0
 UNKNOWN_MM = 0xFFFFFFFF
 FIX_NONE, FIX_3D = 0, 3
@@ -75,8 +76,11 @@ def _fields(out: Output, held_alt_msl_m: float, estimated_satellites: int):
 
 
 def position_messages(out: Output, t_utc: datetime, held_alt_msl_m: float = math.nan,
-                      estimated_satellites: int = 0) -> bytes:
-    """The UBX messages for one output decision, stamped `t_utc` (the measurement instant)."""
+                      estimated_satellites: int = 0, ids: Optional[Iterable[int]] = None) -> bytes:
+    """The UBX messages for one output decision, stamped `t_utc` (the measurement instant).
+
+    `ids`: the NAV message ids to send (Responder.position_ids: those the driver left on); default all.
+    """
     ok, lat, lon, ell, msl, h_acc, v_acc, vn, ve, s_acc, sats, dop = _fields(
         out, held_alt_msl_m, estimated_satellites)
     t = t_utc.astimezone(timezone.utc)
@@ -103,8 +107,10 @@ def position_messages(out: Output, t_utc: datetime, held_alt_msl_m: float = math
     velned = struct.pack("<IiiiIIiII", itow, int(vn / 10), int(ve / 10), 0, speed // 10,
                          speed // 10, head, min(s_acc // 10, UNKNOWN_MM), 18_000_000)
     dops = struct.pack("<IHHHHHHH", itow, dop, dop, dop, dop, dop, dop, dop)
-    return (frame(NAV, NAV_PVT, pvt) + frame(NAV, NAV_POSLLH, posllh) + frame(NAV, NAV_STATUS, status)
-            + frame(NAV, NAV_SOL, sol) + frame(NAV, NAV_VELNED, velned) + frame(NAV, NAV_DOP, dops))
+    payloads = {NAV_PVT: pvt, NAV_POSLLH: posllh, NAV_STATUS: status, NAV_SOL: sol, NAV_VELNED: velned,
+                NAV_DOP: dops}
+    wanted = set(payloads if ids is None else ids)
+    return b"".join(frame(NAV, mid, pl) for mid, pl in payloads.items() if mid in wanted)
 
 
 def _ecef_cm(lat_deg: float, lon_deg: float, h_m: float) -> Tuple[int, int, int]:
@@ -123,11 +129,52 @@ def mon_ver() -> bytes:
                  + field("PROTVER=18.00", 30) + field("MOD=NAVERA", 30))
 
 
-class Responder:
-    """Reads what the flight controller sends and gives the replies (ACKs, MON-VER)."""
+# The configuration a polling driver reads back (ArduPilot GPS_AUTO_CONFIG, PX4, INAV): the values a
+# u-blox M8 holds after a reset, changed by the CFG messages the driver sends. NAVERA's output itself
+# does not change with them (rate, dynamic model, GNSS systems mean nothing to a vision position),
+# except the message rates: a NAV message set to rate 0 is no longer sent.
+NAV_SVINFO = 0x30
+CFG_MSG, CFG_RATE, CFG_CFG, CFG_SBAS, CFG_NAV5, CFG_TP5, CFG_GNSS = 0x01, 0x08, 0x09, 0x16, 0x24, 0x31, 0x3E
+CFG_VALGET = 0x8B
+ACK_NAK = 0x00
+UBX_PORT = 1                          # UART1: the port index of NAVERA's serial line
+POSITION_IDS = (NAV_PVT, NAV_POSLLH, NAV_STATUS, NAV_SOL, NAV_VELNED, NAV_DOP)
+_NAV5_DEFAULT = struct.pack("<HBBiIbBHHHHBBBB2xHB5x", 0xFFFF, 0, 3, 0, 10000, 5, 0, 250, 250, 100, 300,
+                            0, 60, 0, 0, 0, 0)
+# CFG-NAV5 mask bit -> the payload bytes it applies
+_NAV5_GROUPS = {0: (2, 3), 1: (12, 13), 2: (3, 12), 3: (13, 14), 4: (14, 20), 5: (20, 22),
+                6: (22, 23), 7: (23, 24), 8: (24, 26), 10: (30, 31)}
+# CFG-GNSS blocks of an M8 (gnssId, resTrkCh, maxTrkCh, flags): GPS, SBAS, Galileo, BeiDou, IMES, QZSS,
+# GLONASS
+_GNSS_DEFAULT = ((0, 8, 16, 0x01010001), (1, 1, 3, 0x01010001), (2, 4, 8, 0x01010001),
+                 (3, 8, 16, 0x01010000), (4, 0, 8, 0x01010000), (5, 0, 3, 0x05050001),
+                 (6, 8, 14, 0x01010001))
 
-    def __init__(self):
+
+class Responder:
+    """Reads what the flight controller sends and gives the replies a u-blox M8 gives.
+
+    Every CFG message is acknowledged (ACK-ACK), except CFG-VALSET / CFG-VALGET (protocol 27+, unknown to
+    an M8: ACK-NAK, so a driver that probes with them, PX4, takes its M8 path).
+    A poll is answered with the current value before its ACK: CFG-PRT, CFG-MSG, CFG-RATE, CFG-NAV5,
+    CFG-SBAS, CFG-GNSS, CFG-TP5, and MON-VER, NAV-SVINFO (the hardware generation: M8). A CFG message
+    that sets a value is kept and read back, so a driver that checks its configuration
+    (ArduPilot GPS_AUTO_CONFIG = 1) finds it done.
+    """
+
+    def __init__(self, baud: int = 0):
         self._buf = bytearray()
+        self.baud = baud
+        self.rates = {(NAV, mid): 1 for mid in POSITION_IDS}
+        self._nav_rate = struct.pack("<HHH", 1000, 1, 1)
+        self._nav5 = bytearray(_NAV5_DEFAULT)
+        self._sbas = struct.pack("<BBBBI", 0x01, 0x07, 3, 0, 0)
+        self._gnss = {g: struct.pack("<BBBBI", g, res, mx, 0, fl) for g, res, mx, fl in _GNSS_DEFAULT}
+        self._tp5 = {}
+
+    def position_ids(self) -> Tuple[int, ...]:
+        """The NAV messages to send per position (those not set to rate 0)."""
+        return tuple(mid for mid in POSITION_IDS if self.rates.get((NAV, mid), 0))
 
     def feed(self, data: bytes) -> Tuple[bytes, Optional[int]]:
         """(bytes to send back, a baud rate to switch to after sending them, or None)."""
@@ -135,11 +182,68 @@ class Responder:
         reply, baud = b"", None
         for cls, mid, payload in self._messages():
             if cls == CFG:
-                reply += frame(ACK, ACK_ACK, bytes((cls, mid)))
+                if mid in (CFG_VALSET, CFG_VALGET):
+                    reply += frame(ACK, ACK_NAK, bytes((cls, mid)))
+                    continue
+                reply += self._cfg(mid, payload) + frame(ACK, ACK_ACK, bytes((cls, mid)))
                 baud = requested_baud(mid, payload) or baud
             elif cls == MON and mid == MON_VER and not payload:
                 reply += mon_ver()
+            elif cls == NAV and mid == NAV_SVINFO and not payload:
+                reply += frame(NAV, NAV_SVINFO, struct.pack("<IBB2x", 0, 0, 4))    # globalFlags 4: M8
+        if baud:
+            self.baud = baud
         return reply, baud
+
+    def _cfg(self, mid: int, p: bytes) -> bytes:
+        """The polled value for a CFG poll; a CFG set is kept (b"" returned)."""
+        if mid == CFG_PRT:
+            if len(p) <= 1:
+                port = p[0] if p else UBX_PORT
+                return frame(CFG, CFG_PRT, struct.pack("<BBHIIHHHH", port, 0, 0, 0x08D0, self.baud,
+                                                       0x07, 0x01, 0, 0))
+        elif mid == CFG_MSG:
+            if len(p) == 2:
+                rate = self.rates.get((p[0], p[1]), 0)
+                rates = bytes(rate if i == UBX_PORT else 0 for i in range(6))
+                return frame(CFG, CFG_MSG, p + rates)
+            if len(p) == 3:
+                self.rates[(p[0], p[1])] = p[2]
+            elif len(p) == 8:
+                self.rates[(p[0], p[1])] = p[2 + UBX_PORT]
+        elif mid == CFG_RATE:
+            if not p:
+                return frame(CFG, CFG_RATE, self._nav_rate)
+            if len(p) == 6:
+                self._nav_rate = p
+        elif mid == CFG_NAV5:
+            if not p:
+                return frame(CFG, CFG_NAV5, bytes(self._nav5))
+            if len(p) == 36:
+                mask = struct.unpack_from("<H", p)[0]
+                for bit, (a, b) in _NAV5_GROUPS.items():
+                    if mask & (1 << bit):
+                        self._nav5[a:b] = p[a:b]
+        elif mid == CFG_SBAS:
+            if not p:
+                return frame(CFG, CFG_SBAS, self._sbas)
+            if len(p) == 8:
+                self._sbas = p
+        elif mid == CFG_GNSS:
+            if not p:
+                blocks = b"".join(self._gnss[g] for g in sorted(self._gnss))
+                return frame(CFG, CFG_GNSS, struct.pack("<BBBB", 0, 32, 32, len(self._gnss)) + blocks)
+            for i in range(min(p[3], (len(p) - 4) // 8) if len(p) >= 4 else 0):
+                block = p[4 + 8 * i:12 + 8 * i]
+                self._gnss[block[0]] = block
+        elif mid == CFG_TP5:
+            if len(p) <= 1:
+                idx = p[0] if p else 0
+                return frame(CFG, CFG_TP5, self._tp5.get(idx, struct.pack(
+                    "<BB2xhhIIIIiI", idx, 1, 50, 0, 1000000, 1000000, 0, 100000, 0, 0x77)))
+            if len(p) == 32:
+                self._tp5[p[0]] = p
+        return b""
 
     def _messages(self) -> List[Tuple[int, int, bytes]]:
         found = []
@@ -166,17 +270,7 @@ class Responder:
 
 
 def requested_baud(mid: int, payload: bytes) -> Optional[int]:
-    """The UART baud rate a CFG-PRT (port 1, UART1) or CFG-VALSET (CFG-UART1-BAUDRATE) sets."""
+    """The UART baud rate a CFG-PRT for port 1 (UART1) sets."""
     if mid == CFG_PRT and len(payload) >= 20 and payload[0] == 1:
         return struct.unpack_from("<I", payload, 8)[0] or None
-    if mid == CFG_VALSET and len(payload) >= 4:
-        i = 4
-        while i + 4 <= len(payload):
-            key = struct.unpack_from("<I", payload, i)[0]
-            size = {1: 1, 2: 1, 3: 2, 4: 4, 5: 8}.get((key >> 28) & 0x7, 0)
-            if not size:
-                return None
-            if key == CFG_UART1_BAUDRATE and i + 4 + size <= len(payload):
-                return struct.unpack_from("<I", payload, i + 4)[0] or None
-            i += 4 + size
     return None

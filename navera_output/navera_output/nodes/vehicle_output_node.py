@@ -227,7 +227,7 @@ class VehicleOutputNode(Node):
         if self._proto not in ("nmea", "ubx"):
             raise ValueError(f"nmea_protocol must be nmea or ubx (got {self._proto!r})")
         self._ubx_sats = int(self.get_parameter("ubx_estimated_satellites").value)
-        self._ubx = ubx_out.Responder() if self._proto == "ubx" else None
+        self._ubx = ubx_out.Responder(int(self.get_parameter("nmea_baud").value)) if self._proto == "ubx" else None
         port = str(self.get_parameter("nmea_port").value)
         if port:
             import serial
@@ -419,7 +419,8 @@ class VehicleOutputNode(Node):
             self._held_alt_msl = out.alt_msl_m
         try:
             if self._serial is not None and self._ubx is not None:
-                self._serial.write(ubx_out.position_messages(out, t_utc, self._held_alt_msl, self._ubx_sats))
+                self._serial.write(ubx_out.position_messages(out, t_utc, self._held_alt_msl, self._ubx_sats,
+                                                             self._ubx.position_ids()))
             elif self._serial is not None:
                 nmea_out = for_nmea(out, self._nmea_degraded)
                 spd = crs = math.nan
