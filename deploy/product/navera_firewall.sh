@@ -32,6 +32,11 @@
 #   NAVERA_FW_ALLOW_TCP / NAVERA_FW_ALLOW_UDP   more ports or ranges, comma-separated (5600, 9000-9010)
 #   NAVERA_FW_ALLOW_FROM     restrict all the above to these sources (comma-separated
 #                            addresses / CIDR, IPv4 or IPv6: the vehicle network); empty = any
+#   NAVERA_HOTSPOT           1: the box's own Wi-Fi (navera_hotspot.sh) — DHCP and DNS for the
+#                            phones that join it, on the Wi-Fi interfaces only (NAVERA_WIFI_IFACE,
+#                            default every wl* interface), and the captive portal: the hotspot's
+#                            web port 80 sent to the portal (NAVERA_PORTAL_PORT, default 8182), so
+#                            a phone that joins opens NAVERA's page by itself
 # Always allowed: loopback, replies to NAVERA's own connections, ICMP echo, ICMPv6 (neighbour
 # discovery: IPv6 link-local cameras), DHCP replies.
 set -euo pipefail
@@ -79,6 +84,11 @@ if [ "${NAVERA_FW_CAMERAS:-1}" != 0 ]; then
 fi
 tcp=$(ports "$tcp,${NAVERA_FW_ALLOW_TCP:-}"); udp=$(ports "${udp#,},${NAVERA_FW_ALLOW_UDP:-}")
 
+hotspot_if=""
+[ "${NAVERA_HOTSPOT:-0}" = 1 ] && hotspot_if="${NAVERA_WIFI_IFACE:-wl+}"
+portal_port=$(ports "${NAVERA_PORTAL_PORT:-8182}"); portal_port="${portal_port:-8182}"
+[[ -z "$hotspot_if" || "$hotspot_if" =~ ^[A-Za-z0-9_.+-]{1,15}$ ]] || { echo "navera_firewall: ignored NAVERA_WIFI_IFACE '$hotspot_if'" >&2; hotspot_if=wl+; }
+
 v4=(); v6=()
 allow_from="${NAVERA_FW_ALLOW_FROM:-}"
 for s in ${allow_from//,/ }; do
@@ -112,6 +122,11 @@ ruleset() {   # ruleset <4|6>  → iptables-restore input
   if [ "$1" = 4 ]; then
     echo "-A NAVERA-IN -p icmp --icmp-type echo-request -j ACCEPT"
     echo "-A NAVERA-IN -p udp --sport 67 --dport 68 -j ACCEPT"
+    if [ -n "$hotspot_if" ]; then   # the hotspot's own DHCP and DNS server, for its clients
+      echo "-A NAVERA-IN -i $hotspot_if -p udp -m multiport --dports 53,67 -j ACCEPT"
+      echo "-A NAVERA-IN -i $hotspot_if -p tcp --dport 53 -j ACCEPT"
+      echo "-A NAVERA-IN -i $hotspot_if -p tcp --dport $portal_port -j ACCEPT"
+    fi
   else
     echo "-A NAVERA-IN -p ipv6-icmp -j ACCEPT"
     echo "-A NAVERA-IN -p udp --sport 547 --dport 546 -j ACCEPT"
@@ -121,26 +136,39 @@ ruleset() {   # ruleset <4|6>  → iptables-restore input
   rules "$1" udp "$udp_from" sports
   echo "-A NAVERA-IN -j DROP"
   echo "COMMIT"
+  if [ "$1" = 4 ]; then   # the captive portal: the hotspot's port 80 to the portal
+    echo "*nat"
+    echo ":NAVERA-PORTAL - [0:0]"
+    echo "-F NAVERA-PORTAL"
+    [ -n "$hotspot_if" ] && echo "-A NAVERA-PORTAL -i $hotspot_if -p tcp --dport 80 -j REDIRECT --to-ports $portal_port"
+    echo "COMMIT"
+  fi
 }
 
 load() {   # load <4|6> : the chain, then the jump from INPUT (once, first)
   local ipt=iptables; [ "$1" = 6 ] && ipt=ip6tables
   ruleset "$1" | "$ipt-restore" --noflush
   "$ipt" -C INPUT -j NAVERA-IN 2>/dev/null || "$ipt" -I INPUT 1 -j NAVERA-IN
+  if [ "$1" = 4 ]; then
+    iptables -t nat -C PREROUTING -j NAVERA-PORTAL 2>/dev/null || iptables -t nat -I PREROUTING 1 -j NAVERA-PORTAL
+  fi
 }
 
-summary="tcp ${tcp:-none}; udp ${udp:-none}; udp from ports ${udp_from:-none}; from ${allow_from:-any}"
+summary="tcp ${tcp:-none}; udp ${udp:-none}; udp from ports ${udp_from:-none}; from ${allow_from:-any}; hotspot ${hotspot_if:-off}"
 case "$MODE" in
   print) echo "## IPv4"; ruleset 4; echo "## IPv6"; ruleset 6 ;;
   check) lock=$(mktemp); trap 'rm -f "$lock"' EXIT
          export XTABLES_LOCKFILE="$lock"
-         export -f ruleset rules load; export tcp udp udp_from
+         export -f ruleset rules load; export tcp udp udp_from hotspot_if portal_port
          v4s="${v4[*]:-}" v6s="${v6[*]:-}" unshare -rn bash -c \
            'v4=($v4s); v6=($v6s); set -e; load 4; load 6; iptables -S NAVERA-IN >/dev/null' \
            && echo "firewall rules OK ($summary)" ;;
   stop)  for ipt in iptables ip6tables; do
            while "$ipt" -D INPUT -j NAVERA-IN 2>/dev/null; do :; done
            "$ipt" -F NAVERA-IN 2>/dev/null || true; "$ipt" -X NAVERA-IN 2>/dev/null || true
-         done; echo "firewall off" ;;
+         done
+         while iptables -t nat -D PREROUTING -j NAVERA-PORTAL 2>/dev/null; do :; done
+         iptables -t nat -F NAVERA-PORTAL 2>/dev/null || true; iptables -t nat -X NAVERA-PORTAL 2>/dev/null || true
+         echo "firewall off" ;;
   apply) load 4; load 6; echo "firewall on: $summary" ;;
 esac
