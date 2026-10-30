@@ -197,3 +197,14 @@ def test_nav_svinfo_poll_says_m8_and_valget_is_refused():
 def test_cfg_cfg_save_is_only_acknowledged():
     r = ubx_out.Responder()
     assert poll(r, ubx_out.CFG_CFG, bytes(12)) == [(ubx_out.ACK, ubx_out.ACK_ACK, bytes((ubx_out.CFG, 0x09)))]
+
+
+def test_mon_gnss_follows_the_enabled_systems():
+    r = ubx_out.Responder()
+    got = poll(r, ubx_out.MON_GNSS, cls=ubx_out.MON)
+    assert got[0][:2] == (ubx_out.MON, ubx_out.MON_GNSS) and len(got[0][2]) == 8
+    version, supported, default, enabled, simultaneous = got[0][2][:5]
+    assert (version, supported, enabled, simultaneous) == (0, 0x0F, 0x0B, 3)       # GPS, GLONASS, Galileo
+    r.feed(ubx_out.frame(ubx_out.CFG, ubx_out.CFG_GNSS, bytes((0, 32, 32, 1)) + struct.pack("<BBBBI", 6, 8, 14, 0,
+                                                                                            0x01010000)))
+    assert poll(r, ubx_out.MON_GNSS, cls=ubx_out.MON)[0][2][3] == 0x09                # GLONASS off

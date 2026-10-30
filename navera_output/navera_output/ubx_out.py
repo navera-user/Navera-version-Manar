@@ -31,7 +31,7 @@ NAV, ACK, CFG, MON = 0x01, 0x05, 0x06, 0x0A
 NAV_POSLLH, NAV_STATUS, NAV_DOP, NAV_SOL, NAV_PVT, NAV_VELNED = 0x02, 0x03, 0x04, 0x06, 0x07, 0x12
 ACK_ACK = 0x01
 CFG_PRT, CFG_VALSET = 0x00, 0x8A
-MON_VER = 0x04
+MON_VER, MON_GNSS = 0x04, 0x28
 UERE_M = 2.0
 UNKNOWN_MM = 0xFFFFFFFF
 FIX_NONE, FIX_3D = 0, 3
@@ -157,7 +157,7 @@ class Responder:
     Every CFG message is acknowledged (ACK-ACK), except CFG-VALSET / CFG-VALGET (protocol 27+, unknown to
     an M8: ACK-NAK, so a driver that probes with them, PX4, takes its M8 path).
     A poll is answered with the current value before its ACK: CFG-PRT, CFG-MSG, CFG-RATE, CFG-NAV5,
-    CFG-SBAS, CFG-GNSS, CFG-TP5, and MON-VER, NAV-SVINFO (the hardware generation: M8). A CFG message
+    CFG-SBAS, CFG-GNSS, CFG-TP5, and MON-VER, MON-GNSS, NAV-SVINFO (the hardware generation: M8). A CFG message
     that sets a value is kept and read back, so a driver that checks its configuration
     (ArduPilot GPS_AUTO_CONFIG = 1) finds it done.
     """
@@ -189,11 +189,22 @@ class Responder:
                 baud = requested_baud(mid, payload) or baud
             elif cls == MON and mid == MON_VER and not payload:
                 reply += mon_ver()
+            elif cls == MON and mid == MON_GNSS and not payload:
+                reply += self._mon_gnss()
             elif cls == NAV and mid == NAV_SVINFO and not payload:
                 reply += frame(NAV, NAV_SVINFO, struct.pack("<IBB2x", 0, 0, 4))    # globalFlags 4: M8
         if baud:
             self.baud = baud
         return reply, baud
+
+    def _mon_gnss(self) -> bytes:
+        """MON-GNSS (INAV polls it): GPS, GLONASS, BeiDou, Galileo supported; enabled from CFG-GNSS."""
+        bit = {0: 0x01, 6: 0x02, 3: 0x04, 2: 0x08}
+        enabled = 0
+        for g, block in self._gnss.items():
+            if g in bit and struct.unpack_from("<I", block, 4)[0] & 1:
+                enabled |= bit[g]
+        return frame(MON, MON_GNSS, struct.pack("<BBBBB3x", 0, 0x0F, 0x0B, enabled, 3))
 
     def _cfg(self, mid: int, p: bytes) -> bytes:
         """The polled value for a CFG poll; a CFG set is kept (b"" returned)."""
