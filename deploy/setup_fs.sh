@@ -84,7 +84,9 @@ elif [ -f "$EXTLINUX" ]; then
         # the edit only appends to the APPEND lines: anything else = refuse (an unbootable box)
         if [ "$(grep -E '^\s*APPEND' "$tmp" | grep -c 'fsck\.repair=yes')" = "$n_before" ] \
            && [ "$(wc -l < "$tmp")" = "$(wc -l < "$EXTLINUX")" ]; then
-          sync "$tmp" 2>/dev/null || sync; mv -f "$tmp" "$EXTLINUX"; sync
+          # only this file and its file system: a bare `sync` waits for every disk on the box
+          # (a USB disk being filled kept it, and this step, blocked for minutes)
+          sync "$tmp"; mv -f "$tmp" "$EXTLINUX"; sync -f "$EXTLINUX"
           say PASS "fsck.repair=yes added to $EXTLINUX (copy: $EXTLINUX.navera-bak)"
         else
           rm -f "$tmp"; say FAIL "could not add fsck.repair=yes safely to $EXTLINUX: left unchanged"

@@ -66,6 +66,22 @@ def test_apply_product_ssh_off_and_dry_run(tmp_path):
     assert 'NAVERA_PRODUCT_SSH=off' in (r / 'etc/navera/navera.env').read_text()
 
 
+def test_apply_product_never_waits_for_every_disk(tmp_path):
+    """A bare `sync` flushes every disk on the box: with a USB disk being filled it blocked
+    apply_product.sh past the test's time limit (release 0.8.1 test run). Only the files it
+    writes, and their file system, are synced."""
+    shim = tmp_path / 'bin'
+    shim.mkdir()
+    (shim / 'sync').write_text('#!/bin/sh\n[ $# -gt 0 ] || { echo "bare sync" >&2; sleep 60; }\nexec /bin/sync "$@"\n')
+    (shim / 'sync').chmod(0o755)
+    r = fake_root(tmp_path)
+    path = {'PATH': f"{shim}:{os.environ['PATH']}"}
+    p = subprocess.run([os.path.join(PRODUCT, 'apply_product.sh'), '--root', str(r)], capture_output=True,
+                       text=True, env=dict(os.environ, **path), timeout=30)
+    assert p.returncode == 0 and 'bare sync' not in p.stderr, p.stdout + p.stderr
+    assert 'fsck.repair=yes' in (r / 'boot/extlinux/extlinux.conf').read_text()
+
+
 def fw(env, *args):
     base = {k: '' for k in ('NAVERA_VEHICLE_MAVLINK_URL', 'NAVERA_MAVLINK_URL', 'NAVERA_FW_ALLOW_FROM',
                             'NAVERA_FW_ALLOW_TCP', 'NAVERA_FW_ALLOW_UDP', 'NAVERA_PRODUCT_SSH', 'NAVERA_WEB_PORT')}

@@ -54,7 +54,7 @@ setenv() {   # setenv KEY VALUE: replace the last KEY= line, or append it (atomi
     { cat "$ENV"; printf '%s=%s\n' "$1" "$2"; } > "$tmp"
   fi
   chmod --reference="$ENV" "$tmp"; [ -z "$R" ] && chown --reference="$ENV" "$tmp"
-  sync "$tmp" 2>/dev/null || sync; mv -f "$tmp" "$ENV"
+  sync "$tmp"; mv -f "$tmp" "$ENV"; sync -f "$ENV"   # this file system only, never a bare `sync`
 }
 
 say "1. product mode and web control token"
