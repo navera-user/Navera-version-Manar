@@ -1279,6 +1279,200 @@ fixes (it removes the dominant error); (4) keep the raw recorder on — the real
 (how many stars a video frame shows) is the remaining unknown; (5) a refusal is the expected
 answer under cloud or bright moon, not a fault.
 
+### Celestial 360: first real night, Sousse (2026-10-29/30) — why no fix, and the prior-aided solver
+
+**Set-up:** Insta360 One RS on an inside windowsill in Sousse (~35.83 N 10.64 E, within ~10 km), still all
+night; its IMU says the right lens looks at the zenith. Sessions `~/navera-field/2026-10-29_{1853,1902,1928,2300}`.
+
+**What limits the fix (measured):**
+- The camera sees about **half of the upper hemisphere** as sky: the up-looking lens shows the room's ceiling
+  on one side and the window on the other; the other lens looks down at the street. The texture in the
+  window half decorrelates in minutes (r 0.96 over 10 s, ~0 over 8 min) while the room half stays (0.85):
+  it is **moving cloud lit by the city/moon**. No moon in any frame (moon at 37-60 deg altitude in the east:
+  the window does not face it).
+- **No real star pattern in any frame of the night so far** (`navera_tools/field/starcheck.py`: true place
+  known, heading scanned, against 6 wrong places with the same spots): 0 of 72 single frames (4 sessions)
+  and 0 of 3 deep stacks scored above the wrong places (true place 3-7 matches, wrong places 4-11). The
+  check is sensitive: the catalogue injected into a real frame of the night at 6 DN for a magnitude-3 star
+  scored 51 against 7. The 4-11 "stars" of the 6 s stacks and the 7-10 "matches" of the solver are junk.
+- **Deep stacking** (`deepstack.py`, every decoded frame, 30 fps): 30 s = 901 frames; noise 1.0 DN single →
+  0.157 DN mean (6.4x, not the 30x of independent frames: H.264 P-frames repeat their reference's noise,
+  so ~40 independent samples in 30 s, ~2 magnitudes deeper than one frame). Under tonight's cloud it showed
+  the room and the cloud texture, no star (spots 79-84, all junk by starcheck).
+- So tonight's limit is **physical (cloud + half the sky hidden), not the detector, the lens model or the
+  identification**. The single-frame star depth of this camera on a real sky is still unmeasured.
+
+**Prior-aided identification (`allsky.identify_prior`, `locate(prior=...)`):** the product starts with GPS;
+a rough position (last GPS / last fix, grown by the distance flown) and 'up' leave only the heading unknown:
+one star sets it. Hypotheses: zenith grid (0.25 deg) over the prior disc x seed ray x catalogue stars at
+the same altitude; Bonferroni chance on the matches of each hypothesis as tried (before any fit), with the
+catalogue's local density; the fix still comes from the stars (free Wahba fit), same `accept()` gate, refused
+if the stars put the zenith outside the prior. Bright planets join the catalogue (`LOCATE_PLANETS`).
+- Honesty (synthetic junk rays, 20-60 per frame): 0 accepted in 2 600 trials; at n = 20, prior 0.3 deg,
+  2 000 trials: p <= 0.1 in 0.55 %, none <= 0.01 (the bound is conservative).
+- Gain (synthetic, 8 stars among 40 junk points, the 5 brightest junk): prior 0.3 deg (~33 km) gives
+  p 5e-8..6e-4 where lost-in-space gives 0.001-0.65 (0 of 12 accepted) — 9+ of 12 accepted, all right;
+  prior 1 deg ~1e4 hypotheses, 3 deg ~7e4 (close to lost-in-space's ~1e5): the gain shrinks with the radius.
+- Tonight's real frames (lost-in-space / prior 10 km + 0.5 deg for 'up'): 218 single frames and 3 deep
+  stacks, 0 fixes and 0 wrong for both; with a wrong prior (Tunis, 140 km off, 30 km radius) 111 frames,
+  0 fixes. The prior's best chance on the real junk was 0.1 (lost-in-space 6.6e-4 with rms 0.25, refused).
+- Not yet shown on real stars: the real-sky archive (MASCOT/ALPACA) is on the data disk, not mounted on
+  2026-10-30. Next: `realsky_validate` with a prior on the shallow copies, and tonight's dawn frames if it clears.
+
+**Same night, 03:40-04:30: camera-fixed junk and forced photometry (`fixedspots.py`, `forcedcheck.py`).**
+- `fixedspots build`: a spot on the same pixel (3 px) in >= 3 frames each >= 30 min apart cannot be a star (the
+  sky turns 7.5 deg x sin(polar distance) in 30 min; only Polaris moves less): 141 frames of the night, 70.5
+  spots/frame, **72 % fixed to the camera** (room, window frame, lamps, plastic). The mask (0.6 % of the frame)
+  is built from the spots only, never from the catalogue, so the chance probability stays honest.
+- Injected catalogue (heading 100, magnitude-3 amplitude A, 10 real frames of the night per A), resolve_prior
+  without / with the junk mask (`--junk-mask`), fixes / wrong, lost-in-space and prior 10 km:
+  A = 1.0 DN 0/0 -> 1/0 and 2/0 -> 1/0; 1.25 DN 0/0 -> 4/0 and 7/0 -> 7/0; 1.5 DN 3/0 -> 6/0 and 7/0 -> 7/0;
+  >= 2 DN 10/10 both. Spots given to the solver 21 -> 14 per frame; median chance probability ~10x lower for
+  the same stars (1.5 DN lost-in-space 0.049 -> 0.0032, prior 2.2e-5 -> 2.1e-6). No gate changed.
+- Real frames (every 8th of the night, 449): with the mask 0 fixes, 0 wrong (lost-in-space and prior);
+  spots/frame 13.3 -> 5.9; the best (most star-like) junk chance 0.0065 -> 0.12 (lost-in-space).
+- `forcedcheck` (no detection: the detector's SNR map read at every mag <= 3 star + planet for every heading,
+  summed over frames, vs 6 wrong places): sensitivity 1.5 DN injected in 10 saved frames -> z 10.7 at the
+  right heading (0 DN: z 3.5 < wrong places 4.6). **The whole night (676 saved frames): no starlight**
+  (true place z 1.6, wrong places up to 3.2). 12 deep stacks of 30 s (all frames, 03:00-03:35): no
+  starlight; injected 6 DN in the gained stack (~0.2 DN in one frame) -> z 13. Caveat: injection is after
+  H.264; a star fainter than ~1 DN per frame may be removed by the encoder before any stacking.
+- Seen in the night's mean / max images: the right (up) lens's sky half is the window; when the room light
+  is on (23:09) the glass/plastic mirrors the whole room over it. Jupiter and Mars (35-56 deg, east, in
+  forcedcheck's list) are not found either: no point source of the sky reaches the sensor through the window
+  + plastic (+ cloud). Tonight's limit stays physical, not the solver.
+
+### Celestial 360: removing clouds and lights before the star detector (2026-10-30)
+
+Question: can an image-cleaning stage or a learned star detector make faint REAL stars detectable through city
+glow, lamps, reflections and thin cloud? Rule kept throughout: a stage may only remove or down-weight light and
+choose which spots go to the solver; nothing generative, no inpainting; `accept()`, `MAX_P_CHANCE` and every
+other gate unchanged. Data: last night's four sessions (Sousse windowsill, 2026-10-29 1853/1902/1928/2300, no
+starlight in any frame — `forcedcheck`), the ESO MASCOT real-sky archive (343 frames + 168 cloudy-night frames,
+real stars, true place known) and its shallow/JPEG copies (`realsky_validate --degrade 0.15,2,75`).
+
+**What was built** (`feat/celestial-night-2026-10-29`):
+- `cn_pkg/skyclean.py` — `SkyCleaner`: a ring of earlier frames of a still camera (one per 45 s, 12, >= 6 min);
+  their per-pixel median, high-passed at the detector's scale, is the camera-fixed scene; its POSITIVE part above
+  3 sigma is subtracted (gain-fitted), so the output is <= the input on every pixel. Moving-texture blocks (cloud,
+  drifting reflections: smoothed frame-minus-median spread vs the frame's own noise-only ratio) are replaced by
+  their own smooth background. `sky_usable()` / `gate_reason()`: usable sky fraction (cloud, glare, glow).
+- `cn_pkg/starseg.py` — a 2-level U-Net (117 k parameters) that labels pixels star / not star. Used two ways via
+  the new `allsky.locate(spot_finder=...)` hook: `filter` (drops production-detector spots the network calls
+  junk: can only remove) and `detect` (the network's probability peaks are the spots; position and flux from the
+  frame's own residual light). Trained offline (`navera_tools/field/starseg_train.py`, ~20 min on the Jetson GPU)
+  on 8 080 crops of sessions 1853/1902/1928 (every real pixel = not star) + synthetic stars (Gaussian/Moffat,
+  sigma 0.6-2.2 px, 0.3-150 DN, rounded to 8 bit). Held-out test session: 2300. Weights are not in git (rule):
+  `~/navera_models/starseg_v2.pth` (`NAVERA_STARSEG_WEIGHTS`).
+- `forcedcheck.StarlightGate` — "too cloudy / blocked": the SNR map read at the bright stars' pixels for every
+  heading about the prior's zenith (product starts with GPS), summed over the last 10 frames of a still camera,
+  against 6 wrong places. The field server now writes its reason on an unsolved still frame (`STARLIGHT_REASON`);
+  it never skips a solve and never touches a fix.
+- Benches: `cleanbench` (catalogue injected into the test frame AND its ring frames at their own times; random
+  points as control; real night), `starseg_eval` (recall vs amplitude, junk/frame), `realsky_pipelines` (real stars,
+  lost-in-space vs prior, every fix to a positions CSV).
+
+**Real stars, ESO MASCOT** (`realsky_pipelines`, same adapter and gate as 2026-10-21; frames include twilight;
+fixes lost-in-space / prior 10 km + 0.5 deg; wrong = > 50 km; network at p >= 0.99 unless noted):
+
+| Set (frames) | production detector | sky cleaning | network filter | network detector | wrong |
+|---|---|---|---|---|---|
+| MASCOT, 343 | 291 / 295 | 280 / 292 | — | — | 0 |
+| MASCOT, every 3rd (115) | 100 / 101 | 94 / 100 | v2 99, v3 98 | v2 104, v3 105 | 0 |
+| MASCOT cloudy nights, 168 | 81 / 87 | 71 / 82 | v2 81, v3 78 | **v2 123, v3 115** | 0 |
+| cloudy, shallow JPEG copy, 84 | 6 / 6 | 6 / 6 | v2 0, v3 5 | v2 1, v3 7 | 0 |
+| MASCOT, shallow JPEG copy, 58 | 22 / 24 | 22 / 24 | v2 5, v3 21 | v2 8, v3 22 | 0 |
+
+Star recall from the truth (catalogue <= mag 3.5 above 15 deg with a spot within 2 px): cloudy nights
+production 14 %, network detector 18 % (v3), filter 12 %; clear 42 % / 44 % (v2) / 36 %. The network detector's
+gain is in cloud and glow: +34 to +42 fixes of 168 on the cloudy nights (+40 % fixes), none wrong. The prior adds
+4-6 fixes over lost-in-space on the same spots (291 -> 295, 81 -> 87), none wrong.
+**v1 -> v2 -> v3 (real problems found by the archive):** v1 (faint synthetic stars only) dropped EVERY real MASCOT
+star in filter mode — it had learnt "a bright point is junk" from the lamps of the training frames; v2 (stars to
+150 DN) fixed that but dropped the stars of the JPEG copies (8 / 58 vs 22): a compressed star looked like codec junk;
+v3 (half the training stars JPEG re-encoded after being added) matches the production detector on the copies and
+keeps most of the cloudy-night gain.
+
+**Last night (no injection, the real test; 2026-10-29, 4 sessions incl. 03:00-05:30 and after the 03:42 re-tilt):**
+
+| Session (frames) | junk spots/frame: production / junk mask / cleaning / network filter / network detector | fixes | wrong |
+|---|---|---|---|
+| 1853 (22; network 8) | 19.0 / 12.2 / 19.0* / 2.0 / 7.6 | 0 | 0 |
+| 1902 (16; 6) | 16.5 / 7.9 / 16.5* / 2.7 / 7.5 | 0 | 0 |
+| 1928 (40; 10) | 62.3 / 61.7 / 38.7 / 0.9 / 3.3 | 0 | 0 |
+| 2300 (51; 20) — network held out | 12.7 / 3.2** / 12.5 / 3.5 / 10.6 | 0 | 0 |
+
+Every pipeline lost-in-space and prior. *ring not ready (session shorter than 6 min): frame unchanged.
+**the junk mask was built from 2300's own spots. 1853/1902/1928 are the network's training sessions.
+`sky_usable` flagged 23/40 frames of 1928 (lit room, glare) and none of 2300 — it does not see dark cloud.
+
+**Injected catalogue into real frames of 2300** (heading 100, peak A x 10^(-0.4 (mag - 3)), added to the test frame
+and its ring at their own times, 8-bit; 10 frames per A; fixes lost-in-space / prior; 0 wrong everywhere):
+
+| A (DN) | production | junk mask | cleaning | network filter (v2) | network detector (v2) |
+|---|---|---|---|---|---|
+| 0.75 | 0 / 0 | 0 / 0 | 0 / 0 | 0 / 0 | **10 / 10** |
+| 1.0 | 0 / 1 | 1 / 1 | 0 / 0 | 1 / 1 | **10 / 10** |
+| 1.25 | 2-3 / 8 | 8 / 8 | 1 / 7 | 8 / 8 | **10 / 10** |
+| 1.5 | 7 / 9 | 9 / 9 | 6 / 9 | 9 / 9 | 10 / 10 |
+| 2.0 | 10 / 10 | 10 / 10 | 10 / 10 | — | — |
+
+v3 (6 frames): network detector 6 / 6 at both 0.75 and 1.0 DN (production 0 / 0 and 0 / 1), filter 0 / 0 and 1 / 1;
+random-point control at 3 DN: 0 fixes.
+Control (the same number of points and amplitudes at random directions, turning with the sky; 1.5 and 3 DN, 10
+frames; v3: 3 DN, 6 frames): **0 fixes** for production, junk mask, cleaning, cleaning + mask, network filter and network detector.
+Caveat: the injected stars are the same kind of synthetic PSF the network was trained on, added after the codec;
+a real faint star passes H.264 first. The MASCOT JPEG copies are the real-PSF check of that, above.
+
+**Recall vs amplitude, held-out 2300** (`starseg_eval`, 30 frames, 1 200 random-place stars per amplitude,
+Gaussian/Moffat sigma 0.7-1.3 px; junk = spots above 12 deg on the frame without stars):
+
+| detector (v2) | junk/frame | 0.5 | 0.75 | 1 | 1.5 | 2 | 3 DN |
+|---|---|---|---|---|---|---|---|
+| production k = 6 | 12.5 | 0 % | 0 | 0 | 0 | 0 | 0 |
+| threshold k = 4 | 81 | 0 | 0 | 0 | 0 | 2 | 8 |
+| network p > 0.9 | 141 | 0 | 18 | 25 | 28 | 65 | 88 |
+| network p > 0.99 | 5.7 | 0 | 4 | 6 | 7 | 31 | 61 |
+| production + network filter p > 0.9 | 4.0 | 0 | 0 | 0 | 0 | 0 | 0 |
+
+v3 (JPEG-trained, 12 frames): production 14.0 junk/frame, 0 % everywhere; network p > 0.99 10.1 junk/frame,
+0 / 0 / 0 / 1 / 8 / 38 %; p > 0.9 167 junk/frame, 0 / 3 / 9 / 11 / 35 / 74 %; production + filter p > 0.99 3.5 junk/frame.
+v3 is more cautious than v2 on these clean synthetic stars and as good as the production detector on compressed
+real ones: the version to use for the H.264 camera.
+The production detector needs a peak of ~6 x the local noise (~6 DN here); the network at p >= 0.99 finds 61 % of
+3 DN and 31 % of 2 DN stars with fewer junk spots (5.7 vs 12.5 per frame).
+
+**Sky cleaning (temporal static-scene removal, cloud blocks): not useful.** Junk 12.7 -> 12.5 per frame on 2300
+(the camera-fixed junk flickers: it is in some frames only, so a median does not hold it; a 75th percentile took
+14.4 -> 12.8 and lost a fix), and it costs real stars: MASCOT 291 -> 280 and cloudy 81 -> 71 fixes lost-in-space
+(cloud blocks blank real stars; the gain fit is pulled by twilight). Kept as a tool, not for the live pipeline.
+
+**"Too cloudy / blocked" (StarlightGate):** last night 12/12 frames of 2300 "no starlight" (z 2.4-3.2 vs wrong
+places 3.3-4.0); the same frames with the catalogue at 1.5 DN: 0/12 flagged, z 15-47 at the injected heading 100.
+MASCOT, one frame at a time: opaque frames (truth transparency < 0.05) flagged 24/29 (clear nights) and 36/45
+(cloudy nights), clear frames (>= 0.2) 6/271 and 7/68 — but 5 + 17 flagged frames were solved by some pipeline
+(twilight, thin cloud). So it is a REASON, never a gate: the server still tries every solve.
+
+**Runtime / memory (Jetson Orin Nano, other jobs running):** production detector 0.8 s per frame (both lenses);
+network 11 s on the GPU (fp16, tiled, 2 x 2080 px circles), 95 s on the CPU; ~1.6 GB resident with CUDA;
+skyclean ~2.5 s and ~150 MB for the ring; StarlightGate ~2 s per frame. Training 20 min on the GPU.
+
+**Live pipeline — recommendation:**
+- In now (commit 7367c93): the starlight reason on unsolved still frames.
+- Network detector: worth it for cloud and glow (+40 % fixes on real cloudy skies; over the whole study 0 wrong in
+  6 348 real-sky solves (3 363 fixes) and 1 978 last-night solves (350 fixes, all on injected stars; 0 on the real
+  night and 0 in every random-point control)), but NOT live yet: 11 s per frame is above the 4 s solve cadence. Integration point:
+  `server.Field._solve360` -> `allsky.locate(..., spot_finder=starseg.finder(StarSeg(), "detect", 0.99))` on the
+  STOPPED frames only, as a second attempt when the production detector's solve fails (so it can only add
+  fixes that pass the same gate); needs TensorRT/ONNX fp16 (or 1/2-scale inference) first and a real-sky night with
+  the Insta360 (its own PSF through H.264) to confirm.
+- Sky cleaning and the network filter: no.
+- The camera-fixed junk mask (`fixedspots`) remains the best junk remover (12.7 -> 3.2 / frame) where it can be
+  built (fixed installation; a moving vehicle has no fixed scene but its own lens/frame junk).
+
+**Every fix** (archive and last night, incl. injected ones, labelled) is in
+the session scratchpad's `positions_for_user.csv` (tool, session, frame, utc, lat, lon, sigma_km, truth, err_km): none > 50 km.
+
 ### Celestial: field-test readiness fixes (2026-10-22)
 
 Problems B11, D8/D12, D11, F10, F14, F18, F19, F27 of the problems log, before the first real-sky drive

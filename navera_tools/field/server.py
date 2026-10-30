@@ -69,6 +69,11 @@ MOVING_ATTITUDE_SIGMA_DEG = 5.0
 # 0 = off until a real night shows the gain (live knob; autolab reports it, never applies it).
 STACK_SECONDS = 0.0
 STACK_MIN_FRAMES = 3
+# 360, not solved: is ANY starlight reaching the camera at the phone's sky (forcedcheck.StarlightGate over the last
+# frames of a still camera)? If not, the frame's 'why' says "too cloudy / blocked" first. It never skips a solve and
+# never touches a fix: on the ESO MASCOT archive it flagged 16/17 opaque frames and 5/127 clear ones (twilight), so
+# as a hard gate it would have lost fixes (2026-10-30). ~2 s per unsolved frame on the Jetson.
+STARLIGHT_REASON = True
 STOPPED_SOLVE_GAP_S = 4.0                            # 360: while stopped, a frame every 4 s (a solve takes ~1-5 s)
 PHONE_MOVING_MPS = 1.0                               # phone GPS speed above which the car is not stopped (GPS noise ~0.3 m/s)
 # lens focal length: searched once on the first identified frame, then kept. Both lenses were measured to 87 deg
@@ -498,6 +503,7 @@ class Field:
         self.usable_skies = ("clear", "hazy")       # the only skies whose stars count and are solved
         self.mode = "360" if hasattr(camera, "gravity") else "strip"
         self.cat = None                             # 360: bright-star catalogue, built on the first solve
+        self.starlight = None                       # 360: forcedcheck.StarlightGate (why an unsolved sky failed)
         self.f_scale = None                         # 360: lens focal length found by the first identified frame
         self.cal_samples: list = []                 # 360: (R_icrs_imu, up, true zenith) of stopped fixes with a reference
         self.tilt_cal: Optional[dict] = None        # 360: the fitted tilt of 'up' (see CAL_SAMPLES)
@@ -1141,11 +1147,36 @@ class Field:
             else:
                 rec["why"] = str(r.get("why") or "not solved")[:200]
                 rec.update({k: r[k] for k in ("matched", "rms_deg", "p_chance", "lens_disagree_deg", "f_scale") if k in r})
+                self._starlight_reason(rec, img, up, utc)
         except Exception as e:
             rec["why"] = f"solver error: {e!r}"[:200]
         finally:
             self.solving = False
             s.log("frames", rec)
+
+    def _starlight_reason(self, rec, img, up, utc):
+        """Unsolved 360 frame: the starlight test at the phone's position (the product's prior). Only rewrites the
+        'why' (and adds rec['starlight']); never raises."""
+        if not STARLIGHT_REASON:
+            return
+        try:
+            p = self.phone
+            if p.get("lat") is None or time.time() - self.phone_recv > 60.0:
+                return
+            if not rec.get("stopped", False):
+                if self.starlight is not None:
+                    self.starlight.reset()                       # the camera moved: its sky is not the same pixels
+                return
+            if self.starlight is None:
+                from navera_tools.field import forcedcheck, sky360
+                self.starlight = forcedcheck.StarlightGate(sky360.default_lenses())
+            v = self.starlight.add(img, up, utc, p["lat"], p["lon"])
+            rec["starlight"] = {k: v.get(k) for k in ("frames", "z", "z_null", "starlight")}
+            why = self.starlight.reason()
+            if why:
+                rec["why"] = (why + "; solver: " + rec.get("why", ""))[:300]
+        except Exception as e:
+            rec["starlight_error"] = repr(e)[:120]
 
     def _tilt_corrected(self, s, rec, r, up, utc, off):
         """The fix again with the learned tilt of 'up' removed (lat_cal/lon_cal), then this fix taken as a

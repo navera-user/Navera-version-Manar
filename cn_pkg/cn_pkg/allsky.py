@@ -86,16 +86,47 @@ class Catalogue:
         keep = mag <= limit_mag
         self.mag = mag[keep]
         self.vec = radec_to_vec(ra[keep], dec[keep])
+        self.names: List[str] = []                       # bodies added by with_planets (after the stars)
+        self.max_sep_deg = max_sep_deg
+        self._pairs()
+
+    def _pairs(self):
         n = len(self.vec)
         i, j = np.triu_indices(n, 1)
         sep = np.degrees(np.arccos(np.clip(np.einsum("ij,ij->i", self.vec[i], self.vec[j]), -1, 1)))
-        k = sep <= max_sep_deg
+        k = sep <= self.max_sep_deg
         order = np.argsort(sep[k])
         self.pair_i, self.pair_j, self.pair_sep = i[k][order], j[k][order], sep[k][order]
+
+    def with_planets(self, utc: str, lat: float, lon: float) -> "Catalogue":
+        """A copy with the bright planets above the horizon at (lat, lon) added as point sources, placed where a
+        star (ICRS, at infinity) would have to be to look the same from there at utc. Jupiter and Venus outshine
+        every star: left out, they are junk spots that take seed places. Offline (astropy's built-in ephemeris)."""
+        return _planets_cached(self, utc, (lat, lon))
 
     def pairs_near(self, sep_deg: float, tol_deg: float):
         lo, hi = np.searchsorted(self.pair_sep, [sep_deg - tol_deg, sep_deg + tol_deg])
         return self.pair_i[lo:hi], self.pair_j[lo:hi]
+
+
+PLANET_MAG = {"venus": -4.0, "jupiter": -2.2, "mars": 1.0, "saturn": 0.8}   # rough V, ordering only
+
+
+def planet_vectors(utc: str, lat: float, lon: float, min_alt_deg: float = -2.0) -> dict:
+    """{name: (ICRS-equivalent unit vector, rough magnitude)} of the bright planets above min_alt_deg at utc."""
+    import astropy.units as u
+    from astropy.coordinates import AltAz, EarthLocation, SkyCoord, get_body
+    from cn_pkg.nodes.celestial_math import obs_time
+    t = obs_time(utc)
+    loc = EarthLocation(lat=lat * u.deg, lon=lon * u.deg)
+    out = {}
+    for name, mag in PLANET_MAG.items():
+        c = get_body(name, t, loc)                                  # topocentric apparent place (GCRS)
+        if c.transform_to(AltAz(obstime=t, location=loc)).alt.deg < min_alt_deg:
+            continue
+        d = SkyCoord(c.ra, c.dec, frame=c.frame.replicate_without_data()).icrs   # as a star at infinity
+        out[name] = (radec_to_vec(d.ra.deg, d.dec.deg), mag)
+    return out
 
 
 NOISE_BLOCK = 32          # px: the noise is measured per block (sky glow, moon and clouds make it vary over the frame)
@@ -109,6 +140,7 @@ DETECT_K_SIGMA = 6.0      # a spot's peak above this many times the local noise
 LOCATE_MAX_SPOTS = 60     # brightest spots above LOCATE_MIN_ALT given to the identification
 LOCATE_MATCH_DEG = 0.5    # a spot and a catalogue star match within this angle
 LOCATE_MIN_ALT = 12.0     # deg above the horizon (ground, lamps, roofs below)
+LOCATE_PLANETS = True     # the bright planets join the catalogue (Catalogue.with_planets), recomputed every 10 min
 
 
 def detect_spots(gray: np.ndarray, lens: Lens, k_sigma: Optional[float] = None, max_spots: int = 120,
@@ -359,6 +391,126 @@ def identify(rays: np.ndarray, cat: Catalogue, n_seed: int = 16, tol_deg: float 
     return (R, ok, k, rms, p_chance) if with_p else (R, ok, k, rms)
 
 
+def _align(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+    """The smallest rotation R with R @ a = b (unit vectors, not opposite)."""
+    v, c = np.cross(a, b), float(a @ b)
+    K = np.array([[0.0, -v[2], v[1]], [v[2], 0.0, -v[0]], [-v[1], v[0], 0.0]])
+    return np.eye(3) + K + K @ K / (1.0 + c)
+
+
+# prior-aided identification (identify_prior): the vehicle always starts with GPS, so a rough position is known
+# (last GPS or last accepted fix, grown by the distance it may have flown since). With 'up' from the accelerometer
+# the zenith among the stars is then known to the prior's radius, and one star is enough to set the heading.
+PRIOR_N_SEED = 30           # brightest rays tried as the seed star
+PRIOR_ALT_TOL_DEG = 0.6     # a seed ray and its catalogue star differ in altitude by at most this (+ half the grid)
+PRIOR_GRID_DEG = 0.25       # zeniths tried over the prior's disc, this far apart
+PRIOR_MAX_RADIUS_DEG = 3.0  # beyond this (~330 km) the prior saves little: lost-in-space is used instead
+
+
+def _zenith_grid(z: np.ndarray, radius_deg: float, step_deg: float) -> np.ndarray:
+    """Unit vectors on a square grid (step_deg apart) covering the cap of radius_deg about z, z itself first."""
+    e1 = _unit(np.cross(z, [1.0, 0.0, 0.0]) if abs(z[0]) < 0.9 else np.cross(z, [0.0, 1.0, 0.0]))
+    e2 = np.cross(z, e1)
+    n = int(math.floor(radius_deg / step_deg))
+    out = [z]
+    for a in range(-n, n + 1):
+        for b in range(-n, n + 1):
+            if (a or b) and math.hypot(a, b) * step_deg <= radius_deg + 0.5 * step_deg:
+                t = np.radians(np.array([a, b]) * step_deg)
+                out.append(_unit(z + math.tan(t[0]) * e1 + math.tan(t[1]) * e2))
+    return np.array(out)
+
+
+def identify_prior(rays: np.ndarray, up: np.ndarray, z_prior: np.ndarray, radius_deg: float, cat: Catalogue,
+                   n_seed: Optional[int] = None, match_deg: float = 0.5, alt_tol_deg: Optional[float] = None,
+                   min_matches: int = 6):
+    """identify() with a position prior: (R IMU->ICRS, ray indices, catalogue indices, rms deg, chance p, n_hyp)
+    or None. No quality gate here: the caller applies accept().
+
+    rays: refraction-corrected unit rays (IMU frame), brightest first; up: 'up' in the IMU frame; z_prior: the
+    zenith (ICRS unit vector) of the prior position; radius_deg: how far the true zenith may be from it (prior
+    radius in degrees of arc, plus the error of 'up').
+
+    With 'up' known, a zenith sets the rotation except for the turn about it (heading). The prior's disc is
+    covered by a grid of zeniths PRIOR_GRID_DEG apart; at each, each of the n_seed brightest rays is paired with
+    every catalogue star whose altitude is within the grid's half-diagonal + alt_tol of the ray's: that pair sets
+    the heading, one hypothesis. The chance probability is a Bonferroni bound over every hypothesis tried, on the
+    matches of the hypothesis AS TRIED (before any fit: a free fit pulls junk in; the seed's own match not
+    counted). The best one is then refined freely (Wahba on all matches: the zenith comes from the stars, never
+    from the prior) and dropped if the refined zenith leaves the prior's disc.
+    """
+    from scipy.spatial import cKDTree
+    n_seed = PRIOR_N_SEED if n_seed is None else n_seed
+    alt_tol_deg = PRIOR_ALT_TOL_DEG if alt_tol_deg is None else alt_tol_deg
+    tree = getattr(cat, "_tree", None)
+    if tree is None:
+        tree = cat._tree = cKDTree(cat.vec)
+    up, z = _unit(np.asarray(up, float)), _unit(np.asarray(z_prior, float))
+    chord = 2 * math.sin(math.radians(match_deg) / 2)
+    win = PRIOR_GRID_DEG / math.sqrt(2.0) + alt_tol_deg
+    seeds = rays[:n_seed]
+    n_hyp, best = 0, None
+    for zc in _zenith_grid(z, radius_deg, PRIOR_GRID_DEG):
+        R0 = _align(up, zc)
+        U = seeds @ R0.T                                          # seed rays among the stars, heading unknown
+        alt_r = np.degrees(np.arcsin(np.clip(U @ zc, -1, 1)))
+        alt_c = np.degrees(np.arcsin(np.clip(cat.vec @ zc, -1, 1)))
+        e1 = _unit(np.cross(zc, [1.0, 0.0, 0.0]) if abs(zc[0]) < 0.9 else np.cross(zc, [0.0, 1.0, 0.0]))
+        e2 = np.cross(zc, e1)
+        az_c = np.arctan2(cat.vec @ e2, cat.vec @ e1)
+        az_r = np.arctan2(U @ e2, U @ e1)
+        order = np.argsort(alt_c)
+        lo = np.searchsorted(alt_c[order], alt_r - win)
+        hi = np.searchsorted(alt_c[order], alt_r + win)
+        si = np.concatenate([np.full(h - lo_, i) for i, (lo_, h) in enumerate(zip(lo, hi))]).astype(int)
+        if len(si) == 0:
+            continue
+        cj = np.concatenate([order[lo_:h] for lo_, h in zip(lo, hi)])
+        n_hyp += len(si)
+        psi = az_c[cj] - az_r[si]                                 # turn about zc taking seed si onto star cj
+        c, s = np.cos(psi), np.sin(psi)
+        K = np.array([[0.0, -zc[2], zc[1]], [zc[2], 0.0, -zc[0]], [-zc[1], zc[0], 0.0]])
+        Rs = (c[:, None, None] * np.eye(3) + s[:, None, None] * K + (1 - c)[:, None, None] * np.outer(zc, zc)) @ R0
+        d, _ = tree.query(np.einsum("mab,nb->mna", Rs, rays).reshape(-1, 3), distance_upper_bound=chord)
+        cnt = np.isfinite(d).reshape(len(Rs), len(rays)).sum(axis=1)
+        m = int(np.argmax(cnt))
+        if best is None or cnt[m] > best[0]:
+            best = (int(cnt[m]), Rs[m])
+    if best is None or best[0] < 3:
+        return None
+    n_tried, R = best
+    for _ in range(3):                                            # refine on every match
+        ok, k, _ = match(rays, R, tree, chord)
+        if len(ok) < 3:
+            return None
+        R = wahba(rays[ok], cat.vec[k])
+    if math.degrees(math.acos(max(-1.0, min(1.0, float((R @ up) @ z))))) > radius_deg + alt_tol_deg:
+        return None                                               # the stars put the zenith outside the prior
+    ok, k, d = match(rays, R, tree, chord)
+    if len(ok) < min_matches:
+        return None
+    rms = math.degrees(float(np.sqrt(np.mean((2 * np.arcsin(d / 2)) ** 2))))
+    # the bright stars are not spread evenly (Milky Way, Orion...): the chance uses the catalogue's density over
+    # the part of the sky the rays cover under this rotation, never less than its all-sky mean
+    cos_top = float(np.min(rays @ up))
+    n_local = int(np.count_nonzero(cat.vec @ (R @ up) >= cos_top))
+    density = max(1.0, n_local / max(1e-9, (1.0 - cos_top) / 2.0) / len(cat.vec))
+    p = chance_probability_prior(len(rays), n_tried, n_hyp, cat, match_deg, density)
+    return R, ok, k, rms, p, n_hyp
+
+
+def chance_probability_prior(n_rays: int, n_matched: int, n_hyp: float, cat: Catalogue, match_deg: float,
+                             density: float = 1.0) -> float:
+    """chance_probability for identify_prior: one seed ray matches by construction (lost-in-space: two).
+    density: the catalogue's star density where the rays fall, relative to its all-sky mean."""
+    from scipy.stats import binom
+    p = min(1.0, density * len(cat.vec) * (1.0 - math.cos(math.radians(match_deg))) / 2.0)
+    k, n = n_matched - 1, max(0, n_rays - 1)
+    if k <= 0:
+        return 1.0
+    return float(min(1.0, n_hyp * binom.sf(k - 1, n, p)))
+
+
 # 'up' is the accelerometer's mean: any vehicle acceleration tilts it (0.1 g = 5.7 degrees = 640 km). Its norm is
 # sqrt(1 + a^2) g, so a tolerance on the norm only catches a > ~sqrt(2 tol): 0.01 → braking/accelerating > 0.14 g.
 # Smaller accelerations (gentle speed changes) are NOT detectable from the accelerometer alone.
@@ -404,10 +556,35 @@ def accept(matched: int, rms_deg: float, p_chance: float, lens_disagree_deg: flo
     return None
 
 
+def _planets_cached(cat: Catalogue, utc: str, prior=None) -> Catalogue:
+    """cat.with_planets for utc, kept on cat for 10 minutes (the planets move ~0.01 deg among the stars in that
+    time). Without a prior the planets are placed for the geocentre: their parallax is a few arcsec."""
+    from cn_pkg.nodes.celestial_math import obs_time
+    lat, lon, min_alt = (float(prior[0]), float(prior[1]), -2.0) if prior is not None else (0.0, 0.0, -90.0)
+    key = (round(float(obs_time(utc).unix) / 600.0), round(lat), round(lon))
+    cache = cat.__dict__.setdefault("_planet_cache", {})
+    if key not in cache:
+        if len(cache) >= 8:
+            cache.clear()
+        import copy
+        planets = copy.copy(cat)
+        vecs, mags, names = [cat.vec], [cat.mag], []
+        for name, (v, m) in planet_vectors(utc, lat, lon, min_alt).items():
+            vecs.append(v[None, :])
+            mags.append(np.array([m]))
+            names.append(name)
+        planets.vec, planets.mag, planets.names = np.vstack(vecs), np.concatenate(mags), names
+        planets.__dict__.pop("_tree", None)
+        planets.__dict__.pop("_planet_cache", None)
+        planets._pairs()
+        cache[key] = planets
+    return cache[key]
+
+
 def locate(frame: np.ndarray, up_imu: np.ndarray, utc: str, cat: Catalogue,
            lenses: Optional[List[Lens]] = None, f_scales: Sequence[float] = (1.0,),
            min_alt: Optional[float] = None, max_spots: Optional[int] = None, match_deg: Optional[float] = None,
-           retry_spots: int = 25) -> dict:
+           retry_spots: int = 25, prior: Optional[Sequence[float]] = None, spot_finder=None) -> dict:
     """Latitude, longitude from the whole sky above the camera. f_scales: focal lengths to try
     (x each lens's f); the best one is reported so the caller can keep it.
 
@@ -416,6 +593,15 @@ def locate(frame: np.ndarray, up_imu: np.ndarray, utc: str, cat: Catalogue,
     the retry_spots brightest spots, when junk may have crowded the first attempt). sigma_fit_deg
     is the zenith's uncertainty from the star fit alone (residuals, the two lenses' disagreement);
     the caller adds the accelerometer's and the clock's.
+
+    prior: (lat, lon, radius_deg) - a rough position (last GPS or last fix) and how far the zenith may be from
+    it (position uncertainty plus the error of 'up', in degrees of arc). The identification then uses
+    identify_prior (far fewer hypotheses, so an honestly lower chance probability for the same stars); the
+    fix itself still comes from the stars only and passes the same gate. A radius above PRIOR_MAX_RADIUS_DEG
+    falls back to lost-in-space.
+
+    spot_finder: optional replacement for detect_spots with the same signature and output (e.g. the star
+    segmentation network, cn_pkg.starseg); it only chooses which spots are tried, every gate stays the same.
     """
     import cv2
     min_alt = LOCATE_MIN_ALT if min_alt is None else min_alt
@@ -430,7 +616,8 @@ def locate(frame: np.ndarray, up_imu: np.ndarray, utc: str, cat: Catalogue,
     spots = []
     for lens in lenses:
         st: dict = {}
-        spots += [(lens, s) for s in detect_spots(gray, lens, up_imu=up, min_alt=min_alt - margin, stats=st)]
+        find = spot_finder or detect_spots
+        spots += [(lens, s) for s in find(gray, lens, up_imu=up, min_alt=min_alt - margin, stats=st)]
         for k, v in st.items():
             rej[k] = rej.get(k, 0) + v
     out = {"solved": False, "spots": len(spots), "rejected_spots": rej}
@@ -461,12 +648,23 @@ def locate(frame: np.ndarray, up_imu: np.ndarray, utc: str, cat: Catalogue,
         tang = _unit(up - (rays @ up)[:, None] * rays)
         return _unit(rays * np.cos(drop)[:, None] - tang * np.sin(drop)[:, None]), sel
 
+    if LOCATE_PLANETS and not getattr(cat, "names", None) and hasattr(cat, "with_planets"):
+        cat = _planets_cached(cat, utc, prior)
+    z_prior = None
+    if prior is not None and prior[2] <= PRIOR_MAX_RADIUS_DEG:
+        from cn_pkg.allsky_mount import zenith_icrs
+        z_prior = zenith_icrs(float(prior[0]), float(prior[1]), utc)
+        out["prior_radius_deg"] = round(float(prior[2]), 3)
     best = None
     for fs in f_scales:
         rays, sel = rays_for(fs)
         if len(rays) < 3:
             continue
-        r = identify(rays, cat, match_deg=match_deg, with_p=True)
+        if z_prior is not None:
+            r = identify_prior(rays, up, z_prior, float(prior[2]), cat, match_deg=match_deg)
+            r = None if r is None else r[:5]
+        else:
+            r = identify(rays, cat, match_deg=match_deg, with_p=True)
         if r is not None and (best is None or (len(r[1]), -r[3]) > (len(best[1][1]), -best[1][3])):
             best = (fs, r, sel)
     if best is None:
@@ -543,10 +741,16 @@ def locate(frame: np.ndarray, up_imu: np.ndarray, utc: str, cat: Catalogue,
                sigma_fit_deg=round(sigma_fit, 4),
                matched_per_lens={lens.name: int((lens_of[sel[idx]] == li).sum()) for li, lens in enumerate(lenses)})
     why = accept(m, rms, p_chance, disagree)
+    if not why and z_prior is not None:
+        off = math.degrees(math.acos(max(-1.0, min(1.0, float((R @ up) @ z_prior)))))
+        out["prior_offset_deg"] = round(off, 3)
+        if off > float(prior[2]) + PRIOR_ALT_TOL_DEG:            # the stars disagree with the prior they were found in
+            why = f"zenith {off:.2f} deg from the prior (> {float(prior[2]) + PRIOR_ALT_TOL_DEG:.2f})"
     if why:
         out["why"] = "rejected: " + why
         if retry_spots and n_used > retry_spots:              # junk among the spots: try again on the brightest only
-            r2 = locate(frame, up_imu, utc, cat, lenses, f_scales, min_alt, retry_spots, match_deg, retry_spots=0)
+            r2 = locate(frame, up_imu, utc, cat, lenses, f_scales, min_alt, retry_spots, match_deg, retry_spots=0,
+                        prior=prior, spot_finder=spot_finder)
             if r2.get("solved"):
                 r2["retried_with"] = retry_spots
                 return r2
