@@ -1906,8 +1906,9 @@ at the exposure. The 2026-10-29 failure was the dating, not the matcher: the unk
 estimated (1.25 +- 0.24 s) but never applied (staged cap 65 m/s x 0.23 s > 10 m), every fix ~80 m behind,
 and the growth test then refused the GOOD GPS as a slow spoof when a turn rotated that lag (162 m in 25 s).
 Fixes: latency_cal applies a staged delay at least 3 of its sigmas from 0 (latency_partial_min_z);
-GpsDriftTrend takes out the velocity-shaped offset of a wrongly dated fix (gps_trend_dating_s 1 s; a slow
-spoof through turns still refused, synthetic 72-90 m instead of 42-72 m); the no-frame carry is dated
+GpsDriftTrend can take out the velocity-shaped offset of a wrongly dated fix (gps_trend_dating_s 1 s in these
+runs; a slow spoof through turns still refused, synthetic 72-90 m instead of 42-72 m; **release 0.8.0 ships it
+off (0)** until it is tied to the latency estimate's sigma); the no-frame carry is dated
 now - delay and never re-adds a used odometry step. Recovery after a turn (output back below 30 m for
 10 s): +2 to +42 s in p3/p4 (before: never). **Still open:** the remaining > 50 m outputs (1-7 % of the
 time, single spikes up to 160 m) are frames whose arrival came 0.5-2.2 s later than the learned delay

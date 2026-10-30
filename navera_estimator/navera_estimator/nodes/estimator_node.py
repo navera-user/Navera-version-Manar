@@ -118,7 +118,8 @@ Parameters:
     gps_trend_z (6.0), gps_trend_min_growth_sigmas (1.5), gps_trend_bias_rate_mps (0.2),
     gps_trend_min_jitter_m (3.0), gps_trend_min_fixes (6), gps_trend_confirm_n (3),
     gps_trend_windows_s ([8, 12, 16, 24, 32, 48, 64, 96, 128]),
-    gps_trend_dating_s (1.0: the velocity-shaped offset of a wrongly dated fix in a turn, taken out)
+    gps_trend_dating_s (0.0 = off; > 0: the velocity-shaped offset of a wrongly dated fix in a turn,
+                     taken out — stays off until tied to the latency estimate's sigma)
                      — see navera_common.gps_crosscheck.GpsDriftTrend
     gps_motion_enabled (default true), gps_motion_topic (/navera/vision/odometry), gps_motion_h (12),
     gps_motion_k (0.25), gps_motion_min_growth_m (12), gps_motion_bias_mps (0.5),
@@ -230,7 +231,9 @@ class EstimatorNode(Node):
         self.declare_parameter("gps_trend_min_fixes", 6)
         self.declare_parameter("gps_trend_confirm_n", 3)
         self.declare_parameter("gps_trend_windows_s", [8.0, 12.0, 16.0, 24.0, 32.0, 48.0, 64.0, 96.0, 128.0])
-        declare_float(self, "gps_trend_dating_s", 1.0,
+        # off by default: a fixed +-1 s lets the growth test absorb part of a slow spoof through
+        # turns; it stays off until it is tied to the latency estimate's sigma (latency_cal)
+        declare_float(self, "gps_trend_dating_s", 0.0,
                       "a vision fix's dating error the growth test takes out when the track turns (s, 0: off)")
         # slow spoofing: GPS displacement vs visual-odometry displacement (navera_common.GpsMotionCheck)
         self.declare_parameter("gps_motion_enabled", True)
