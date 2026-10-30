@@ -795,10 +795,10 @@ class NaveraWebBridge(Node):
                         else self.send_json(404, {"error": "tile not found"})
 
                 if path in ("", "/") and os.environ.get("NAVERA_PRODUCT_MODE") == "1":
-                    # the delivered box: the operator view first (the engineering page stays
-                    # at /navera.html)
+                    # the delivered box: mission preparation first (owner, 2026-10-30); the
+                    # operator view is one tap away; the engineering page stays at /navera.html
                     self.send_response(302)
-                    self.send_header("Location", "/operator")
+                    self.send_header("Location", "/mission")
                     self.send_header("Content-Length", "0")
                     self.end_headers()
                     return None
