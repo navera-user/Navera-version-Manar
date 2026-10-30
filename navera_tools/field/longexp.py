@@ -529,7 +529,10 @@ def ingest(paths: List[str], out: str, up: Optional[List[float]] = None, t_exp: 
         if "dark" not in st:
             raise ValueError(f"{p}: no pixels outside the circles for the dark level")
         name = f"still_{k:04d}"
-        cv2.imwrite(os.path.join(out, name + ".png"), to_8bit(g, st["dark"], max(st["noise"], 1e-3)))
+        # DNG: linear sensor units, stretched so its noise is ~1 DN; JPEG/INSP: already the camera's 8-bit DN (its
+        # compression can flatten the dark noise to 0 DN, measured on the stream: no stretch by that)
+        scale = max(st["noise"], 1e-3) if kind == "dng" else 1.0
+        cv2.imwrite(os.path.join(out, name + ".png"), to_8bit(g, st["dark"], scale))
         np.save(os.path.join(out, name + ".npy"), g.astype(np.float32))
         s = by_name.get(os.path.basename(p), {})
         row = {"image": name + ".png", "source": os.path.abspath(p), "kind": kind,
