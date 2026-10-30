@@ -102,3 +102,24 @@ def test_starlight_gate_blocks_noise_and_passes_stars():
         v = stars.add(g, up, utc, lat, lon)
     assert noise.reason() and "too cloudy / blocked" in noise.reason()
     assert v["starlight"] and stars.reason() is None and abs(v["heading_deg"] - 100.0) < 1.0
+
+
+def test_field_server_starlight_reason_rewrites_only_the_why():
+    """server.Field._starlight_reason (SYNTHETIC noise frames, still camera, fresh phone fix): after 3 unsolved
+    frames the 'why' starts with 'too cloudy / blocked'; moving or without a phone fix nothing changes."""
+    import time
+    from types import SimpleNamespace
+    from cn_pkg import sky360
+    from navera_tools.field import server as sv
+    up = sky360.default_lenses()[1].R_lens_imu.T @ np.array([0.0, 0.0, 1.0])
+    f = SimpleNamespace(phone={"lat": 35.83, "lon": 10.64}, phone_recv=time.time(), starlight=None)
+    rng = np.random.default_rng(6)
+    rec = {}
+    for _ in range(3):
+        rec = {"why": "no star pattern identified", "stopped": True}
+        sv.Field._starlight_reason(f, rec, (8.0 + rng.normal(0, 1.0, (1920, 3840))).astype(np.float32), up,
+                                   "2026-10-29 23:00:00")
+    assert rec["why"].startswith("too cloudy / blocked") and rec["why"].endswith("no star pattern identified")
+    moving = {"why": "x", "stopped": False}
+    sv.Field._starlight_reason(f, moving, np.zeros((1920, 3840), np.float32), up, "2026-10-29 23:00:00")
+    assert moving == {"why": "x", "stopped": False} and len(f.starlight.ring) == 0
