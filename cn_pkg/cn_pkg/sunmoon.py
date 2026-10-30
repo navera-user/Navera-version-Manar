@@ -44,17 +44,21 @@ MAX_RADIUS_DEG = 8.0       # a blob wider than this (sky through a window, white
 MIN_FILL = 0.55            # blob area / area of its fitted circle: a disc with bloom fills it, a window bar does not
 MIN_ALT_DEG = 3.0          # below this refraction and the horizon spoil the altitude
 GATE_SIGMA = 3.0
-# error budget (deg, 1 sigma). The tilt of 'up' (IMU at rest) 0.3 = the field server's attitude_sigma_deg; the lens
-# model's absolute ray direction (lens-to-IMU mounting, focal length: calibrated on a screen to 87 deg) and the
-# centre of a blooming disc: 0.6, from the real Moon below (0.3 before it: too small, 2.4 sigma off). Both common to
-# all frames of one mounting (bias); learnt with GPS while it is valid (fit_bias).
+# error budget (1 sigma). The errors of a sight are NOT one constant altitude bias (real Moon, 2026-10-30 night,
+# Sousse: intercept +0.34 deg at 81 deg altitude / azimuth 156, -0.5 at 70 / 251, -1.0 at 60 / 263, camera still).
+# They are modelled where they come from, each correlated across sights as the physics says:
+# - 'up' tilted (IMU bias, mounting): error = tilt . (the body's horizontal direction in the camera frame), SIGMA_UP_DEG
+#   per axis (the field server's attitude_sigma_deg);
+# - focal-length scale of the lens (screen-calibrated to 87 deg; the star solver searches f_scale 0.96-1.04):
+#   error = dalt/dscale x scale, SIGMA_FSCALE per lens;
+# - the centre of a blooming disc (halo vs clipped edge, phase): SIGMA_CENTRE_DEG common to all sights;
+# - what changes slowly (bloom as the sky brightens, thin cloud): SIGMA_DRIFT_DEG common within BIN_S;
+# - frame to frame (H.264, IMU noise): SIGMA_FRAME_DEG (real Moon: 0.2 deg frame to frame).
 SIGMA_UP_DEG = 0.3
-SIGMA_LENS_DEG = 0.6
-SIGMA_FRAME_DEG = 0.15     # per frame: IMU noise, H.264, cloud/glow on the halo (real Moon: 0.2 deg frame to frame)
-# errors that change slowly (bloom growing as the sky brightens, the body crossing the lens' radial error, cloud):
-# common to the sights of one BIN_S window. Measured on the real Moon of 2026-10-30 04:20-05:12 UTC (Sousse, 79 %
-# lit, through a window): altitude errors -0.40 .. -0.83 deg by 4-min window (halo fit), mean -0.64, frame-to-frame
-# scatter 0.2 deg. So: bias 0.67 deg (up 0.3 + lens/centroid 0.6), drift 0.2 deg per window.
+SIGMA_FSCALE = 0.015
+SIGMA_CENTRE_DEG = 0.3
+SIGMA_LENS_DEG = math.hypot(SIGMA_CENTRE_DEG, SIGMA_FSCALE * 40.0)   # a sight without its geometry: ~0.67 deg in all
+SIGMA_FRAME_DEG = 0.15
 SIGMA_DRIFT_DEG = 0.2
 BIN_S = 600.0
 BIAS_CHANGE_DEG = 0.3     # a bias learnt with GPS, later: the body has moved across the lens (measured 0.29)
@@ -430,6 +434,22 @@ class Sight:
     azimuth_deg: Optional[float] = None
     sigma_az_deg: Optional[float] = None
     disc: Optional[Disc] = field(default=None, repr=False)
+    horiz_imu: Optional[np.ndarray] = field(default=None, repr=False)   # the body's horizontal unit vector (IMU)
+    lens: Optional[str] = None
+    dalt_dfscale_deg: Optional[float] = None       # altitude change for a +1 (100 %) focal-length scale error
+
+
+def sight_geometry(ray, up, lens: Lens, x: float, y: float, sx: float = 1.0) -> Tuple[np.ndarray, float]:
+    """(horizontal unit vector of the ray in the IMU frame, d altitude / d focal scale in deg) of a disc at (x, y)."""
+    import copy
+    r, u = _unit(ray), _unit(up)
+    a = _unit(r - np.dot(r, u) * u)
+    L2 = copy.copy(lens)
+    L2.f = lens.f * 1.001
+    r2 = _ray(L2, x / sx, y / sx)
+    h1 = math.degrees(math.asin(float(np.clip(r @ u, -1, 1))))
+    h2 = math.degrees(math.asin(float(np.clip(r2 @ u, -1, 1))))
+    return a, (h2 - h1) / 0.001
 
 
 def azimuth_of(ray_imu: np.ndarray, up_imu, north_imu) -> float:
@@ -457,7 +477,7 @@ def sight_from_frame(gray: np.ndarray, up_imu, utc: str, prior: Tuple[float, flo
     if h_c < MIN_ALT_DEG - 1.0:
         rep["why"] = f"{body} below {MIN_ALT_DEG} deg at the prior ({h_c:.1f})"
         return None, rep
-    sb = math.hypot(SIGMA_UP_DEG, SIGMA_LENS_DEG) if sigma_bias_deg is None else sigma_bias_deg
+    sb = math.hypot(SIGMA_UP_DEG, SIGMA_LENS_DEG) if sigma_bias_deg is None else sigma_bias_deg   # gate only
     discs = detect_discs(gray, up_imu, lenses, ref_width=ref_width)
     pf = (pressure_hpa / 1010.0) * (283.0 / (273.0 + temp_c))   # refraction scales with the air's density
     for d in discs:
@@ -497,10 +517,12 @@ def sight_from_frame(gray: np.ndarray, up_imu, utc: str, prior: Tuple[float, flo
     d.alt_deg = d.alt_app_deg - refraction_deg(d.alt_app_deg) * pf
     if body == "moon":
         rep["moon_lit"] = round(frac, 3)
+    a_h, g = sight_geometry(d.ray, up_imu, lens, d.x, d.y, gray.shape[1] / ref_width)
     s = Sight(body, utc, d.alt_deg, math.hypot(SIGMA_FRAME_DEG, d.centroid_sigma_px * d.deg_per_px), az,
-              sigma_heading_deg if az is not None else None, d)
+              sigma_heading_deg if az is not None else None, d, a_h, d.lens, g)
     rep.update(alt_meas=round(d.alt_deg, 3), intercept_deg=round(d.alt_deg - h_c, 3), method=d.method,
-               radius_px=round(d.radius_px, 2), centroid_sigma_px=round(d.centroid_sigma_px, 2))
+               radius_px=round(d.radius_px, 2), centroid_sigma_px=round(d.centroid_sigma_px, 2),
+               dalt_dfscale_deg=round(g, 2), lens=d.lens, horiz_imu=[round(float(v), 5) for v in a_h])
     return s, rep
 
 
@@ -531,14 +553,35 @@ class Fix:
         return float(math.sqrt(v @ np.linalg.solve(self.cov_km2, v)))
 
 
+def altitude_covariance(alts: List[Sight], sigma_common_deg: float, sigma_drift_deg: float, same_bin: np.ndarray,
+                        sigma_up_deg: float = SIGMA_UP_DEG, sigma_fscale: float = SIGMA_FSCALE) -> np.ndarray:
+    """Covariance (deg^2) of the altitude errors of sights: frame + common centre bias + drift per window + tilt of
+    'up' (tilt . horizontal directions, in the camera frame) + focal scale per lens (dalt/dscale products). A sight
+    without its geometry gets the tilt and focal parts as common (conservative)."""
+    n = len(alts)
+    R = np.diag([s.sigma_frame_deg ** 2 for s in alts]) + sigma_common_deg ** 2 * np.ones((n, n))
+    R += sigma_drift_deg ** 2 * (same_bin[:, None] == same_bin[None, :])
+    geo = [s.horiz_imu is not None and s.dalt_dfscale_deg is not None for s in alts]
+    if all(geo):
+        A = np.array([s.horiz_imu for s in alts], float)
+        R += sigma_up_deg ** 2 * (A @ A.T)
+        g = np.array([s.dalt_dfscale_deg for s in alts], float)
+        same_lens = np.array([[a.lens == b.lens for b in alts] for a in alts])
+        R += sigma_fscale ** 2 * np.outer(g, g) * same_lens
+    else:
+        R += (sigma_up_deg ** 2 + (sigma_fscale * 40.0) ** 2) * np.ones((n, n))
+    return R
+
+
 def fuse(sights: List[Sight], prior: Tuple[float, float, float], sigma_bias_deg: Optional[float] = None,
-         iters: int = 6, p_min: float = 1e-3, sigma_drift_deg: float = SIGMA_DRIFT_DEG) -> Fix:
+         iters: int = 6, p_min: float = 1e-3, sigma_drift_deg: float = SIGMA_DRIFT_DEG,
+         sigma_up_deg: float = SIGMA_UP_DEG, sigma_fscale: float = SIGMA_FSCALE) -> Fix:
     """Position from altitude (and azimuth) sights + the prior (lat, lon, 1-sigma km), generalized least squares.
     The altitude errors: sigma_bias_deg common to all sights (mounting / 'up' bias), sigma_drift_deg common to the
     sights of one BIN_S window, and each sight's own part: many frames of one window count about as one sight."""
     from scipy.stats import chi2 as chi2_dist
     lat0, lon0, sp = prior
-    sb = math.hypot(SIGMA_UP_DEG, SIGMA_LENS_DEG) if sigma_bias_deg is None else sigma_bias_deg
+    sb = SIGMA_CENTRE_DEG if sigma_bias_deg is None else sigma_bias_deg
     alts = [s for s in sights if s.alt_deg is not None]
     azs = [s for s in sights if s.azimuth_deg is not None]
     if not alts:
@@ -546,8 +589,7 @@ def fuse(sights: List[Sight], prior: Tuple[float, float, float], sigma_bias_deg:
     na = len(alts)
     t = np.array([_utc_seconds(s.utc) for s in alts])
     same_bin = np.floor((t - t.min()) / BIN_S)
-    R = (np.diag([s.sigma_frame_deg ** 2 for s in alts]) + sb ** 2 * np.ones((na, na))
-         + sigma_drift_deg ** 2 * (same_bin[:, None] == same_bin[None, :]))
+    R = altitude_covariance(alts, sb, sigma_drift_deg, same_bin, sigma_up_deg, sigma_fscale)
     Raz = np.diag([s.sigma_az_deg ** 2 for s in azs]) if azs else np.zeros((0, 0))
     W = np.linalg.inv(np.block([[R, np.zeros((na, len(azs)))], [np.zeros((len(azs), na)), Raz]]))
     x = np.zeros(2)                                        # (north, east) km from the prior
@@ -595,21 +637,44 @@ def _utc_seconds(utc: str) -> float:
     return datetime.strptime(utc, fmt).replace(tzinfo=timezone.utc).timestamp()
 
 
-def fit_bias(sights: List[Sight], lat: float, lon: float) -> Tuple[float, float]:
-    """While GPS is valid: the mean altitude error (measured - ephemeris at the GPS place) and its standard error
-    (window means, BIN_S apart, as independent samples) grown by BIAS_CHANGE_DEG. Subtract it from later sights'
-    altitudes and pass the sigma as fuse(sigma_bias_deg=...)."""
-    if not sights:
-        return 0.0, float("inf")
-    by_bin: dict = {}
-    t0 = min(_utc_seconds(s.utc) for s in sights)
+def fit_errors(sights: List[Sight], lat: float, lon: float) -> dict:
+    """While GPS is valid: the sights' systematic errors against the ephemeris at the GPS place, by generalized least
+    squares with the error model's priors: common centre bias (deg), tilt of 'up' (IMU-frame vector, deg) and the
+    focal scale of each lens. Returns {"bias", "tilt", "fscale": {lens: s}, "n"}; correct() applies it."""
+    alts = [s for s in sights if s.horiz_imu is not None and s.dalt_dfscale_deg is not None]
+    lenses = sorted({s.lens for s in alts})
+    if not alts:
+        return {"bias": 0.0, "tilt": [0.0, 0.0, 0.0], "fscale": {}, "n": 0}
+    n, k = len(alts), 4 + len(lenses)
+    J = np.zeros((n, k))
+    r = np.zeros(n)
+    for i, s in enumerate(alts):
+        J[i, 0] = 1.0
+        J[i, 1:4] = np.asarray(s.horiz_imu, float)          # alt error (deg) = tilt (deg) . horizontal unit
+        J[i, 4 + lenses.index(s.lens)] = s.dalt_dfscale_deg
+        r[i] = s.alt_deg - body_place(s.body, s.utc).altaz(lat, lon)[0]
+    t = np.array([_utc_seconds(s.utc) for s in alts])
+    Rn = np.diag([s.sigma_frame_deg ** 2 for s in alts]) + SIGMA_DRIFT_DEG ** 2 * (
+        np.floor((t - t.min()) / BIN_S)[:, None] == np.floor((t - t.min()) / BIN_S)[None, :])
+    P = np.diag([1 / SIGMA_CENTRE_DEG ** 2] + [1 / SIGMA_UP_DEG ** 2] * 3 + [1 / SIGMA_FSCALE ** 2] * len(lenses))
+    W = np.linalg.inv(Rn)
+    x = np.linalg.solve(J.T @ W @ J + P, J.T @ W @ r)
+    return {"bias": float(x[0]), "tilt": [float(v) for v in x[1:4]],
+            "fscale": {L: float(x[4 + j]) for j, L in enumerate(lenses)}, "n": n}
+
+
+def correct(sights: List[Sight], err: dict) -> List[Sight]:
+    """Sights with fit_errors' systematic errors removed (fuse them with the smaller *_AFTER_FIT sigmas)."""
+    out = []
     for s in sights:
-        k = int((_utc_seconds(s.utc) - t0) // BIN_S)
-        by_bin.setdefault(k, []).append(s.alt_deg - body_place(s.body, s.utc).altaz(lat, lon)[0])
-    means = np.array([np.mean(v) for v in by_bin.values()])
-    se = SIGMA_DRIFT_DEG / math.sqrt(len(means))
-    # the bias moves as the body crosses the lens (real Moon: -0.45 learnt, -0.29 left 15-50 min later)
-    return float(means.mean()), float(math.hypot(se, BIAS_CHANGE_DEG))
+        c = err["bias"]
+        if s.horiz_imu is not None:
+            c += float(np.dot(err["tilt"], s.horiz_imu))
+        if s.dalt_dfscale_deg is not None and s.lens in err["fscale"]:
+            c += err["fscale"][s.lens] * s.dalt_dfscale_deg
+        out.append(Sight(s.body, s.utc, s.alt_deg - c, s.sigma_frame_deg, s.azimuth_deg, s.sigma_az_deg, s.disc,
+                         s.horiz_imu, s.lens, s.dalt_dfscale_deg))
+    return out
 
 
 def expected_sigma_km(sigma_up_deg: float = SIGMA_UP_DEG, sigma_lens_deg: float = SIGMA_LENS_DEG,

@@ -106,7 +106,7 @@ def test_running_fix_crosses_lines_and_stays_honest():
     for utc in ("2026-10-30 08:00:00", "2026-10-30 11:00:00", "2026-10-30 14:00:00"):
         sights.append(sm.Sight("sun", utc, sm.body_place("sun", utc).altaz(*truth)[0], 0.05))
     prior = (*sm.offset_latlon(*truth, 120.0, -90.0), 200.0)
-    f = sm.fuse(sights, prior, sigma_bias_deg=0.05, sigma_drift_deg=0.05)
+    f = sm.fuse(sights, prior, sigma_bias_deg=0.05, sigma_drift_deg=0.05, sigma_up_deg=0.05, sigma_fscale=0.001)
     assert f.accepted and sm.distance_km(f.lat, f.lon, *truth) < 3 * f.sigma_major_km < 60
     # an altitude bias of 0.5 deg common to all: inside the default (bias-aware) sigma
     biased = [sm.Sight(s.body, s.utc, s.alt_deg + 0.5, 0.05) for s in sights]
@@ -125,9 +125,35 @@ def test_fused_lamp_at_constant_altitude_is_refused():
     assert not f.accepted
 
 
-def test_fit_bias():
+def _geo_sights(truth, tilt, fscale, bias=0.0, n=12):
+    """Exact Moon altitudes over 3 h with a camera-frame tilt of 'up', a focal scale error and a bias added."""
+    out = []
+    up = np.array([0.0, -1.0, 0.0])
+    R = sv.pose(up, 30.0)
+    for k in range(n):
+        utc = f"2026-10-30 {2 + k // 4:02d}:{(k % 4) * 15:02d}:00"
+        h, az, _ = sm.body_place("moon", utc).altaz(*truth)
+        ray = R @ sv.enu_vec(h, az)
+        a = sm._unit(ray - np.dot(ray, up) * up)
+        g = -20.0 * (90.0 - h) / 45.0                       # roughly what the lens gives (deg per unit scale)
+        out.append(sm.Sight("moon", utc, h + bias + float(np.dot(tilt, a)) + fscale * g, 0.05, horiz_imu=a,
+                            lens="right", dalt_dfscale_deg=g))
+    return out
+
+
+def test_crossing_lines_with_a_tilt_stay_within_sigma():
+    """A 0.6 deg tilt of 'up' and a 2 % focal error over a night (the body sweeps 100 deg of azimuth): the
+    physical error model keeps the fix within 3 sigma, where a constant-bias model would not."""
     truth = SOUSSE
-    sights = [sm.Sight("moon", f"2026-10-30 04:{m:02d}:00", sm.body_place("moon", f"2026-10-30 04:{m:02d}:00")
-                       .altaz(*truth)[0] - 0.6, 0.1) for m in range(0, 50, 5)]
-    b, sig = sm.fit_bias(sights, *truth)
-    assert abs(b + 0.6) < 1e-6 and sm.BIAS_CHANGE_DEG <= sig < 0.4
+    sights = _geo_sights(truth, np.array([0.6, 0.0, 0.3]), 0.02, bias=0.2)
+    prior = (*sm.offset_latlon(*truth, 100.0, 100.0), 300.0)
+    f = sm.fuse(sights, prior)
+    assert f.accepted and f.mahalanobis(*truth) < 3, (f.mahalanobis(*truth), sm.distance_km(f.lat, f.lon, *truth))
+
+
+def test_fit_errors_recovers_the_systematics():
+    truth = SOUSSE
+    sights = _geo_sights(truth, np.array([0.3, 0.0, 0.2]), 0.01, bias=0.2, n=16)
+    err = sm.fit_errors(sights, *truth)
+    res = [s.alt_deg - sm.body_place("moon", s.utc).altaz(*truth)[0] for s in sm.correct(sights, err)]
+    assert np.sqrt(np.mean(np.square(res))) < 0.1
