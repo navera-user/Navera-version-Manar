@@ -477,13 +477,16 @@ def sight_from_frame(gray: np.ndarray, up_imu, utc: str, prior: Tuple[float, flo
     place = body_place(body, utc)
     h_c, az_c, _ = place.altaz(lat, lon)
     rep.update(body=body, alt_pred=round(h_c, 3), az_pred=round(az_c, 2))
-    if h_c < MIN_ALT_DEG - 1.0:
-        rep["why"] = f"{body} below {MIN_ALT_DEG} deg at the prior ({h_c:.1f})"
+    sb = math.hypot(SIGMA_UP_DEG, SIGMA_LENS_DEG) if sigma_bias_deg is None else sigma_bias_deg   # gate only
+    gate0 = GATE_SIGMA * math.hypot(math.hypot(sb, SIGMA_FRAME_DEG, SIGMA_DRIFT_DEG), sig_km / KM_PER_DEG)
+    if h_c - gate0 < MIN_ALT_DEG:
+        # the body may be under the detection floor: a lamp or a lit window in the gate would be taken for it
+        # (synthetic: the Moon at 10.3 deg, a light at 15.3 deg accepted, 4.9 deg off)
+        rep["why"] = f"{body} at {h_c:.1f} deg: may be below the {MIN_ALT_DEG:g} deg floor within the gate"
         return None, rep
     if body == "moon" and place.illuminated_fraction() < MOON_MIN_LIT:
         rep["why"] = f"Moon only {place.illuminated_fraction():.0%} lit (< {MOON_MIN_LIT:.0%})"
         return None, rep
-    sb = math.hypot(SIGMA_UP_DEG, SIGMA_LENS_DEG) if sigma_bias_deg is None else sigma_bias_deg   # gate only
     discs = detect_discs(gray, up_imu, lenses, ref_width=ref_width)
     pf = (pressure_hpa / 1010.0) * (283.0 / (273.0 + temp_c))   # refraction scales with the air's density
     for d in discs:
