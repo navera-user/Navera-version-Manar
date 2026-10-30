@@ -969,16 +969,25 @@ NAVERA_NMEA_PROTOCOL=ubx
 ```
 
 NAVERA then appears as a u-blox M8 GPS module (NAV-PVT and the older NAV-POSLLH / SOL /
-VELNED / STATUS / DOP). It acknowledges the flight controller's configuration messages and follows a
-baud-rate change it asks for. Unlike NMEA, UBX carries the accuracy, so vision positions go out under
+VELNED / STATUS / DOP; a message the flight controller turns off is no longer sent). It answers the
+flight controller's configuration as an M8 does: every CFG message acknowledged, the configuration
+polls (CFG-PRT, -MSG, -RATE, -NAV5, -SBAS, -GNSS, -TP5, MON-VER, MON-GNSS, NAV-SVINFO) answered with
+the value last set, CFG-VALSET / VALGET (newer receivers only) refused, and a baud-rate change
+followed. Unlike NMEA, UBX carries the accuracy, so vision positions go out under
 `NAVERA_FORWARD_DEGRADED` with their own stated accuracy, as over MAVLink. A vision position carries
 the last GPS height with its vertical accuracy marked unknown, so the flight controller must take
-its height from the barometer. It reports 0 satellites (`NAVERA_UBX_ESTIMATED_SATELLITES` to change).
+its height from the barometer. It reports 0 satellites (`NAVERA_UBX_ESTIMATED_SATELLITES` to change:
+a made-up count; the accuracy fields remain the honest statement).
 
-| Flight controller | Status |
-|---|---|
-| ArduPilot 4.5 (`GPS_TYPE = 2`) | **verified in SITL** with ArduPilot's own u-blox driver: detected as u-blox, 3D fix, the vision accuracy (25 m) read as stated. Needs `GPS_AUTO_CONFIG = 0` (with 1, the EKF waits for configuration answers NAVERA does not give). MAVLink (5.2) stays the recommended link |
-| PX4, INAV, Betaflight | **built for their u-blox drivers, not yet tested** on these firmwares. PX4: set the GPS port baud (`SER_GPSn_BAUD`) to NAVERA's. INAV / Betaflight refuse a position with fewer satellites than `gps_min_sats` / `gps_rescue_min_sats`, and they also need attitude and barometric height from the flight controller, which NAVERA reads over MAVLink only (INAV's MAVLink telemetry; Betaflight's is limited) or from a box IMU |
+Tested in simulation (SITL) only, with each firmware's own u-blox driver, 2026-10-30. Not on a real
+flight controller.
+
+| Flight controller | Detected / 3D fix | Uses the position | Accuracy | Settings needed |
+|---|---|---|---|---|
+| ArduPilot Copter-4.5.7 (`GPS_TYPE = 2`) | yes / yes, also with the default `GPS_AUTO_CONFIG = 1` (configured and saved ~45 s after power-up) | EKF3 "is using GPS" ~53 s after power-up; arms | **respected**: EKF3 weights by hAcc. A 20 m jump at 1.5 m accuracy is rejected as a glitch; at 25 m it is fused slowly (11 m in 25 s) | none for the fix. A vision position alone (25 m, 0 satellites) does not pass the pre-arm / origin GPS checks: start on a GNSS fix (the normal case). Set `GPS_DELAY_MS` to NAVERA's real delay (ArduPilot assumes 120 ms for an M8). MAVLink (5.2) stays the recommended link |
+| PX4 v1.15.4 (`GPS_1_CONFIG`, real `gps` driver) | yes / yes (protocol 18 module "NAVERA", M8 path) | EKF2 fuses it (`cs_gps`) | **respected**: a 20 m jump at 25 m accuracy is fused over ~15 s, no reset; eph grows 0.4 → 2.7 m | with the default `EKF2_GPS_CHECK` (245) EKF2 **stops** using a vision position (fewer than `EKF2_REQ_NSATS`, accuracy above `EKF2_REQ_EPH` / `EKF2_REQ_SACC`). `EKF2_GPS_CHECK = 224` (satellite, horizontal and speed accuracy checks off) keeps it, verified. PX4 restarts its GPS driver after 0.5 s without a position: keep the UBX output at ≥ 3 Hz |
+| INAV 7.1.2 (`gps_provider = UBLOX`) | yes / yes, its auto-configuration completes, no timeouts | not measured in SITL (no simulator attached) | read (eph 25 m) but **only as a gate**: the estimator ignores GPS while eph ≥ `inav_max_eph_epv` (default 10 m, max 99.99 m); its fusion weight is fixed | `NAVERA_UBX_ESTIMATED_SATELLITES` ≥ `gps_min_sats` (5–10, default 6) or INAV has no GPS fix; `inav_max_eph_epv` above NAVERA's accuracy. Attitude and baro: INAV's own IMU and baro (it takes a baro over MSP, `MSP2_SENSOR_BAROMETER`, not an attitude) |
+| Betaflight 4.5.1 (`gps_provider = UBLOX`) | yes / yes (MON-VER answered, GPS_FIX state set, 12 satellites read); its auto-configuration not seen to run in SITL | position only for GPS Rescue / OSD | **not used**: hAcc is read but nothing uses it | `NAVERA_UBX_ESTIMATED_SATELLITES` ≥ `gps_rescue_min_sats` (default 8, min 5) or arming is blocked (GPS Rescue). Betaflight takes no attitude or baro from outside (only a GPS over MSP): its own IMU / baro. The Betaflight SITL is unreliable here (GPS needs a non-default build; TCP ports crash or stall) |
 
 ### 5.6 PX4
 
