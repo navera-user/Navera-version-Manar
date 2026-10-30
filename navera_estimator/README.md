@@ -21,6 +21,7 @@ health, reason). Rules: [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md) §3.
 | `map_edge_warn_m` | 500 | closer to the edge than this: NEAR_EDGE (the camera footprint at 250 m with a 100° lens is ~600 m wide) |
 | `map_hold_s` | 60 | the last published position keeps the flag this long, so NO_FIX past the edge still says OUTSIDE |
 | `gps_crosscheck_sigmas`, `gps_crosscheck_persist_s` | 5, 3 | size rules: a trusted GPS disagreeing with an independent fix of stated accuracy beyond 5 sigma + margin for 3 s, or beyond 3 sigma at 5 fixes in a row, is refused (`navera_common.gps_crosscheck`) |
+| `gps_unchecked_warn_s` | 60 | while GPS is the output and a vision / celestial source runs, no fix of stated accuracy has cross-checked GPS for this long (sea, uniform ground): the status reason says "GPS not cross-checked for N s", since a slow spoof would not be seen (D1). Report only; 0 = off |
 | `gps_trend_enabled` | true | growth test (slow spoofing, `GpsDriftTrend`): the GPS - fix offset (vector, GPS interpolated at the fix's instant) GROWING steadily, not its size |
 | `gps_trend_z` | 6 | growth needed in units of the noise the fixes show (80th-percentile jitter around the trend) |
 | `gps_trend_min_growth_sigmas` | 1.5 | growth needed in units of the combined stated sigma (vision and GPS): a change inside the stated accuracy never refuses |

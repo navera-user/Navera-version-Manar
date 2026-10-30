@@ -297,3 +297,44 @@ def test_an_old_gps_gate_state_is_not_read_back(tmp_path):
         assert n._gps_suspect is None and n._gps_trusted is None
     finally:
         n.destroy_node()
+
+
+def test_gps_not_cross_checked_over_sea_is_said_after_the_limit(node):
+    """D1: no vision fix of stated accuracy for gps_unchecked_warn_s while vision runs: said."""
+    t0 = node.get_clock().now()
+    node._indep_heard_at = None
+    node._last_ref_at = t0
+    node._day_last = None
+    node._night_last = None
+    node._cn_last = None
+    assert node._unchecked_note(t0 + Duration(seconds=600.0)) == ""      # no vision at all: silent
+    node._day_last = _msg(node, PositionEstimate.SOURCE_DAY_VISION)      # vision runs, no sigma
+    assert node._unchecked_note(t0) == ""                                # first heard now
+    assert node._unchecked_note(t0 + Duration(seconds=59.0)) == ""
+    note = node._unchecked_note(t0 + Duration(seconds=61.0))
+    assert "not cross-checked for 61 s" in note and "slow spoof" in note
+    node._last_ref_at = t0 + Duration(seconds=61.0)                      # a cross-check happened
+    assert node._unchecked_note(t0 + Duration(seconds=62.0)) == ""
+    node._unchecked_warn_s = 0.0                                         # off
+    assert node._unchecked_note(t0 + Duration(seconds=600.0)) == ""
+    node._unchecked_warn_s = 60.0
+    node._day_last, node._indep_heard_at = None, None
+
+
+def test_gps_output_reason_carries_the_unchecked_note(node):
+    """D1: the note reaches the published status reason of a GPS output, the GPS rules unchanged."""
+    node._gps_trusted, node._gps_suspect, node._gps_doubt = None, None, None
+    node._trusted_hist.clear()
+    node._day_last = _msg(node, PositionEstimate.SOURCE_DAY_VISION)      # vision runs, unknown sigma
+    node._indep_heard_at = node.get_clock().now() - Duration(seconds=120.0)
+    node._last_ref_at = node._indep_heard_at
+    seen = []
+    pub = node.pub_status.publish
+    node.pub_status.publish = lambda s: seen.append(s)
+    try:
+        node._on_gps(_msg(node, PositionEstimate.SOURCE_GPS, sigma=2.0))
+    finally:
+        node.pub_status.publish = pub
+    assert seen and seen[-1].active_source == PositionEstimate.SOURCE_GPS
+    assert "not cross-checked" in seen[-1].reason and not seen[-1].gps_refused
+    node._day_last, node._indep_heard_at = None, None

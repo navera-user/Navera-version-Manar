@@ -130,6 +130,10 @@ Parameters:
                      still says OUTSIDE). Reported only; NAVERA never acts on the vehicle.
     map_edge_warn_m (default 500.0) — closer to the map's edge than this: MAP_AREA_NEAR_EDGE
     map_hold_s      (default 60.0)
+    gps_unchecked_warn_s (default 60.0, 0 = off) — while GPS is the output and a vision /
+                     celestial source runs, no fix of stated accuracy has cross-checked GPS for
+                     this long (sea, uniform ground): the status reason says so, because a slow
+                     spoof would not be seen (D1). Report only: the GPS rules do not change.
 """
 import copy
 import json
@@ -251,6 +255,8 @@ class EstimatorNode(Node):
         declare_float(self, "map_hold_s", 60.0, "the last position keeps the map flag this long (s)")
         # a restart reads back the GPS gate's state (refusal, last trusted fix) saved this recently
         declare_float(self, "gps_state_memory_s", 600.0)
+        declare_float(self, "gps_unchecked_warn_s", 60.0,
+                      "GPS output without an independent cross-check this long: said in the reason (s)")
         rate = float(self.get_parameter("publish_rate_hz").value)
         if rate <= 0.0:
             raise ValueError(f"publish_rate_hz must be > 0 (got {rate})")
@@ -293,6 +299,8 @@ class EstimatorNode(Node):
         self._last_day_fix_ns = None
         self._confirm_needed_since: Optional[Time] = None  # refused by the cross-check
         self._last_ref_at = Time(seconds=0, clock_type=self.get_clock().clock_type)
+        self._unchecked_warn_s = float(self.get_parameter("gps_unchecked_warn_s").value)
+        self._indep_heard_at: Optional[Time] = None    # first vision / celestial message (D1)
         # (stamp ns, lat, lon) of received GPS fixes: 200 cover the odometry steps (up to ~5 s old when
         # they arrive) at 20 Hz GPS
         self._gps_hist = deque(maxlen=200)
@@ -881,6 +889,8 @@ class EstimatorNode(Node):
             if winner.source == PositionEstimate.SOURCE_GPS and self._gps_doubt:
                 reason = (f"{reason} — GPS IN DOUBT: {self._gps_doubt[1]} disagrees by "
                           f"{self._gps_doubt[0]:.0f} m{self._gps_doubt[2]} (possible slow spoofing)")
+            if winner.source == PositionEstimate.SOURCE_GPS and not self._gps_doubt:
+                reason += self._unchecked_note(now)
             if winner.source != PositionEstimate.SOURCE_GPS and gps_alive and self._gps_suspect:
                 # The operator must see WHY GPS is not used while it is still talking.
                 reason = f"{reason} — GPS refused: {self._gps_suspect}"
@@ -901,6 +911,25 @@ class EstimatorNode(Node):
             if key != self._last_published_key:
                 self._last_published_key = key
                 self._publish_position(now, winner)
+
+    def _unchecked_note(self, now: Time) -> str:
+        """D1: how long GPS has gone without an independent cross-check, when that is long.
+
+        Over sea or uniform ground vision gives no fix of stated accuracy, so neither the size
+        rules nor the growth test can see a slow spoof. Said only while a vision / celestial
+        source runs (counted from its first message) and after gps_unchecked_warn_s; empty
+        otherwise. Report only: nothing about GPS acceptance changes."""
+        if self._indep_heard_at is None and any(
+                x is not None for x in (self._day_last, self._night_last, self._cn_last)):
+            self._indep_heard_at = now
+        if self._unchecked_warn_s <= 0.0 or self._indep_heard_at is None:
+            return ""
+        since = self._indep_heard_at if self._indep_heard_at > self._last_ref_at else self._last_ref_at
+        unchecked_s = (now - since).nanoseconds / 1e9
+        if unchecked_s < self._unchecked_warn_s:
+            return ""
+        return (f" — GPS not cross-checked for {unchecked_s:.0f} s (no vision fix of stated accuracy:"
+                f" a slow spoof would not be seen)")
 
     @staticmethod
     def _in_doubt(msg: PositionEstimate, gap_m: float, name: str) -> PositionEstimate:
