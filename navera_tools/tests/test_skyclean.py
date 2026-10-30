@@ -78,3 +78,27 @@ def test_ring_reset_on_shape_change_and_gap():
     a = np.zeros((32, 32), np.uint8)
     assert cl.add(a, 0.0) and not cl.add(a, 10.0) and cl.add(a, 50.0)
     assert cl.add(np.zeros((16, 16), np.uint8), 100.0) and len(cl.ring) == 1
+
+
+def test_starlight_gate_blocks_noise_and_passes_stars():
+    """forcedcheck.StarlightGate (SYNTHETIC 360 frames): noise only -> 'too cloudy / blocked'; catalogue at 4 DN
+    (true place, heading 100) -> starlight seen at that heading."""
+    from cn_pkg import sky360
+    from cn_pkg.allsky_mount import zenith_icrs
+    from navera_tools.field import forcedcheck
+    lenses = sky360.default_lenses()
+    up = lenses[1].R_lens_imu.T @ np.array([0.0, 0.0, 1.0])          # the right lens looks at the zenith
+    utc, lat, lon = "2026-10-29 23:00:00", 35.83, 10.64
+    rng = np.random.default_rng(5)
+    noise = forcedcheck.StarlightGate(lenses, n_frames=3)
+    stars = forcedcheck.StarlightGate(lenses, n_frames=3)
+    vec, _ = forcedcheck.points(stars.cat, utc, lat, lon, 3.0)
+    for _ in range(3):
+        f = (8.0 + rng.normal(0, 1.0, (1920, 3840))).astype(np.float32)
+        noise.add(f, up, utc, lat, lon)
+        g = f.copy()
+        for L in lenses:
+            g = forcedcheck.inject(g, L, up, zenith_icrs(lat, lon, utc), 100.0, vec, 4.0)
+        v = stars.add(g, up, utc, lat, lon)
+    assert noise.reason() and "too cloudy / blocked" in noise.reason()
+    assert v["starlight"] and stars.reason() is None and abs(v["heading_deg"] - 100.0) < 1.0

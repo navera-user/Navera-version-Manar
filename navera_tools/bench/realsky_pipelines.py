@@ -71,6 +71,7 @@ def main(argv=None) -> int:
     import numpy as np
     import realsky_validate as rv
     from cn_pkg import allsky, skyclean
+    from navera_tools.field.forcedcheck import StarlightGate
     cam = rv.CAMERAS[a.camera]
     cal = json.load(open(a.lens))
     R_cam_enu = np.array(cal["R_cam_enu"])
@@ -127,6 +128,12 @@ def main(argv=None) -> int:
                 cl.ring = type(cl.ring)(sorted(cl.ring, key=lambda r: r[0]), maxlen=None)
                 imgs["clean"], info = cl.clean(img, tsec(utc))
             rec = {"tag": a.tag, "frame": name, "utc": utc, "stars_expected": int(len(truth_xy))}
+            tr, _ = rv.transparency(img, lens, up, R_cam_enu, alt, az, full.mag)
+            rec["transparency"] = None if tr is None else round(tr, 3)
+            gate = StarlightGate([lens], n_frames=1, min_frames=1)
+            gate.add(img, up, utc, cam["lat"], cam["lon"])
+            rec["starlight"] = gate.verdict()
+            rec["gate_why"] = gate.reason()
             for d, f in det_for_recall.items():
                 sp = (f or allsky.detect_spots)(img, lens, up_imu=up, min_alt=12.0, max_spots=600)
                 xy = np.array([(s[0], s[1]) for s in sp]).reshape(-1, 2)

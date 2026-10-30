@@ -90,6 +90,63 @@ def heading_scores(snr, lens, up, z, vec, weight, step_deg: float, min_alt: floa
     return scores, int(keep.sum())
 
 
+class StarlightGate:
+    """The clear-sky gate from starlight itself: before trying a fix, is ANY starlight reaching the camera?
+
+    The product starts with GPS, so a prior position (lat, lon) and 'up' are known: the bright stars' pixels are
+    known up to the heading. Each frame's SNR map is read at those pixels for every heading (heading_scores), summed
+    over the last n_frames of a still camera, and compared with the same sum at NULL_OFFSETS wrong places (same
+    frames). No starlight above the wrong-place level = cloud, a roof, glass, glare: reason() says so and no solve
+    needs to be tried. It only ever stops a solve; it never makes or moves a fix. reset() when the camera turns.
+    """
+
+    def __init__(self, lenses, n_frames: int = 10, mag: float = 3.0, step_deg: float = 0.5, min_alt: float = 15.0,
+                 z_min: float = 4.0, min_frames: int = 3):
+        from collections import deque
+        from cn_pkg import allsky
+        self.lenses, self.step, self.min_alt, self.z_min, self.min_frames = lenses, step_deg, min_alt, z_min, min_frames
+        self.mag = mag
+        self.cat = allsky.Catalogue(limit_mag=mag, path=allsky.BUNDLED_CATALOGUE)
+        self.ring = deque(maxlen=n_frames)
+
+    def reset(self):
+        self.ring.clear()
+
+    def add(self, gray, up, utc: str, lat: float, lon: float) -> dict:
+        import numpy as np
+        from cn_pkg.allsky_mount import zenith_icrs
+        up = np.asarray(up, float) / np.linalg.norm(up)
+        snr = snr_map(gray)
+        vec, wgt = points(self.cat, utc, lat, lon, self.mag)
+        places = [(lat, lon)] + [(max(-89.0, min(89.0, lat + da)), (lon + db + 540.0) % 360.0 - 180.0)
+                                 for da, db in NULL_OFFSETS]
+        per = np.array([sum(heading_scores(snr, L, up, zenith_icrs(a, b, utc), vec, wgt, self.step, self.min_alt)[0]
+                            for L in self.lenses) for a, b in places])
+        self.ring.append(per)
+        return self.verdict()
+
+    def verdict(self) -> dict:
+        import numpy as np
+        if not self.ring:
+            return {"frames": 0, "starlight": None}
+        tot = np.sum(self.ring, axis=0)
+        null_all = tot[1:].ravel()
+        mu, sd = float(null_all.mean()), max(float(null_all.std()), 1e-9)
+        z = (float(tot[0].max()) - mu) / sd
+        z_null = (float(tot[1:].max(axis=1).max()) - mu) / sd
+        seen = bool(tot[0].max() > tot[1:].max() and z >= self.z_min)
+        return {"frames": len(self.ring), "z": round(z, 2), "z_null": round(z_null, 2), "starlight": seen,
+                "heading_deg": float(np.argmax(tot[0]) * self.step)}
+
+    def reason(self):
+        """None while starlight is seen (or too few frames to say); else the 'why' for the frame record."""
+        v = self.verdict()
+        if v["frames"] < self.min_frames or v["starlight"]:
+            return None
+        return (f"too cloudy / blocked: no starlight at the prior's sky over the last {v['frames']} frames "
+                f"(z {v['z']:.1f}, wrong places up to {v['z_null']:.1f})")
+
+
 def inject(gray, lens, up, z, psi_deg: float, vec, amp_dn: float, sigma_px: float = 1.0):
     """gray (float32 copy) with a Gaussian spot of peak amp_dn at each point's pixel for heading psi_deg about z
     (the same geometry as heading_scores): the sensitivity test on real frames and in the tests."""

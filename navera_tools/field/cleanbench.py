@@ -114,6 +114,8 @@ def main(argv=None) -> int:
     ap.add_argument("--starseg", help="weights of the star-segmentation network: pipelines unet, unet-filter")
     ap.add_argument("--prob-min", type=float, default=0.5)
     ap.add_argument("--positions", help="CSV: every fix appended (tool,session,frame,utc,lat,lon,sigma_km,...)")
+    ap.add_argument("--starlight-gate", type=int, default=0,
+                    help="N: also run forcedcheck.StarlightGate over the test frame and the N-1 ring frames before it")
     ap.add_argument("--any-ring", action="store_true", help="also test frames without a full ring behind them")
     a = ap.parse_args(argv)
     import cv2
@@ -168,6 +170,14 @@ def main(argv=None) -> int:
             t0 = time.time()
             cleaned, info = cl.clean(cur, t)
             t_clean = time.time() - t0
+            sg = None
+            if a.starlight_gate:
+                from navera_tools.field.forcedcheck import StarlightGate
+                sgate = StarlightGate(lenses, n_frames=a.starlight_gate)
+                for (tt, f) in raw_ring[-(a.starlight_gate - 1):]:
+                    sgate.add(put(f, tt), up, utc_of(tt), lat, lon)
+                sg = sgate.add(cur, up, r.get("utc_used") or utc_of(t), lat, lon)
+                sg["why"] = sgate.reason()
             gate = skyclean.sky_usable(cur, lenses, up, cloud_map=cl.cloud_map)
             gate_why = skyclean.gate_reason(gate)
             for p in pipes:
@@ -212,7 +222,7 @@ def main(argv=None) -> int:
                             "p": res.get("p_chance"), "rms": res.get("rms_deg"), "why": res.get("why"),
                             "clean_s": round(t_clean, 2), "cloud_frac": info.get("cloud_frac"),
                             "static": info.get("static"), "usable": gate.get("usable_frac"),
-                            "gated": bool(gate_why)}
+                            "gated": bool(gate_why), "starlight": sg}
                     print(json.dumps(line), flush=True)
                     if out:
                         out.write(json.dumps(line) + "\n")
