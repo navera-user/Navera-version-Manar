@@ -122,6 +122,31 @@ def test_seen_clients_expire_and_stay_bounded():
     assert len(seen) == 1
 
 
+def test_wifi_keeps_hotspot_while_a_phone_was_seen_recently(tmp_path, monkeypatch):
+    wifi = load(os.path.join(PRODUCT, 'navera_wifi.py'), 'navera_wifi_hold')
+    monkeypatch.setattr(wifi, 'STATE', str(tmp_path / 'state.json'))
+    monkeypatch.setattr(wifi, 'REQUEST', str(tmp_path / 'request.json'))
+    now, stations, tries = [10000.0], [1], []
+    monkeypatch.setattr(wifi.time, 'time', lambda: now[0])
+    monkeypatch.setattr(wifi, 'active_connection', lambda dev: wifi.HOTSPOT)
+    monkeypatch.setattr(wifi, 'hotspot_clients', lambda dev: stations[0])
+    monkeypatch.setattr(wifi, 'saved_networks', lambda: ['navera-wifi-Home'])
+    monkeypatch.setattr(wifi, 'try_saved', lambda dev, s: (tries.append(now[0]), '')[1])
+    for f in ('scan', 'ensure_hotspot', 'address'):
+        monkeypatch.setattr(wifi, f, lambda *a, **k: '')
+    state = ('hotspot', 0.0, '')
+    state = wifi.step('wlan0', *state, 45, 300)        # a phone on it now: no retry
+    assert tries == []
+    stations[0] = 0                                     # the phone between two checks / asleep
+    for dt in (5, 60, 200, 299):
+        now[0] = 10000.0 + dt
+        state = wifi.step('wlan0', *state, 45, 300)
+    assert tries == [], 'hotspot dropped while a phone was seen within 5 min'
+    now[0] = 10000.0 + 301                              # nobody for 5 min: retry the saved network
+    state = wifi.step('wlan0', *state, 45, 300)
+    assert tries == [10301.0] and state[0] == 'hotspot'
+
+
 def test_wifi_manager_request_checks(tmp_path, monkeypatch):
     wifi = load(os.path.join(PRODUCT, 'navera_wifi.py'), 'navera_wifi')
     calls = []
