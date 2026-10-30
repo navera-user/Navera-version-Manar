@@ -47,16 +47,17 @@ MODELS = os.path.join(DATA_DIR, "models")
 
 
 def navera_allowed(name):
-    """Real NAVERA (its code, its workspace, running it) is not part of the course: staff only, and the
-    students a teacher grants it to ("navera_access" in users.json)."""
+    """Real NAVERA (its code, its workspace, running it) is not part of the course. On the NAVERA box (PRODUCT):
+    nobody, ever: the Academy is simulation only. Dev checkout: staff only."""
+    if PRODUCT:
+        return False
     import json
     try:
         with open(os.path.join(STATE, "users.json")) as f:
             u = json.load(f).get(name)
     except (OSError, ValueError):
         return False
-    return bool(u) and u.get("status", "active") == "active" and (u.get("role") in ("teacher", "admin")
-                                                                  or bool(u.get("navera_access")))
+    return bool(u) and u.get("status", "active") == "active" and u.get("role") in ("teacher", "admin")
 
 
 def data_mounts(navera=True):

@@ -742,6 +742,8 @@ def api_lesson_reset(lid):
 @app.post("/api/reset_navera")
 @login_required()
 def api_reset_navera():
+    if config.PRODUCT:
+        return jsonify(error="The Academy is simulation only: it never gives anyone the real NAVERA (only NAVERA Lite, the course's copy)."), 410
     name, _ = sandbox_user()
     if not config.navera_allowed(name):
         return jsonify(error="NAVERA is not part of the course: your teacher can open it for you"), 403
@@ -1256,15 +1258,8 @@ def api_admin_student(name):
                 u[name].pop("class", None)
             _save("users.json", u)
             return jsonify(ok=True)
-        if action in ("navera_on", "navera_off"):          # real NAVERA is not part of the course: the teacher opens it
-            if action == "navera_on":
-                u[name]["navera_access"] = True
-            else:
-                u[name].pop("navera_access", None)
-            _save("users.json", u)
-            _kill_terminals(name)
-            workspaces.create_student(name)                # clones ~/navera, or backs it up and removes it
-            return jsonify(ok=True)
+        if action in ("navera_on", "navera_off", "reset_navera"):   # removed: simulation only, never the real NAVERA
+            return jsonify(error="The Academy is simulation only: it never gives anyone the real NAVERA (only NAVERA Lite, the course's copy)."), 410
         if action in ("open_mission", "close_mission"):    # missions open in order; the teacher can open one early
             lid = d.get("lesson") or ""
             if lid not in lesson_ids():
@@ -1298,11 +1293,6 @@ def api_admin_student(name):
             _save("bookings.json", b)
             workspaces.delete_student(name)
             return jsonify(ok=True)
-    if action == "reset_navera":
-        if not config.navera_allowed(name):
-            return jsonify(error="this student has no NAVERA access"), 403
-        _kill_terminals(name)
-        return jsonify(ok=True, backup=os.path.basename(workspaces.reset_navera(name) or ""))
     if action == "kill":
         _kill_terminals(name)
         return jsonify(ok=True)
@@ -1312,6 +1302,8 @@ def api_admin_student(name):
 @app.get("/api/admin/commits")
 @login_required("admin")
 def api_admin_commits():
+    if config.PRODUCT:
+        return jsonify(error="The Academy is simulation only: it never gives anyone the real NAVERA (only NAVERA Lite, the course's copy)."), 410
     r = subprocess.run(["git", "-C", config.REAL_REPO, "log", "--all", "-25",
                         "--format=%h|%ad|%D|%s", "--date=short"], text=True, capture_output=True)
     out = []
@@ -1335,6 +1327,8 @@ def api_admin_fullsim():
 @app.post("/api/admin/base")
 @login_required("admin")
 def api_admin_base():
+    if config.PRODUCT:
+        return jsonify(error="The Academy is simulation only: it never gives anyone the real NAVERA (only NAVERA Lite, the course's copy)."), 410
     commit = (request.get_json(force=True)).get("commit", "")
     if not re.fullmatch(r"[0-9a-f]{6,40}", commit):
         return jsonify(error="give a commit hash"), 400

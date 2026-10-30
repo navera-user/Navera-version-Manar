@@ -151,14 +151,6 @@
     </div>
     <div class="grid2">
       <div class="box">
-        <h2>NAVERA version <small>advanced — usually left to IRIS support</small></h2>
-        <p>The version every student starts from and returns to with Reset. Taken from the real <code>~/Navera</code> repository
-          (read only, never changed). Changing it affects only the next reset / new students.</p>
-        <div id="baseNow"></div>
-        <div style="display:flex; gap:8px; margin-top:10px"><select id="commit" style="flex:1"></select><button id="rebase">Use this commit</button></div>
-        <pre class="log" id="baseLog" style="display:none"></pre>
-      </div>
-      <div class="box">
         <h2>Accounts and sign-in</h2>
         <label class="opt"><input type="checkbox" id="allowSignup"> Students and teachers can create their own accounts</label>
         <p style="color:var(--muted);font-size:14px">Local accounts only: no outside sign-in service. Passwords are stored hashed on this box.</p>
@@ -271,7 +263,7 @@ async function loadStudents() {
       <td>${s.certificate ? `<a href="/certificate/${esc(s.certificate)}" target="_blank">issued</a>` : '<span style="color:var(--muted)">—</span>'}</td>
       <td class="acts"><button onclick="window.open('/?as=${encodeURIComponent(s.name)}','_blank')">Open</button>
       <select aria-label="More actions" onchange="const a=this.value; this.value=''; if (a) act('${esc(s.name)}', a)">
-        <option value="">More ▾</option><option value="open_mission">Open mission…</option>${(s.open_missions || []).length ? '<option value="close_mission">Close an opened mission…</option>' : ''}<option value="password">New password</option>${moveOpts}${s.navera ? '<option value="reset_navera">Reset NAVERA</option><option value="navera_off">Remove NAVERA access</option>' : '<option value="navera_on">Give full NAVERA access…</option>'}
+        <option value="">More ▾</option><option value="open_mission">Open mission…</option>${(s.open_missions || []).length ? '<option value="close_mission">Close an opened mission…</option>' : ''}<option value="password">New password</option>${moveOpts}
         <option value="kill">Stop terminals</option><option value="delete">Delete…</option></select></td></tr>`;
   }
   if (!DATA.students.length) h += `<tr><td colspan="7" style="color:var(--muted);white-space:normal">${curClass() ? 'No student yet — print the poster or give them the join code: they appear here as soon as they create their account.' : 'No student here.'}</td></tr>`;
@@ -285,7 +277,7 @@ async function loadStudents() {
     }).join('') + '</tr>';
   }
   $('pgrid').innerHTML = g + '</table>';
-  if (ME.admin && DATA.base) $('baseNow').innerHTML = `Current base: <b>${esc(DATA.base.subject)}</b><br><span style="color:var(--muted)">built ${esc(DATA.base.built)}</span>`;
+  if (ME.admin && DATA.base && $('baseNow')) $('baseNow').innerHTML = `Current base: <b>${esc(DATA.base.subject)}</b><br><span style="color:var(--muted)">built ${esc(DATA.base.built)}</span>`;
 }
 async function newClass() {
   const t = ME.admin && TEACHERS.length > 1 ? `<p style="margin:10px 0 4px">Teacher</p><select>${TEACHERS.map(x => `<option value="${esc(x.name)}"${x.name === ME.name ? ' selected' : ''}>${esc(x.display)}</option>`).join('')}</select>` : '';
@@ -346,17 +338,11 @@ async function act(name, action) {
     return;
   }
   const msgs = {delete: `Delete ${who}? Their files, backups and progress are removed for good.`,
-    reset_navera: `Reset ${who}'s NAVERA copy? Their changes are saved in a backup first.`,
-    navera_on: `Give ${who} full access to the real NAVERA?\n\nNAVERA is not part of the course. ${who} will see and change a copy of its code, its data, the original in Sim Lite and the full simulator.`,
-    navera_off: `Remove ${who}'s access to NAVERA? Their NAVERA copy is saved in a backup, then removed; their terminals close.`,
     password: `Give ${who} a new password?`, kill: `Close all of ${who}'s terminals (and the programs in them)?`};
   if (!confirm(msgs[action])) return;
   try {
     const r = await api(`/api/admin/student/${name}`, {method: 'POST', body: {action}});
     if (r.password) alert(`New password for ${who} (login ${name}): ${r.password}`);
-    if (action === 'reset_navera') alert(`Done: ${who}'s NAVERA copy is fresh.` + (r.backup ? ` Their old work is kept in the backup ${r.backup}.` : ''));
-    if (action === 'navera_on') alert(`Done: ${who} now has NAVERA (a fresh copy in ~/navera).`);
-    if (action === 'navera_off') alert(`Done: ${who} no longer has NAVERA.`);
     if (action === 'kill') alert(`Done: ${who}'s terminals are closed.`);
     loadClasses();
   } catch (e) { alert(e.message); }
@@ -442,6 +428,7 @@ $('tCodeNew').onclick = async () => {
   const r = await api('/api/admin/org', {method: 'POST', body: {action: 'new_teacher_code'}}); $('tCode').textContent = r.teacher_code;
 };
 async function loadCommits() {
+  if (!$('commit')) return;              // simulation only: no base to choose
   const c = await api('/api/admin/commits');
   // the list starts on the CURRENT base, so a click on "Use this commit" never switches by accident
   const cur = c.base && c.base.commit ? c.base.commit.slice(0, 7) : '';
@@ -451,7 +438,7 @@ async function loadCommits() {
     return `<option value="${x.hash}"${now ? ' selected' : ''}>${now ? '● current · ' : ''}${x.hash} · ${x.date} · ${esc(x.refs ? '[' + x.refs + '] ' : '')}${esc(x.subject.slice(0, 70))}</option>`; }).join('');
   if (c.base) $('baseNow').innerHTML = `Current base: <b>${esc(c.base.subject)}</b><br><span style="color:var(--muted)">built ${esc(c.base.built)}</span>`;
 }
-$('rebase').onclick = async () => {
+if ($('rebase')) $('rebase').onclick = async () => {
   const c = $('commit').value;
   if (!confirm(`Build a new base from ${c}? Students keep their copies until they press Reset.`)) return;
   try { await api('/api/admin/base', {method: 'POST', body: {commit: c}}); } catch (e) { return alert(e.message); }

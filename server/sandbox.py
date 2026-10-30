@@ -57,6 +57,31 @@ def student_env(name, index, heavy=False, domain=None, navera=None):
     return env
 
 
+# The real NAVERA is never visible in a sandbox (simulation only): its folders and files are masked.
+NAVERA_PREFIXES = ("navera", "iris-")
+NAVERA_HIDE_DIRS = ("/etc/navera", "/etc/navera-academy", "/usr/local/lib/navera", "/var/lib/navera",
+                    "/var/lib/navera-academy", "/opt/navera", "/opt/navera-academy", "/opt/navera-release")
+NAVERA_HIDE_GLOBS = ("/usr/local/sbin/*navera*", "/usr/local/bin/*navera*", "/etc/systemd/system/*navera*",
+                     "/etc/systemd/system/iris-*", "/etc/sudoers.d/*navera*", "/etc/ssh/sshd_config.d/*navera*",
+                     "/etc/NetworkManager/dnsmasq-shared.d/*navera*", "/etc/systemd/journald.conf.d/*navera*",
+                     "/etc/udev/rules.d/*navera*")
+
+
+def hide_navera():
+    """bwrap arguments that mask NAVERA's files on the host (empty dirs / /dev/null) inside the sandbox."""
+    out = []
+    for d in NAVERA_HIDE_DIRS:
+        if d.startswith(("/etc/", "/usr/")) and os.path.isdir(d):
+            out += ["--tmpfs", d]
+    for g in NAVERA_HIDE_GLOBS:
+        for p in sorted(glob.glob(g)):
+            if os.path.isdir(p) and not os.path.islink(p):
+                out += ["--tmpfs", p]
+            elif os.path.exists(p) or os.path.islink(p):
+                out += ["--ro-bind", "/dev/null", p]
+    return out
+
+
 def bwrap_argv(name, home, index, command, resources=(), heavy=False, writable_base=None, extra_ro=(),
                interactive=False, domain=None, host_net=False):
     """argv that runs `command` (list) in the student's sandbox. Without host_net (students) it runs in
@@ -65,6 +90,8 @@ def bwrap_argv(name, home, index, command, resources=(), heavy=False, writable_b
     tabs, but nothing on the Jetson (the academy itself, SSH, other students, the teacher's simulator)
     and no internet is reachable. Staff keep the Jetson's network: the full simulator must be reachable
     by the academy."""
+    if config.PRODUCT:
+        host_net = False                 # on the NAVERA box nobody's sandbox shares the box's network (8181, DDS…)
     navera = bool(writable_base) or config.navera_allowed(name)
     a = ["bwrap", "--die-with-parent", "--unshare-pid", "--unshare-ipc", "--unshare-uts",
          "--hostname", "navera" if navera else "academy"]
@@ -79,9 +106,15 @@ def bwrap_argv(name, home, index, command, resources=(), heavy=False, writable_b
             a += ["--unshare-net"]               # a private network for this sandbox alone (as before)
     if not interactive:          # a terminal keeps its tty (job control, Ctrl-C)
         a += ["--new-session"]
-    for d in ("/usr", "/etc", "/opt", "/var/lib", "/sys", "/snap"):
+    for d in ("/usr", "/etc", "/sys", "/snap"):
         if os.path.exists(d):
             a += ["--ro-bind", d, d]
+    for d in ("/opt", "/var/lib"):       # every entry except NAVERA's own and the Academy's (code, solutions, state)
+        if os.path.isdir(d):
+            for e in sorted(os.listdir(d)):
+                if not e.lower().startswith(NAVERA_PREFIXES):
+                    a += ["--ro-bind", os.path.join(d, e), os.path.join(d, e)]
+    a += hide_navera()
     for l in ("bin", "sbin", "lib", "lib64"):
         p = "/" + l
         if os.path.islink(p):

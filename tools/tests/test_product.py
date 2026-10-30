@@ -305,3 +305,102 @@ def test_installer_adds_firewall_line_when_absent(tmp_path):
     (root / "etc" / "navera" / "navera.env").write_text("NAVERA_PRODUCT_MODE=1\n")
     assert _install(tmp_path, root, tb).returncode == 0
     assert "NAVERA_FW_ALLOW_TCP=8300\n" in (root / "etc/navera/navera.env").read_text()
+
+
+# ----------------------------------------------------------------------------------------- 5. simulation only
+SANDBOX_PROBE = r"""
+import sys, json, os, subprocess
+sys.path.insert(0, %(server)r)
+import config, sandbox, workspaces, netns
+assert config.PRODUCT and not config.navera_allowed("teacher") and not config.RESOURCES
+out = {}
+for who, staff in (("_prod_probe", False), ("teacher", True)):
+    if staff:
+        users = {"teacher": {"role": "admin", "index": 0}}
+        os.makedirs(config.STATE, exist_ok=True); json.dump(users, open(os.path.join(config.STATE, "users.json"), "w"))
+    workspaces.create_student(who)
+    argv = sandbox.bwrap_argv(who, workspaces.student_home(who), 7, ["true"], resources=("camera", "sensors", "sim"),
+                              host_net=staff)
+    out[who] = argv
+probe = '''
+import os, socket, glob, json
+r = {"etc_navera": sorted(os.listdir("/etc/navera")) if os.path.isdir("/etc/navera") else None,
+     "opt": sorted(os.listdir("/opt")) if os.path.isdir("/opt") else [],
+     "var_lib": [e for e in os.listdir("/var/lib") if e.startswith("navera")],
+     "data": sorted(os.listdir("/data")) if os.path.isdir("/data") else [],
+     "home": sorted(os.listdir("/home")), "navera_ws": os.path.exists("/home/student/navera"),
+     "devs": sorted(glob.glob("/dev/video*") + glob.glob("/dev/ttyTHS*") + glob.glob("/dev/i2c-*") + glob.glob("/dev/ttyUSB*") + glob.glob("/dev/ttyACM*"))}
+for port in (8181, 8182, 8300):
+    s = socket.socket(); s.settimeout(1.0)
+    try:
+        s.connect(("127.0.0.1", port)); r[str(port)] = "open"
+    except OSError:
+        r[str(port)] = "closed"
+    s.close()
+print("PROBE " + json.dumps(r))
+'''
+argv = sandbox.bwrap_argv("_prod_probe", workspaces.student_home("_prod_probe"), 7, ["python3", "-c", probe])
+p = subprocess.run(argv, capture_output=True, text=True, timeout=120)
+netns.release("_prod_probe")
+out["probe"] = next((json.loads(l[6:]) for l in p.stdout.splitlines() if l.startswith("PROBE ")), {"err": p.stderr[-800:]})
+workspaces.delete_student("_prod_probe"); workspaces.delete_student("teacher")
+print("RESULT " + json.dumps(out))
+"""
+
+
+def test_no_real_navera_in_a_product_sandbox(tmp_path):
+    env = dict(os.environ, ACADEMY_PRODUCT="1", ACADEMY_VAR=str(tmp_path / "var"), ACADEMY_DATA=str(tmp_path / "data"),
+               ACADEMY_NAVERA_STATE_URL="http://127.0.0.1:9/x", PYTHONDONTWRITEBYTECODE="1")
+    r = subprocess.run([sys.executable, "-c", SANDBOX_PROBE % {"server": SERVER}], cwd=SERVER, env=env,
+                       capture_output=True, text=True, timeout=300)
+    assert r.returncode == 0, r.stderr[-3000:]
+    out = json.loads(next(l[7:] for l in r.stdout.splitlines() if l.startswith("RESULT ")))
+    for who in ("_prod_probe", "teacher"):
+        argv = out[who]
+        # its own network (never the box's): netns join or --unshare-net
+        assert "--unshare-net" in argv or "nsenter" in argv, (who, argv[:20])
+        binds = [(argv[i], argv[i + 1], argv[i + 2]) for i in range(len(argv) - 2)
+                 if argv[i] in ("--bind", "--ro-bind", "--dev-bind")]
+        for kind, src, dst in binds:
+            if src == "/dev/null":
+                continue
+            low_dst = dst.lower()
+            assert not low_dst.startswith(("/etc/navera", "/opt/navera", "/var/lib/navera", "/data/navera",
+                                           "/home/navera", "/usr/local/lib/navera")), (who, src, dst)
+            assert not os.path.realpath(src).startswith(("/home/navera", "/data/navera", "/opt/navera-release",
+                                                          os.path.expanduser("~/Navera"))), (who, src)
+            assert not dst.startswith(("/dev/video", "/dev/ttyTHS", "/dev/i2c", "/dev/ttyUSB", "/dev/ttyACM", "/dev/v4l")), (who, dst)
+            assert dst != config_s_navera(), (who, dst)
+        assert not any("8181" in a or "8182" in a for a in argv), who
+    p = out["probe"]
+    assert "err" not in p, p
+    assert not p["etc_navera"], p                         # /etc/navera masked (exists on this Jetson)
+    assert not [e for e in p["opt"] if e.startswith("navera")], p
+    assert not p["var_lib"] and not p["navera_ws"] and "navera" not in p["home"], p   # (dev: the pip user site shows its home)
+    assert "navera_data" not in p["data"] and "ardupilot" not in p["data"], p
+    assert not p["devs"], p
+    assert p["8181"] == p["8182"] == p["8300"] == "closed", p
+
+
+def config_s_navera():
+    import config
+    return config.S_NAVERA
+
+
+def test_navera_access_switch_is_gone(tmp_path):
+    code = """
+from werkzeug.security import generate_password_hash
+A._save('users.json', {'teacher': {'role': 'admin', 'index': 0, 'pw': 'x'}, 's1': {'role': 'student', 'index': 3, 'pw': 'x'}})
+c = A.app.test_client()
+with c.session_transaction() as s: s['user'] = 'teacher'
+r = [c.post('/api/admin/student/s1', json={'action': a}, headers={'Origin': 'http://localhost'}).status_code
+     for a in ('navera_on', 'navera_off', 'reset_navera')]
+r += [c.get('/api/admin/commits').status_code, c.post('/api/admin/base', json={'commit': 'abcdef1'}).status_code,
+      c.post('/api/reset_navera', json={}).status_code, c.get('/web/sim/').status_code]
+import json as J; u = J.load(open(A.config.STATE + '/users.json'))
+print(json.dumps({'codes': r, 'navera_access': 'navera_access' in u['s1']}))
+"""
+    d = json.loads(run_app(tmp_path, code).strip().splitlines()[-1])
+    assert d["codes"][:6] == [410] * 6 and d["codes"][6] == 404 and not d["navera_access"], d
+    t = open(os.path.join(STATIC, "teacher.html")).read()
+    assert "navera_on" not in t and "Give full NAVERA access" not in t and "NAVERA version" not in t
