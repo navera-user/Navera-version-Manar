@@ -1,6 +1,9 @@
 # NAVERA Academy 1.0 on the NAVERA box — delivery
 
-The Academy runs on the NAVERA box itself, fully offline, beside NAVERA. Flight safety first:
+The Academy runs on the NAVERA box itself, fully offline, beside NAVERA. **Simulation only:** students work on
+their own NAVERA Lite (the course's copy), Sim Lite and recorded / simulated data; nobody gets the real NAVERA
+(no code, workspace, services, ports 8181/8182, ROS domains 77–79, /data/navera, /etc/navera, camera, GPS/IMU/serial).
+Flight safety first:
 GPU/AI training and Sim Lite are refused while NAVERA flies, and whenever NAVERA cannot say.
 
 | | |
@@ -37,7 +40,10 @@ sudo /usr/local/sbin/navera_firewall.sh --print | grep 8300
 The Academy asks `http://127.0.0.1:8181/api/mission/state` every 2 s. Refused while the answer says the
 vehicle is armed / moving / navigating without GPS, or the bridge does not answer, or it does not report
 a flight state. The student sees: *"Refused for flight safety: <reason>. Sim Lite and AI training are
-available again once the vehicle has landed and is disarmed."* Running GPU jobs of the students are stopped.
+available again once the vehicle has landed and is disarmed."* With NAVERA's own `in_flight_refusal` the reason
+reads *"NAVERA says: <NAVERA's text>"*, e.g. on a box feeding the autopilot's GPS over serial without MAVLink:
+*"NAVERA says: land and disarm first; armed state unknown (no MAVLink vehicle link) and NAVERA is the flight
+controller's GPS (serial output): a restart would cut it"*. Running GPU jobs of the students are stopped.
 
 ## Later
 - New teacher password (forgotten): `sudo bash /opt/navera-academy/deploy/teacher_password.sh`

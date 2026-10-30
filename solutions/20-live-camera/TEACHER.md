@@ -5,8 +5,8 @@ Teacher only. Rebuilt 2026-10-13 on NAVERA Lite. The mission's part is `navera_l
 `load_camera_settings`, `exposure_time`, `tilt_deg`) and the given live node `navera_lite/ros/camera_node.py`
 (`# @part 20`). It needs `rotations.py` (16: slerp, q_angle_deg, q_to_matrix, rpy_human) and `camera.py` (18:
 K_from_hfov, camera_rotation, backproject_ground, nadir_homography), both shipped finished. **No camera is
-needed and none is opened by any graded step**; `grab_real.py` (Step 12) is optional and only opens a booked,
-free device. No NAVERA code: the old lab ran NAVERA's live camera node, its GStreamer class and its attitude
+needed and none is ever opened** (the Academy is simulation only; the old optional `grab_real.py` step was removed).
+No NAVERA code: the old lab ran NAVERA's live camera node, its GStreamer class and its attitude
 history; all of that is now course code or words.
 
 The design (`reviews/fledgling-design.md` §2.6) put the mission-20 functions in `camera.py`; they live in their own
@@ -139,4 +139,4 @@ with the prediction before §3 (35 min); Step 4 as a pair discussion: each pair 
 (20 min). Session 2 (Shutter): 10 min recap of slerp (mission 16); Steps 6–7 (50 min); Step 8 (30 min); Steps 9–10
 (25 min, ROS live on the projector); memo as homework. Fast students: Going further (MAD jitter, number of
 flashes). Struggling students: give Step 4's formula after their own try; pair them for TODO 4 (hints 1–5 in order).
-The real camera (Step 12) is optional and shared: book it for a demo, never needed for the badge.
+No real camera: the Academy is simulation only (recorded clip and simulated data).

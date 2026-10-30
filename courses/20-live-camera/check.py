@@ -697,7 +697,7 @@ def _():
               ((r"truth", r"true", r"reference", r"know", r"ground.?truth", r"simulat"), "what a real plane lacks"))
 
 
-@c.test("Step 10: the live camera node runs YOUR timing functions over ROS, and the queue experiment",
+@c.test("Step 10: the camera node (recorded clip) runs YOUR timing functions over ROS, and the queue experiment",
         hint="Lab Step 10. If no meta message comes, run python3 -m navera_lite.ros.camera_node in your terminal: its "
              "log names the function that fails.")
 def _():

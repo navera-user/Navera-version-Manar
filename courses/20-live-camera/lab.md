@@ -2,10 +2,10 @@
 
 **Goal:** write the timing part of NAVERA Lite (`navera_lite/timing.py`): describe a frame stream, measure a
 camera's delay on a flash bench and choose its setting, put a price on time errors, give every frame of a turning
-plane the attitude of its exposure, refuse the frames you cannot trust, run the live camera over ROS, and write a
+plane the attitude of its exposure, refuse the frames you cannot trust, run the camera node over ROS on a recorded clip, and write a
 memo to your team.
 **Time:** 3 h to 5 h (a strong programmer: about 2 h 30; weaker programmers: plan the full 5 h). **No camera is needed**: every step uses recorded or
-simulated data. A real camera is an optional extra (Step 12).
+simulated data (the Academy is simulation only: it never opens a real camera).
 **Fast track:** if you know numpy, write the TODOs from the docstrings without the 🧰 boxes and the "Stuck?" boxes;
 then do "Going further" and write your results in `LOOK_BACK`; your teacher reads them.
 
@@ -15,8 +15,7 @@ try to find the mistake yourself first, then open that hint.
 Your files (📝 Code tab): [navera_lite/timing.py](file:./navera_lite/timing.py) (**your code**: six functions,
 `TODO 1–6`), [phase.py](file:./phase.py) (**your code**: `TODO P`), [answers.py](file:./answers.py), [camera.yaml](file:./camera.yaml) (your camera's settings),
 [report.md](file:./report.md) (the memo), and ready-made tools you only run: [run_timing.py](file:./run_timing.py)
-(runs your functions on the lab's data and draws them), `navera_lite/ros/camera_node.py` (the live camera) and
-[grab_real.py](file:./grab_real.py) (Step 12, optional).
+(runs your functions on the lab's data and draws them), `navera_lite/ros/camera_node.py` (the camera node, on the recorded clip).
 
 | Lesson | Lab | You write |
 |---|---|---|
@@ -28,7 +27,7 @@ Your files (📝 Code tab): [navera_lite/timing.py](file:./navera_lite/timing.py
 | §4–§5 the attitude at the exposure | Steps 6–7 | `attitude_at`; the rate of a steady bank |
 | §6 refusing frames | Step 8 | `rotation_rate_dps`, `usable` |
 | §3 and §5 together | Step 9 | (no code: check the bench against the flight) |
-| §1 the newest frame | Step 10 | (no code: the live camera over ROS) |
+| §1 the newest frame | Step 10 | (no code: the camera node over ROS) |
 | all | Step 11 | the memo |
 
 The data, in `/data/academy/20-live-camera/`: `bench/` holds **real** frames of NAVERA's Insta360 (recorded on
@@ -427,9 +426,9 @@ Open [out/scan.png](file:./out/scan.png).
 > Write `BEST_LATENCY_S` (three decimals) and `EXPLAIN_SCAN`: compare it with your bench setting of Step 4. Why can
 > a real plane not run this scan as it is?
 
-## Step 10 — Live, over ROS
+## Step 10 — The recorded clip, in real time over ROS
 
-Now the same chain runs live: NAVERA Lite's camera node replays the flight in real time over ROS — the IMU on
+Now the same chain runs in real time: NAVERA Lite's camera node replays the flight in real time over ROS — the IMU on
 `/navera_lite/imu`, one frame offered every 0.5 s — stamps every frame at its exposure with the delay of your
 camera.yaml, and calls **your** `attitude_at`, `rotation_rate_dps` and `usable`. Start it, watch about ten frames,
 then stop it with `Ctrl+C`:
@@ -475,19 +474,10 @@ numbers with their units.
 > report.md has the four headings, at least 150 words, and quotes the grab log's frame rate, the bench's median
 > delay, your delay setting, and the median error of the attitude held at the grab.
 
-## Step 12 — With a real camera (optional, only if you booked one)
-
-The class camera is shared: book it in the dashboard (**Hardware** → **Take** on the camera line), then open a
-**new** terminal (only terminals opened after the booking see it), and run `python3 grab_real.py`. It never opens a
-camera that another program is using; without a camera it says so and stops: that is fine, skip this step.
-Compare the real rhythm with the grab log of Step 2, and put the numbers in your memo. Release the camera when you
-finish (**Hardware** → **Release**). The camera films the room: do not save or share pictures of people who did not
-agree.
-
-## Step 13 — Check, then look back
+## Step 12 — Check, then look back
 
 Press **✔ Check my work**: it tests your functions on streams, benches, IMU histories and settings they have never
-seen, and runs the live camera node with your code. When every check passes, you earn the **Shutter** badge. Then
+seen, and runs the camera node on the recorded clip with your code. When every check passes, you earn the **Shutter** badge. Then
 look back, without the lesson:
 
 1. Explain to a colleague, in three sentences, how an 83 m error came out of a 1 m match (the mission brief).

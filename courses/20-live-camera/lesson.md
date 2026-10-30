@@ -1,4 +1,4 @@
-# Live camera: frames, delay and the attitude at the exposure
+# Camera frames: delay and the attitude at the exposure (recorded clip)
 
 ![A time line: IMU samples every 20 ms; the picture is taken at the exposure, but the program receives it a latency L later, at the grab (NAVERA's setting for its Insta360: 0.138 s, an upper bound on L). The sample held at the grab is the wrong attitude; the right one is interpolated at the exposure.](assets/timeline.svg)
 
@@ -15,8 +15,8 @@
 > it, to measure how late a camera is, and to read every other sensor at the right instant.
 > **Session 1 — Timekeeper:** you describe a frame stream with statistics, measure a camera's delay on a
 > screen-flash bench and choose the delay setting. **Session 2 — The attitude at the exposure:** you give each
-> frame of a turning plane its true attitude, refuse the frames you cannot trust, and run NAVERA Lite's live
-> camera over ROS. Each session ends with a badge: **Timekeeper**, then **Shutter**.
+> frame of a turning plane its true attitude, refuse the frames you cannot trust, and run NAVERA Lite's camera
+> node over ROS on a recorded clip. Each session ends with a badge: **Timekeeper**, then **Shutter**.
 >
 > **Start now:** open the 🛠️ **Lab** tab, do **Step 0** (two minutes, no code), then come back here for §1.
 
@@ -103,7 +103,7 @@ example: a driver keeps a queue of 4 frames, and the program takes one only twic
 
 The queue fills at once; when it is full, new frames are lost; each frame taken has waited 4 × 0.5 s = **2 s**.
 A program that stamps it "now − L" is 2 s wrong, and no delay setting can fix it, because the waiting time is not
-part of L. NAVERA therefore always works with the **newest** frame. You will see this live in Step 10.
+part of L. NAVERA therefore always works with the **newest** frame. You will see this in Step 10, on the recorded clip.
 
 > [!QUESTION] ✏️ Check
 > A program grabs at 30 frames per second but needs 0.25 s to process each frame it takes, and lets frames queue
@@ -385,7 +385,7 @@ screen adds its own delay, just like the bench screen. NAVERA is **Release 0.2 �
 [navera_lite/timing.py](file:./navera_lite/timing.py) is this mission's part. You write `frame_stats` (§2),
 `delay_from_flashes` (§3), `time_error_m` (§4), `attitude_at` (§5), `rotation_rate_dps` and `usable` (§6). Given:
 `exposure_time`, `tilt_deg`, and `load_camera_settings`, which reads your [camera.yaml](file:./camera.yaml) (the
-delay setting and the refusal rules). `navera_lite/ros/camera_node.py` (given) is the live camera: it replays a
+delay setting and the refusal rules). `navera_lite/ros/camera_node.py` (given) is the camera node: it replays a
 recorded flight over ROS, stamps each frame at its exposure, and calls **your** functions for every frame.
 
 ## 🐦 How birds do it

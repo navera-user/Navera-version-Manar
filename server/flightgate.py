@@ -41,7 +41,9 @@ def decide(doc):
         why = doc["in_flight_refusal"]
         if why is None or why is False or why == "":
             return None
-        return f"NAVERA is flying ({why})" if isinstance(why, str) else "NAVERA is flying"
+        # NAVERA's own words: armed, moving, without GPS, or "cannot tell" (serial GPS output, no MAVLink link)
+        return f"NAVERA says: {why.strip().rstrip('.')}" if isinstance(why, str) and why.strip() else \
+            "NAVERA reports it may be flying"
     if "in_flight" in doc:
         if doc["in_flight"] is False:
             return None

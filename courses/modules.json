@@ -45,7 +45,7 @@
  },
  {
   "title": "Sensors and their models",
-  "desc": "NMEA and DOP, rotations and quaternions, attitude from the IMU, the camera matrix, fisheye calibration and timing a live camera.",
+  "desc": "NMEA and DOP, rotations and quaternions, attitude from the IMU, the camera matrix, fisheye calibration and timing camera frames on a recorded clip.",
   "lessons": [
    "15-gps-nmea",
    "16-rotations",

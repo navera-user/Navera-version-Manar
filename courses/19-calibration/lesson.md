@@ -414,7 +414,7 @@ slowly re-aligned where they *heard* things with where they now *saw* them.
 4. NAVERA's rule f_new ≥ fx gives 2·atan(960 / 660.48) = 110.94° ≈ 111°.
 5. Zhang + least squares fit K, D and every pose; the RMS is a training error: test on unseen views, measure the spread.
 
-**Next mission:** the straightened picture goes live. Frames arrive late and the drone turns while they travel: you
+**Next mission:** the straightened picture meets time (on a recorded clip). Frames arrive late and the drone turns while they travel: you
 measure the camera's delay and take the attitude at the right instant.
 
 ## Check yourself

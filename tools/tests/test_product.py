@@ -130,7 +130,11 @@ def test_decide_rules():
     assert G.decide(None)                                        # unreachable → refuse
     assert G.decide({"settings": {}})                            # NAVERA 0.8.1: no flight field → refuse
     assert G.decide({"in_flight_refusal": None}) is None
-    assert "armed" in G.decide({"in_flight_refusal": "the vehicle is armed: disarm it"})
+    assert G.decide({"in_flight_refusal": "the vehicle is armed: disarm it"}) == "NAVERA says: the vehicle is armed: disarm it"
+    serial = ("land and disarm first; armed state unknown (no MAVLink vehicle link) and NAVERA is the flight "
+              "controller's GPS (serial output): a restart would cut it")
+    assert G.decide({"in_flight_refusal": serial}) == "NAVERA says: " + serial
+    assert G.decide({"in_flight_refusal": True})
     assert G.decide({"in_flight": True}) and G.decide({"in_flight": False}) is None
     assert G.decide({"armed": True, "moving_mps": 0})
     assert G.decide({"armed": False, "moving_mps": 5.0})
