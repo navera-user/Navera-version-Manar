@@ -584,7 +584,7 @@ def _planets_cached(cat: Catalogue, utc: str, prior=None) -> Catalogue:
 def locate(frame: np.ndarray, up_imu: np.ndarray, utc: str, cat: Catalogue,
            lenses: Optional[List[Lens]] = None, f_scales: Sequence[float] = (1.0,),
            min_alt: Optional[float] = None, max_spots: Optional[int] = None, match_deg: Optional[float] = None,
-           retry_spots: int = 25, prior: Optional[Sequence[float]] = None) -> dict:
+           retry_spots: int = 25, prior: Optional[Sequence[float]] = None, spot_finder=None) -> dict:
     """Latitude, longitude from the whole sky above the camera. f_scales: focal lengths to try
     (x each lens's f); the best one is reported so the caller can keep it.
 
@@ -599,6 +599,9 @@ def locate(frame: np.ndarray, up_imu: np.ndarray, utc: str, cat: Catalogue,
     identify_prior (far fewer hypotheses, so an honestly lower chance probability for the same stars); the
     fix itself still comes from the stars only and passes the same gate. A radius above PRIOR_MAX_RADIUS_DEG
     falls back to lost-in-space.
+
+    spot_finder: optional replacement for detect_spots with the same signature and output (e.g. the star
+    segmentation network, cn_pkg.starseg); it only chooses which spots are tried, every gate stays the same.
     """
     import cv2
     min_alt = LOCATE_MIN_ALT if min_alt is None else min_alt
@@ -613,7 +616,8 @@ def locate(frame: np.ndarray, up_imu: np.ndarray, utc: str, cat: Catalogue,
     spots = []
     for lens in lenses:
         st: dict = {}
-        spots += [(lens, s) for s in detect_spots(gray, lens, up_imu=up, min_alt=min_alt - margin, stats=st)]
+        find = spot_finder or detect_spots
+        spots += [(lens, s) for s in find(gray, lens, up_imu=up, min_alt=min_alt - margin, stats=st)]
         for k, v in st.items():
             rej[k] = rej.get(k, 0) + v
     out = {"solved": False, "spots": len(spots), "rejected_spots": rej}
@@ -746,7 +750,7 @@ def locate(frame: np.ndarray, up_imu: np.ndarray, utc: str, cat: Catalogue,
         out["why"] = "rejected: " + why
         if retry_spots and n_used > retry_spots:              # junk among the spots: try again on the brightest only
             r2 = locate(frame, up_imu, utc, cat, lenses, f_scales, min_alt, retry_spots, match_deg, retry_spots=0,
-                        prior=prior)
+                        prior=prior, spot_finder=spot_finder)
             if r2.get("solved"):
                 r2["retried_with"] = retry_spots
                 return r2
