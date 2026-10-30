@@ -42,9 +42,9 @@ SHM_ROOT = os.path.join("/dev/shm", f"academy-{os.getuid()}-" +
 
 
 def enabled():
-    """Opt-in while it is being rolled out: ACADEMY_SHARED_NETNS=1 (else every sandbox gets its own
-    network, as before)."""
-    return os.environ.get("ACADEMY_SHARED_NETNS", "0") == "1"
+    """ON by default (ROS missions re-verified with it, 2026-10-16). ACADEMY_SHARED_NETNS=0 turns it off:
+    every sandbox then gets its own network again (bwrap --unshare-net)."""
+    return os.environ.get("ACADEMY_SHARED_NETNS", "1") != "0"
 
 
 def _rec_path(name):
