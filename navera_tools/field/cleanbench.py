@@ -113,6 +113,7 @@ def main(argv=None) -> int:
     ap.add_argument("--out")
     ap.add_argument("--starseg", help="weights of the star-segmentation network: pipelines unet, unet-filter")
     ap.add_argument("--prob-min", type=float, default=0.5)
+    ap.add_argument("--positions", help="CSV: every fix appended (tool,session,frame,utc,lat,lon,sigma_km,...)")
     ap.add_argument("--any-ring", action="store_true", help="also test frames without a full ring behind them")
     a = ap.parse_args(argv)
     import cv2
@@ -189,6 +190,15 @@ def main(argv=None) -> int:
                     if res.get("solved"):
                         err = haversine_km(res["lat"], res["lon"], lat, lon)
                         wrong = a.control or err > a.truth_km
+                    if res.get("solved") and a.positions:
+                        from navera_tools.bench.realsky_pipelines import append_positions
+                        what = ("control" if a.control else "inject") + f" {amp:g}DN" if amp > 0 else "real night"
+                        append_positions(a.positions, [{
+                            "tool": f"cleanbench {p}/{m} ({what})", "session": os.path.basename(a.session.rstrip("/")),
+                            "frame": r.get("image"), "utc": r.get("utc_used") or utc_of(t),
+                            "lat": round(res["lat"], 5), "lon": round(res["lon"], 5),
+                            "sigma_km": round(res.get("sigma_fit_deg", 0.0) * allsky.KM_PER_DEG, 2),
+                            "truth_lat": lat, "truth_lon": lon, "err_km": round(err, 2)}])
                     key = (amp, p, m)
                     tl = tally.setdefault(key, [0, 0, 0, 0])
                     tl[0] += 1
