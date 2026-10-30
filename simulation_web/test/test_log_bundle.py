@@ -121,3 +121,9 @@ def test_send_stream_writes_every_byte():
     w, data = W(), os.urandom(200_000)
     w.send_stream("application/gzip", io.BytesIO(data), len(data), "x.tar.gz")
     assert w.sent.getvalue() == data and ("Content-Disposition", 'attachment; filename="x.tar.gz"') in w.hdr
+
+
+def test_credentials_in_a_url_are_masked():
+    from simulation_web import log_bundle as lb
+    out = lb.redact_journal_line("rtspsrc location=rtsp://admin:Secret123@192.168.1.64:554/Streaming\n")
+    assert "Secret123" not in out and "rtsp://***@192.168.1.64" in out

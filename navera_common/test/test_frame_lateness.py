@@ -68,8 +68,10 @@ def test_without_the_check_late_frames_spike_100_m():
 @pytest.mark.parametrize("seed", range(10))
 def test_camera_stamp_redates_late_frames(seed):
     errs, _, dropped = run(STALLS, with_source=True, seed=seed)
-    assert dropped == 0                             # re-dated: nothing uncertain left
+    # re-dated up to MAX_REDATE_S (the 0.5 / 0.8 / 1.1 s stalls); the 1.7 / 2.2 s ones are beyond it:
+    # never re-dated, so refused by the gate at this speed (review M5)
     assert all(err <= 3.0 * sig for err, sig in errs)
+    assert dropped <= 2 * 40                         # only frames of the two longest stalls
     assert max(err for err, _ in errs) < 3.0 * SIGMA
 
 
@@ -116,3 +118,11 @@ def test_lateness_sigma_rules():
     assert lateness_sigma(dict(m, late_redated=True, late_s=2.0), SPEED, SIGMA) == (SIGMA, None)
     assert lateness_sigma(dict(m, late_s="x"), SPEED, SIGMA) == (SIGMA, None)
     assert lateness_sigma(dict(m, late_s=1.5), 0.0, SIGMA) == (SIGMA, None)   # hovering: no along-track error
+
+
+def test_a_frame_too_late_for_the_attitude_history_is_not_redated():
+    fl = FrameLateness()
+    for k in range(40):
+        fl.observe(100.0 + k * 0.1 + 0.15, 100.0 + k * 0.1)       # steady 0.15 s delay
+    shift, unsure, basis = fl.observe(104.0 + 2.15, 104.0)         # 2 s later than usual
+    assert shift == 0.0 and unsure > 1.5 and basis == "camera_stamp"

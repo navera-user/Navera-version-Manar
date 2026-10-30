@@ -39,7 +39,7 @@ PROBES = {
     "/ncsi.txt": (200, b"Microsoft NCSI", "text/plain"),
 }
 SEEN_PATH = "/_navera_seen.gif"     # a 1-pixel image in the setup page: only a browser that drew the
-SEEN_TTL_S = 600.0                  # page loads it (the phone's online checks never do)
+SEEN_TTL_S = 4 * 3600.0             # page loads it (the phone's online checks never do)
 SEEN_MAX = 256                      # clients remembered at most (oldest forgotten first)
 GIF = (b"GIF89a\x01\x00\x01\x00\x80\x00\x00\x00\x00\x00\xff\xff\xff!\xf9\x04\x01\x00\x00\x00\x00"
        b",\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02D\x01\x00;")
@@ -179,6 +179,20 @@ def joining_page(ssid: str) -> bytes:
 again and this page shows the reason.</p></section>""")
 
 
+BOX_ADDR = os.environ.get("NAVERA_WIFI_ADDRESS", "10.42.0.1/24").split("/")[0]
+PORTAL_LOG = os.environ.get("NAVERA_PORTAL_LOG", "")      # diagnostics: one line per request
+
+
+def _log(client, host, path, agent):
+    if not PORTAL_LOG:
+        return
+    try:
+        with open(PORTAL_LOG, "a") as f:
+            f.write(f"{time.strftime('%H:%M:%S')} {client} {host}{path} {agent[:60]}\n")
+    except OSError:
+        pass
+
+
 def make_handler(seen=None):
     seen = SeenClients() if seen is None else seen
 
@@ -210,10 +224,15 @@ def make_handler(seen=None):
                 seen.mark(self._client())
                 return self._send(200, GIF, ctype="image/gif")
             probe = PROBES.get(path)
+            host = (self.headers.get("Host") or "").split(":")[0]
+            _log(self._client(), host, path, self.headers.get("User-Agent", ""))
             if probe and seen.seen(self._client()):
                 code, body, ctype = probe        # page already shown: tell the phone it is online
                 return self._send(code, body, ctype=ctype)
-            # every other address (and the online checks of a phone not yet shown it): the page
+            if host and host != BOX_ADDR:
+                # any other site (a phone's online check, a page the user had open): redirect to the
+                # box, the answer phones read as "sign-in Wi-Fi" and open by themselves
+                return self._send(302, b"", [("Location", f"http://{BOX_ADDR}/")])
             self._send(200, setup_page())
 
         do_HEAD = do_GET

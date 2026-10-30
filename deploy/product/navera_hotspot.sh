@@ -67,6 +67,7 @@ case "$MODE" in
     # setup page's address at join, so they open it by themselves instead of dropping the Wi-Fi
     printf '# NAVERA captive portal (navera_hotspot.sh)\naddress=/#/%s\ndhcp-option=114,"http://%s/"\n' \
       "${ADDR%/*}" "${ADDR%/*}" > /etc/NetworkManager/dnsmasq-shared.d/navera-portal.conf
+    [ "${NAVERA_HOTSPOT_LOG_DNS:-0}" = 1 ] && echo log-queries >> /etc/NetworkManager/dnsmasq-shared.d/navera-portal.conf
     nmcli con show "$CON" >/dev/null 2>&1 || nmcli con add type wifi ifname "$dev" con-name "$CON" ssid "$SSID" >/dev/null
     # shellcheck disable=SC2046
     nmcli con modify "$CON" connection.interface-name "$dev" $(settings) wifi-sec.psk "$PASS"

@@ -47,10 +47,14 @@ def strip_secrets(text: str) -> Tuple[str, int]:
     return "".join(kept), dropped
 
 
+_URL_CREDENTIALS = re.compile(r"://[^/@\s]+@")
+
+
 def redact_journal_line(line: str) -> str:
     """A journal line with the value of any NAME=value / NAME: value whose NAME holds TOKEN, PASSWORD
     or KEY replaced by ***.
     """
+    line = _URL_CREDENTIALS.sub("://***@", line)          # rtsp://user:password@camera (review M4)
     return _SECRET_ASSIGN.sub(lambda m: m.group(1) + "***", line)
 
 

@@ -29,6 +29,8 @@ import math
 from collections import deque
 from typing import Optional, Tuple
 
+MAX_REDATE_S = 1.5   # a frame later than this is never re-dated (attitude history, review M5)
+
 DEFAULT_LATE_S = 0.3
 DEFAULT_GATE_M = 60.0
 
@@ -78,7 +80,11 @@ class FrameLateness:
             if base is None:
                 return 0.0, 0.0, ""
             late = d - base
-            return (late, 0.0, "camera_stamp") if self._late(late) else (0.0, 0.0, "")
+            if not self._late(late):
+                return 0.0, 0.0, ""
+            if late > MAX_REDATE_S:              # too far back for the attitude history: not re-dated,
+                return 0.0, late, "camera_stamp"   # the day node widens or refuses it (review M5)
+            return late, 0.0, "camera_stamp"
         if gap is None or gap < 0.0:
             return 0.0, 0.0, ""
         period = _quantile(self._gaps, 0.5) if len(self._gaps) >= self.min_n else None
