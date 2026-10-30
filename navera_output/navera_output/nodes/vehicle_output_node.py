@@ -82,7 +82,8 @@ the autopilot never timed its position out. A held position older than the bridg
 Each position is sent ONCE, as soon as it arrives (a 1 Hz vision fix is not repeated
 5 times with fresh timestamps: an autopilot filter would read the repeats as
 "stopped, then jumped"). "No fix" is sent at rate_hz, so the autopilot always
-hears from NAVERA.
+hears from NAVERA. Exception, UBX: a u-blox stream is repeated at rate_hz with the
+measurement instant kept (PX4 drops a GPS silent for 0.5 s) — see _resend_ubx.
 
 If an enabled output cannot be opened, the node exits with code 1 so the
 service restarts it.
@@ -281,6 +282,9 @@ class VehicleOutputNode(Node):
         self._last_tx = None              # monotonic instant of the last position sent
         self._last_pos_tx = None          # same, kept across GPS fixes (policy.reacquire)
         self._bridging = False
+        self._ubx_last = None             # the last UBX output written, repeated by _resend_ubx
+        self._ubx_last_t = None           # when it was last written, repeats included (monotonic)
+        self._ubx_first_t = None          # when it was first written (its age grows from there)
         self._held_saved_at = None        # monotonic instant of the last held position saved
         self._restore_held()
         self._drift_alarm = float(self.get_parameter("drift_alarm_sigma_m").value)
@@ -291,7 +295,8 @@ class VehicleOutputNode(Node):
         self.create_subscription(NavStatus, "/navera/nav_status", self._on_status, 10)
         self.create_subscription(PositionEstimate, "/navera/position", self._on_position, 10)
         self.create_subscription(TwistStamped, "/navera/sensors/gps_vel", self._on_gps_vel, 10)
-        self.create_timer(1.0 / rate, self._tick)
+        self._period_s = 1.0 / rate
+        self.create_timer(self._period_s, self._tick)
         self.get_logger().info(
             f"vehicle output: {self._proto}={port or 'off'} mavlink={url or 'off'}"
             f"{' (' + self._msg_mode + ')' if url else ''} ros={topic or 'off'} rate={rate:.1f}Hz "
@@ -407,7 +412,8 @@ class VehicleOutputNode(Node):
                      self._measured_age(self._pos), self._ground_velocity(), self._autopilot_velocity())
         out = self._bridged(out, now)
         if out is None:
-            return                        # waiting: a bridge may start, nothing to send yet
+            self._resend_ubx(now)         # waiting: a bridge may start; UBX repeats the last one
+            return
         out = reacquire(self.cfg, out, None if self._last_pos_tx is None else now - self._last_pos_tx)
         if out.kind != self._last_kind:
             # Separate call sites: rclpy refuses one call site changing severity.
@@ -418,6 +424,7 @@ class VehicleOutputNode(Node):
             self._last_kind = out.kind
         if out.kind != KIND_NONE and not out.bridged:
             if self._pos is self._sent_pos:
+                self._resend_ubx(now, out)    # UBX only: a u-blox stream never goes quiet
                 return                    # already sent: wait for the next measurement
             self._sent_pos = self._pos
             self._held = hold(out, now, self._ground_velocity())
@@ -432,8 +439,7 @@ class VehicleOutputNode(Node):
             self._held_alt_msl = out.alt_msl_m
         try:
             if self._serial is not None and self._ubx is not None:
-                self._serial.write(ubx_out.position_messages(out, t_utc, self._held_alt_msl, self._ubx_sats,
-                                                             self._ubx.position_ids()))
+                self._write_ubx(out, now, t_utc)
             elif self._serial is not None:
                 nmea_out = for_nmea(out, self._nmea_degraded)
                 spd = crs = math.nan
@@ -451,6 +457,54 @@ class VehicleOutputNode(Node):
             if self._pub_fix is not None:
                 self._pub_fix.publish(self._navsatfix(self._ros_output(out)))
         except Exception as e:     # serial unplugged, socket error...
+            self.get_logger().fatal(f"output failed: {e} — exiting so the service restarts")
+            self.failed = True
+            self.context.try_shutdown()
+
+    def _write_ubx(self, out, now: float, t_utc) -> None:
+        """Write one UBX position epoch and remember it for _resend_ubx."""
+        self._serial.write(ubx_out.position_messages(out, t_utc, self._held_alt_msl, self._ubx_sats,
+                                                     self._ubx.position_ids()))
+        self._ubx_last, self._ubx_last_t, self._ubx_first_t = out, now, now
+
+    def _resend_ubx(self, now: float, current=None) -> None:
+        """UBX: repeat the last decided output at rate_hz between measurements (F-UBX-1).
+
+        A u-blox receiver never goes quiet: PX4's GPS driver drops the receiver after 0.5 s
+        without a message, so a 1 Hz vision fix sent once would be lost between fixes. NMEA,
+        MAVLink and ROS still send each position once. What is repeated:
+          * while a bridge runs, the held position carried to now (policy.bridge: its accuracy
+            grown by the gap, "no fix" past bridge_max_s — then nothing is repeated);
+          * else `current`, the decision just made for the same position (policy.decide already
+            applies position_timeout_s / max_measurement_age_s), or the last output sent, its age
+            grown — held with its stated accuracy, and never past max_measurement_age_s or
+            position_timeout_s.
+        Nothing is repeated after a "no fix" (that is sent at rate_hz anyway). The repeats keep the
+        measurement instant (iTOW) and are not counted as a new send (the bridge timing is unchanged).
+        """
+        if self._serial is None or self._ubx is None or self._ubx_last is None:
+            return
+        if self._ubx_last_t is not None and now - self._ubx_last_t < 0.9 * self._period_s:
+            return                        # a send already went out this period
+        if self._bridging and self._held is not None:
+            out = bridge(self.cfg, self._held, now)
+        elif current is not None:
+            out = current
+        else:
+            last = self._ubx_last
+            elapsed = now - self._ubx_first_t
+            out = dataclasses.replace(last, age_s=last.age_s + elapsed)
+            if last.bridged or elapsed > self.cfg.position_timeout_s \
+                    or out.age_s > self.cfg.max_measurement_age_s:
+                return
+        if out.kind == KIND_NONE or self._ubx_last.kind == KIND_NONE:
+            return
+        t_utc = datetime.now(timezone.utc) - timedelta(seconds=out.age_s)
+        try:
+            self._serial.write(ubx_out.position_messages(out, t_utc, self._held_alt_msl, self._ubx_sats,
+                                                         self._ubx.position_ids()))
+            self._ubx_last_t = now
+        except Exception as e:     # serial unplugged...
             self.get_logger().fatal(f"output failed: {e} — exiting so the service restarts")
             self.failed = True
             self.context.try_shutdown()
