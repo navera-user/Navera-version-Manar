@@ -84,7 +84,16 @@ def test_wifi_manager_request_checks(tmp_path, monkeypatch):
     assert calls == []
     assert wifi.apply_request('wlan0', {'ssid': 'Client Net', 'password': 'secret123'}) == ''
     add = [c for c in calls if c[:2] == ('con', 'add')][0]
-    assert 'navera-wifi-Client_Net' in add and 'secret123' in add and ('hotspot', False) in calls
+    assert 'navera-wifi-Client_Net-new' in add and 'secret123' in add and ('hotspot', False) in calls
+    # the old profile of that name is deleted only after the new one joined, then the new takes its name
+    i_up = calls.index(('con', 'up', 'navera-wifi-Client_Net-new'))
+    assert calls.index(('con', 'delete', 'navera-wifi-Client_Net')) > i_up
+    assert calls[-1] == ('con', 'modify', 'navera-wifi-Client_Net-new', 'connection.id', 'navera-wifi-Client_Net')
+    calls.clear()                                       # join fails: the working profile stays
+    monkeypatch.setattr(wifi, 'nmcli', lambda *a, **k: (calls.append(a), (4 if a[:2] == ('con', 'up') else 0, ''))[1])
+    assert 'could not join' in wifi.apply_request('wlan0', {'ssid': 'Client Net', 'password': 'secret123'})
+    assert ('con', 'delete', 'navera-wifi-Client_Net') not in calls
+    assert calls[-1] == ('con', 'delete', 'navera-wifi-Client_Net-new')
     # a link planted in place of the request is not followed
     monkeypatch.setattr(wifi, 'REQUEST', str(tmp_path / 'request.json'))
     os.symlink('/etc/hostname', tmp_path / 'request.json')
@@ -156,3 +165,25 @@ def test_apply_product_sets_up_access(tmp_path):
     assert '\nNAVERA_WEB_TRUST_NETS=hotspot\n' in env       # not the client Wi-Fi, not the VPN
     p2 = sh([os.path.join(PRODUCT, 'apply_product.sh'), '--root', str(r)])
     assert p2.returncode == 0 and (r / 'etc/navera/navera.env').read_text().count('\nNAVERA_HOTSPOT=') == 1
+
+
+def test_wifi_manager_survives_nmcli_hangs_and_rechecks_the_hotspot(monkeypatch):
+    import subprocess
+    wifi = load(os.path.join(PRODUCT, 'navera_wifi.py'), 'navera_wifi')
+
+    def hang(*a, **k):
+        raise subprocess.TimeoutExpired(a[0], k.get('timeout', 1))
+    monkeypatch.setattr(wifi.subprocess, 'run', hang)
+    assert wifi.nmcli('dev', timeout=1)[0] == 124          # no exception out of nmcli
+    wifi.hotspot(True)                                    # nor out of the hotspot script
+    # the hotspot is started again until its connection is really active
+    starts, up = [], iter(['', '', 'navera-hotspot'])
+    monkeypatch.setattr(wifi, 'hotspot', lambda on: starts.append(on))
+    monkeypatch.setattr(wifi, 'active_connection', lambda dev: next(up, 'navera-hotspot'))
+    monkeypatch.setattr(wifi.time, 'sleep', lambda s: None)
+    assert wifi.ensure_hotspot('wlan0', within_s=5) and starts == [True]
+    monkeypatch.setattr(wifi, 'active_connection', lambda dev: '')
+    clock = iter(range(0, 1000, 3))
+    monkeypatch.setattr(wifi.time, 'time', lambda: next(clock))
+    starts.clear()
+    assert not wifi.ensure_hotspot('wlan0', within_s=30) and len(starts) >= 2   # started again

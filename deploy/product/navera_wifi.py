@@ -41,7 +41,13 @@ SSID_RE = re.compile(r"^[^\x00-\x1f]{1,32}$")
 
 
 def nmcli(*args, timeout=60):
-    p = subprocess.run(["nmcli", *args], capture_output=True, text=True, timeout=timeout)
+    """(exit code, output) of nmcli; a hung or missing nmcli is an error, never an exception."""
+    try:
+        p = subprocess.run(["nmcli", *args], capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return 124, f"nmcli timed out after {timeout} s"
+    except OSError as e:
+        return 127, f"nmcli: {e}"
     return p.returncode, (p.stdout + p.stderr).strip()
 
 
@@ -132,7 +138,33 @@ def scan(dev: str):
 
 
 def hotspot(on: bool):
-    subprocess.run([HOTSPOT_SH] if on else [HOTSPOT_SH, "--stop"], capture_output=True, text=True, timeout=60)
+    try:
+        subprocess.run([HOTSPOT_SH] if on else [HOTSPOT_SH, "--stop"], capture_output=True, text=True, timeout=60)
+    except (subprocess.TimeoutExpired, OSError) as e:
+        log(f"hotspot {'start' if on else 'stop'} failed: {e}")
+
+
+HOTSPOT_CHECK_S = 30.0    # the hotspot must be really up within this, else it is started again
+
+
+def log(msg: str):
+    print(f"navera_wifi: {msg}", file=sys.stderr, flush=True)
+
+
+def ensure_hotspot(dev: str, within_s: float = HOTSPOT_CHECK_S) -> bool:
+    """Start the hotspot and check its connection is really active on dev; started again
+    (every 10 s) until it is, for at most within_s. True when it is up."""
+    end = time.time() + within_s
+    while True:
+        hotspot(True)
+        t_retry = min(end, time.time() + 10.0)
+        while time.time() < t_retry:
+            if active_connection(dev) == HOTSPOT:
+                return True
+            time.sleep(2)
+        if time.time() >= end:
+            log(f"the hotspot is not up after {within_s:.0f} s")
+            return False
 
 
 def try_saved(dev: str, wait_s: float) -> str:
@@ -157,19 +189,24 @@ def apply_request(dev: str, req: dict) -> str:
     if password and not 8 <= len(password) <= 63:
         return "the password must have 8 to 63 characters"
     name = CLIENT_PREFIX + re.sub(r"[^A-Za-z0-9_.-]", "_", ssid)[:40]
-    nmcli("con", "delete", name)
+    # a saved, working profile of the same name stays until the new one has joined: the new one
+    # is added under a temporary name and takes the name only on success
+    new = name + "-new"
+    nmcli("con", "delete", new)
     hotspot(False)
-    add = ["con", "add", "type", "wifi", "ifname", dev, "con-name", name, "ssid", ssid,
+    add = ["con", "add", "type", "wifi", "ifname", dev, "con-name", new, "ssid", ssid,
            "connection.autoconnect", "yes", "connection.autoconnect-priority", "50"]
     if password:
         add += ["wifi-sec.key-mgmt", "wpa-psk", "wifi-sec.psk", password]
     code, out = nmcli(*add)
     if code != 0:
         return f"not saved: {out[-200:]}"
-    code, out = nmcli("con", "up", name, timeout=60)
+    code, out = nmcli("con", "up", new, timeout=60)
     if code != 0:
-        nmcli("con", "delete", name)
+        nmcli("con", "delete", new)
         return "could not join (wrong password, or the network is out of range)"
+    nmcli("con", "delete", name)                       # the old profile, if any (not the active one)
+    nmcli("con", "modify", new, "connection.id", name)
     return ""
 
 
@@ -192,41 +229,52 @@ def main_loop():
     con = try_saved(dev, join_s)
     mode, last_try = ("client", 0.0) if con else ("hotspot", time.time())
     if mode == "hotspot":
-        hotspot(True)
+        ensure_hotspot(dev)
     last_fail = ""
     while True:
-        if os.path.lexists(REQUEST):
-            req = read_request()
-            set_state(mode="joining", ssid=str(req.get("ssid", ""))[:32], message="joining")
-            reason = apply_request(dev, req)
-            if reason:
-                last_fail = reason
-                mode = "hotspot"
-                hotspot(True)
-            else:
-                last_fail, mode = "", "client"
-        con = active_connection(dev)
-        if mode == "client" and not (con and con != HOTSPOT):
-            con = try_saved(dev, join_s)            # lost the client network: try again, else hotspot
-            if not con:
-                scan(dev)
-                mode, last_try = "hotspot", time.time()
-                hotspot(True)
-        elif mode == "hotspot" and time.time() - last_try > retry_s and not hotspot_clients(dev):
-            last_try = time.time()
-            if saved_networks():
-                con = try_saved(dev, join_s)
-                if con:
-                    mode = "client"
-                else:
-                    scan(dev)
-                    hotspot(True)
-        if mode == "client":
-            set_state(mode="client", ssid=con, address=address(dev), hostname=os.uname().nodename)
-        else:
-            set_state(mode="hotspot", ssid=os.environ.get("NAVERA_WIFI_SSID", "NAVERA"),
-                      address=address(dev), message=last_fail)
+        try:
+            mode, last_try, last_fail = step(dev, mode, last_try, last_fail, join_s, retry_s)
+        except Exception as e:      # noqa: BLE001 — one bad turn (nmcli, a file) never stops the service
+            log(f"error, carrying on: {e!r}")
         time.sleep(5)
+
+
+def step(dev, mode, last_try, last_fail, join_s, retry_s):
+    """One turn of the main loop; the new (mode, last_try, last_fail)."""
+    if os.path.lexists(REQUEST):
+        req = read_request()
+        set_state(mode="joining", ssid=str(req.get("ssid", ""))[:32], message="joining")
+        reason = apply_request(dev, req)
+        if reason:
+            last_fail = reason
+            mode = "hotspot"
+            ensure_hotspot(dev)
+        else:
+            last_fail, mode = "", "client"
+    con = active_connection(dev)
+    if mode == "client" and not (con and con != HOTSPOT):
+        con = try_saved(dev, join_s)            # lost the client network: try again, else hotspot
+        if not con:
+            scan(dev)
+            mode, last_try = "hotspot", time.time()
+            ensure_hotspot(dev)
+    elif mode == "hotspot" and time.time() - last_try > retry_s and not hotspot_clients(dev):
+        last_try = time.time()
+        if saved_networks():
+            con = try_saved(dev, join_s)
+            if con:
+                mode = "client"
+            else:
+                scan(dev)
+                ensure_hotspot(dev)
+    elif mode == "hotspot" and con != HOTSPOT:   # the hotspot fell (or never came up): again
+        ensure_hotspot(dev)
+    if mode == "client":
+        set_state(mode="client", ssid=con, address=address(dev), hostname=os.uname().nodename)
+    else:
+        set_state(mode="hotspot", ssid=os.environ.get("NAVERA_WIFI_SSID", "NAVERA"),
+                  address=address(dev), message=last_fail)
+    return mode, last_try, last_fail
 
 
 def saved_networks():
