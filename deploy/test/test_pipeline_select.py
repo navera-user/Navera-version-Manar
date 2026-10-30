@@ -48,3 +48,17 @@ def test_env_files_later_win(tmp_path):
     a.write_text('NAVERA_PIPELINE=night\nX=1\n')
     b.write_text('# comment\nNAVERA_PIPELINE="auto"\n')
     assert P.read_env((str(a), str(b))) == {'NAVERA_PIPELINE': 'auto', 'X': '1'}
+
+
+def test_check_boot_skips_the_pipeline_the_automatic_choice_stopped(tmp_path, monkeypatch):
+    spec2 = importlib.util.spec_from_file_location(
+        'check_boot', os.path.join(HERE, '..', '..', 'navera_tools', 'check_boot.py'))
+    cb = importlib.util.module_from_spec(spec2)
+    spec2.loader.exec_module(cb)
+    st = tmp_path / 'pipeline.json'
+    st.write_text('{"pipeline": "night"}')
+    monkeypatch.setattr(cb, 'PIPELINE_STATE', str(st))
+    p = {'LoadState': 'loaded', 'UnitFileState': 'enabled', 'ActiveState': 'inactive', 'SubState': 'dead'}
+    assert cb.check('navera-pipeline-day.service', p, p, set())[0] == 'SKIP'
+    st.write_text('{"pipeline": "day"}')
+    assert cb.check('navera-pipeline-day.service', p, p, set())[0] == 'FAIL'      # it should run: a real failure

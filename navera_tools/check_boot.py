@@ -30,6 +30,7 @@ judged as the product unit of the same name (navera-stage-estimator = navera-est
 """
 import argparse
 import glob
+import json
 import os
 import subprocess
 import sys
@@ -177,6 +178,20 @@ def ros_nodes(domain, localhost_only, wait_s):
     return {line.rsplit('/', 1)[-1] for line in out.stdout.split()}
 
 
+PIPELINE_STATE = '/var/lib/navera/pipeline.json'     # navera_tools/pipeline_select.py
+PIPELINE_UNIT = {'day': 'navera-pipeline-day.service', 'night': 'navera-pipeline-night.service',
+                 'cn': 'navera-pipeline-cn.service'}
+
+
+def auto_pipeline_unit():
+    """The pipeline unit the automatic choice runs now (navera-pipeline-select), or ''."""
+    try:
+        with open(PIPELINE_STATE) as f:
+            return PIPELINE_UNIT.get(json.load(f).get('pipeline', ''), '')
+    except (OSError, ValueError, AttributeError):
+        return ''
+
+
 def check(unit, p0, p1, nodes):
     """Return (verdict, state, node column, note) for one unit from two property samples."""
     if p1.get('LoadState') != 'loaded':
@@ -187,6 +202,9 @@ def check(unit, p0, p1, nodes):
         note = 'not started at boot' + (' (but running now)' if p1.get('ActiveState') == 'active' else '')
         return 'SKIP', f'{enabled}, {state}', '-', note
     if p1.get('ActiveState') != 'active':
+        chosen = auto_pipeline_unit()
+        if unit in PIPELINE_UNIT.values() and chosen and chosen != unit:
+            return 'SKIP', state, '-', f'stopped by the automatic choice ({chosen} runs now)'
         return 'FAIL', state, '-', f"result {p1.get('Result')}, {p1.get('NRestarts', '?')} restarts"
     if p1.get('Type') == 'oneshot' and p1.get('Result') != 'success':
         return 'FAIL', state, '-', f"result {p1.get('Result')}"
