@@ -162,6 +162,7 @@ fetch('/api/auth/options').then(r => r.json()).then(o => {
     $('upFine').textContent = 'Students: your teacher creates your account and gives you your login and password.'; }
   NEED_CLASS = !!o.need_class;
   if (!NEED_CLASS) { $('codeRow').style.display = 'none'; $('whoS').textContent = 'I learn NAVERA'; $('upGo').textContent = 'Create my account →'; }
+  if (o.product) $('upGo').textContent = 'Create my teacher account →';
   // opened from a class QR code / join link: straight to "Create account", code filled in
   const j = new URLSearchParams(location.search).get('join');
   if (j) { $('tabUp').click(); $('uc').value = j; $('uc').dispatchEvent(new Event('input')); }
