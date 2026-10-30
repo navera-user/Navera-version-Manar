@@ -79,3 +79,24 @@ def test_a_lens_on_trial_alternates_with_the_lens_in_use_then_is_kept_or_dropped
     finally:
         n._stop.set()
         n.destroy_node()
+
+
+def test_a_late_frame_is_redated_from_the_camera_stamp_or_flagged(ros):
+    """navera_common.frame_lateness at the grab: a frame 1.5 s later than the usual delay is moved
+    back by that much when the source stamps it (GStreamer PTS), flagged for the localizer when only
+    the frame interval shows it; on-time frames give nothing."""
+    from types import SimpleNamespace
+    node = camera()
+    try:
+        cap = SimpleNamespace(stamps=None)
+        for k in range(20):
+            cap.stamps = (100.0 + k * 0.1 + 0.2, k * 0.1)
+            assert node._watch_delay(cap) == (0.0, 0.0, "")
+        cap.stamps = (100.0 + 2.0 + 0.2 + 1.5, 2.0)
+        shift, unsure, basis = node._watch_delay(cap)
+        assert basis == "camera_stamp" and abs(shift - 1.5) < 1e-6 and unsure == 0.0
+        from navera_common.frame_lateness import meta_fields
+        assert meta_fields(shift, unsure, basis) == {"late_s": 1.5, "late_basis": "camera_stamp",
+                                                     "late_redated": True}
+    finally:
+        node.destroy_node()
