@@ -1,0 +1,35 @@
+# NAVERA Academy on the NAVERA box (installed by deploy/install_academy.sh; @UID@ = uid of user "academy").
+# Flight safety first: NAVERA must never starve. The Academy is small, low priority and the first to be killed.
+[Unit]
+Description=NAVERA Academy (course dashboard, port 8300)
+Documentation=file:///opt/navera-academy/deploy/ACADEMY_DELIVERY.md
+After=network-online.target user@@UID@.service
+Wants=network-online.target user@@UID@.service
+
+[Service]
+Type=simple
+User=academy
+Group=academy
+WorkingDirectory=/opt/navera-academy/server
+EnvironmentFile=/etc/navera-academy/academy.env
+Environment=XDG_RUNTIME_DIR=/run/user/@UID@
+Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/@UID@/bus
+Environment=HOME=/var/lib/navera-academy
+ExecStart=/usr/bin/python3 /opt/navera-academy/server/app.py
+Restart=always
+RestartSec=5
+# resources: the dashboard itself (the student sandboxes run in user-@UID@.slice, limited by its drop-in)
+MemoryHigh=1280M
+MemoryMax=1536M
+CPUWeight=10
+IOWeight=10
+Nice=10
+OOMScoreAdjust=800
+TasksMax=512
+# the code is read only; only its own data folder is written
+ProtectSystem=full
+ReadWritePaths=/var/lib/navera-academy
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

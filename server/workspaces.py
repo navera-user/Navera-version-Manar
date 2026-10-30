@@ -58,7 +58,7 @@ def build_base(commit, log=print):
     with open(gi, "a") as f:
         f.write("\n# academy\nbuild/\ninstall/\nlog/\n")
     log("colcon build (2–6 min)…")
-    builder_home = os.path.join(config.ACADEMY, "state", "builder_home")
+    builder_home = os.path.join(config.STATE, "builder_home")
     os.makedirs(builder_home, exist_ok=True)
     cmd = ["bash", "-lc", "source /opt/ros/humble/setup.bash && cd ~/navera && "
            "colcon build --symlink-install --packages-select " + " ".join(config.BUILD_PACKAGES) +

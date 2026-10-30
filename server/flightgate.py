@@ -96,8 +96,8 @@ def _lock_path():
     return os.path.join(config.GPU_SLOT_DIR, LOCK_NAME)
 
 
-def apply(why):
-    """Make the sandboxes see the decision (FLIGHT_LOCK) and stop GPU work when refused."""
+def apply(why, stop=True):
+    """Make the sandboxes see the decision (FLIGHT_LOCK) and stop GPU work when refused (stop=False: only the file)."""
     os.makedirs(config.GPU_SLOT_DIR, exist_ok=True)
     p = _lock_path()
     if why:
@@ -105,14 +105,15 @@ def apply(why):
         with open(tmp, "w") as f:
             f.write(why + "\n")
         os.replace(tmp, p)
-        return stop_gpu_jobs()
+        return stop_gpu_jobs() if stop else []
     if os.path.exists(p):
         os.unlink(p)
     return []
 
 
 def _gpu_holders():
-    """PIDs of this user's processes (never this server) with a GPU device or a GPU slot lock open."""
+    """PIDs of student sandbox processes (systemd scopes academy-<name>-…, never this server nor anything else
+    of the same user) with a GPU device or a GPU slot lock open."""
     me, uid, out = os.getpid(), os.getuid(), []
     slots = os.path.realpath(config.GPU_SLOT_DIR) + os.sep
     for pid in os.listdir("/proc"):
@@ -121,6 +122,9 @@ def _gpu_holders():
         try:
             if os.stat(f"/proc/{pid}").st_uid != uid:
                 continue
+            with open(f"/proc/{pid}/cgroup") as f:
+                if "/academy-" not in f.read():          # only the Academy's own sandboxes
+                    continue
             for fd in os.listdir(f"/proc/{pid}/fd"):
                 t = os.readlink(f"/proc/{pid}/fd/{fd}")
                 if t.startswith(("/dev/nvmap", "/dev/nvgpu", "/dev/nvhost-gpu", "/dev/nvhost-ctrl-gpu", "/dev/nvidia")) \

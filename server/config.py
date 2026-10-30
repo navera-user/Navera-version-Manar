@@ -22,7 +22,7 @@ STATE = os.path.join(VAR, "state")                    # users.json, progress.jso
 # GPU slots shared by every sandbox (lock files): at most GPU_SLOTS trainings on the GPU at once
 # (one training ≈ 1.2 GB on top of ≈ 2.7 GB used by the system, 7.6 GB in all; measured 2026-10-15).
 GPU_SLOT_DIR = os.path.join(STATE, "gpu_slots")
-GPU_SLOTS = 3
+GPU_SLOTS = int(os.environ.get("ACADEMY_GPU_SLOTS_N", "1" if PRODUCT else "3"))   # box: one training at a time
 S_GPU_SLOTS = "/run/academy_gpu"
 LOGS = os.path.join(VAR, "logs")
 
@@ -126,5 +126,5 @@ RESOURCES = {} if PRODUCT else RESOURCES_DEV
 
 # NAVERA's web bridge on the same box: GPU training and Sim Lite are refused while NAVERA flies (flightgate.py).
 NAVERA_STATE_URL = os.environ.get("ACADEMY_NAVERA_STATE_URL", "http://127.0.0.1:8181/api/mission/state")
-# dev Jetson without NAVERA running: ACADEMY_FLIGHT_GATE=off. Product: always on (unit sets nothing → on).
-FLIGHT_GATE = os.environ.get("ACADEMY_FLIGHT_GATE", "on") != "off" or PRODUCT
+# Product (ACADEMY_PRODUCT=1): always on, cannot be switched off. Dev checkout: off unless ACADEMY_FLIGHT_GATE=on.
+FLIGHT_GATE = PRODUCT or os.environ.get("ACADEMY_FLIGHT_GATE", "off") == "on"

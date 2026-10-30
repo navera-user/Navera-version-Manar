@@ -17,7 +17,7 @@ import workspaces
 
 MAX_FILE = 400_000
 MAPS = [(config.OSM_MAP, 19)]      # OpenStreetMap only (licence): © OpenStreetMap contributors
-CACHE = os.path.join(config.ACADEMY, "state", "tilecache")
+CACHE = os.path.join(config.STATE, "tilecache")
 _db = threading.local()
 
 
