@@ -97,6 +97,15 @@ CONDITIONS = {
                       "--set ROLL_LIMIT_DEG=35,RLL2SRV_RMAX=40,RLL2SRV_TCONST=0.6,PTCH2SRV_RMAX_UP=15,"
                       "PTCH2SRV_RMAX_DN=15,PTCH_LIM_MAX_DEG=15,PTCH_LIM_MIN_DEG=-15,NAVL1_PERIOD=20,WP_RADIUS=300,"
                       "RTL_RADIUS=1000"),
+    # its control without sharp turns: the same jet on the 2.5 km circle (bank ~8 deg, ~1.4 deg/s), the camera
+    # delay NOT given either, GPS cut 75 s after altitude (2026-10-30)
+    "plane60_noturn": ("plane 60 m/s (jet, cruise-tuned), 500 m, wide scene, 2.5 km circle (no sharp turn), "
+                       "camera delay learned in flight",
+                       "--vehicle plane --gimbal false --model plane-jet --speed 60 --alt 500 --scene kalaa_wide "
+                       "--radius 2500 --legs 1 --loiter-turns 1 --home-radius 1300 --cut-after 75 --sigma 15 "
+                       "--set ROLL_LIMIT_DEG=25,RLL2SRV_RMAX=30,RLL2SRV_TCONST=0.8,PTCH2SRV_RMAX_UP=15,"
+                       "PTCH2SRV_RMAX_DN=15,PTCH_LIM_MAX_DEG=15,PTCH_LIM_MIN_DEG=-15,NAVL1_PERIOD=25,WP_RADIUS=250,"
+                       "WP_LOITER_RAD=2500,RTL_RADIUS=1000"),
     # plug and play: the camera's lens NOT given (navera-discover's 70 deg guess; the simulated camera is the
     # Hikvision visible fisheye, 77 deg): calibrated in flight against the map while GPS is trusted
     "lens_guess": ("baseline, lens unknown: 70 deg ideal guess, calibrated in flight (day_pkg.lens_selfcal)",
