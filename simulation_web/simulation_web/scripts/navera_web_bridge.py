@@ -700,6 +700,14 @@ class NaveraWebBridge(Node):
                     return self.send_body(200, "image/jpeg", data) if data \
                         else self.send_json(404, {"error": "tile not found"})
 
+                if path in ("", "/") and os.environ.get("NAVERA_PRODUCT_MODE") == "1":
+                    # the delivered box: the operator view first (the engineering page stays
+                    # at /navera.html)
+                    self.send_response(302)
+                    self.send_header("Location", "/operator")
+                    self.send_header("Content-Length", "0")
+                    self.end_headers()
+                    return None
                 if path in ("", "/", "/navera.html"):
                     if os.path.exists(bridge.navera_html):
                         return self.send_file(bridge.navera_html)

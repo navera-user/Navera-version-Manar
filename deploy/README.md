@@ -1159,7 +1159,7 @@ been validated on the Jetson boot chain. Use it only after a full test on the de
 | SSH | `keys`: `/etc/ssh/sshd_config.d/10-navera-product.conf` — no passwords, no root login (refused when no account has `~/.ssh/authorized_keys`: copy a key first with `ssh-copy-id`); `off`: the SSH server disabled (maintenance from the local console) | `NAVERA_PRODUCT_SSH=keys\|off` |
 | sudo | developer rules granting `NOPASSWD` in `/etc/sudoers.d` moved to `/var/backups/navera-sudoers`; only `navera-web` stays (the web page's exact restart commands, §8) | — |
 | firewall | `iris-firewall.service` runs `/usr/local/sbin/navera_firewall.sh` before the network: incoming traffic dropped except loopback, replies, ICMP / ICMPv6, DHCP, the web port, SSH (keys mode), a listening MAVLink port of `NAVERA_VEHICLE_MAVLINK_URL` / `NAVERA_MAVLINK_URL`, the DDS ports of the ROS domain when `ROS_LOCALHOST_ONLY` is not 1. iptables (the L4T kernel has no nftables conntrack); only `/etc/navera/navera.env` is read | `NAVERA_FW_ALLOW_TCP`, `NAVERA_FW_ALLOW_UDP`, `NAVERA_FW_ALLOW_FROM` (the vehicle network, CIDR) |
-| services | disabled: avahi, bluetooth, ModemManager, cups, apport / whoopsie / kerneloops, rpcbind, unattended upgrades and the apt / motd / fwupd timers | `NAVERA_PRODUCT_DISABLE` |
+| services | disabled: bluetooth, ModemManager, cups, apport / whoopsie / kerneloops, rpcbind, unattended upgrades and the apt / motd / fwupd timers | `NAVERA_PRODUCT_DISABLE` |
 | file systems | `deploy/setup_fs.sh` (§13.1) | — |
 
 See the rules: `/usr/local/sbin/navera_firewall.sh --print`; test them without root:

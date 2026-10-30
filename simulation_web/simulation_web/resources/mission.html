@@ -248,6 +248,7 @@ function fillSettings(){
 }
 function render(){
   const can = !!(S && S.control), coded = can && (!!S.trusted || $('token').value.length > 0);
+  $('auth').style.display = S && S.trusted ? 'none' : '';   // the box's own Wi-Fi: no code to type
   $('authSt').textContent = !S ? '' : !can ? t('ro', 'Read-only: no control code is configured on the box (NAVERA_WEB_TOKEN).') : coded ? '' : t('codeH', 'Enter the code to make changes.');
   $('authSt').style.color = can ? 'var(--mute)' : 'var(--bad)';
   for(const id of ['save', 'apply', 'clear']) $(id).disabled = !coded;
