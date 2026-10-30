@@ -63,8 +63,10 @@ case "$MODE" in
     dev=$(iface)
     [ -n "$dev" ] || { echo "no Wi-Fi interface found: hotspot not started" >&2; exit 1; }
     install -d -m 0755 /etc/NetworkManager/dnsmasq-shared.d
-    printf '# NAVERA captive portal (navera_hotspot.sh): every name -> the box\naddress=/#/%s\n' \
-      "${ADDR%/*}" > /etc/NetworkManager/dnsmasq-shared.d/navera-portal.conf
+    # every name -> the box; DHCP option 114 (RFC 8910) tells Android 11+ / iOS 14+ phones the
+    # setup page's address at join, so they open it by themselves instead of dropping the Wi-Fi
+    printf '# NAVERA captive portal (navera_hotspot.sh)\naddress=/#/%s\ndhcp-option=114,"http://%s/"\n' \
+      "${ADDR%/*}" "${ADDR%/*}" > /etc/NetworkManager/dnsmasq-shared.d/navera-portal.conf
     nmcli con show "$CON" >/dev/null 2>&1 || nmcli con add type wifi ifname "$dev" con-name "$CON" ssid "$SSID" >/dev/null
     # shellcheck disable=SC2046
     nmcli con modify "$CON" connection.interface-name "$dev" $(settings) wifi-sec.psk "$PASS"

@@ -141,6 +141,9 @@ ruleset() {   # ruleset <4|6>  → iptables-restore input
       echo "-A NAVERA-IN -i $hotspot_if -p udp -m multiport --dports 53,67,5353 -j ACCEPT"
       echo "-A NAVERA-IN -i $hotspot_if -p tcp --dport 53 -j ACCEPT"
       [ -n "$hotspot_net" ] && echo "-A NAVERA-IN -i $hotspot_if -s $hotspot_net -p tcp --dport $portal_port -j ACCEPT"
+      # a phone's https internet check gets an immediate refusal (not a silent drop it waits on),
+      # so it concludes "sign-in Wi-Fi" and shows the setup page instead of leaving the Wi-Fi
+      [ -n "$hotspot_net" ] && echo "-A NAVERA-IN -i $hotspot_if -s $hotspot_net -p tcp --dport 443 -j REJECT --reject-with tcp-reset"
     fi
   else
     echo "-A NAVERA-IN -p ipv6-icmp -j ACCEPT"
