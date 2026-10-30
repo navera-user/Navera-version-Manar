@@ -54,15 +54,16 @@ class GpsCrossCheck:
             self._since, self._refs = None, set()
 
     def update(self, t: float, d: float, tol: float, tol_strict: float, ref_id, name: str = "source",
-               sample: Optional[Tuple[float, float, float, float]] = None) -> Optional[str]:
+               sample: Optional[tuple] = None) -> Optional[str]:
         """One independent measurement (ref_id distinguishes measurements) d metres from the GPS of its
         instant; tol / tol_strict: the wide and the 3-sigma tolerances. sample: (measurement time s,
-        east m, north m, combined sigma m) of GPS minus that measurement, for the growth test (only
-        when the GPS of the measurement's own instant is known). The refusal reason, or None.
+        east m, north m, combined sigma m[, (GPS v east, v north) m/s at that instant]) of GPS minus that
+        measurement, for the growth test (only when the GPS of the measurement's own instant is known).
+        The refusal reason, or None.
         """
         trend_reason = None
         if self.trend is not None and sample is not None:
-            trend_reason = self.trend.add(*sample, ref_id=ref_id)
+            trend_reason = self.trend.add(*sample[:4], ref_id=ref_id, vel=sample[4] if len(sample) > 4 else None)
         reason = self._size_rule(t, d, tol, tol_strict, ref_id, name)
         if reason is None and trend_reason is not None:
             reason = f"GPS drifting away from {name}: {trend_reason} — possible slow spoofing"
@@ -145,6 +146,14 @@ class GpsDriftTrend:
         never a refusal;
       * each part holds >= min_part_fixes (3: the median of two is their mean, one wrong fix
         moves it) and the window >= min_fixes (several agreeing fixes).
+      * with dating_s > 0 and the GPS velocity of every fix's instant given: a fix dated wrong by
+        d seconds (the camera delay not known yet) sits v x d along the track, so its offset turns
+        with the track — a 90 deg turn at 65 m/s with 1.3 s moved it by 110 m and the good GPS was
+        refused as a slow spoof (Isaac Sim p1_plane60_turns, 2026-10-29). In each window the part
+        of the offset that follows the velocity, d (least squares), clamped to +- dating_s, is taken
+        out before the test. A spoof that grows with time
+        stays: only the velocity-shaped part (a turn) is absorbed, at most dating_s x the change
+        of velocity; on a straight leg nothing is.
     Refused when that holds at confirm_n distinct fixes in a row (a sequential test: one lucky
     window never refuses). Pure Python, times in seconds.
     """
@@ -153,24 +162,27 @@ class GpsDriftTrend:
                  z: float = 6.0,
                  min_growth_sigmas: float = 1.5, bias_rate_mps: float = 0.2, min_jitter_m: float = 3.0,
                  decorr_s: float = 1.0, mono_frac: float = 0.25, min_fixes: int = 6, confirm_n: int = 3,
-                 min_part_fixes: int = 3):
+                 min_part_fixes: int = 3, dating_s: float = 0.0):
         self.windows_s = sorted(float(w) for w in windows_s if w > 0.0)
         self.z, self.min_growth_sigmas, self.bias_rate = z, min_growth_sigmas, bias_rate_mps
         self.min_jitter, self.decorr_s, self.mono_frac = min_jitter_m, decorr_s, mono_frac
         self.min_fixes, self.confirm_n = max(6, int(min_fixes)), max(1, int(confirm_n))
         self.min_part = max(2, int(min_part_fixes))
+        self.dating_s = max(0.0, float(dating_s))
         self.reset()
 
     def reset(self) -> None:
-        self._hist = deque()          # (t, east, north, combined sigma)
+        self._hist = deque()          # (t, east, north, combined sigma, v east, v north) (v: nan unknown)
         self._ids = deque(maxlen=16)  # recent sample ids (one sample per independent fix)
         self.pending = 0              # windows passing at this many distinct fixes in a row
         self.last = None              # dict of the best window at the last sample (diagnostics)
         self.refused_baseline = None  # (east, north, growth m): the offset before the growth refused
 
-    def add(self, t: float, east_m: float, north_m: float, sigma_m: float, ref_id=None) -> Optional[str]:
+    def add(self, t: float, east_m: float, north_m: float, sigma_m: float, ref_id=None,
+            vel: Optional[Tuple[float, float]] = None) -> Optional[str]:
         """One independent fix at time t (its measurement instant), offset GPS - fix (east, north) m,
-        sigma_m the combined 1-sigma of the two. The refusal reason, or None.
+        sigma_m the combined 1-sigma of the two, vel the GPS (east, north) velocity m/s at t (None:
+        unknown; then no dating correction in the windows holding it). The refusal reason, or None.
         """
         if ref_id is not None:
             if ref_id in self._ids:
@@ -180,7 +192,8 @@ class GpsDriftTrend:
             return None
         if self._hist and t <= self._hist[-1][0]:
             return None                # out of order: the windows assume time order
-        self._hist.append((t, east_m, north_m, max(sigma_m, 0.0)))
+        ve, vn = (float(vel[0]), float(vel[1])) if vel is not None else (math.nan, math.nan)
+        self._hist.append((t, east_m, north_m, max(sigma_m, 0.0), ve, vn))
         while self._hist and t - self._hist[0][0] > self.windows_s[-1]:
             self._hist.popleft()
         best = None
@@ -206,10 +219,33 @@ class GpsDriftTrend:
         return (f"offset grew {best['growth_m']:.0f} m in {best['dt_s']:.0f} s ({best['rate_mps']:.1f} m/s, "
                 f"{best['n']} fixes, {best['z']:.1f} x its noise, {best['sigmas']:.1f} x the stated sigma)")
 
+    def _dating(self, pts) -> float:
+        """The seconds d of dating error the window's offsets show: the least-squares slope of the offset
+        on the velocity (offset = a + d v), clamped to +- dating_s; 0 when off, a velocity unknown, or the
+        velocity did not change in the window (nothing to separate).
+
+        Not fitted jointly with a growth in time: within a turn the velocity turns almost linearly in
+        time, the two are then not separable, and the clamped joint d added growth instead of removing it.
+        """
+        if self.dating_s <= 0.0 or any(not math.isfinite(p[4]) for p in pts):
+            return 0.0
+        n = len(pts)
+        m = [sum(p[k] for p in pts) / n for k in (1, 2, 4, 5)]
+        den = sum((p[4] - m[2]) ** 2 + (p[5] - m[3]) ** 2 for p in pts)
+        if den <= n * 1.0:                           # velocity spread below 1 m/s: no turn here
+            return 0.0
+        d = sum((p[1] - m[0]) * (p[4] - m[2]) + (p[2] - m[1]) * (p[5] - m[3]) for p in pts) / den
+        return max(-self.dating_s, min(self.dating_s, d))
+
     def _window(self, pts):
         """The evaluation of one window (dict, 'pass' and a score), or None if too few fixes."""
         if len(pts) < self.min_fixes:
             return None
+        dating = self._dating(pts)
+        if dating != 0.0:                            # the offset a turn gives a wrongly dated fix, out
+            ve = sum(p[4] for p in pts) / len(pts)
+            vn = sum(p[5] for p in pts) / len(pts)
+            pts = [(p[0], p[1] - dating * (p[4] - ve), p[2] - dating * (p[5] - vn)) + tuple(p[3:]) for p in pts]
         t0, t1 = pts[0][0], pts[-1][0]
         span = t1 - t0
         if span <= 0.0:
@@ -245,7 +281,7 @@ class GpsDriftTrend:
         ok = mono and z >= self.z and sigmas >= self.min_growth_sigmas
         return {"pass": ok, "score": min(z / self.z, sigmas / max(self.min_growth_sigmas, 1e-9))
                 if mono else -1.0, "growth_m": growth, "dt_s": dt, "rate_mps": growth / dt, "n": len(pts),
-                "z": z, "sigmas": sigmas, "jitter_m": jitter, "monotone": mono,
+                "z": z, "sigmas": sigmas, "jitter_m": jitter, "monotone": mono, "dating_s": dating,
                 "from_e": m[0][0], "from_n": m[0][1]}
 
     @property

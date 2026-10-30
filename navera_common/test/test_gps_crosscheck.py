@@ -143,3 +143,58 @@ def test_growth_marks_doubt_first_and_keeps_the_offset_before_it():
     assert abs(e - 20.0) < 15.0 and growth > 20.0
     assert not x.back_to_baseline((t, oe, 0.0, 10.0))           # still drifted: stays refused
     assert x.back_to_baseline((t, 22.0, 0.0, 10.0))             # the growth undone
+
+
+# ---------- a fast plane's turns with a wrongly dated vision (Isaac Sim p1_plane60_turns, 2026-10-29) ----------
+def _plane_velocity(t, v=65.0, leg_s=50.0, turn_s=14.0):
+    """Ground velocity (east, north) of a plane flying legs of leg_s and 90 deg right turns of turn_s."""
+    period = leg_s + turn_s
+    k, r = divmod(t, period)
+    heading = math.radians(90.0 * k + 90.0 * max(0.0, r - leg_s) / turn_s)
+    return v * math.sin(heading), v * math.cos(heading)
+
+
+def _plane_run(dating_s, delay_err_s, spoof_mps=0.0, sigma=30.0, jitter=8.0, seed=3, dur=400.0):
+    """(drift m at the refusal or None, reason): fixes at 0.5 Hz dated delay_err_s late, GPS dragged east
+    at spoof_mps from t = 60 s."""
+    rnd = random.Random(seed)
+    x = GpsCrossCheck(trend=GpsDriftTrend(dating_s=dating_s))
+    t = 0.0
+    while t < dur:
+        ve, vn = _plane_velocity(t)
+        drift = spoof_mps * max(0.0, t - 60.0)
+        oe = drift + ve * delay_err_s + 5.0 + rnd.gauss(0.0, jitter)    # GPS - vision: the fix lags v x error
+        on = vn * delay_err_s - 3.0 + rnd.gauss(0.0, jitter)
+        reason = x.update(t, math.hypot(oe, on), 5 * sigma + 50.0, 3 * sigma, t, "day vision",
+                          sample=(t, oe, on, sigma, (ve, vn)))
+        if reason:
+            return drift, reason
+        t += 2.0
+    return None, None
+
+
+def test_a_wrongly_dated_vision_in_turns_refuses_a_good_gps_without_the_dating_term():
+    """The 1.3 s camera delay unknown: the 85 m lag turns with the track, the growth test (or the 3 sigma
+    rule) refuses the good GPS as yesterday; taking the velocity-shaped part out keeps it."""
+    assert _plane_run(dating_s=0.0, delay_err_s=1.3, sigma=60.0)[1] is not None     # 60 m: v x the 1 s prior
+    for seed in range(6):
+        assert _plane_run(dating_s=1.5, delay_err_s=1.3, seed=seed, sigma=60.0) == (None, None), seed
+        assert _plane_run(dating_s=1.0, delay_err_s=0.4, seed=seed) == (None, None), seed
+
+
+def test_a_slow_spoof_through_turns_is_still_refused_with_the_dating_term():
+    """It costs some drift (the turns' share of the growth is absorbed, 6 seeds: 42-72 m without, 72-90 m
+    with), never the refusal."""
+    for seed in range(6):
+        on, _ = _plane_run(dating_s=1.0, delay_err_s=0.2, spoof_mps=3.0, seed=seed)
+        off, _ = _plane_run(dating_s=0.0, delay_err_s=0.2, spoof_mps=3.0, seed=seed)
+        assert on is not None and on < 150.0, (seed, on)
+        assert off is not None and on <= off + 50.0, (seed, on, off)
+
+
+def test_the_dating_term_needs_a_velocity_change():
+    tr = GpsDriftTrend(dating_s=1.0)
+    pts = [(2.0 * k, 0.5 * k, 0.0, 10.0, 60.0, 0.0) for k in range(20)]     # a straight leg
+    assert tr._dating(pts) == 0.0
+    pts = [(2.0 * k, 0.5 * k, 0.0, 10.0, math.nan, math.nan) for k in range(20)]
+    assert tr._dating(pts) == 0.0
