@@ -358,6 +358,10 @@ def run_mascot(a):
             if best is None or n > best[1]:
                 best = (R, n, lens, img, utc)
         R, n, lens, img, utc = best
+        img = img.copy()                       # MASCOT burns text into its frames (title, ESO logo, N/E arrows)
+        img[:80, :90] = 0
+        img[:90, -70:] = 0
+        img[-60:, :80] = 0
         up = R @ np.array([0, 0, 1.0])
         north = R @ np.array([0, 1.0, 0]) if a.heading else None
         utc_s = utc.replace("T", " ")

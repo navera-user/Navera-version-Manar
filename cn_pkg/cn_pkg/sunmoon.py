@@ -42,7 +42,8 @@ SATURATED = 245            # DN: a pixel at or above this is clipped (8-bit fram
 MIN_AREA = 3               # px: smaller saturated spots are stars, planets or hot pixels
 MAX_RADIUS_DEG = 8.0       # a blob wider than this (sky through a window, white wall) is not a disc + bloom
 MIN_FILL = 0.55            # blob area / area of its fitted circle: a disc with bloom fills it, a window bar does not
-MIN_ALT_DEG = 3.0          # below this refraction and the horizon spoil the altitude
+MIN_ALT_DEG = 12.0         # as the star solver (allsky.LOCATE_MIN_ALT): ground, lamps, roofs below; refraction
+MOON_MIN_LIT = 0.3         # a thinner crescent: too small for its centre (synthetic: 1.8-4.9 deg off, or a lamp)
 GATE_SIGMA = 3.0
 # error budget (1 sigma). The errors of a sight are NOT one constant altitude bias (real Moon, 2026-10-30 night,
 # Sousse: intercept +0.34 deg at 81 deg altitude / azimuth 156, -0.5 at 70 / 251, -1.0 at 60 / 263, camera still).
@@ -478,6 +479,9 @@ def sight_from_frame(gray: np.ndarray, up_imu, utc: str, prior: Tuple[float, flo
     rep.update(body=body, alt_pred=round(h_c, 3), az_pred=round(az_c, 2))
     if h_c < MIN_ALT_DEG - 1.0:
         rep["why"] = f"{body} below {MIN_ALT_DEG} deg at the prior ({h_c:.1f})"
+        return None, rep
+    if body == "moon" and place.illuminated_fraction() < MOON_MIN_LIT:
+        rep["why"] = f"Moon only {place.illuminated_fraction():.0%} lit (< {MOON_MIN_LIT:.0%})"
         return None, rep
     sb = math.hypot(SIGMA_UP_DEG, SIGMA_LENS_DEG) if sigma_bias_deg is None else sigma_bias_deg   # gate only
     discs = detect_discs(gray, up_imu, lenses, ref_width=ref_width)
