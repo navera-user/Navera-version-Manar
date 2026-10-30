@@ -382,6 +382,7 @@ def run_mascot(a):
         print(json.dumps(row), flush=True)
     append_csv(a.csv, csv_rows)
     s_ = [r for r in out if r["sight"]]
+    print(f"MASCOT moon: {len(out)} frames with the Moon >= 5 deg up, {len(s_)} sights accepted")
     if s_:
         e = np.array([r["err_alt_deg"] for r in s_])
         mh = np.array([r["mahal"] for r in s_])
