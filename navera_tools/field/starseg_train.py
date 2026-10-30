@@ -6,9 +6,10 @@
 Crops (CROP px) of the sessions' saved frames inside the lens circles: half at random, half centred on what the
 production detector finds at a low threshold (the real junk: lamps, reflections, cloud texture, codec blocks).
 Every real pixel is labelled 'not star' (the 2026-10-29 sessions hold no starlight, measured by starcheck /
-forcedcheck). On the fly, 0-8 synthetic stars per crop: Gaussian or Moffat PSF (sigma 0.6-1.6 px), peak 0.3-4 DN
-log-uniform, sub-pixel centre, added to the 8-bit frame and rounded like a saved frame. Label: a 1.5 px disc for
-stars of peak >= 0.5 DN; stars below 0.5 DN are 'don't care' (neither rewarded nor punished).
+forcedcheck). On the fly, 0-8 synthetic stars per crop: Gaussian or Moffat PSF (sigma 0.6-2.2 px), peak 0.3-4 DN
+log-uniform (30 %: 4-150 DN; v1 had faint stars only and learnt 'bright point = junk'), sub-pixel centre, half
+the crops with extra noise up to 1.5 DN, added to the 8-bit frame and rounded like a saved frame. Label: a 1.5 px
+disc for stars of peak >= 0.5 DN; stars below 0.5 DN are 'don't care' (neither rewarded nor punished).
 Deterministic for a given seed. Memory: ~CROPS_PER_FRAME x frames x 46 kB + the GPU batch (< 1 GB in all).
 """
 import argparse
@@ -27,6 +28,10 @@ for _p in (ROOT, os.path.join(ROOT, "navera_common"), os.path.join(ROOT, "cn_pkg
 CROP = 96
 CROPS_PER_FRAME = 40
 LABEL_MIN_DN = 0.5
+SIGMA_MIN, SIGMA_MAX = 0.6, 2.2   # px: Insta360 ~1 px; wider for defocus / other lenses
+BRIGHT_FRAC = 0.3                 # stars drawn 4..BRIGHT_MAX DN (a bright star is a star, not junk)
+BRIGHT_MAX = 150.0
+EXTRA_NOISE_MAX = 1.5             # DN: extra Gaussian noise on half the crops (other sensors / exposures)
 
 
 def collect(sessions, rng):
@@ -76,8 +81,10 @@ def render(torch, n, gen, device, max_stars: int = 8):
     present = torch.rand(n, k, generator=gen, device=device) < torch.rand(n, 1, generator=gen, device=device)
     cx = 6 + torch.rand(n, k, generator=gen, device=device) * (CROP - 12)
     cy = 6 + torch.rand(n, k, generator=gen, device=device) * (CROP - 12)
-    sig = 0.6 + torch.rand(n, k, generator=gen, device=device) * 1.0
-    amp = torch.exp(math.log(0.3) + torch.rand(n, k, generator=gen, device=device) * math.log(4.0 / 0.3))
+    sig = SIGMA_MIN + torch.rand(n, k, generator=gen, device=device) * (SIGMA_MAX - SIGMA_MIN)
+    faint = torch.exp(math.log(0.3) + torch.rand(n, k, generator=gen, device=device) * math.log(4.0 / 0.3))
+    bright = torch.exp(math.log(4.0) + torch.rand(n, k, generator=gen, device=device) * math.log(BRIGHT_MAX / 4.0))
+    amp = torch.where(torch.rand(n, k, generator=gen, device=device) < BRIGHT_FRAC, bright, faint)
     moffat = torch.rand(n, k, generator=gen, device=device) < 0.5
     beta = 2.5 + torch.rand(n, k, generator=gen, device=device) * 1.5
     r2 = (xx[None, None] - cx[..., None, None]) ** 2 + (yy[None, None] - cy[..., None, None]) ** 2
@@ -126,9 +133,13 @@ def main(argv=None) -> int:
         star, lab, care = render(torch, a.batch, gen, dev)
         if torch.rand(1, generator=gen, device=dev).item() < 0.5:     # flips / transposes: the junk has no up
             raw, star, lab, care = (t.flip(-1) for t in (raw, star, lab, care))
-        delta = torch.clamp(torch.round(raw + star), 0, 255) - raw
+        en = EXTRA_NOISE_MAX * torch.rand(a.batch, 1, 1, generator=gen, device=dev)
+        en = torch.where(torch.rand(a.batch, 1, 1, generator=gen, device=dev) < 0.5, en, torch.zeros_like(en))
+        extra = en * torch.randn(raw.shape, generator=gen, device=dev)
+        delta = torch.clamp(torch.round(raw + star + extra), 0, 255) - raw
         res = ress_t[idx].float() + delta
-        x = torch.stack([torch.clamp(res / 4.0, -8, 16), torch.clamp(res / noises_t[idx].float() / 6.0, -4, 8)], 1)
+        noise = torch.sqrt(noises_t[idx].float() ** 2 + en ** 2)
+        x = torch.stack([torch.clamp(res / 4.0, -8, 16), torch.clamp(res / noise / 6.0, -4, 8)], 1)
         logit = net(x)[:, 0]
         loss = (lossf(logit, lab) * care).sum() / care.sum()
         opt.zero_grad()
