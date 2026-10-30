@@ -1198,34 +1198,18 @@ sudo deploy/install.sh --product
 A key pair (once, kept offline): `openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 -out iris-release.key.pem`
 and `openssl pkey -in iris-release.key.pem -pubout -out iris-release.pub.pem`.
 
-## 14. Access: the box's Wi-Fi, its QR code, and the public link
+## 14. Access: the box's Wi-Fi and its QR code
 
 **Near the box (no internet needed).** `apply_product.sh` step 7 turns the box's Wi-Fi card into
 a hotspot (`navera_hotspot.sh`, `navera-hotspot.service`): name `NAVERA`, password `navera-iris`
 (`NAVERA_WIFI_SSID` / `NAVERA_WIFI_PASSWORD`), the **same on every box**, so the access card's QR
 code is the same everywhere. A phone that scans it joins, and the captive portal
-(`navera_access_gate.py --portal`, `navera-portal.service`; the hotspot's DNS answers every name
+(`navera_portal.py`, `navera-portal.service`; the hotspot's DNS answers every name
 with 10.42.0.1 and the firewall sends its port 80 to the portal) opens NAVERA's page
 (`http://10.42.0.1:8181/`) by itself. Anyone near the box who has the card can then view and,
 with the web control token, control NAVERA: keep the card with the box. The hotspot uses the
 Wi-Fi card, so the box cannot also join another Wi-Fi network.
 
-**From anywhere (optional, needs internet for the box: Ethernet or a 4G USB modem).** The public
-link is a Tailscale Funnel https address that reaches only the access gate
-(`navera_access_gate.py`, `navera-access-gate.service`, 127.0.0.1:8190). The viewer installs
-nothing: the link carries the box's own key (`NAVERA_REMOTE_KEY`, generated per box, on the
-access card's second QR code); without it nothing is shown, wrong keys are slowed down, and the
-page is **view only** from the internet (`NAVERA_REMOTE_CONTROL=1` to allow control, still
-behind the web control token). Once per box, at provisioning:
-
-```bash
-curl -fsSL https://tailscale.com/install.sh | sh          # or the offline .deb
-sudo tailscale up --auth-key <IRIS tailnet key> --hostname navera-<serial>
-# admin console: allow Funnel for this machine (ACL "funnel" attribute)
-sudo systemctl restart navera-remote && navera_remote.sh --link
-```
-
 **The access card:** `python3 navera_tools/access_card.py --out DIR` (made by step 7 in
-`/var/lib/navera/access_card/`, root only): the Wi-Fi QR code and, when the public link is set
-up, its QR code. It holds the Wi-Fi password and the remote key: print it for the client, do not
-publish it. Off: `NAVERA_HOTSPOT=0` / `NAVERA_REMOTE=0`, then rerun step 7.
+`/var/lib/navera/access_card/`): the Wi-Fi QR code, the same for every box. Print it as the
+box's label. Off: `NAVERA_HOTSPOT=0`, then rerun step 7. No internet is involved.

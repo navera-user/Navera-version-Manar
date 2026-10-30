@@ -13,24 +13,18 @@
 | Mounting | vibration-damped plate, lens hood | 1 | |
 
 ## 1b. Accessories to buy (add-ons)
-Prices are rough 2026 retail estimates, not quotes. "Needed" = for the feature named.
+Prices are rough 2026 retail estimates, not quotes. Cameras are not on this list: the client
+brings their own, and NAVERA reads it and calibrates it by itself (USER_MANUAL section 6).
 
-| Add-on | Example model | Needed for | Est. price | Notes |
+| Add-on | Example model | What for | Est. price | Notes |
 |---|---|---|---|---|
-| 4G USB modem ("HiLink", shows up as a network card) + data SIM | Huawei E3372h-320 or similar | the public link (dashboard from anywhere) when there is no Ethernet | 40–60 € + SIM | the box's Wi-Fi is busy as the hotspot; HiLink models need no driver |
-| Ethernet cable / router port | Cat6 | the public link at a base or lab | 5 € | simplest internet for the box |
-| Wi-Fi antennas (2×, U.FL / RP-SMA) | dual-band 5 dBi | hotspot range in the field | 10–20 € | the carrier's stock antennas reach only a few metres in a closed case |
-| USB-serial 3.3 V + JST-GH cable | FTDI FT232R / CP2102 | autopilot link (MAVLink, NMEA or u-blox UBX output) | 10–20 € | one per vehicle type (JST-GH 6-pin for Pixhawk TELEM/GPS) |
-| GPS receiver for take-off | u-blox M10 module | NAVERA starts with GPS | 20–40 € | NMEA or UBX on USB/serial |
-| Clock module + battery | DS3231 + CR2032 | star time without GPS after power loss | 5–10 € | |
-| Night-sky camera (celestial) | IMX462 or IMX585 board camera, raw output, with an f/1.2–2 fisheye | stars in city light and haze, much fainter than the Insta360's video | 50–300 € | not yet integrated: see VALIDATION_STATUS "first real night" |
-| Lens hood / baffle for the sky camera | matte black tube | street lamps and stray light | 5–15 € | biggest free gain measured on the 2026-10-29 night |
-| 700 nm long-pass filter (optional) | 25–37 mm screw-in | LED city glow and haze for the night-sky camera | 20–40 € | no help against cloud |
-| Thermal camera (night vision) | FLIR Boson 640 / Hikvision DS-2TD2617B | night map matching | 300–3000 € | |
-| Powered USB 3 hub | 4-port, 5 V 3 A | several USB cameras + modem | 20–30 € | the carrier's ports trip with a camera + modem |
+| Wi-Fi antennas (2×, U.FL / RP-SMA) | dual-band 5 dBi | the box's Wi-Fi (QR code access) reaching the operator in the field | 10–20 € | the carrier's stock antennas reach only a few metres in a closed case |
+| USB-serial 3.3 V + JST-GH cable | FTDI FT232R / CP2102 | the autopilot link (MAVLink, NMEA or u-blox UBX output) | 10–20 € | JST-GH 6-pin for Pixhawk TELEM/GPS ports |
+| GPS receiver (if the vehicle's own GPS cannot be shared) | u-blox M10 module | NAVERA starts with GPS | 20–40 € | NMEA or UBX on USB/serial |
+| Powered USB 3 hub | 4-port, 5 V 3 A | several USB cameras | 20–30 € | the carrier's ports trip with two cameras |
 | Battery DC-DC converter | 6–36 V in → carrier input, ≥ 25 W, XT60 | power from the vehicle battery | 15–30 € | |
 | NVMe SSD (maps) | ≥ 512 GB | larger mission maps | 40–70 € | |
-| Printed access card / label | from navera_tools/access_card.py | the Wi-Fi QR code on the box | — | same code for every box (fixed Wi-Fi name and password) |
+| Printed label with the Wi-Fi QR code | navera_tools/access_card.py | access | — | the same code for every box |
 
 ## 2. Enclosure requirements
 - **Heat:** the module reaches ~72 °C under continuous load at room temperature with the stock

@@ -16,10 +16,10 @@
 #   NAVERA_WIFI_ADDRESS      the box's address on it (default 10.42.0.1/24; DHCP for the clients)
 #   NAVERA_WIFI_CHANNEL      2.4 GHz channel (default 6)
 # The hotspot uses the box's Wi-Fi card: the box can then not ALSO join another Wi-Fi network.
-# Internet for the remote link (navera_remote.sh) then comes from Ethernet or a 4G USB modem.
+# No internet is needed: NAVERA and its page work offline.
 # Captive portal: the hotspot's DNS answers every name with the box's address
 # (/etc/NetworkManager/dnsmasq-shared.d/navera-portal.conf) and the firewall sends port 80 to the
-# portal (navera_access_gate.py --portal): a phone that joins opens NAVERA's page by itself.
+# portal (navera_portal.py): a phone that joins opens NAVERA's page by itself.
 # The firewall (navera_firewall.sh) opens DHCP, DNS and the portal on this interface only.
 set -euo pipefail
 MODE=apply

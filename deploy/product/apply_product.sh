@@ -16,9 +16,9 @@
 #   4. the firewall (navera_firewall.sh, iris-firewall.service)
 #   5. services a sealed box does not use disabled (NAVERA_PRODUCT_DISABLE to choose)
 #   6. filesystem power-cut settings (deploy/setup_fs.sh: fsck.repair=yes)
-#   7. access: the box's own Wi-Fi (navera_hotspot.sh, NAVERA_HOTSPOT=1), the access gate and the
-#      public link (navera_access_gate.py, navera_remote.sh; NAVERA_REMOTE_KEY generated), and
-#      the printable access card (navera_tools/access_card.py) — deploy/README.md §14
+#   7. access: the box's own Wi-Fi (navera_hotspot.sh, NAVERA_HOTSPOT=1, the same name and password
+#      on every box), its captive portal (navera_portal.py) and the printable access card
+#      (navera_tools/access_card.py) — deploy/README.md §14
 # The desktop is turned off by install.sh itself (--product implies --headless).
 # Every step says what it did; undo commands: deploy/README.md §13.4.
 set -euo pipefail
@@ -136,35 +136,27 @@ say "6. filesystem settings for power cuts"
 FS_ARGS=(); [ "$DRY" = 1 ] && FS_ARGS+=(--dry-run); [ -n "$R" ] && FS_ARGS+=(--root "$R")
 "$SRC/deploy/setup_fs.sh" "${FS_ARGS[@]}" || echo "  WARNING: deploy/setup_fs.sh reported a FAIL (see above)"
 
-say "7. access: hotspot, access gate, public link, access card"
+say "7. access: the box's Wi-Fi, its captive portal, the access card"
 [ -z "$(getenv NAVERA_HOTSPOT)" ] && setenv NAVERA_HOTSPOT 1
 [ -z "$(getenv NAVERA_WIFI_SSID)" ] && setenv NAVERA_WIFI_SSID NAVERA
 [ -z "$(getenv NAVERA_WIFI_PASSWORD)" ] && setenv NAVERA_WIFI_PASSWORD navera-iris
-if [ -z "$(getenv NAVERA_REMOTE_KEY)" ]; then
-  setenv NAVERA_REMOTE_KEY "$(openssl rand -hex 12)"; echo "  NAVERA_REMOTE_KEY generated (it is on the access card)"
-else
-  echo "  NAVERA_REMOTE_KEY already set: kept"
-fi
 run install -d -m 0755 "$R/usr/local/lib/navera"
 run install -m 0755 "$SRC/deploy/product/navera_hotspot.sh" "$R/usr/local/sbin/navera_hotspot.sh"
-run install -m 0755 "$SRC/deploy/product/navera_remote.sh" "$R/usr/local/sbin/navera_remote.sh"
-run install -m 0755 "$SRC/deploy/product/navera_access_gate.py" "$R/usr/local/lib/navera/navera_access_gate.py"
-for u in navera-hotspot navera-portal navera-access-gate navera-remote; do
+run install -m 0755 "$SRC/deploy/product/navera_portal.py" "$R/usr/local/lib/navera/navera_portal.py"
+for u in navera-hotspot navera-portal; do
   run install -m 0644 "$SRC/deploy/product/$u.service" "$R/etc/systemd/system/$u.service"
 done
 if [ -n "$R" ]; then
-  run "${SYSTEMCTL[@]}" enable navera-hotspot.service navera-portal.service navera-access-gate.service navera-remote.service
-  skip "systemctl restart iris-firewall navera-hotspot navera-access-gate navera-remote; access card"
+  run "${SYSTEMCTL[@]}" enable navera-hotspot.service navera-portal.service
+  skip "systemctl restart iris-firewall navera-hotspot navera-portal; access card"
 else
   run systemctl daemon-reload
-  run systemctl enable navera-hotspot.service navera-portal.service navera-access-gate.service navera-remote.service
+  run systemctl enable navera-hotspot.service navera-portal.service
   run systemctl restart iris-firewall.service
   run systemctl restart navera-hotspot.service || echo "  WARNING: hotspot not started (see: journalctl -u navera-hotspot)"
-  run systemctl restart navera-portal.service navera-access-gate.service
-  run systemctl restart navera-remote.service || echo "  NOTE: no public link yet (Tailscale not logged in: deploy/README.md §14)"
+  run systemctl restart navera-portal.service
   if [ "$DRY" = 0 ]; then
-    ( set -a; . "$ENV"; set +a; python3 "$SRC/navera_tools/access_card.py" --env "$ENV" --out /var/lib/navera/access_card ) \
-      && chmod -R go-rwx /var/lib/navera/access_card \
+    python3 "$SRC/navera_tools/access_card.py" --env "$ENV" --out /var/lib/navera/access_card \
       || echo "  WARNING: access card not made (python3 navera_tools/access_card.py --out DIR)"
   fi
 fi

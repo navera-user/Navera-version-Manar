@@ -1,28 +1,25 @@
 #!/usr/bin/env python3
-"""access_card.py — the box's printable access card. The main QR code joins the box's Wi-Fi
+"""access_card.py — the box's printable access card: one QR code that joins the box's Wi-Fi
 (the same name and password on every box, so the same code everywhere); the box's captive
-portal then opens NAVERA's page by itself. A second, optional code opens the public link.
+portal then opens NAVERA's page by itself.
 
 Works offline (QR codes by OpenCV, already on the box). The card holds the Wi-Fi password and
-the remote key: print it for the client, keep it with the box, do not publish it.
+is the same for every box: print it as the box's label.
 
-    python3 navera_tools/access_card.py --out DIR [--env /etc/navera/navera.env] [--link URL]
-      DIR/access_card.html   the printable card (A5/A4, QR images inside)
-      DIR/qr_wifi.png, qr_local.png, qr_remote.png
---link: the public link (default: `navera_remote.sh --link`; none when Tailscale is not set up).
+    python3 navera_tools/access_card.py --out DIR [--env /etc/navera/navera.env]
+      DIR/access_card.html   the printable card (QR image inside)
+      DIR/qr_wifi.png        the QR code alone (for a sticker)
 """
 import argparse
 import base64
 import html
 import os
-import subprocess
 import sys
 
 import cv2
 import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-REMOTE_SH = os.path.join(os.path.dirname(HERE), "deploy", "product", "navera_remote.sh")
 
 
 def read_env(path: str) -> dict:
@@ -70,15 +67,6 @@ def qr_png(text: str, scale: int = 10, border: int = 4) -> bytes:
     return buf.tobytes()
 
 
-def public_link(env: dict) -> str:
-    try:
-        p = subprocess.run([REMOTE_SH, "--link"], capture_output=True, text=True, timeout=20,
-                           env=dict(os.environ, **env))
-    except OSError:
-        return ""
-    return p.stdout.strip() if p.returncode == 0 else ""
-
-
 def card_html(cards) -> str:
     """cards: [(title, steps html, png bytes or None, caption)]."""
     blocks = []
@@ -93,7 +81,7 @@ def card_html(cards) -> str:
 :root {{ --ink:#111; --muted:#555; --line:#ccc; --bg:#fff; }}
 body {{ font-family: system-ui, sans-serif; color: var(--ink); background: var(--bg); margin: 16px; }}
 h1 {{ font-size: 22px; margin: 0 0 4px; }} .sub {{ color: var(--muted); margin: 0 0 16px; }}
-.grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }}
+.grid {{ display: grid; grid-template-columns: minmax(0, 340px); gap: 16px; }}
 section {{ border: 1px solid var(--line); border-radius: 10px; padding: 14px; break-inside: avoid; }}
 h2 {{ font-size: 17px; margin: 0 0 8px; }} img {{ width: 100%; max-width: 240px; display: block; }}
 .cap {{ font-family: ui-monospace, monospace; font-size: 13px; word-break: break-all; }}
@@ -103,44 +91,31 @@ ol {{ padding-left: 18px; margin: 6px 0 0; }} .warn {{ color: var(--muted); font
 </style></head><body>
 <h1>NAVERA — access card</h1><p class="sub">IRIS Systems · keep this card with the box</p>
 <div class="grid">{''.join(blocks)}</div>
-<p class="warn">This card holds the Wi-Fi password and the remote key: anyone with it can view
-NAVERA. Do not post it publicly.</p></body></html>"""
+<p class="warn">Anyone near the box with this code can open NAVERA's page.</p></body></html>"""
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--out", required=True)
     ap.add_argument("--env", default="/etc/navera/navera.env")
-    ap.add_argument("--link", help="the public link (default: navera_remote.sh --link)")
     a = ap.parse_args()
     env = read_env(a.env)
     ssid = env.get("NAVERA_WIFI_SSID") or "NAVERA"
     password = env.get("NAVERA_WIFI_PASSWORD") or "navera-iris"
     addr = (env.get("NAVERA_WIFI_ADDRESS") or "10.42.0.1/24").split("/")[0]
     local = f"http://{addr}:{env.get('NAVERA_WEB_PORT') or '8181'}/"
-    link = a.link if a.link is not None else public_link(env)
 
     os.makedirs(a.out, exist_ok=True)
-    wifi_png, local_png = qr_png(wifi_payload(ssid, password)), qr_png(local)
-    remote_png = qr_png(link) if link else None
-    for name, png in (("qr_wifi.png", wifi_png), ("qr_local.png", local_png), ("qr_remote.png", remote_png)):
-        if png:
-            with open(os.path.join(a.out, name), "wb") as f:
-                f.write(png)
+    wifi_png = qr_png(wifi_payload(ssid, password))
+    with open(os.path.join(a.out, "qr_wifi.png"), "wb") as f:
+        f.write(wifi_png)
     e = html.escape
-    cards = [
-        ("Scan → NAVERA opens", "<ol><li>Phone camera on this code</li><li>Tap “Join”</li>"
-         "<li>The NAVERA page opens by itself (if not: open the address below)</li></ol>",
-         wifi_png, f"Wi-Fi: {e(ssid)}<br>Password: {e(password)}<br>Page: {e(local)}"),
-    ]
-    if link:
-        cards.append(("From anywhere (optional)", "<ol><li>Any phone or PC with internet</li>"
-                      "<li>Scan or open the link: nothing to install</li><li>View only</li></ol>"
-                      "<p>The box needs internet (Ethernet or 4G stick).</p>", remote_png, e(link)))
+    cards = [("Scan → NAVERA opens", "<ol><li>Phone camera on this code</li><li>Tap “Join”</li>"
+              "<li>The NAVERA page opens by itself (if not: open the address below)</li></ol>",
+              wifi_png, f"Wi-Fi: {e(ssid)}<br>Password: {e(password)}<br>Page: {e(local)}")]
     with open(os.path.join(a.out, "access_card.html"), "w") as f:
         f.write(card_html(cards))
-    print(f"access card: {os.path.join(a.out, 'access_card.html')}"
-          + ("" if link else " (no public link: Tailscale not set up)"))
+    print(f"access card: {os.path.join(a.out, 'access_card.html')}")
     return 0
 
 
