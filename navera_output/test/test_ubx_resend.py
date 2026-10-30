@@ -103,12 +103,13 @@ GPS = Output(KIND_FIX, "gps", lat=35.8, lon=10.6, alt_ellipsoid_m=43.0, geoid_se
 VISION = Output(KIND_ESTIMATED, "estimated", lat=35.8, lon=10.6, sigma_h_m=30.0, age_s=0.1)
 
 
-def test_ubx_repeats_a_held_position_at_rate_hz_with_its_stated_accuracy(world):
+def test_a_silent_gps_is_not_repeated_at_its_receiver_accuracy(world):
     clock, decision = world
     n = _node()
     _run(n, clock, decision, GPS, 1.0)                    # one fix, then 1 s with no new measurement
     got = _pvts(n._serial.chunks)
-    assert len(got) == 6 and all(g == (3, 2000) for g in got)
+    # review H2: only while the fix is younger than 2 periods, never 1 s later at +-2 m
+    assert all(g == (3, 2000) for g in got) and 1 <= len(got) <= 3
 
 
 def test_ubx_repeats_a_vision_position_until_the_bridge_then_the_bridge_grows_its_accuracy(world):
@@ -121,10 +122,10 @@ def test_ubx_repeats_a_vision_position_until_the_bridge_then_the_bridge_grows_it
         decision["out"] = soft
         n._tick()
     got = _pvts(n._serial.chunks)
-    assert len(got) == 26 and all(f == 3 for f, _ in got)         # never silent
-    assert all(h == 30000 for _, h in got[:12])                   # held as stated before the bridge (2.5 s)
-    bridged = [h for _, h in got[13:]]
-    assert bridged == sorted(bridged) and bridged[-1] > 30000      # carried: grows with the gap
+    assert all(f == 3 for f, _ in got)                            # a position, never invented
+    # review H1: before the bridge too, the repeat is carried with a growing accuracy, never the old one
+    later = [h for _, h in got[1:]]
+    assert later and later == sorted(later) and later[-1] > 30000 and all(h >= 30000 for h in later)
 
 
 def test_nothing_is_repeated_past_the_max_measurement_age(world):
@@ -140,8 +141,8 @@ def test_nothing_is_repeated_past_the_max_measurement_age(world):
         clock[0] = 100.0 + k / RATE
         n._resend_ubx(clock[0])
         sent.append(len(_pvts(n._serial.chunks)))
-    # sent at age 0.1 s: repeated while younger than 1.0 s (ages 0.3..0.9), then never again
-    assert sent[:4] == [2, 3, 4, 5] and set(sent[4:]) == {5}
+    # the bridge is off: the held position is never repeated (review H1: no stale repeat)
+    assert set(sent) == {1}
 
 
 def test_nmea_and_mavlink_still_send_each_position_once(world):
@@ -154,17 +155,17 @@ def test_nmea_and_mavlink_still_send_each_position_once(world):
 def test_ubx_with_mavlink_repeats_only_the_ubx(world):
     clock, decision = world
     n = _node(mav=True)
-    _run(n, clock, decision, GPS, 1.0)
+    _run(n, clock, decision, VISION, 1.0)
     assert len(_pvts(n._serial.chunks)) == 6 and n._mav.sent == 1
 
 
 def test_a_no_fix_is_not_turned_into_a_repeated_position(world):
     clock, decision = world
     n = _node()
-    _run(n, clock, decision, GPS, 0.4)
+    _run(n, clock, decision, VISION, 0.4)
     _run(n, clock, decision, Output(KIND_NONE, "position measured 6 s ago"), 0.4, new_pos_at=())
     got = _pvts(n._serial.chunks)
-    assert got[:3] == [(3, 2000)] * 3 and all(f == 0 for f, _ in got[3:])
+    assert got[:3] == [(3, 30000)] * 3 and all(f == 0 for f, _ in got[3:])
 
 
 def test_the_running_config_is_published_as_json():

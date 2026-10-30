@@ -506,14 +506,15 @@ class VehicleOutputNode(Node):
         if self._bridging and self._held is not None:
             out = bridge(self.cfg, self._held, now)
         elif current is not None:
+            if current.gnss and current.age_s > 2 * self._period_s:
+                return                    # a silent GPS is never repeated at its receiver accuracy
             out = current
         else:
-            last = self._ubx_last
-            elapsed = now - self._ubx_first_t
-            out = dataclasses.replace(last, age_s=last.age_s + elapsed)
-            if last.bridged or elapsed > self.cfg.position_timeout_s \
-                    or out.age_s > self.cfg.max_measurement_age_s:
+            # no current decision (a soft no-fix before the bridge starts): only a position carried
+            # along its velocity with a growing accuracy, never the old one as if it were current
+            if self._held is None:
                 return
+            out = bridge(self.cfg, self._held, now)
         if out.kind == KIND_NONE or self._ubx_last.kind == KIND_NONE:
             return
         t_utc = datetime.now(timezone.utc) - timedelta(seconds=out.age_s)

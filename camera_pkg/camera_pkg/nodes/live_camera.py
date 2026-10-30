@@ -581,7 +581,8 @@ class LiveCamera(Node):
                 self.delay_mon.add(*pair)
         except Exception:                                   # noqa: BLE001 — the monitor is optional
             pair = None
-        late = self.lateness.observe(*pair) if pair is not None else self.lateness.observe(time.monotonic())
+        # without a camera stamp the interval estimate is not trusted yet (review B1): on-time behaviour
+        late = self.lateness.observe(*pair) if pair is not None else (0.0, 0.0, "")
         if late[2]:
             self.get_logger().warn(f"frame {late[0] or late[1]:.2f} s later than the camera's usual delay "
                                    f"({'re-dated from the camera stamp' if late[0] else 'frame interval'})",
