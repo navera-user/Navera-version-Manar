@@ -2893,5 +2893,19 @@ applyAll();
 </script>
 <!-- ═══════════════ end NAVERA i18n ═══════════════ -->
 
+<!-- On the box's own setup Wi-Fi (page served from the hotspot address): a way back to the Wi-Fi
+     setup page (port 80 there), e.g. after its window was closed. -->
+<a id="nv-wifi" href="/" style="display:none;position:fixed;left:14px;bottom:14px;z-index:10000;
+  background:rgba(13,17,23,.85);border:1px solid rgba(255,255,255,.2);border-radius:20px;padding:8px 16px;
+  font:600 14px system-ui,sans-serif;color:#e6edf3;text-decoration:none">📶 Wi-Fi setup</a>
+<script>
+(function(){
+  if(location.hostname === '10.42.0.1'){
+    const a = document.getElementById('nv-wifi');
+    a.href = 'http://' + location.hostname + '/';
+    a.style.display = 'block';
+  }
+})();
+</script>
 </body>
 </html>
