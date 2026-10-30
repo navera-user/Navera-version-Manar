@@ -1,0 +1,15 @@
+[Unit]
+Description=NAVERA Wi-Fi: on the client's network when it can, the setup Wi-Fi (QR code) when not (navera_wifi.py)
+# Installed by deploy/install.sh --product (deploy/product/). Root: NetworkManager system connections.
+After=NetworkManager.service iris-firewall.service
+Wants=NetworkManager.service
+
+[Service]
+EnvironmentFile=-/etc/navera/navera.env
+ExecStart=/usr/bin/python3 /usr/local/lib/navera/navera_wifi.py
+ExecStopPost=-/usr/local/sbin/navera_hotspot.sh --stop
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

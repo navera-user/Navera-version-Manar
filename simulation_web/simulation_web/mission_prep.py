@@ -73,6 +73,15 @@ def _vehicle(v):
     return str(v)
 
 
+def _bool(v):
+    t = str(v).strip().lower()
+    if t in ("1", "true", "yes", "on"):
+        return "true"
+    if t in ("0", "false", "no", "off"):
+        return "false"
+    raise ValueError("must be on or off")
+
+
 # key -> (validator, what it is). Empty value = remove the key (back to navera.env).
 SETTINGS = {
     "NAVERA_VEHICLE_TYPE": (_vehicle, "vehicle type (label)"),
@@ -82,7 +91,19 @@ SETTINGS = {
     "NAVERA_DAY_HFOV_DEG": (_num(5, 170), "day camera horizontal field of view, deg"),
     "NAVERA_IMU_MOUNT_RPY": (_rpy, "IMU mounting roll,pitch,yaw, deg"),
     "NAVERA_DECLINATION_DEG": (_num(-90, 90), "magnetic declination until a position is known, deg"),
+    # the autopilot navigates on NAVERA's vision / celestial positions (output service): only
+    # with the accuracy measured on this vehicle; ArduPilot caps a stated accuracy at 100 m
+    "NAVERA_FORWARD_DEGRADED": (_bool, "autopilot uses NAVERA's position on GPS loss"),
+    "NAVERA_DEGRADED_SIGMA_M": (_num(1, 100), "accuracy the autopilot assumes for it, m"),
 }
+
+
+def check_forwarding(merged: Dict[str, str]):
+    """Forwarding on needs a stated accuracy (the output service refuses to start without)."""
+    on = merged.get("NAVERA_FORWARD_DEGRADED") == "true"
+    if on and not merged.get("NAVERA_DEGRADED_SIGMA_M"):
+        raise ValueError("NAVERA_FORWARD_DEGRADED: set the accuracy "
+                         "(NAVERA_DEGRADED_SIGMA_M) first")
 # Set by "activate", never typed by the operator.
 INTERNAL = ("DAY_DATASET_DIR",)
 

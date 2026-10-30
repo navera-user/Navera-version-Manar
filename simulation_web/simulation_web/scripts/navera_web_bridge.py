@@ -65,7 +65,7 @@ from sensor_msgs.msg import NavSatFix
 
 from navera_msgs.msg import NavStatus, PositionEstimate
 
-from simulation_web.web_common import (BridgeHandler, MBTilesReader, parse_tile_path,
+from simulation_web.web_common import (BridgeHandler, is_trusted, MBTilesReader, parse_tile_path,
                                        start_server, valid_latlon)
 from navera_common.geo import dead_reckon
 from navera_common.track import TrackVelocity
@@ -74,7 +74,8 @@ from simulation_web import mission_prep
 MISSION_FILE_MAX = 512 * 1024       # bytes: an imported autopilot mission file
 # NAVERA units restarted by "Apply settings" (try-restart: only those running)
 NAVERA_UNITS = ["navera-estimator.service", "navera-imu.service", "navera-insta360.service",
-                "navera-pipeline-day.service", "navera-pipeline-night.service", "navera-pipeline-cn.service"]
+                "navera-pipeline-day.service", "navera-pipeline-night.service", "navera-pipeline-cn.service",
+                "navera-output.service"]   # the autopilot switch (NAVERA_FORWARD_DEGRADED)
 
 try:
     from ament_index_python.packages import get_package_share_directory
@@ -442,7 +443,16 @@ class NaveraWebBridge(Node):
                 pass
         if simulated:
             out["simulated"] = True
+        out["autopilot_forwarding"] = self.forwarding_state()
         return out
+
+    def forwarding_state(self):
+        """Whether the autopilot gets NAVERA's vision / celestial positions (page first)."""
+        cur, env = mission_prep.read_settings(), os.environ
+        val = cur.get("NAVERA_FORWARD_DEGRADED", env.get("NAVERA_FORWARD_DEGRADED", "false"))
+        sigma = cur.get("NAVERA_DEGRADED_SIGMA_M", env.get("NAVERA_DEGRADED_SIGMA_M", ""))
+        on = str(val).strip().lower() in ("1", "true", "yes", "on")
+        return {"on": on, "sigma_m": sigma if on else ""}
 
     def operator_decision(self):
         """The arbiter's decision, rendered as JSON. This method decides NOTHING.
@@ -634,7 +644,18 @@ class NaveraWebBridge(Node):
             changes = d.get("changes")
             if not isinstance(changes, dict):
                 raise ValueError("changes: object expected")
-            cur = mission_prep.write_settings(mission_prep.validate_settings(changes))
+            valid = mission_prep.validate_settings(changes)
+            merged = {k: v for k, v in mission_prep.read_settings().items()}
+            for k, v in valid.items():
+                if v is None:
+                    merged.pop(k, None)
+                else:
+                    merged[k] = v
+            for k in ("NAVERA_FORWARD_DEGRADED", "NAVERA_DEGRADED_SIGMA_M"):
+                if k not in merged and os.environ.get(k):
+                    merged[k] = os.environ[k]
+            mission_prep.check_forwarding(merged)
+            cur = mission_prep.write_settings(valid)
             return {"ok": True, "settings": cur, "restart_needed": True}
         if action == "apply":
             import subprocess
@@ -700,6 +721,14 @@ class NaveraWebBridge(Node):
                     return self.send_body(200, "image/jpeg", data) if data \
                         else self.send_json(404, {"error": "tile not found"})
 
+                if path in ("", "/") and os.environ.get("NAVERA_PRODUCT_MODE") == "1":
+                    # the delivered box: the operator view first (the engineering page stays
+                    # at /navera.html)
+                    self.send_response(302)
+                    self.send_header("Location", "/operator")
+                    self.send_header("Content-Length", "0")
+                    self.end_headers()
+                    return None
                 if path in ("", "/", "/navera.html"):
                     if os.path.exists(bridge.navera_html):
                         return self.send_file(bridge.navera_html)
@@ -733,7 +762,9 @@ class NaveraWebBridge(Node):
                     return self.send_file(os.path.join(bridge.resources_dir, "mission.html"))
 
                 if path == "/api/mission/state":
-                    return self.send_json(200, bridge.mission_state())
+                    client = self.client_address[0] if self.client_address else ""
+                    state = dict(bridge.mission_state(), trusted=is_trusted(client))
+                    return self.send_json(200, state)
 
                 return self.serve_static(bridge.resources_dir, path)
 

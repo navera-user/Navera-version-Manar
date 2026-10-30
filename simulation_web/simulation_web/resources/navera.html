@@ -17,10 +17,12 @@ const MAX_LOG_LINES=500, MAX_TRAIL_POINTS=5000, MAX_LAYERS=2000;
 function capArray(a,n){ if(a.length>n) a.splice(0,a.length-n); return a; }
 function capLayers(list,n){ while(list.length>n){ const l=list.shift(); if(l&&l.remove) l.remove(); } }
 // Mission control needs the box's control token (NAVERA_WEB_TOKEN), asked once
-// and kept in this browser only.
+// and kept in this browser only — except on the box's own Wi-Fi (trusted network):
+// the first try goes without asking, and the code is asked only when the box refuses.
 function naveraToken(forceAsk){
   let t = null;
   try { t = forceAsk ? null : localStorage.getItem('navera_token'); } catch(e) {}
+  if(!t && !forceAsk) return '';
   if(!t){
     t = window.prompt('NAVERA control token:') || '';
     try { if(t) localStorage.setItem('navera_token', t); } catch(e) {}

@@ -12,6 +12,20 @@
 | Thermal camera (night, optional) | FLIR Boson 640, 50° | 1 | |
 | Mounting | vibration-damped plate, lens hood | 1 | |
 
+## 1b. Accessories to buy (add-ons)
+Prices are rough 2026 retail estimates, not quotes. Cameras are not on this list: the client
+brings their own, and NAVERA reads it and calibrates it by itself (USER_MANUAL section 6).
+
+| Add-on | Example model | What for | Est. price | Notes |
+|---|---|---|---|---|
+| Wi-Fi antennas (2×, U.FL / RP-SMA) | dual-band 5 dBi | the box's Wi-Fi (QR code access) reaching the operator in the field | 10–20 € | the carrier's stock antennas reach only a few metres in a closed case |
+| USB-serial 3.3 V + JST-GH cable | FTDI FT232R / CP2102 | the autopilot link (MAVLink, NMEA or u-blox UBX output) | 10–20 € | JST-GH 6-pin for Pixhawk TELEM/GPS ports |
+| GPS receiver (if the vehicle's own GPS cannot be shared) | u-blox M10 module | NAVERA starts with GPS | 20–40 € | NMEA or UBX on USB/serial |
+| Powered USB 3 hub | 4-port, 5 V 3 A | several USB cameras | 20–30 € | the carrier's ports trip with two cameras |
+| Battery DC-DC converter | 6–36 V in → carrier input, ≥ 25 W, XT60 | power from the vehicle battery | 15–30 € | |
+| NVMe SSD (maps) | ≥ 512 GB | larger mission maps | 40–70 € | |
+| Printed label with the Wi-Fi QR code | navera_tools/access_card.py | access | — | the same code for every box |
+
 ## 2. Enclosure requirements
 - **Heat:** the module reaches ~72 °C under continuous load at room temperature with the stock
   fan; margin is only ~2 °C at 50 °C ambient → the enclosure needs airflow (inlet + outlet) and

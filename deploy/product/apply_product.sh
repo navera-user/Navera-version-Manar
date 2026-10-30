@@ -16,6 +16,11 @@
 #   4. the firewall (navera_firewall.sh, iris-firewall.service)
 #   5. services a sealed box does not use disabled (NAVERA_PRODUCT_DISABLE to choose)
 #   6. filesystem power-cut settings (deploy/setup_fs.sh: fsck.repair=yes)
+#   7. access: the box joins the client's Wi-Fi when it can, else raises its setup Wi-Fi (the same
+#      name and password on every box: the access card's QR code) whose setup page puts it on the
+#      client's Wi-Fi (navera_wifi.py, navera_hotspot.sh, navera_portal.py); hostname navera
+#      (http://navera.local:8181/); control without the code from those networks
+#   8. IRIS maintenance VPN (Tailscale), when NAVERA_TAILSCALE_AUTHKEY is given — deploy/README.md §14
 # The desktop is turned off by install.sh itself (--product implies --headless).
 # Every step says what it did; undo commands: deploy/README.md §13.4.
 set -euo pipefail
@@ -119,7 +124,7 @@ fi
 
 say "5. unused services disabled"
 DISABLE="${NAVERA_PRODUCT_DISABLE:-$(getenv NAVERA_PRODUCT_DISABLE)}"
-DISABLE="${DISABLE:-avahi-daemon.service avahi-daemon.socket bluetooth.service ModemManager.service cups.service cups-browsed.service kerneloops.service whoopsie.service apport.service apport-autoreport.path apport-forward.socket rpcbind.service rpcbind.socket unattended-upgrades.service apt-daily.timer apt-daily-upgrade.timer motd-news.timer update-notifier-download.timer update-notifier-motd.timer fwupd-refresh.timer}"
+DISABLE="${DISABLE:-bluetooth.service ModemManager.service cups.service cups-browsed.service kerneloops.service whoopsie.service apport.service apport-autoreport.path apport-forward.socket rpcbind.service rpcbind.socket unattended-upgrades.service apt-daily.timer apt-daily-upgrade.timer motd-news.timer update-notifier-download.timer update-notifier-motd.timer fwupd-refresh.timer}"
 for s in $DISABLE; do
   if [ -n "$R" ]; then
     [ -e "$R/etc/systemd/system/$s" ] || [ -e "$R/lib/systemd/system/$s" ] || continue
@@ -132,5 +137,50 @@ done
 say "6. filesystem settings for power cuts"
 FS_ARGS=(); [ "$DRY" = 1 ] && FS_ARGS+=(--dry-run); [ -n "$R" ] && FS_ARGS+=(--root "$R")
 "$SRC/deploy/setup_fs.sh" "${FS_ARGS[@]}" || echo "  WARNING: deploy/setup_fs.sh reported a FAIL (see above)"
+
+say "7. access: Wi-Fi (client network or setup hotspot), setup page, access card"
+[ -z "$(getenv NAVERA_HOTSPOT)" ] && setenv NAVERA_HOTSPOT 1
+[ -z "$(getenv NAVERA_WIFI_SSID)" ] && setenv NAVERA_WIFI_SSID NAVERA
+[ -z "$(getenv NAVERA_WIFI_PASSWORD)" ] && setenv NAVERA_WIFI_PASSWORD navera-iris
+# control without the code from the box's Wi-Fi networks and IRIS's maintenance VPN (Tailscale)
+[ -z "$(getenv NAVERA_WEB_TRUST_NETS)" ] && setenv NAVERA_WEB_TRUST_NETS "wifi,100.64.0.0/10"
+run install -d -m 0755 "$R/usr/local/lib/navera"
+run install -m 0755 "$SRC/deploy/product/navera_hotspot.sh" "$R/usr/local/sbin/navera_hotspot.sh"
+run install -m 0755 "$SRC/deploy/product/navera_wifi.py" "$R/usr/local/lib/navera/navera_wifi.py"
+run install -m 0755 "$SRC/deploy/product/navera_portal.py" "$R/usr/local/lib/navera/navera_portal.py"
+if [ -n "$R" ]; then run install -d -m 1770 "$R/var/lib/navera/wifi"
+else run install -d -m 1770 -o root -g navera /var/lib/navera/wifi; fi
+for u in navera-wifi navera-portal; do
+  run install -m 0644 "$SRC/deploy/product/$u.service" "$R/etc/systemd/system/$u.service"
+done
+HOST="${NAVERA_HOSTNAME:-navera}"
+if [ -n "$R" ]; then
+  run "${SYSTEMCTL[@]}" enable navera-wifi.service navera-portal.service
+  skip "hostnamectl set-hostname $HOST; systemctl restart iris-firewall navera-wifi navera-portal; access card"
+else
+  [ "$(hostname)" = "$HOST" ] || run hostnamectl set-hostname "$HOST"
+  run systemctl daemon-reload
+  run systemctl enable navera-wifi.service navera-portal.service
+  run systemctl restart iris-firewall.service navera-portal.service
+  run systemctl restart navera-wifi.service || echo "  WARNING: navera-wifi not started (journalctl -u navera-wifi)"
+  if [ "$DRY" = 0 ]; then
+    python3 "$SRC/navera_tools/access_card.py" --env "$ENV" --out /var/lib/navera/access_card \
+      || echo "  WARNING: access card not made (python3 navera_tools/access_card.py --out DIR)"
+  fi
+fi
+echo "  on the client's Wi-Fi: http://$HOST.local:8181/ ; setup Wi-Fi '$(getenv NAVERA_WIFI_SSID)' when not connected"
+
+say "8. IRIS maintenance (Tailscale): only when NAVERA_TAILSCALE_AUTHKEY is given for this run"
+if [ -n "${NAVERA_TAILSCALE_AUTHKEY:-}" ] && [ -z "$R" ]; then
+  if command -v tailscale >/dev/null; then
+    run tailscale up --auth-key "$NAVERA_TAILSCALE_AUTHKEY" --hostname "$HOST-$(cut -c1-8 /etc/machine-id)" --ssh \
+      && echo "  on IRIS's tailnet as $HOST-$(cut -c1-8 /etc/machine-id) (the key is not stored)" \
+      || echo "  WARNING: tailscale up failed (internet? key?)"
+  else
+    echo "  tailscale not installed: install it first (deploy/README.md §14)"
+  fi
+else
+  echo "  skipped (sudo NAVERA_TAILSCALE_AUTHKEY=tskey-... apply_product.sh to enrol the box)"
+fi
 
 say "done (product box)"

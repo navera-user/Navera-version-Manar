@@ -6,7 +6,10 @@ API on the vehicle's network, so the security rules live here, once:
   * no CORS headers — pages are served by the bridge itself (same origin), and
     other web sites must not be able to script it;
   * control endpoints need the X-Navera-Token header (shared secret); with no
-    token configured, control is disabled;
+    token configured, control is disabled. Clients on a trusted network
+    (NAVERA_WEB_TRUST_NETS: CIDRs, and "wifi" = the network(s) of the box's Wi-Fi
+    card — its setup hotspot or the client's Wi-Fi it joined) need no token:
+    joining that network already took its password;
   * request bodies are JSON objects of at most MAX_BODY bytes;
   * map tile coordinates are bounded before any arithmetic on them;
   * static files are confined to the resources directory;
@@ -14,12 +17,14 @@ API on the vehicle's network, so the security rules live here, once:
   * HTTPS when a certificate is configured (NAVERA_TLS_CERT / NAVERA_TLS_KEY).
 """
 import hmac
+import ipaddress
 import json
 import time
 import math
 import os
 import sqlite3
 import ssl
+import subprocess
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Optional, Tuple
@@ -104,6 +109,54 @@ class _CodeGuard:
 _GUARD = _CodeGuard()
 
 
+def wifi_networks():
+    """The IPv4 networks of the box's Wi-Fi interfaces (wl*) right now."""
+    nets = []
+    try:
+        names = [n for n in os.listdir("/sys/class/net") if n.startswith("wl")]
+        out = subprocess.run(["ip", "-o", "-4", "addr", "show"], capture_output=True, text=True,
+                             timeout=5).stdout
+    except (OSError, subprocess.SubprocessError):
+        return nets
+    for line in out.splitlines():
+        parts = line.split()
+        if len(parts) >= 4 and parts[1] in names:
+            try:
+                nets.append(ipaddress.ip_network(parts[3], strict=False))
+            except ValueError:
+                pass
+    return nets
+
+
+def trusted_networks(spec: str = None):
+    """The networks of NAVERA_WEB_TRUST_NETS (CIDRs or "wifi", comma-separated)."""
+    spec = os.environ.get("NAVERA_WEB_TRUST_NETS", "") if spec is None else spec
+    nets = []
+    for part in spec.split(","):
+        part = part.strip()
+        if part == "wifi":
+            nets.extend(wifi_networks())
+            continue
+        try:
+            if part:
+                nets.append(ipaddress.ip_network(part, strict=False))
+        except ValueError:
+            pass
+    return nets
+
+
+def is_trusted(client: str, nets=None) -> bool:
+    """True when `client` (an IP address) is on a trusted network: control without the token."""
+    try:
+        ip = ipaddress.ip_address(client.split("%")[0])
+    except ValueError:
+        return False
+    if ip.version == 6 and ip.ipv4_mapped:
+        ip = ip.ipv4_mapped
+    nets = trusted_networks() if nets is None else nets
+    return any(ip in n for n in nets if n.version == ip.version)
+
+
 class MBTilesReader:
     """Thread-safe, read-only access to an MBTiles file (TMS rows)."""
 
@@ -170,6 +223,8 @@ class BridgeHandler(BaseHTTPRequestHandler):
             self.send_json(403, {"error": "control disabled: set NAVERA_WEB_TOKEN"})
             return None
         client = self.client_address[0] if self.client_address else "?"
+        if is_trusted(client):
+            return self._read_json_body(max_body)
         wait = _GUARD.blocked_for(client)
         if wait > 0:
             self.send_json(429, {"error": f"too many wrong codes from this address: wait {wait:.0f} s"})
@@ -180,6 +235,10 @@ class BridgeHandler(BaseHTTPRequestHandler):
             self.send_json(401, {"error": "missing or wrong X-Navera-Token"})
             return None
         _GUARD.succeeded(client)
+        return self._read_json_body(max_body)
+
+    def _read_json_body(self, max_body: int = None):
+        """The request's JSON object (type, size, shape checked), or None after an error."""
         if "application/json" not in self.headers.get("Content-Type", ""):
             self.send_json(415, {"error": "Content-Type must be application/json"})
             return None

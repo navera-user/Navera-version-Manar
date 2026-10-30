@@ -5,4 +5,4 @@
 #   sudo install -m 0440 deploy/sudoers/navera-web /etc/sudoers.d/navera-web
 #   sudo visudo -c
 navera ALL=(root) NOPASSWD: /usr/bin/systemctl restart navera-pipeline-day.service
-navera ALL=(root) NOPASSWD: /usr/bin/systemctl try-restart navera-estimator.service navera-imu.service navera-insta360.service navera-pipeline-day.service navera-pipeline-night.service navera-pipeline-cn.service
+navera ALL=(root) NOPASSWD: /usr/bin/systemctl try-restart navera-estimator.service navera-imu.service navera-insta360.service navera-pipeline-day.service navera-pipeline-night.service navera-pipeline-cn.service navera-output.service
