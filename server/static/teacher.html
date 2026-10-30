@@ -208,7 +208,7 @@ async function init() {
   if (ME.admin) { $('adminArea').style.display = ''; loadAdmin(); }
   if (ME.product) {          // the NAVERA box: only the teacher creates accounts (no join code, QR or poster)
     $('joinBox').style.display = 'none'; $('oJoin').closest('label').style.display = 'none';
-    $('signupOpt').style.display = 'none';
+    $('tInviteBox').style.display = 'none'; $('signupOpt').style.display = 'none';
     const d = $('names').closest('details'); d.open = true; d.querySelector('summary').textContent = 'Create student accounts';
     document.querySelector('#noClass p').textContent = 'Create a class, then create its student accounts: one line per student (login, Full name, password).';
   }

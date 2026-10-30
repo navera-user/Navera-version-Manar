@@ -397,12 +397,10 @@ def api_signup():
     d = request.get_json(force=True)
     kind = "teacher" if d.get("kind") == "teacher" else "student"
     invite = re.sub(r"[^A-Z0-9]", "", (d.get("invite_code") or "").upper())
-    if config.PRODUCT and not (kind == "teacher" and invite):
-        # the NAVERA box: students get their account from their teacher; a teacher creates their own
-        # with the teacher code shown on the administrator's teacher page
-        return jsonify(error="Your teacher creates your account on this NAVERA box." if kind == "student" else
-                       "Type the teacher code: the main teacher finds it on their Teacher page."), 403
-    if not settings()["allow_signup"] and not (kind == "teacher" and invite):
+    if config.PRODUCT and kind == "student":
+        # the NAVERA box: a teacher creates their own account (no code), students get theirs from their teacher
+        return jsonify(error="Your teacher creates your account on this NAVERA box."), 403
+    if not settings()["allow_signup"] and not (kind == "teacher" and (invite or config.PRODUCT)):
         return jsonify(error="Account creation is closed. Ask your teacher for an account." if kind == "student" else
                        "Account creation is closed: teachers need the invitation code from the administrator."), 403
     display = _text(d.get("display"), 60)
@@ -427,6 +425,8 @@ def api_signup():
         if err:
             return jsonify(error=err), 400
         klass = c["id"] if c else None
+    elif config.PRODUCT:
+        status = "active"                  # the box: teachers sign up by themselves, active at once (owner)
     else:
         status = _teacher_code_status(invite)
         if status == "wrong":

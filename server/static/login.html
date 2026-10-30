@@ -110,7 +110,7 @@ let KIND = 'student', NEED_CLASS = false;
 document.querySelectorAll('.who button').forEach(b => b.onclick = () => {
   KIND = b.dataset.k; document.querySelectorAll('.who button').forEach(x => x.classList.toggle('on', x === b));
   $('codeRow').style.display = KIND === 'student' && NEED_CLASS ? '' : 'none';
-  $('inviteRow').style.display = KIND === 'teacher' ? '' : 'none';
+  $('inviteRow').style.display = KIND === 'teacher' && !$('inviteRow').dataset.off ? '' : 'none';
   $('nameHint').textContent = KIND === 'student' ? 'as on your certificate' : '';
   $('upGo').textContent = KIND === 'student' ? (NEED_CLASS ? 'Join my class →' : 'Create my account →') : 'Create my teacher account →';
   err();
@@ -158,6 +158,8 @@ fetch('/api/auth/options').then(r => r.json()).then(o => {
     document.querySelector('.who').style.display = 'none';
     $('inviteRow').querySelector('p').textContent = 'Students: your teacher creates your account.';
   }
+  if (o.product) { $('inviteRow').style.display = 'none'; $('inviteRow').dataset.off = '1';   // the box: no teacher code
+    $('upFine').textContent = 'Students: your teacher creates your account and gives you your login and password.'; }
   NEED_CLASS = !!o.need_class;
   if (!NEED_CLASS) { $('codeRow').style.display = 'none'; $('whoS').textContent = 'I learn NAVERA'; $('upGo').textContent = 'Create my account →'; }
   // opened from a class QR code / join link: straight to "Create account", code filled in
