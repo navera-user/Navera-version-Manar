@@ -2,6 +2,7 @@
 """Are there real stars in these 360 frames at all? A solver-independent check with the true place known.
 
     python3 -m navera_tools.field.starcheck <session or deepstack folder> --at LAT,LON [--last N | --every N]
+        [--junk-mask PNG]
 
 For a camera at a known place (a fixed test, or the phone's GPS) and 'up' from its IMU, the only unknown of the
 sky's orientation is the turn about the zenith. Each frame's spots are compared with the catalogue at the true
@@ -89,11 +90,14 @@ def main(argv=None) -> int:
     ap.add_argument("--last", type=int, default=0, help="only the last N frames")
     ap.add_argument("--every", type=int, default=1)
     ap.add_argument("--min-alt", type=float, default=5.0)
+    ap.add_argument("--junk-mask", help="PNG from fixedspots build: spots there are painted out first")
     a = ap.parse_args(argv)
     import cv2
     from scipy.spatial import cKDTree
     from cn_pkg import allsky
     lat, lon = (float(v) for v in a.at.split(","))
+    from navera_tools.field import fixedspots
+    junk = cv2.imread(a.junk_mask, cv2.IMREAD_GRAYSCALE) if a.junk_mask else None
     cat = allsky.Catalogue(limit_mag=4.5, path=allsky.BUNDLED_CATALOGUE)
     tree = cKDTree(cat.vec)
     name = "frames.jsonl" if os.path.exists(os.path.join(a.folder, "frames.jsonl")) else "index.jsonl"
@@ -107,6 +111,7 @@ def main(argv=None) -> int:
         img = cv2.imread(os.path.join(a.folder, r["image"]), cv2.IMREAD_GRAYSCALE)
         if img is None:
             continue
+        img = fixedspots.apply_mask(img, junk)
         t = r.get("t_exp") or r["t"]
         utc = datetime.fromtimestamp(t, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
         c = check(img, r["up_imu"], utc, lat, lon, tree, a.min_alt)

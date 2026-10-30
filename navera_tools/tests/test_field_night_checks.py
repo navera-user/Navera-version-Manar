@@ -72,3 +72,26 @@ def test_fixedspots_few_far_frames_mask_nothing():
     from navera_tools.field import fixedspots
     sp = np.array([(0.0, 10.0, 10.0), (100.0, 10.0, 10.0), (200.0, 10.0, 10.0)])   # all within 30 min
     assert not fixedspots.fixed_spots(sp, 1800.0, 3.0, 3).any()
+
+
+def test_resolve_prior_with_an_empty_junk_mask_still_solves(tmp_path, capsys):
+    import pytest
+    try:
+        from navera_tools.sim import celestial360_conditions as cc
+    except ImportError:
+        pytest.skip("simulator not on the path")
+    import cv2
+    from navera_tools.field import resolve_prior
+    cond = cc.Condition("baseline mag<=3")
+    sc = cc.Scene(cond, 0)
+    frame = cc.render(sc)
+    up, _ = cc.solver_up(sc)
+    (tmp_path / "frames").mkdir()
+    cv2.imwrite(str(tmp_path / "frames" / "f0.png"), frame)
+    cv2.imwrite(str(tmp_path / "junk.png"), np.zeros(frame.shape[:2], np.uint8))
+    t = datetime.strptime(sc.utc, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc).timestamp()
+    row = {"idx": 0, "t": t, "t_exp": t, "image": "frames/f0.png", "up_imu": list(map(float, up))}
+    (tmp_path / "frames.jsonl").write_text(json.dumps(row) + "\n")
+    assert resolve_prior.main([str(tmp_path), "--prior", f"{cond.lat},{cond.lon},30", "--truth",
+                               f"{cond.lat},{cond.lon},50", "--junk-mask", str(tmp_path / "junk.png")]) == 0
+    assert "prior: 1 frames, 1 fixes, 0 wrong" in capsys.readouterr().out

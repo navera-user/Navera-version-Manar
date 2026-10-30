@@ -2,7 +2,7 @@
 """Solve a 360 field test's saved frames again, lost-in-space and with a position prior, side by side.
 
     python3 -m navera_tools.field.resolve_prior <session> --prior LAT,LON,KM [--truth LAT,LON,KM] [--every N]
-        [--up-err-deg D] [--images DIR] [--out FILE]
+        [--up-err-deg D] [--images DIR] [--out FILE] [--junk-mask PNG]
 
 The product always starts with GPS: a rough position (last GPS or last fix, grown by the distance flown since)
 is known. With it, allsky.locate(prior=...) identifies the stars over far fewer hypotheses (allsky.identify_prior),
@@ -64,10 +64,13 @@ def main(argv=None) -> int:
     ap.add_argument("--f-scale", type=float, default=1.0)
     ap.add_argument("--images", help="folder with index.jsonl (e.g. deep stacks) instead of the saved frames")
     ap.add_argument("--out", help="JSON lines of every result")
+    ap.add_argument("--junk-mask", help="PNG from fixedspots build: spots there are painted out before solving")
     a = ap.parse_args(argv)
     import cv2
     from navera_tools.field import allsky
+    from navera_tools.field import fixedspots
     cat = allsky.Catalogue(limit_mag=4.0)
+    junk = cv2.imread(a.junk_mask, cv2.IMREAD_GRAYSCALE) if a.junk_mask else None
     rad = a.prior[2] / allsky.KM_PER_DEG + a.up_err_deg
     prior = (a.prior[0], a.prior[1], rad)
     tally = {"lost-in-space": [0, 0, 0], "prior": [0, 0, 0]}          # frames, fixes, wrong
@@ -78,6 +81,7 @@ def main(argv=None) -> int:
         img = cv2.imread(os.path.join(folder, r["image"]), cv2.IMREAD_GRAYSCALE)
         if img is None:
             continue
+        img = fixedspots.apply_mask(img, junk)
         line = [f"{r.get('idx', n):>5}"]
         for name, pr in (("lost-in-space", None), ("prior", prior)):
             res = solve(img, r, cat, pr, a.f_scale)
