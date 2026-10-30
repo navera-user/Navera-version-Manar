@@ -108,6 +108,7 @@ from navera_msgs.msg import NavStatus, PositionEstimate
 from rclpy.duration import Duration
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
+from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 
 from navera_output import mavlink_out, mavlink_url, nmea, ubx_out
 from navera_output.map_guard import MapGuard
@@ -159,6 +160,19 @@ def check_serial_output(proto: str, port: str, baud: int) -> None:
         raise ValueError(f"NAVERA_NMEA_PROTOCOL=ubx needs NAVERA_NMEA_BAUD >= {UBX_MIN_BAUD} "
                          f"(got {int(baud)}): the u-blox messages would not fit; use 115200 and set the "
                          f"flight controller's GPS port to the same baud")
+
+
+CONFIG_TOPIC = "/navera/output/config"   # latched: the settings this process runs with
+
+
+def running_config(cfg: Config, proto: str) -> str:
+    """The effective output settings as JSON, for the operator page (navera_web_bridge.forwarding_state):
+    what the running node uses, not what was saved since (a saved change applies at the next restart).
+    """
+    sig = cfg.degraded_sigma_m
+    return json.dumps({"forward_degraded": bool(cfg.forward_degraded),
+                       "degraded_sigma_m": sig if math.isfinite(sig) else None,
+                       "protocol": proto, "started_wall": time.time()})
 
 
 def message_for_autopilot(autopilot) -> str:
@@ -295,6 +309,9 @@ class VehicleOutputNode(Node):
         self.create_subscription(NavStatus, "/navera/nav_status", self._on_status, 10)
         self.create_subscription(PositionEstimate, "/navera/position", self._on_position, 10)
         self.create_subscription(TwistStamped, "/navera/sensors/gps_vel", self._on_gps_vel, 10)
+        self._pub_config = self.create_publisher(String, CONFIG_TOPIC, QoSProfile(
+            depth=1, reliability=ReliabilityPolicy.RELIABLE, durability=DurabilityPolicy.TRANSIENT_LOCAL))
+        self._pub_config.publish(String(data=running_config(self.cfg, self._proto)))
         self._period_s = 1.0 / rate
         self.create_timer(self._period_s, self._tick)
         self.get_logger().info(

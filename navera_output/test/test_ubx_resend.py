@@ -165,3 +165,11 @@ def test_a_no_fix_is_not_turned_into_a_repeated_position(world):
     _run(n, clock, decision, Output(KIND_NONE, "position measured 6 s ago"), 0.4, new_pos_at=())
     got = _pvts(n._serial.chunks)
     assert got[:3] == [(3, 2000)] * 3 and all(f == 0 for f, _ in got[3:])
+
+
+def test_the_running_config_is_published_as_json():
+    import json
+    d = json.loads(von.running_config(Config(forward_degraded=True, degraded_sigma_m=50.0), "ubx"))
+    assert d["forward_degraded"] is True and d["degraded_sigma_m"] == 50.0 and d["protocol"] == "ubx"
+    d = json.loads(von.running_config(Config(), "nmea"))
+    assert d["forward_degraded"] is False and d["degraded_sigma_m"] is None
