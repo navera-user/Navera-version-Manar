@@ -260,6 +260,12 @@ def detect_discs(gray: np.ndarray, up_imu: Sequence[float], lenses: Optional[Lis
         if math.sqrt(area / math.pi) * dpp > MAX_RADIUS_DEG:
             continue
         x0, y0, bw, bh = stats[k, :4]
+        # a disc cut by the image's edge or the lens circle's edge: its centre cannot be measured (ESO MASCOT: a
+        # Moon cut at the border was fitted 11.9 deg off)
+        if x0 <= 1 or y0 <= 1 or x0 + bw >= w - 1 or y0 + bh >= h - 1:
+            continue
+        if (math.hypot(cx0 - lens.cx, cy0 - lens.cy) + math.hypot(bw, bh) / 2 / sx) > 0.98 * lens.radius:
+            continue
         sub = lab[y0:y0 + bh, x0:x0 + bw] == k
         pts = _edge_points(np.pad(sub, 1)) + [x0 - 1, y0 - 1]
         fit = _circle_fit(pts) if len(pts) >= 8 else None
@@ -479,6 +485,11 @@ def sight_from_frame(gray: np.ndarray, up_imu, utc: str, prior: Tuple[float, flo
         rep["why"] = f"{len(ok)} candidates in the gate: ambiguous"
         return None, rep
     d, az = ok[0]
+    # the Sun and the Moon outshine every lamp, planet and star: a bigger clipped blob elsewhere means the one in
+    # the gate is not the body (ESO MASCOT: a light at 12 deg taken while the Moon was hidden, 3.9 deg off)
+    if any(o.area > d.area for o in discs):
+        rep["why"] = "a bigger saturated blob outside the gate: the one in the gate is not the body"
+        return None, rep
     lens = next(L for L in lenses if L.name == d.lens)
     frac = place.illuminated_fraction()
     limb = place.bright_limb_angle(lat, lon) if body == "moon" else 0.0
