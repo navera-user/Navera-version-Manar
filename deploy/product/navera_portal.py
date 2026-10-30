@@ -3,9 +3,11 @@
 
 A phone that scans the access card's QR code joins the box's setup Wi-Fi; every web address
 then leads here (navera_hotspot.sh: DNS; navera_firewall.sh: port 80), so the phone shows this
-page by itself. On it: the networks the box sees, a password field to put the box on the
-client's own Wi-Fi (internet for map downloads and IRIS maintenance; navera_wifi.py applies
-it), the box's current state, and the link to NAVERA's page. Standard library only.
+page by itself (its "am I online?" checks are answered "captive" until the page has been shown
+on that phone, then "online" for 10 min, so the phone keeps the setup Wi-Fi). On it: the
+networks the box sees, a password field to put the box on the client's own Wi-Fi (internet for
+map downloads and IRIS maintenance; navera_wifi.py applies it), the box's current
+state, and the link to NAVERA's page. Standard library only.
 
     navera_portal.py      # NAVERA_PORTAL_PORT (default 8182), NAVERA_WIFI_SPOOL, NAVERA_WEB_PORT
 """
@@ -15,11 +17,68 @@ import ipaddress
 import json
 import os
 import sys
+import threading
 import time
 from urllib.parse import parse_qs
 
 SPOOL = os.environ.get("NAVERA_WIFI_SPOOL", "/var/lib/navera/wifi")
 MAX_FORM = 4096
+
+# Phones' "am I online?" checks (path -> the answer meaning "online"). Until a phone has shown the
+# setup page they get the page (= "captive": the phone opens it by itself); once it has, they get
+# the online answer, so the phone keeps the box's Wi-Fi (no switch to mobile data, the
+# mini-browser stays open). Hosts: connectivitycheck.gstatic.com / clients3.google.com (Android),
+# captive.apple.com (iOS, macOS), www.msftconnecttest.com / www.msftncsi.com (Windows).
+APPLE_OK = b"<HTML><HEAD><TITLE>Success</TITLE></HEAD><BODY>Success</BODY></HTML>"
+PROBES = {
+    "/generate_204": (204, b"", "text/plain"),
+    "/gen_204": (204, b"", "text/plain"),
+    "/hotspot-detect.html": (200, APPLE_OK, "text/html"),
+    "/library/test/success.html": (200, APPLE_OK, "text/html"),
+    "/connecttest.txt": (200, b"Microsoft Connect Test", "text/plain"),
+    "/ncsi.txt": (200, b"Microsoft NCSI", "text/plain"),
+}
+SEEN_PATH = "/_navera_seen.gif"     # a 1-pixel image in the setup page: only a browser that drew the
+SEEN_TTL_S = 600.0                  # page loads it (the phone's online checks never do)
+SEEN_MAX = 256                      # clients remembered at most (oldest forgotten first)
+GIF = (b"GIF89a\x01\x00\x01\x00\x80\x00\x00\x00\x00\x00\xff\xff\xff!\xf9\x04\x01\x00\x00\x00\x00"
+       b",\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02D\x01\x00;")
+
+
+class SeenClients:
+    """Client IPs that were shown the setup page, each for `ttl_s`; at most `max_n` remembered."""
+
+    def __init__(self, ttl_s: float = SEEN_TTL_S, max_n: int = SEEN_MAX, clock=time.monotonic):
+        self.ttl_s, self.max_n, self.clock = ttl_s, max_n, clock
+        self._t = {}
+        self._lock = threading.Lock()
+
+    @staticmethod
+    def _key(ip: str) -> str:
+        try:
+            a = ipaddress.ip_address(ip.split("%")[0])
+        except ValueError:
+            return ip
+        return str(a.ipv4_mapped if a.version == 6 and a.ipv4_mapped else a)
+
+    def mark(self, ip: str):
+        now, k = self.clock(), self._key(ip)
+        with self._lock:
+            self._t.pop(k, None)
+            self._t[k] = now                    # dict order = age order: re-marked goes last
+            for old in [c for c, t in self._t.items() if now - t > self.ttl_s]:
+                del self._t[old]
+            while len(self._t) > self.max_n:
+                del self._t[next(iter(self._t))]
+
+    def seen(self, ip: str) -> bool:
+        with self._lock:
+            t = self._t.get(self._key(ip))
+            return t is not None and self.clock() - t <= self.ttl_s
+
+    def __len__(self):
+        return len(self._t)
+
 
 STYLE = """
 :root { --ink:#13202b; --muted:#5b6b78; --line:#d5dde3; --bg:#f6f8fa; --card:#fff; --accent:#0b6bcb; --bad:#b42318; }
@@ -104,7 +163,8 @@ def setup_page() -> bytes:
 <label for="ssid">Network</label><select id="ssid" name="ssid">{options}</select>
 <label for="other">Other network name</label><input id="other" name="other" maxlength="32" autocomplete="off">
 <label for="password">Password</label><input id="password" name="password" type="password" maxlength="63">
-<button type="submit">Connect</button></form></section>""")
+<button type="submit">Connect</button></form></section>
+<img src="{SEEN_PATH}" width="1" height="1" alt="" style="position:absolute;left:-9px">""")
 
 
 def joining_page(ssid: str) -> bytes:
@@ -119,7 +179,9 @@ def joining_page(ssid: str) -> bytes:
 again and this page shows the reason.</p></section>""")
 
 
-def make_handler():
+def make_handler(seen=None):
+    seen = SeenClients() if seen is None else seen
+
     class Portal(http.server.BaseHTTPRequestHandler):
         server_version = "NAVERA"
         sys_version = ""
@@ -127,19 +189,31 @@ def make_handler():
         def log_message(self, fmt, *args):
             pass
 
-        def _send(self, code: int, body: bytes, headers=()):
+        def _client(self) -> str:
+            return self.client_address[0] if self.client_address else ""
+
+        def _send(self, code: int, body: bytes, headers=(), ctype="text/html; charset=utf-8"):
             self.send_response(code)
-            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Type", ctype)
             self.send_header("Cache-Control", "no-store")
-            self.send_header("Content-Length", str(len(body)))
+            if code != 204:                     # a 204 carries no body nor its length
+                self.send_header("Content-Length", str(len(body)))
             for k, v in headers:
                 self.send_header(k, v)
             self.end_headers()
-            if self.command != "HEAD":
+            if self.command != "HEAD" and body:
                 self.wfile.write(body)
 
         def do_GET(self):
-            # every address (the phone's "am I online?" checks included) gets the setup page
+            path = self.path.split("?")[0]
+            if path == SEEN_PATH:               # the setup page is on this client's screen
+                seen.mark(self._client())
+                return self._send(200, GIF, ctype="image/gif")
+            probe = PROBES.get(path)
+            if probe and seen.seen(self._client()):
+                code, body, ctype = probe        # page already shown: tell the phone it is online
+                return self._send(code, body, ctype=ctype)
+            # every other address (and the online checks of a phone not yet shown it): the page
             self._send(200, setup_page())
 
         do_HEAD = do_GET
@@ -147,7 +221,8 @@ def make_handler():
         def do_POST(self):
             if self.path.split("?")[0] != "/wifi":
                 return self._send(303, b"", [("Location", "/")])
-            if not from_hotspot(self.client_address[0] if self.client_address else ""):
+            seen.mark(self._client())
+            if not from_hotspot(self._client()):
                 return self._send(403, page("<p class='bad'>The Wi-Fi is changed only from the box's setup Wi-Fi."
                                             "</p><a href='/'>Back</a>"))
             n = int(self.headers.get("Content-Length") or 0)

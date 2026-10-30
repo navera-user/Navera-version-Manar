@@ -14,8 +14,9 @@ The box has one Wi-Fi card, which is either a client of a network or a hotspot, 
 3. The page drops a request in NAVERA_WIFI_SPOOL (the navera user may write there; this service
    runs as root); the request is applied here: the network is saved, the hotspot goes down, the
    box joins. Joined → status "connected" with the address; failed → hotspot back, status
-   "failed: <reason>". While the hotspot is up with nobody on it, the saved networks are tried
-   again every NAVERA_WIFI_RETRY_S (default 300 s).
+   "failed: <reason>". While the hotspot is up with nobody on it (no phone seen on it for
+   NAVERA_WIFI_CLIENT_HOLD_S, default 300 s), the saved networks are tried again every
+   NAVERA_WIFI_RETRY_S (default 300 s).
 
     sudo navera_wifi.py            # the service loop (navera-wifi.service)
     navera_wifi.py --once-status   # print the state file
@@ -37,6 +38,10 @@ STATE = os.path.join(SPOOL, "state.json")
 REQUEST = os.path.join(SPOOL, "request.json")
 SCAN = os.path.join(SPOOL, "scan.json")
 HOTSPOT_SH = os.environ.get("NAVERA_HOTSPOT_SH", "/usr/local/sbin/navera_hotspot.sh")
+# A phone seen on the hotspot within this long keeps the hotspot up (no saved-network retry): a
+# phone between two "station dump"s, or asleep a moment, is still someone using the setup page.
+CLIENT_HOLD_S = float(os.environ.get("NAVERA_WIFI_CLIENT_HOLD_S", "300"))
+_last_client = [0.0]         # time.time() a station was last seen on the hotspot
 SSID_RE = re.compile(r"^[^\x00-\x1f]{1,32}$")
 
 
@@ -252,13 +257,15 @@ def step(dev, mode, last_try, last_fail, join_s, retry_s):
         else:
             last_fail, mode = "", "client"
     con = active_connection(dev)
+    if mode == "hotspot" and hotspot_clients(dev):
+        _last_client[0] = time.time()          # someone is on the setup Wi-Fi
     if mode == "client" and not (con and con != HOTSPOT):
         con = try_saved(dev, join_s)            # lost the client network: try again, else hotspot
         if not con:
             scan(dev)
             mode, last_try = "hotspot", time.time()
             ensure_hotspot(dev)
-    elif mode == "hotspot" and time.time() - last_try > retry_s and not hotspot_clients(dev):
+    elif mode == "hotspot" and time.time() - last_try > retry_s and time.time() - _last_client[0] > CLIENT_HOLD_S:
         last_try = time.time()
         if saved_networks():
             con = try_saved(dev, join_s)

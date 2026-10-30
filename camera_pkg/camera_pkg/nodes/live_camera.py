@@ -60,6 +60,7 @@ from navera_common.health import FrozenFrameDetector
 from camera_pkg.grab_watchdog import GrabWatchdog
 from navera_common.lifecycle import die_with_parent
 from navera_common.params import declare_float
+from navera_common import frame_lateness
 from navera_common.sensor_history import History, slerp
 from navera_common.terrain import Terrain
 from navera_msgs.msg import PositionEstimate
@@ -165,6 +166,10 @@ class LiveCamera(Node):
         self.att_shift_s, self.max_att_shift_s = 0.0, float(p("max_attitude_shift_s"))
         from navera_common.delay_monitor import DelayChangeMonitor
         self.delay_mon = DelayChangeMonitor()
+        from navera_common.frame_lateness import FrameLateness
+        # a frame later than the usual delay (jitter): re-dated from the camera's stamp, else flagged
+        declare_float(self, "late_frame_s", 0.3)
+        self.lateness = FrameLateness(float(self.get_parameter("late_frame_s").value))
         self.builder = None
         if self.w > 0 and self.h > 0:
             self._lens_setup(self.w, self.h)
@@ -523,8 +528,10 @@ class LiveCamera(Node):
         while not self._stop.is_set():
             ok = cap.grab()                                     # paced by the camera itself
             t = self.get_clock().now().nanoseconds * 1e-9 - self.latency_s
+            late = (0.0, 0.0, "")
             if ok:
-                self._watch_delay(cap)
+                late = self._watch_delay(cap)
+                t -= late[0]                                    # the camera's stamp: this much late
             frame = None
             if ok and self._want.is_set():
                 ok, frame = cap.retrieve()                      # decode only the frame to send
@@ -551,24 +558,35 @@ class LiveCamera(Node):
                 x, y, w, h = self.crop
                 frame = frame[y:y + h, x:x + w]
             with self._lock:
-                self._latest = (frame, t)
+                self._latest = (frame, t, late)
             self._want.clear()
         cap.release()
 
-    def _watch_delay(self, cap) -> None:
+    def _watch_delay(self, cap) -> tuple:
         """Feed navera_common.delay_monitor with the frame's (arrival, source stamp): the V4L2
         buffer timestamp (CLOCK_MONOTONIC) or the GStreamer buffer PTS (running time). A change
-        of the queueing after the source stamps the frame is a change of the camera delay."""
+        of the queueing after the source stamps the frame is a change of the camera delay.
+        Returns this frame's lateness (navera_common.frame_lateness: shift_s, uncertain_s, basis),
+        from the source stamp when there is one, else from the frame interval."""
+        pair = None
         try:
             if isinstance(getattr(cap, "stamps", None), tuple):
-                self.delay_mon.add(*cap.stamps)
+                pair = cap.stamps
             elif self.input == "usb":
                 import cv2
                 ms = cap.get(cv2.CAP_PROP_POS_MSEC)
                 if ms and ms > 0:
-                    self.delay_mon.add(time.monotonic(), ms / 1000.0)
+                    pair = (time.monotonic(), ms / 1000.0)
+            if pair is not None:
+                self.delay_mon.add(*pair)
         except Exception:                                   # noqa: BLE001 — the monitor is optional
-            pass
+            pair = None
+        late = self.lateness.observe(*pair) if pair is not None else self.lateness.observe(time.monotonic())
+        if late[2]:
+            self.get_logger().warn(f"frame {late[0] or late[1]:.2f} s later than the camera's usual delay "
+                                   f"({'re-dated from the camera stamp' if late[0] else 'frame interval'})",
+                                   throttle_duration_sec=10.0)
+        return late
 
     def _on_image(self, m: Image):
         from cv_bridge import CvBridge
@@ -580,7 +598,8 @@ class LiveCamera(Node):
             x, y, w, h = self.crop
             img = img[y:y + h, x:x + w]
         with self._lock:
-            self._latest = (img, stamp_s(m.header.stamp) - self.latency_s)
+            # the publisher's stamp is the exposure (not the arrival): a late message is not misdated
+            self._latest = (img, stamp_s(m.header.stamp) - self.latency_s, (0.0, 0.0, ""))
 
     # ── output ────────────────────────────────────────────────────────────
     def _send_loop(self):
@@ -612,7 +631,7 @@ class LiveCamera(Node):
                 time.sleep(0.02)
                 continue
             requested = False
-            raw, t = item
+            raw, t, late = item
             frozen = self._check_frozen(raw, t)
             if self._stop.is_set():
                 break
@@ -639,6 +658,7 @@ class LiveCamera(Node):
             if ref is not None:
                 meta.update(altitude_ref_m=round(ref[0], 2), altitude_ref_sigma_m=round(ref[1], 2),
                             altitude_ref_source=ref[2])
+            meta.update(frame_lateness.meta_fields(*late))     # late frame: re-dated, or for the localizer
             meta["delay_monitor"] = self.delay_mon.state()     # the delay's change since start (no GPS needed)
             if self.delay_mon.significant:
                 self.get_logger().warn(f"camera delay changed by {self.delay_mon.change_s:+.3f} s since the start "

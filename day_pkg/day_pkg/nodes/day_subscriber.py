@@ -34,7 +34,7 @@ from collections import deque
 import cv2
 
 import rclpy
-from navera_common import latency_cal, memory_trim, state_store
+from navera_common import frame_lateness, latency_cal, memory_trim, state_store
 from navera_common.compute_health import watch_degraded
 from navera_common.geo import is_finite_latlon
 from navera_common.track import TrackVelocity
@@ -319,6 +319,11 @@ class DaySubscriber(Node):
         # estimate applied): added, times the ground speed, to every stated fix accuracy
         declare_float(self, "unknown_delay_sigma_s", 1.0)
         declare_float(self, "attitude_sigma_deg", 0.5)
+        # a frame live_camera found late (beyond its late_frame_s, navera_common.frame_lateness) and could
+        # not re-date from the camera's stamp (frame meta late_s): its fix is up to speed x lateness off
+        # along the track (Isaac plane60 2026-10-30: 100-160 m spikes at 60 m/s) — the sigma states
+        # it, and beyond late_frame_gate_m the frame gives no fix
+        declare_float(self, "late_frame_gate_m", 60.0)
         # In-flight check of that sigma against the trusted GPS (fix_sigma.SigmaCalibration): the GPS check
         # frames measure this flight's real vision error; after min_samples the stated sigma is scaled to it.
         # Never calibrated (GPS denied from take-off): at least sigma_floor_no_cal_m.
@@ -558,6 +563,7 @@ class DaySubscriber(Node):
         self.frame_time_sigma_s = float(self.get_parameter("frame_time_sigma_s").value)
         self.unknown_delay_sigma_s = float(self.get_parameter("unknown_delay_sigma_s").value)
         self.attitude_sigma_deg = float(self.get_parameter("attitude_sigma_deg").value)
+        self.late_frame_gate_m = float(self.get_parameter("late_frame_gate_m").value)
         self.sigma_cal = SigmaCalibration(float(self.get_parameter("sigma_floor_no_cal_m").value),
                                           int(self.get_parameter("sigma_cal_min_samples").value))
         self.calib_rollback_s = float(self.get_parameter("calib_rollback_s").value)
@@ -939,6 +945,7 @@ class DaySubscriber(Node):
         self._check_mount_id(meta)
         # camera delay hook: date the frame by the estimated delay (raw stamp kept in the meta)
         latency_cal.shift_meta(meta, self.latency_cal.correction() if self.auto_latency else 0.0)
+        self._check_late_frame(meta)
         self._frame_count += 1
         self._last_frame = (time.time(), meta)
         self.get_logger().info(
@@ -2452,18 +2459,41 @@ class DaySubscriber(Node):
     # ────────────────────────────────────────────────────────────
     # Publish result
     # ────────────────────────────────────────────────────────────
+    def _ground_speed(self) -> float:
+        """Ground speed (m/s) from the track, 0 without one."""
+        v = self.track.velocity(time.time())
+        return math.hypot(v[0], v[1]) if v is not None else 0.0
+
+    def _check_late_frame(self, meta) -> None:
+        """A frame late beyond late_frame_s, not re-dated by the camera, and speed x lateness beyond
+        late_frame_gate_m: unusable (no fix; the localizer says why). On-time frames: untouched."""
+        if not meta.get("late_s") or meta.get("usable") is False:
+            return
+        _, why = frame_lateness.lateness_sigma(meta, DaySubscriber._ground_speed(self), 0.0,
+                                               float(getattr(self, "late_frame_gate_m", frame_lateness.DEFAULT_GATE_M)))
+        if why:
+            meta.update(usable=False, reason=why)
+            self.get_logger().warn(f"[day] {why}", throttle_duration_sec=10.0)
+
+    def _late_sigma(self, s: float, meta) -> float:
+        """The stated sigma widened by speed x the frame's undated lateness (frame_lateness)."""
+        if not isinstance(meta, dict) or not meta.get("late_s"):
+            return s
+        return frame_lateness.lateness_sigma(meta, DaySubscriber._ground_speed(self), s, math.inf)[0]
+
     def _fix_sigma(self, result, meta) -> float:
         """Stated 1-sigma (m) of a local match: the model (day_pkg.fix_sigma) scaled by this flight's
-        calibration against GPS (or at least the no-calibration floor), local_sigma_m without one."""
+        calibration against GPS (or at least the no-calibration floor), local_sigma_m without one;
+        a late frame's speed x lateness added (frame_lateness)."""
         if not result.get("sigma_m"):
-            return self.local_sigma_m
+            return DaySubscriber._late_sigma(self, self.local_sigma_m, meta)
         s = self.sigma_cal.apply(self._model_sigma(result, meta))
         sd = self._unknown_delay_sigma_s()
         if sd > 0.0:
             v = self.track.velocity(time.time())
             if v is not None:
                 s = math.hypot(s, sd * math.hypot(v[0], v[1]))
-        return s
+        return DaySubscriber._late_sigma(self, s, meta)
 
     def _fix_sigma_common(self, result, meta) -> float:
         """The part of a local fix's stated sigma that every fix of this flight shares (F41): the camera
