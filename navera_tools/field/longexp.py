@@ -257,7 +257,16 @@ class LongExpCamera:
             t.start()
 
     def close(self):
+        """Stop the threads and give the USB interface back (the field server can open the camera again)."""
         self._stop = True
+        for t in getattr(self, "_threads", []):
+            t.join(timeout=2.0)
+        try:
+            import usb.util
+            usb.util.release_interface(self.dev, 0)
+            usb.util.dispose_resources(self.dev)
+        except Exception:
+            pass                                       # a fake device in the tests, or the camera already gone
 
     def _keepalive(self):
         while not self._stop:
