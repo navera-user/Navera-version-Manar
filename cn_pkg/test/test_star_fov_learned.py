@@ -1,5 +1,6 @@
 """The star camera's field width measured from the stars (cn_subscriber._fov_for / _learn_fov): kept per
-camera, narrows the next solves, and a failed narrow solve is tried once with the wide search."""
+camera, narrows the next solves, and a failed narrow solve is tried once with the wide search.
+"""
 import math
 from types import MethodType, SimpleNamespace
 

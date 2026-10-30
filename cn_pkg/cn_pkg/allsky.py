@@ -141,7 +141,9 @@ DETECT_K_SIGMA = 6.0      # a spot's peak above this many times the local noise
 LOCATE_MAX_SPOTS = 60     # brightest spots above LOCATE_MIN_ALT given to the identification
 LOCATE_MATCH_DEG = 0.5    # a spot and a catalogue star match within this angle
 LOCATE_MIN_ALT = 12.0     # deg above the horizon (ground, lamps, roofs below)
-LOCATE_PLANETS = False    # off until checked on a real sky; True: the bright planets join the catalogue (Catalogue.with_planets), recomputed every 10 min
+# off until checked on a real sky; True: the bright planets join the catalogue (Catalogue.with_planets),
+# recomputed every 10 min
+LOCATE_PLANETS = False
 
 
 def detect_spots(gray: np.ndarray, lens: Lens, k_sigma: Optional[float] = None, max_spots: int = 120,

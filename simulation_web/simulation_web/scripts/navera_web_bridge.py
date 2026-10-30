@@ -598,7 +598,8 @@ class NaveraWebBridge(Node):
     def _with_map(out, status):
         """The mission-area guard (NavStatus.map_area / map_edge_m): the operator is told when
         the vehicle nears or leaves the edge of the mission's map (day vision has nothing to
-        match past it). A translation, like the rest: the estimator decided."""
+        match past it). A translation, like the rest: the estimator decided.
+        """
         flag = getattr(status, "map_area", 0)
         edge = float(getattr(status, "map_edge_m", math.nan))
         if flag and math.isfinite(edge):
