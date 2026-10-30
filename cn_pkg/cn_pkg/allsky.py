@@ -101,7 +101,8 @@ class Catalogue:
     def with_planets(self, utc: str, lat: float, lon: float) -> "Catalogue":
         """A copy with the bright planets above the horizon at (lat, lon) added as point sources, placed where a
         star (ICRS, at infinity) would have to be to look the same from there at utc. Jupiter and Venus outshine
-        every star: left out, they are junk spots that take seed places. Offline (astropy's built-in ephemeris)."""
+        every star: left out, they are junk spots that take seed places. Offline (astropy's built-in ephemeris).
+        """
         return _planets_cached(self, utc, (lat, lon))
 
     def pairs_near(self, sep_deg: float, tol_deg: float):
@@ -502,7 +503,8 @@ def identify_prior(rays: np.ndarray, up: np.ndarray, z_prior: np.ndarray, radius
 def chance_probability_prior(n_rays: int, n_matched: int, n_hyp: float, cat: Catalogue, match_deg: float,
                              density: float = 1.0) -> float:
     """chance_probability for identify_prior: one seed ray matches by construction (lost-in-space: two).
-    density: the catalogue's star density where the rays fall, relative to its all-sky mean."""
+    density: the catalogue's star density where the rays fall, relative to its all-sky mean.
+    """
     from scipy.stats import binom
     p = min(1.0, density * len(cat.vec) * (1.0 - math.cos(math.radians(match_deg))) / 2.0)
     k, n = n_matched - 1, max(0, n_rays - 1)
@@ -558,7 +560,8 @@ def accept(matched: int, rms_deg: float, p_chance: float, lens_disagree_deg: flo
 
 def _planets_cached(cat: Catalogue, utc: str, prior=None) -> Catalogue:
     """cat.with_planets for utc, kept on cat for 10 minutes (the planets move ~0.01 deg among the stars in that
-    time). Without a prior the planets are placed for the geocentre: their parallax is a few arcsec."""
+    time). Without a prior the planets are placed for the geocentre: their parallax is a few arcsec.
+    """
     from cn_pkg.nodes.celestial_math import obs_time
     lat, lon, min_alt = (float(prior[0]), float(prior[1]), -2.0) if prior is not None else (0.0, 0.0, -90.0)
     key = (round(float(obs_time(utc).unix) / 600.0), round(lat), round(lon))

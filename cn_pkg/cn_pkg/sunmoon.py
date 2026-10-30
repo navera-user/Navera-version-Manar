@@ -140,7 +140,8 @@ class BodyPlace:
 
     def bright_limb_angle(self, lat: float, lon: float) -> float:
         """Angle (deg) around the body's line of sight from the local 'up' direction to the Sun's direction,
-        counted positive towards +east-ish (right-handed about the line of sight from the observer)."""
+        counted positive towards +east-ish (right-handed about the line of sight from the observer).
+        """
         o = geodetic_to_ecef(lat, lon)
         m = _unit(self.r_ecef_km - o)
         s = _unit(self.sun_ecef_km - self.r_ecef_km)          # from the Moon to the Sun
@@ -300,7 +301,8 @@ def halo_fit(gray: np.ndarray, x0: float, y0: float, r_sat: float, sat: int = SA
     """Centre of a saturated body from its halo: I = background plane + H(|p - c|), H a free radial profile
     (piecewise linear in r), fitted on the unsaturated pixels around the core (robust loss). A sky brighter on
     one side (horizon glow, dawn, cloud) moves the edge of the clipped blob, not the centre of a symmetric halo.
-    Returns (x, y, sigma_px) or None."""
+    Returns (x, y, sigma_px) or None.
+    """
     from scipy.optimize import least_squares
     R = int(max(5.0 * r_sat, 18.0))
     xi, yi = int(round(x0)), int(round(y0))
@@ -344,7 +346,8 @@ def halo_fit(gray: np.ndarray, x0: float, y0: float, r_sat: float, sat: int = SA
 
 def lit_centroid_offset(fraction: float) -> float:
     """Offset (in disc radii, towards the Sun) of the light centroid of a Moon lit to `fraction` (orthographic,
-    uniform brightness): the halo is centred there, not on the disc's centre."""
+    uniform brightness): the halo is centred there, not on the disc's centre.
+    """
     k = 2.0 * fraction - 1.0                                # terminator ellipse: x = k sqrt(1 - y^2)
     y = np.linspace(-1, 1, 801)
     half = np.sqrt(1 - y ** 2)
@@ -356,7 +359,8 @@ def lit_centroid_offset(fraction: float) -> float:
 
 def sunward_image_dir(ray, up, limb_angle_deg: float, lens: Lens) -> np.ndarray:
     """Unit image direction (lens pixels) from the body's centre towards the Sun: 'up' turned about the line of
-    sight by BodyPlace.bright_limb_angle."""
+    sight by BodyPlace.bright_limb_angle.
+    """
     m = _unit(ray)
     a = _unit(up - np.dot(up, m) * m)
     th = math.radians(limb_angle_deg)
@@ -369,7 +373,8 @@ def sunward_image_dir(ray, up, limb_angle_deg: float, lens: Lens) -> np.ndarray:
 def refine_centre(gray: np.ndarray, disc: Disc, up_imu, lens: Lens, body: str, fraction: float = 1.0,
                   limb_angle_deg: float = 0.0, semidiameter_deg: float = 0.26, ref_width: float = 3840.0) -> Disc:
     """The disc's centre from its halo (halo_fit); the Moon's halo centre moved back from its light centroid to
-    the disc's centre. Without a usable halo: the bright-limb fit (Moon) or the clipped blob's circle (Sun)."""
+    the disc's centre. Without a usable halo: the bright-limb fit (Moon) or the clipped blob's circle (Sun).
+    """
     import cv2
     g = gray if gray.ndim == 2 else cv2.cvtColor(gray, cv2.COLOR_BGR2GRAY)
     sx = g.shape[1] / ref_width
@@ -396,7 +401,8 @@ def refine_moon_limb(gray: np.ndarray, disc: Disc, up_imu, limb_angle_deg: float
                      fraction: float, sat: int = SATURATED, ref_width: float = 3840.0) -> Disc:
     """Moon: the centre from the bright limb only (edge points whose outward normal is within 80 deg of the
     sunward direction), with the circle's radius free. limb_angle_deg: BodyPlace.bright_limb_angle (from 'up'
-    towards the Sun, about the line of sight). A nearly full Moon (> 0.9 lit) keeps the full-circle fit."""
+    towards the Sun, about the line of sight). A nearly full Moon (> 0.9 lit) keeps the full-circle fit.
+    """
     import cv2
     if fraction > 0.9:
         return disc
@@ -468,7 +474,8 @@ def sight_from_frame(gray: np.ndarray, up_imu, utc: str, prior: Tuple[float, flo
                      sigma_bias_deg: Optional[float] = None, ref_width: float = 3840.0,
                      pressure_hpa: float = 1010.0, temp_c: float = 10.0) -> Tuple[Optional[Sight], dict]:
     """The Sun or Moon in one frame, gated by the ephemeris at the prior (lat, lon, sigma_km). Returns (sight or
-    None, report). body 'auto': the Sun when it is above the horizon at the prior, else the Moon."""
+    None, report). body 'auto': the Sun when it is above the horizon at the prior, else the Moon.
+    """
     lenses = lenses or default_lenses()
     lat, lon, sig_km = prior
     rep: dict = {"utc": utc}
@@ -566,7 +573,8 @@ def thin(sights: List[Sight], bin_s: float = BIN_S) -> List[Sight]:
     """One sight (the middle one in time) per body and BIN_S window. Frames seconds apart share almost all their
     error (bloom, cloud, the body's place in the lens); fed one by one they made the real night's fix 3.6 sigma
     off (467 sights), one per 10 min kept it within 2.6 sigma. For a still camera a tilt of 'up' is exactly a
-    position shift (both move the altitudes as the cosine of the azimuth): crossing lines cannot beat it."""
+    position shift (both move the altitudes as the cosine of the azimuth): crossing lines cannot beat it.
+    """
     if not sights:
         return []
     t = np.array([_utc_seconds(s.utc) for s in sights])
@@ -583,7 +591,8 @@ def altitude_covariance(alts: List[Sight], sigma_common_deg: float, sigma_drift_
                         sigma_up_deg: float = SIGMA_UP_DEG, sigma_fscale: float = SIGMA_FSCALE) -> np.ndarray:
     """Covariance (deg^2) of the altitude errors of sights: frame + common centre bias + drift per window + tilt of
     'up' (tilt . horizontal directions, in the camera frame) + focal scale per lens (dalt/dscale products). A sight
-    without its geometry gets the tilt and focal parts as common (conservative)."""
+    without its geometry gets the tilt and focal parts as common (conservative).
+    """
     n = len(alts)
     R = np.diag([s.sigma_frame_deg ** 2 for s in alts]) + sigma_common_deg ** 2 * np.ones((n, n))
     R += sigma_drift_deg ** 2 * (same_bin[:, None] == same_bin[None, :])
@@ -604,7 +613,8 @@ def fuse(sights: List[Sight], prior: Tuple[float, float, float], sigma_bias_deg:
          sigma_up_deg: float = SIGMA_UP_DEG, sigma_fscale: float = SIGMA_FSCALE) -> Fix:
     """Position from altitude (and azimuth) sights + the prior (lat, lon, 1-sigma km), generalized least squares.
     The altitude errors: sigma_bias_deg common to all sights (mounting / 'up' bias), sigma_drift_deg common to the
-    sights of one BIN_S window, and each sight's own part: many frames of one window count about as one sight."""
+    sights of one BIN_S window, and each sight's own part: many frames of one window count about as one sight.
+    """
     from scipy.stats import chi2 as chi2_dist
     lat0, lon0, sp = prior
     sb = SIGMA_CENTRE_DEG if sigma_bias_deg is None else sigma_bias_deg
@@ -667,7 +677,8 @@ def _utc_seconds(utc: str) -> float:
 def fit_errors(sights: List[Sight], lat: float, lon: float) -> dict:
     """While GPS is valid: the sights' systematic errors against the ephemeris at the GPS place, by generalized least
     squares with the error model's priors: common centre bias (deg), tilt of 'up' (IMU-frame vector, deg) and the
-    focal scale of each lens. Returns {"bias", "tilt", "fscale": {lens: s}, "n"}; correct() applies it."""
+    focal scale of each lens. Returns {"bias", "tilt", "fscale": {lens: s}, "n"}; correct() applies it.
+    """
     alts = [s for s in sights if s.horiz_imu is not None and s.dalt_dfscale_deg is not None]
     lenses = sorted({s.lens for s in alts})
     if not alts:

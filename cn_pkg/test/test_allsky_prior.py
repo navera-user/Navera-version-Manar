@@ -38,7 +38,7 @@ def _hemisphere(rng, n, up, min_alt=12.0):
 
 
 def _tilt(rng, z, deg):
-    """z turned by deg about a random axis perpendicular to it."""
+    """Turn z by deg about a random axis perpendicular to it."""
     a = np.cross(z, rng.normal(size=3))
     a /= np.linalg.norm(a)
     t = math.radians(deg)
@@ -100,7 +100,8 @@ def test_junk_never_accepted_and_chance_is_honest(cat):
 def test_few_stars_among_junk_are_found(cat, rad):
     """8 real stars hidden among 40 junk points (the 5 brightest spots junk), the truth anywhere inside the prior's
     disc: the identification is right (zenith within 0.2 deg) and every accepted one is right. A wider prior
-    means more hypotheses, so a higher chance probability: with 0.3 deg (~30 km) nearly all are accepted."""
+    means more hypotheses, so a higher chance probability: with 0.3 deg (~30 km) nearly all are accepted.
+    """
     rng = np.random.default_rng(int(rad * 10))
     right = accepted = 0
     for _ in range(12):
@@ -133,7 +134,8 @@ def test_prior_beats_lost_in_space_on_few_stars(cat):
 
 def test_wrong_prior_gives_no_fix_near_it(cat):
     """The truth 5 deg (~550 km) outside a 0.5 deg prior: the stars cannot be matched there, and nothing is
-    accepted near the prior (a fix is never made because it is close to the prior)."""
+    accepted near the prior (a fix is never made because it is close to the prior).
+    """
     rng = np.random.default_rng(7)
     for _ in range(15):
         rays, up, z, _ = _case(rng, cat, 12, 30, 0.0)

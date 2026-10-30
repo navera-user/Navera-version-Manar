@@ -54,7 +54,8 @@ def enu_vec(alt_deg, az_deg):
 def render_body(frame, lenses, ray_imu, radius_deg, bloom_deg=0.6, halo_deg=2.0, halo_dn=120.0, lit=1.0,
                 sun_dir_imu=None, level=255.0):
     """Draw a disc (with saturated bloom and a halo) centred on ray_imu into the 8-bit gray frame. Moon: lit < 1
-    and sun_dir_imu (unit, from the Moon towards the Sun, IMU frame) keep only the lit part of the disc."""
+    and sun_dir_imu (unit, from the Moon towards the Sun, IMU frame) keep only the lit part of the disc.
+    """
     from cn_pkg.allsky import unproject
     out = frame.astype(np.float32).copy()
     m = sm._unit(ray_imu)
@@ -330,7 +331,8 @@ SKY = os.environ.get("NAVERA_TESTDATA_SKY", "/media/shadow-team/ADATA SD620/NAVE
 def run_mascot(a):
     """Real Moon frames of ESO Paranal's MASCOT all-sky camera (8 s, star-calibrated lens and mount from other
     nights, navera_tools/bench/realsky_validate): the detector, the halo/phase centre and the ephemeris on a real
-    Moon at every phase. 'up' is the camera's fixed mount (no IMU error here); azimuth with the mount's north."""
+    Moon at every phase. 'up' is the camera's fixed mount (no IMU error here); azimuth with the mount's north.
+    """
     root = os.path.dirname(os.path.dirname(HERE))
     if root not in sys.path:
         sys.path.insert(0, root)

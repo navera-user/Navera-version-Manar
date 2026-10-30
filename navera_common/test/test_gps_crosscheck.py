@@ -156,7 +156,8 @@ def _plane_velocity(t, v=65.0, leg_s=50.0, turn_s=14.0):
 
 def _plane_run(dating_s, delay_err_s, spoof_mps=0.0, sigma=30.0, jitter=8.0, seed=3, dur=400.0):
     """(drift m at the refusal or None, reason): fixes at 0.5 Hz dated delay_err_s late, GPS dragged east
-    at spoof_mps from t = 60 s."""
+    at spoof_mps from t = 60 s.
+    """
     rnd = random.Random(seed)
     x = GpsCrossCheck(trend=GpsDriftTrend(dating_s=dating_s))
     t = 0.0
@@ -175,7 +176,8 @@ def _plane_run(dating_s, delay_err_s, spoof_mps=0.0, sigma=30.0, jitter=8.0, see
 
 def test_a_wrongly_dated_vision_in_turns_refuses_a_good_gps_without_the_dating_term():
     """The 1.3 s camera delay unknown: the 85 m lag turns with the track, the growth test (or the 3 sigma
-    rule) refuses the good GPS as yesterday; taking the velocity-shaped part out keeps it."""
+    rule) refuses the good GPS as yesterday; taking the velocity-shaped part out keeps it.
+    """
     assert _plane_run(dating_s=0.0, delay_err_s=1.3, sigma=60.0)[1] is not None     # 60 m: v x the 1 s prior
     for seed in range(6):
         assert _plane_run(dating_s=1.5, delay_err_s=1.3, seed=seed, sigma=60.0) == (None, None), seed
@@ -184,7 +186,8 @@ def test_a_wrongly_dated_vision_in_turns_refuses_a_good_gps_without_the_dating_t
 
 def test_a_slow_spoof_through_turns_is_still_refused_with_the_dating_term():
     """It costs some drift (the turns' share of the growth is absorbed, 6 seeds: 42-72 m without, 72-90 m
-    with), never the refusal."""
+    with), never the refusal.
+    """
     for seed in range(6):
         on, _ = _plane_run(dating_s=1.0, delay_err_s=0.2, spoof_mps=3.0, seed=seed)
         off, _ = _plane_run(dating_s=0.0, delay_err_s=0.2, spoof_mps=3.0, seed=seed)

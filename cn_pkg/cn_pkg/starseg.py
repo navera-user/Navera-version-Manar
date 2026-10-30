@@ -117,7 +117,8 @@ class StarSeg:
               prob_min: float = PROB_MIN, stats: Optional[dict] = None,
               prob: Optional[np.ndarray] = None) -> List[tuple]:
         """Like allsky.detect_spots for one lens circle: (x, y, flux) brightest first. Peaks of the probability
-        (7x7 local maxima above prob_min); centroid and flux from the frame's residual light in a 5x5 box."""
+        (7x7 local maxima above prob_min); centroid and flux from the frame's residual light in a 5x5 box.
+        """
         import cv2
         from cn_pkg.allsky import unproject
         H, W = gray.shape
@@ -160,7 +161,8 @@ def lens_box(lens, shape) -> Tuple[int, int, int, int]:
 def finder(model: "StarSeg", mode: str = "detect", prob_min: float = PROB_MIN, k_sigma: Optional[float] = None):
     """A spot_finder for allsky.locate. mode 'detect': the network's peaks are the spots. mode 'filter': the
     production detector's spots (k_sigma), dropped where the network's probability (max within 2 px) is below
-    prob_min - it can only remove spots. The probability map is computed once per frame and lens."""
+    prob_min - it can only remove spots. The probability map is computed once per frame and lens.
+    """
     cache: dict = {}
 
     def prob_of(gray, lens):

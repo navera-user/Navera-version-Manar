@@ -70,7 +70,8 @@ def _up(blocks: np.ndarray, shape, block: int) -> np.ndarray:
 def ring_median(frames, pct: float = None) -> np.ndarray:
     """Per-pixel STATIC_PCT percentile (50: median) of equal-shape uint8 frames (float32), in strips so that memory
     stays ~2x one frame. Above 50, junk that flickers (present in a part of the frames only) is caught too; a star
-    is on a pixel in at most 1-2 of the ring frames, so a percentile <= 100 x (1 - 2 / ring) never holds it."""
+    is on a pixel in at most 1-2 of the ring frames, so a percentile <= 100 x (1 - 2 / ring) never holds it.
+    """
     pct = STATIC_PCT if pct is None else pct
     h, w = frames[0].shape
     out = np.empty((h, w), np.float32)
@@ -93,7 +94,8 @@ def cloud_blocks(diff: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
     correlated (H.264 blocks), so the noise-only ratio is not 1/CLOUD_BOX: it is measured on the frame itself, as
     the CLOUD_REF_PCT percentile of the blocks (the dark border outside the lens circles and the static room are
     noise only). A block is moving texture when its ratio is CLOUD_RATIO x that and its smoothed spread is above
-    CLOUD_MIN_SPREAD DN."""
+    CLOUD_MIN_SPREAD DN.
+    """
     import cv2
     sm = cv2.blur(diff, (CLOUD_BOX, CLOUD_BOX))
     pix = block_mad(diff - sm, CLOUD_BLOCK, floor=0.05)
@@ -105,7 +107,8 @@ def cloud_blocks(diff: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
 
 def gain_of(g_hp: np.ndarray, m_hp: np.ndarray, sel: np.ndarray) -> float:
     """Least-squares scale of the median's high-pass in the frame's (exposure / gain changes), clipped 0.5-2, over
-    the significant static structure only (sel; elsewhere the median's own noise would dilute the fit)."""
+    the significant static structure only (sel; elsewhere the median's own noise would dilute the fit).
+    """
     if sel.sum() < 50:
         return 1.0
     m, g = m_hp[sel], g_hp[sel]
@@ -150,7 +153,8 @@ class SkyCleaner:
 
     def clean(self, gray: np.ndarray, t: float) -> Tuple[np.ndarray, dict]:
         """(cleaned float32 frame, info). The cleaned frame is <= gray on every pixel, except in cloud blocks,
-        which are replaced by the frame's own smooth background (no point source survives there)."""
+        which are replaced by the frame's own smooth background (no point source survives there).
+        """
         g = gray.astype(np.float32)
         info = {"static": False, "ring": len(self.ring), "cloud_frac": 0.0}
         use = self._usable(t) if (self.static or self.cloud) else None
@@ -192,7 +196,8 @@ def sky_usable(gray: np.ndarray, lenses, up_imu: np.ndarray, min_alt: float = 12
     """How much of the sky above min_alt (in both lens circles) a star could be found in, per GATE_BLOCK block:
     not moving texture (cloud_map from SkyCleaner, CLOUD_BLOCK blocks), detector noise <= USABLE_NOISE_DN,
     smooth level < BRIGHT_DN. A dark, still obstruction (a ceiling at night) cannot be told from a starless dark
-    sky in one frame: the gate catches cloud, glare and glow, not every roof."""
+    sky in one frame: the gate catches cloud, glare and glow, not every roof.
+    """
     from cn_pkg.allsky import unproject
     g = gray.astype(np.float32)
     hp = g - _blur(g, HP_SIGMA)

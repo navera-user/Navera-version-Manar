@@ -100,7 +100,8 @@ def test_lamp_in_the_gate_makes_it_ambiguous_and_none_outside_refused():
 
 def test_running_fix_crosses_lines_and_stays_honest():
     """Exact sun altitudes 3 h apart (azimuths differ by ~45 deg): the fix lands within its sigma; with the bias
-    learnt away the sigma is small."""
+    learnt away the sigma is small.
+    """
     truth = SOUSSE
     sights = []
     for utc in ("2026-10-30 08:00:00", "2026-10-30 11:00:00", "2026-10-30 14:00:00"):
@@ -143,7 +144,8 @@ def _geo_sights(truth, tilt, fscale, bias=0.0, n=12):
 
 def test_crossing_lines_with_a_tilt_stay_within_sigma():
     """A 0.6 deg tilt of 'up' and a 2 % focal error over a night (the body sweeps 100 deg of azimuth): the
-    physical error model keeps the fix within 3 sigma, where a constant-bias model would not."""
+    physical error model keeps the fix within 3 sigma, where a constant-bias model would not.
+    """
     truth = SOUSSE
     sights = _geo_sights(truth, np.array([0.6, 0.0, 0.3]), 0.02, bias=0.2)
     prior = (*sm.offset_latlon(*truth, 100.0, 100.0), 300.0)

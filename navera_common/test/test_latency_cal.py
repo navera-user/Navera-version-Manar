@@ -393,7 +393,8 @@ def test_a_staged_delay_surely_not_zero_is_applied_above_the_speed_cap():
     """Isaac Sim p1_plane60_turns (2026-10-29): 1.25 +- 0.24 s for a true 1.3 s at 65 m/s was capped
     (65 x 0.23 = 15 m > 10 m) and every fix stayed ~80 m behind; the posterior is 4.9 of its sigmas
     from 0, so keeping 0 costs 5 x more than applying it. m1_plane30's 0.58 +- 0.44 s (1.2 sigma from
-    0 once shrunk) stays capped."""
+    0 once shrunk) stays capped.
+    """
     cal = _staged(65.0, 1.25, 0.24)
     w = 1.0 / (1.0 + 0.24 ** 2)
     assert math.isclose(cal.applied, w * 1.25) and math.isclose(cal.applied_sigma, math.sqrt(w) * 0.24)
@@ -406,7 +407,8 @@ def test_a_staged_delay_surely_not_zero_is_applied_above_the_speed_cap():
 @pytest.mark.parametrize("seed", range(3))
 def test_a_fast_plane_on_a_wide_turn_gets_the_staged_delay_only_when_sure(seed):
     """A jet at 60 m/s on a 3 km circle (~1.1 deg/s, the delay barely observable): whatever is applied
-    is the posterior within 3 sigma of the truth and closer to it than 0."""
+    is the posterior within 3 sigma of the truth and closer to it than 0.
+    """
     cal = fly(LatencyCalibrator(), circle(60.0, 3000.0), 1.3, 40.0, noise=8.0, seed=seed)
     if cal.applied is not None:
         assert abs(cal.applied - 1.3) <= 3 * cal.applied_sigma and abs(cal.applied - 1.3) < 1.3

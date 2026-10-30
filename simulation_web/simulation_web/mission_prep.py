@@ -104,6 +104,8 @@ def check_forwarding(merged: Dict[str, str]):
     if on and not merged.get("NAVERA_DEGRADED_SIGMA_M"):
         raise ValueError("NAVERA_FORWARD_DEGRADED: set the accuracy "
                          "(NAVERA_DEGRADED_SIGMA_M) first")
+
+
 # Set by "activate", never typed by the operator.
 INTERNAL = ("DAY_DATASET_DIR",)
 
