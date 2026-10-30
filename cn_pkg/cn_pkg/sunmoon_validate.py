@@ -69,6 +69,8 @@ def render_body(frame, lenses, ray_imu, radius_deg, bloom_deg=0.6, halo_deg=2.0,
         rad = int(math.radians(radius_deg + bloom_deg + 4 * halo_deg) * L.f) + 4
         x0, y0 = max(0, int(x) - rad), max(0, int(y) - rad)
         x1, y1 = min(frame.shape[1], int(x) + rad + 1), min(frame.shape[0], int(y) + rad + 1)
+        if x1 <= x0 or y1 <= y0:                                  # projected outside the frame
+            continue
         # 4x supersampled
         ss = 4
         yy, xx = np.mgrid[y0:y1:1.0 / ss, x0:x1:1.0 / ss]
