@@ -1,20 +1,19 @@
-# Lab 14 — analysis
+# Mission 14 — report
 
-Write each section in your own words (at least 40 words per section). Replace the lines in
-*italics*; keep the three headings exactly as they are.
+Write at least 40 words under each heading, in your own words, with YOUR numbers (from your runs and
+answers.py). Keep the three headings as they are.
 
-## NAVERA's tests
+## Bugs pinned
 
-*How many unit tests run_tests.sh ran and how long it took; which tests failed when you broke
-is_finite_latlon, and why a test of another function (dead_reckon) failed too.*
+(The stack's suite: how many tests, how long. What the Null Island change broke, which test noticed, which
+parts of the stack did not, and the tests you wrote for TODO 1–4: one bug each of them pins.)
 
 ## Mutants
 
-*Which mutants survived your FIRST version of test_geo_tools.py (the checker's list; if none survived,
-the results of your own attacks of step 6), which tests you added to kill them, and one mutant that
-only a property can catch easily.*
+(Your training score the first time and at the end, the equivalent mutant, and your three mutants of
+TODO 6: why the stack's own suite missed each one, and which test of yours kills it.)
 
-## Properties
+## Properties and the launch test
 
-*The falsifying example hypothesis found for the validity property (copy it), what it means
-physically, how you restricted the domain, and how NAVERA's dead_reckon handles the same problem.*
+(The Falsifying example of the validity property and what you did about it; one mutant only a property
+caught easily. Then your launch test: what it proves about the judge that the unit tests cannot.)

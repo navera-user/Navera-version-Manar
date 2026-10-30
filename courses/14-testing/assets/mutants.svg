@@ -1,42 +1,44 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 300" font-family="sans-serif" font-size="13">
-  <rect width="680" height="300" fill="#f7fafc"/>
-  <defs>
-    <marker id="h" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
-      <path d="M0 0 L10 5 L0 10 z" fill="#56606b"/>
-    </marker>
-  </defs>
-  <text x="340" y="24" text-anchor="middle" font-size="15" font-weight="bold" fill="#1d2733">How the checker tests your tests</text>
-  <!-- tests box -->
-  <rect x="20" y="110" width="150" height="70" rx="10" fill="#1d2733"/>
-  <text x="95" y="140" text-anchor="middle" fill="#ffffff" font-weight="bold">your tests</text>
-  <text x="95" y="160" text-anchor="middle" fill="#c8d3dc" font-family="monospace" font-size="12">test_*.py</text>
-  <g stroke="#56606b" stroke-width="2" fill="none" marker-end="url(#h)">
-    <path d="M170 130 L250 66"/>
-    <path d="M170 145 L250 145"/>
-    <path d="M170 160 L250 226"/>
-  </g>
-  <!-- versions -->
-  <g stroke-width="2">
-    <rect x="254" y="44" width="220" height="44" rx="8" fill="#eaf6ec" stroke="#3a8a4a"/>
-    <rect x="254" y="123" width="220" height="44" rx="8" fill="#fdecec" stroke="#d64545"/>
-    <rect x="254" y="204" width="220" height="44" rx="8" fill="#fdecec" stroke="#d64545"/>
-  </g>
-  <g fill="#1d2733">
-    <text x="266" y="63" font-weight="bold">correct geo_tools.py</text>
-    <text x="266" y="80" font-size="12">the real code</text>
-    <text x="266" y="142" font-weight="bold">mutant: forgets cos(lat)</text>
-    <text x="266" y="159" font-size="12">a copy with one bug</text>
-    <text x="266" y="223" font-weight="bold">mutant: accepts (0, 0)</text>
-    <text x="266" y="240" font-size="12">a copy with another bug</text>
-  </g>
-  <!-- results -->
-  <g font-weight="bold">
-    <text x="490" y="63" fill="#3a8a4a">all tests PASS</text>
-    <text x="490" y="80" fill="#3a8a4a" font-weight="normal" font-size="12">✔ good: no false alarm</text>
-    <text x="490" y="142" fill="#3a8a4a">a test FAILS</text>
-    <text x="490" y="159" fill="#3a8a4a" font-weight="normal" font-size="12">✔ the bug is caught</text>
-    <text x="490" y="223" fill="#d64545">all tests pass…</text>
-    <text x="490" y="240" fill="#d64545" font-weight="normal" font-size="12">✘ the bug survived!</text>
-  </g>
-  <text x="340" y="282" text-anchor="middle" fill="#56606b">mutation score = killed mutants / all mutants — a suite is only as good as the bugs it catches</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 330" font-family="sans-serif" font-size="13">
+<rect width="720" height="330" fill="#f7fafc"/>
+<text x="20" y="28" font-size="15" font-weight="bold" fill="#1d2733">Mutants: break the code on purpose, and see whether a test notices</text>
+<!-- given code -->
+<rect x="20" y="50" width="200" height="56" rx="8" fill="#2f855a"/>
+<text x="120" y="73" fill="#fff" text-anchor="middle" font-weight="bold">the given code</text>
+<text x="120" y="92" fill="#e3f4ea" text-anchor="middle" font-size="11">your tests must PASS here</text>
+<!-- mutants -->
+<g font-size="11">
+<rect x="20" y="130" width="200" height="34" rx="6" fill="#e6f2f6" stroke="#0b6e8a"/>
+<text x="30" y="151" fill="#1d2733">1: cos(p1) * cos(p2) → cos(p1) ** 2</text>
+<rect x="20" y="172" width="200" height="34" rx="6" fill="#e6f2f6" stroke="#0b6e8a"/>
+<text x="30" y="193" fill="#1d2733">2: 2.0 * R → R</text>
+<rect x="20" y="214" width="200" height="34" rx="6" fill="#e6f2f6" stroke="#0b6e8a"/>
+<text x="30" y="235" fill="#1d2733">3: d &lt;= limit → d &lt; limit</text>
+<rect x="20" y="256" width="200" height="34" rx="6" fill="#e6f2f6" stroke="#0b6e8a"/>
+<text x="30" y="277" fill="#1d2733">4: a change no input can show</text>
+</g>
+<!-- tests -->
+<rect x="290" y="150" width="140" height="120" rx="8" fill="#1d2733"/>
+<text x="360" y="200" fill="#fff" text-anchor="middle" font-weight="bold">your tests</text>
+<text x="360" y="220" fill="#cbd5e0" text-anchor="middle" font-size="11">run on each copy</text>
+<g stroke="#0b6e8a" stroke-width="2" fill="none">
+<path d="M220 147 L290 190"/><path d="M220 189 L290 202"/><path d="M220 231 L290 222"/><path d="M220 273 L290 240"/>
+</g>
+<!-- results -->
+<g font-size="12">
+<rect x="500" y="130" width="200" height="34" rx="6" fill="#c53030"/>
+<text x="510" y="151" fill="#fff">1 killed (symmetry failed)</text>
+<rect x="500" y="172" width="200" height="34" rx="6" fill="#c53030"/>
+<text x="510" y="193" fill="#fff">2 killed (a known distance)</text>
+<rect x="500" y="214" width="200" height="34" rx="6" fill="#d69e2e"/>
+<text x="510" y="235" fill="#fff">3 SURVIVED: no test at the limit</text>
+<rect x="500" y="256" width="200" height="34" rx="6" fill="#a0aec0"/>
+<text x="510" y="277" fill="#fff">4 equivalent: left out</text>
+</g>
+<g stroke="#1d2733" stroke-width="2" fill="none">
+<path d="M430 190 L500 147"/><path d="M430 202 L500 189"/><path d="M430 222 L500 231"/><path d="M430 240 L500 273"/>
+</g>
+<text x="500" y="70" fill="#1d2733" font-weight="bold">mutation score</text>
+<text x="500" y="90" fill="#1d2733">= killed / killable = 2 / 3</text>
+<text x="500" y="110" fill="#555" font-size="11">survivor 3: add a test at the limit</text>
+<text x="20" y="318" fill="#555" font-size="11">Each mutant is a whole copy of the stack with ONE change. Killed = at least one test fails on it. The given code itself must pass every test.</text>
 </svg>

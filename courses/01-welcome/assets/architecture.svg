@@ -24,29 +24,29 @@
 <text x="26" y="309" font-weight="bold" fill="#1d2733">IMU</text>
 <text x="26" y="326" fill="#555">attitude, heading (no position)</text>
 <line x1="206" y1="313" x2="258" y2="230" stroke="#888" stroke-width="1.3" stroke-dasharray="4 3" marker-end="url(#ar)"/>
-<text x="16" y="362" fill="#555" font-size="11">each source publishes /navera/estimate/… : a PositionEstimate (position, uncertainty, mode)</text>
+<text x="16" y="362" fill="#555" font-size="11">each source publishes its estimate: position, uncertainty, mode</text>
 <rect x="262" y="70" width="180" height="200" rx="8" fill="#ffe7df" stroke="#e8613c" stroke-width="2"/>
-<text x="272" y="94" fill="#1d2733" font-weight="bold">estimator_node</text>
+<text x="272" y="94" fill="#1d2733" font-weight="bold">arbiter (the judge)</text>
 <text x="272" y="116" fill="#1d2733">eligible = valid, fresh,</text>
-<text x="272" y="138" fill="#1d2733">measured, finite</text>
+<text x="272" y="138" fill="#1d2733">measured or propagated, finite</text>
 <text x="272" y="160" fill="#1d2733" font-weight="bold">priority:</text>
 <text x="272" y="182" fill="#1d2733">GPS > day > night > celestial</text>
 <text x="272" y="204" fill="#1d2733" font-weight="bold">GPS jump gate:</text>
 <text x="272" y="226" fill="#1d2733">refuse if d > v_max·Δt + margin</text>
 <text x="272" y="248" fill="#1d2733">→ FIX / DEGRADED / NO_FIX</text>
 <line x1="442" y1="150" x2="474" y2="150" stroke="#555" stroke-width="1.5" marker-end="url(#ar)"/>
-<text x="446" y="100" fill="#555" font-size="11">/navera/position</text>
+<text x="446" y="100" fill="#555" font-size="11">position</text>
 <rect x="476" y="110" width="150" height="80" rx="6" fill="#eaf6ee" stroke="#2e8b57" stroke-width="1.5"/>
-<text x="486" y="130" fill="#1d2733" font-weight="bold">vehicle_output_node</text>
+<text x="486" y="130" fill="#1d2733" font-weight="bold">output (messenger)</text>
 <text x="486" y="147" fill="#1d2733">NMEA (GGA, RMC)</text>
 <text x="486" y="164" fill="#1d2733">MAVLink GPS_INPUT</text>
-<text x="486" y="181" fill="#1d2733">ROS /navera/fix</text>
+<text x="486" y="181" fill="#1d2733">ROS fix topic</text>
 <line x1="551" y1="190" x2="551" y2="226" stroke="#555" stroke-width="1.5" marker-end="url(#ar)"/>
 <rect x="476" y="228" width="150" height="46" rx="6" fill="#1d2733"/>
 <text x="486" y="247" fill="#ffffff" font-weight="bold">autopilot</text>
-<text x="486" y="264" fill="#cfd8e3">ArduPilot / PX4 …</text>
+<text x="486" y="264" fill="#cfd8e3">ArduPilot (PX4: not yet)</text>
 <line x1="352" y1="270" x2="352" y2="300" stroke="#555" stroke-width="1.5" marker-end="url(#ar)"/>
-<text x="360" y="290" fill="#555" font-size="11">/navera/nav_status</text>
+<text x="360" y="290" fill="#555" font-size="11">navigation status</text>
 <rect x="290" y="302" width="150" height="34" rx="6" fill="#ffffff" stroke="#888"/>
 <text x="300" y="323" fill="#1d2733">operator view (web)</text>
 </svg>

@@ -1,492 +1,384 @@
 # Data analysis: reading a flight-test campaign
 
-> [!NOTE] In short
-> - After a test campaign, an engineer must check that the data is clean and measure what happened
->   in each flight.
-> - You read CSV files and work with tables in **pandas**: filters, missing values, duplicates and
->   `groupby`.
-> - You compute distances and speeds with NumPy, find GPS outages with **run-length** logic, and
->   use statistics that survive bad data.
-> - In the lab you analyse four synthetic flights near Sousse, Tunisia, draw two figures with matplotlib and
->   write a short test report.
-> - NAVERA's tools use the same methods: pandas for the map tile table, and the same statistics in
->   `evaluate_session.py`.
+![Cold open: the raw log of a test campaign says that a small drone flew 8 274 km in ten minutes, at two million metres per second, and climbed to 9 999 m](assets/cold_open.svg)
 
-A test week is over. Four drone flights were logged in NAVERA's test area in Tunisia: along the
-coast near Monastir, around the port of Sousse, over the hills of the Sahel inland, and a survey line
-pattern (a grid) over the sea shore. The logger
-wrote one row every 2 seconds per flight: 1556 rows, ten columns. The test engineer must answer
-before the next campaign:
+> [!NOTE] Mission brief
+> **3 October 2026, NAVERA's validation report.** One sentence in it cancels weeks of results: *"The
+> replay frames do not show the places their CSV labels say. Earlier accuracy figures computed on them
+> are not valid."* However carefully the errors were computed, the data did not mean what its labels
+> said, so the numbers built on it had to be withdrawn. In NAVERA's engineering backlog (RTC-2, now
+> fixed), a clock module said its time was valid even when it disagreed with the system clock, so a clock
+> left on **local** time instead of UTC gave a 1-hour error that nothing flagged.
+>
+> Today you are the test engineer of a campaign: four flights of one drone near Sousse and Monastir,
+> Tunisia (synthetic data, made for the course). Session 1: clean and measure. Session 2: play detective
+> (two of the labels lie), measure how noisy each position source is, and write the test report.
+>
+> **Start now:** do lab **Step 0** (two minutes, no code), then come back here for §1.
 
-- Is the data clean? (Loggers write rows twice; sensors glitch; cells stay empty.)
-- How long, how far, how high did each flight go?
-- **How often and how long was GPS lost**, and what did NAVERA report meanwhile?
-- How noisy is each position source?
+**Objectives.** After this mission you can:
 
-You will answer with the standard tools of every data engineer: the `csv` module, **pandas**,
-**NumPy**, **matplotlib** and **json**. The campaign is **synthetic** (generated for this course,
-with realistic errors) but placed in NAVERA's test area: NAVERA's real recordings cover Sousse,
-Tunisia, where it is developed. The
-methods are the same ones NAVERA's team uses to produce the numbers in
-`docs/VALIDATION_STATUS.md`.
+1. clean a log with **written rules**, and count what each rule removed;
+2. compute per-flight quantities with **groupby** (time steps, speeds, state shares) without mixing flights;
+3. find outages as **runs** of lost rows, and turn them into durations;
+4. choose between **mean/σ** and **median/MAD**, and justify the choice;
+5. find **systematic errors** (a wrong clock, a wrong unit) that no statistic can repair, before
+   computing anything.
 
-## 1. The file: CSV
+**You need:** missions 02 (shell pipelines) and 03 (functions, dicts, numpy arrays and masks). pandas is
+new: this lesson teaches what you use. ⏱ Reading: about 75 minutes with the ✏️ checks (up to 95 if
+English or pandas is slow for you). Lab: 2 h 30 to 5 h.
 
-A **CSV** (comma-separated values) file is text: a **header** line with the column names, then one
-line per row.
+**Before you start** (answer without looking; if you miss two, reread mission 03's numpy section):
+
+<details><summary>1. Which shell command counts the lines of <code>log.csv</code> that contain <code>NO_FIX</code>?</summary>
+<code>grep -c NO_FIX log.csv</code> (mission 02).
+</details>
+<details><summary>2. <code>v = np.array([3.0, 4.0, 12.0])</code>. What are <code>np.diff(v)</code> and <code>v[v > 3.5]</code>?</summary>
+<code>[1., 8.]</code> (each element minus the one before) and <code>[4., 12.]</code> (a boolean mask keeps the True positions).
+</details>
+<details><summary>3. Two positions, 2 s apart, are 30 m apart. What speed do they give, and in which unit should its name end?</summary>
+15 m/s, named like <code>speed_mps</code> (mission 03: the unit at the end of every name).
+</details>
+
+<details><summary>Words of this lesson (open if you need them)</summary>
+
+| Word | Meaning | Français |
+|---|---|---|
+| **DataFrame** | a pandas table: named columns, one type per column | tableau de données |
+| **NaN** | "not a number": pandas' mark for an empty cell | valeur manquante |
+| **boolean mask** | a column of True/False used to keep rows | masque booléen |
+| **groupby** | split the rows into groups, compute one answer per group | regrouper par |
+| **outage** | a run of rows where GPS was lost | coupure |
+| **robust** (statistic) | hardly moved by a few wild values | robuste |
+| **median** | the middle value of the sorted data | médiane |
+| **MAD** | median absolute deviation: the median of the distances to the median | écart absolu médian |
+| **percentile** (p95) | the value below which 95 % of the data lies | centile |
+| **systematic error** | an error that pushes every value the same way (a unit, a clock) | erreur systématique |
+| **UTC** | the world reference time; local time = UTC + the zone's offset | temps universel |
+</details>
+
+## 1. A log is a table
+
+The campaign's logger writes a **CSV** file: a header line with the column names, then one line per
+row, one row every 2 s. Every value in the file is text; an empty cell means "no value".
 
 ```
 flight_id,time_s,lat,lon,alt_m,speed_mps,battery_pct,gps_valid,source,state
-monastir_coast,0,35.769986,10.829994,0.0,0.44,100.0,1,gps,FIX
-sousse_port,480,,,118.6,14.76,70.1,0,none,NO_FIX
+harbour_a,43200,35.825,10.640,40.2,8.10,97.5,1,gps,FIX
+harbour_a,43202,,,40.6,8.30,97.4,0,none,NO_FIX
 ```
 
-The second line has **empty cells**: during that moment no source gave a position. Every value in
-the file is text; the program decides what is a number.
-
-### Opening a file: `with`
-
-```python
-with open("campaign.csv") as f:      # f is the open file
-    header = f.readline()
-# here the file is closed again, even if an error happened inside the block
-```
-
-`with` is a **context manager**: it opens the file, runs the indented block, and **always closes**
-the file at the end — also when an exception stops the block. Without it, an error could leave the
-file open (and, when writing, data not saved). Write files with `open(path, "w")`: `"w"` empties
-the file first, `"a"` appends.
-
-### The `csv` module: rows as dicts
-
-```python
-import csv
-with open("campaign.csv", newline="") as f:
-    rows = list(csv.DictReader(f))          # a list of dicts, one per row
-rows[0]["flight_id"]                        # 'monastir_coast'
-rows[0]["alt_m"]                            # '0.0'   ← a string!
-alts = [float(r["alt_m"]) for r in rows if r["flight_id"] == "sousse_port"]   # list comprehension
-```
-
-`csv.DictReader` gives each row as a **dict** whose keys are the column names (lesson 3). Every value
-is a **string**: you convert with `float()` or `int()`, and `float("")` on an empty cell raises
-`ValueError: could not convert string to float: ''`. This is enough for small scripts — NAVERA's
-own `evaluate_session.py` writes its results with the `csv` module. For analysis, pandas does the
-conversions, the missing values and the grouping for you.
-
-![The same CSV read as a list of dicts (csv module) and as a typed DataFrame (pandas)](assets/csv_to_dataframe.svg)
-
-## 2. pandas: tables of typed columns
+**pandas** reads the
+whole file into a **DataFrame**, a table whose columns each have one type (a **dtype**):
 
 ```python
 import pandas as pd
-df = pd.read_csv("campaign.csv")
-df.shape            # (1556, 10): rows, columns
-df.head(3)          # the first 3 rows
-df.dtypes           # the type of each column
-df.info()           # columns, non-null counts, dtypes
-df.describe()       # count, mean, std, min, quartiles, max of the numeric columns
+df = pd.read_csv("log.csv")
+df.shape                     # (rows, columns)
+df.dtypes                    # time_s int64, lat float64, flight_id object (= text) ...
+df["alt_m"]                  # one column (a Series); df["alt_m"].max(), .mean(), .median()
+df["state"].value_counts()   # how many rows of each value
+df.isna().sum()              # how many empty cells in each column
 ```
 
-A **DataFrame** is a table; each column is a **Series** (a 1-D labelled array, built on a NumPy
-array). `read_csv` guesses a **dtype** per column: `int64` for `time_s` and `gps_valid`, `float64`
-for `lat`, `alt_m`…, and `object` (Python strings) for `flight_id`, `source`, `state`. An empty cell
-becomes **NaN** ("not a number"), which is a float — that is why `lat` is `float64` even with empty
-cells.
+An empty cell becomes **NaN**, which is a float: that is why `lat` stays `float64` even with holes.
+Two facts about NaN matter for the whole mission. Every comparison with NaN is **False**, except
+`!=`, which is True (`NaN == 0` and `NaN > 5000` are False; `NaN != 0` is True). And pandas statistics **skip** NaN:
+`pd.Series([1.0, None, 3.0]).mean()` is 2.0, while numpy's `np.mean` would give `nan`.
+
+**Masks** are mission 03's numpy masks on a column: a comparison gives a Series of True/False, and
+`df[mask]` keeps the True rows. Combine masks with `&` (and), `|` (or), `~` (not), with **brackets**
+around each comparison:
+
+```python
+df[(df["flight_id"] == "harbour_a") & (df["gps_valid"] == 0)]    # the lost rows of one flight
+df[~(df["alt_m"] > 500)]                                         # every row NOT above 500 m
+```
+
+> [!QUESTION] ✏️ Check
+> A column `lat` holds `35.8, NaN, 0.0`. What does `df["lat"] == 0` give? And `~(df["lat"] == 0)`?
+> Which rows does `df[~(df["lat"] == 0)]` keep?
+
+<details><summary>Answer</summary>
+<code>[False, False, True]</code>, then <code>[True, True, False]</code>: it keeps the first two rows,
+<b>including the NaN row</b>. Remember this when you write a cleaning rule: a rule written as
+"remove where …" keeps the empty cells; a rule "keep where lat > 0" (any comparison but `!=`) throws them away.
+</details>
+
+## 2. Cleaning: written rules, counted
+
+**Why.** Loggers write a line twice; a receiver with no position writes zeros; a sensor glitches. Fix
+things "by eye" and nobody can repeat your analysis. A test engineer writes the rules down, applies them in
+a fixed order, and **counts** what each removed. The raw file is never edited: it is the evidence.
+
+**The idea.** One mask per rule, applied one after the other; the count of a rule is the number of
+True values in its mask. Three pandas tools do the rest:
 
 | Code | Gives |
 |---|---|
-| `df["alt_m"]` | one column (a Series) |
-| `df[["time_s", "alt_m"]]` | several columns (a DataFrame) — note the double brackets |
-| `df.loc[5, "alt_m"]` | one value: row **label** 5, column `alt_m` |
-| `df.iloc[0]`, `df.iloc[-1]` | first / last row by **position** |
-| `df["alt_m"].max()`, `.mean()`, `.median()`, `.std()`, `.quantile(0.95)` | statistics |
-| `df["state"].value_counts()` | how many rows of each value |
-| `df["alt_m"].to_numpy()` | the underlying NumPy array |
+| `df.duplicated()` | True for a row identical to an EARLIER row (the first copy is False) |
+| `df.sort_values(["flight_id", "time_s"])` | the rows sorted by flight, then by time |
+| `.reset_index(drop=True)` | the rows renumbered 0, 1, 2 … (the old numbers are dropped) |
 
-### Filtering with boolean masks
+Most pandas methods return a **new** DataFrame and leave the old one unchanged. `out = df[mask]`
+does not change `df`.
 
-Exactly like NumPy masks (lesson 3): a comparison on a column gives a Series of `True`/`False`, and
-indexing with it keeps the `True` rows.
+**Worked example.** A 7-row log; the rules are "duplicate", then "lat and lon both 0", then
+"altitude above 3 000 m":
 
-```python
-lost = df["gps_valid"] == 0                       # a boolean Series
-df[lost]                                          # rows without GPS
-df[(df["flight_id"] == "sousse_port") & lost]      # AND: &   OR: |   NOT: ~
-df[~df["source"].isin(["gps", "day_vision"])]     # rows whose source is something else
-```
+| row | flight | time_s | lat | lon | alt_m | duplicate? | (0, 0)? | alt > 3000? |
+|---|---|---|---|---|---|---|---|---|
+| 0 | b | 0 | 12.10 | 15.05 | 80 | | | |
+| 1 | a | 0 | 12.00 | 15.00 | 90 | | | |
+| 2 | a | 2 | 0.00 | 0.00 | 91 | | **removed** | |
+| 3 | a | 4 | NaN | NaN | 92 | | no (NaN) | |
+| 4 | a | 4 | NaN | NaN | 92 | **removed** | | |
+| 5 | a | 6 | 12.01 | 15.00 | 7 500 | | | **removed** |
+| 6 | b | 2 | 12.11 | 15.05 | 81 | | | |
 
-Use `&`, `|`, `~` (not `and`, `or`, `not`), and put **parentheses** around each comparison:
-`&` binds more strongly than `==`.
+Counts: 1 duplicate, 1 at (0, 0), 1 bad altitude: 4 rows stay. Sorted, they are a0, a4 (the NaN row:
+GPS lost, a real moment of the flight), b0, b2, renumbered 0–3. Row 4 is a copy of row 3 including
+its two NaN, and `duplicated()` treats NaN cells as equal, so it is found.
 
-### Missing values
+> [!WARNING] Common mistake: `df.dropna()`
+> `dropna()` removes every row with **any** empty cell: the NO_FIX row, and every row with no battery or
+> speed value. Outages look shorter than they were. Drop a row only for a rule you can write down.
 
-| Code | Meaning |
-|---|---|
-| `df["lat"].isna()` | `True` where the cell is empty |
-| `df.isna().sum()` | number of empty cells per column |
-| `df.dropna(subset=["lat", "lon"])` | drop rows with an empty `lat` or `lon` |
-| `df["battery_pct"].ffill()` | fill a gap with the previous value ("forward fill") |
+> [!QUESTION] ✏️ Check
+> Why apply "duplicate" **first**? What would the counts be if a duplicated row also sat at (0, 0)?
 
-NaN **propagates** through arithmetic: `NaN + 1` is `NaN`, and `np.mean([1.0, np.nan, 3.0])` is
-`nan`. pandas statistics **skip** NaN by default: `pd.Series([1.0, np.nan, 3.0]).mean()` is `2.0`.
-Before you drop or fill, ask what the empty cell **means**. Here an empty position means NO_FIX: the
-row is real and belongs to an outage; dropping it would make the outage look shorter.
+<details><summary>Answer</summary>
+Each row is counted under the first rule that removes it. If both copies of a (0, 0) row reached the
+(0, 0) rule, it would count 2 instead of "1 duplicate + 1 at (0, 0)": the counts would describe the
+logger's double writes as receiver glitches. Order is part of the rule; write it down.
+</details>
 
-### Duplicates, new columns, sorting
+## 3. One flight at a time: groupby
 
-```python
-df.duplicated().sum()                 # rows identical to an earlier row
-df = df.drop_duplicates()             # returns a NEW DataFrame (the old one is unchanged)
-df["alt_km"] = df["alt_m"] / 1000     # a new column, computed on the whole column at once
-df = df.sort_values(["flight_id", "time_s"]).reset_index(drop=True)   # sort, then renumber 0..n−1
-```
+**Why.** A speed needs the **previous row of the same flight**. Take the previous row of the table, and
+the first row of each flight gets the last position of the flight before it: an absurd step.
 
-Most pandas methods return a **new** object. If a function receives a DataFrame and must not change
-it, start with `out = df.copy()`.
-
-### groupby: one answer per flight
-
-**groupby** splits the table into groups, applies a function to each group, and combines the
-results ("split–apply–combine"):
-
-```python
-df.groupby("flight_id")["alt_m"].max()            # a Series: max altitude per flight
-df.groupby("flight_id").agg(                      # named aggregations: new_name=(column, function)
-    rows=("time_s", "size"),
-    t_last=("time_s", "max"),
-    mean_speed_mps=("speed_mps", "mean"),
-)
-pd.crosstab(df["flight_id"], df["state"], normalize="index") * 100   # % of each state per flight
-```
-
-In a named aggregation, the function is a **name** that pandas knows (`"size"`, `"min"`, `"max"`,
-`"mean"`, `"median"`, `"sum"`, `"std"`) **or** a Python function. A percentile needs a parameter
-(0.95), so you give it as a small function written with `lambda`:
-
-```python
-df.groupby("source").agg(
-    median_mps=("err", "median"),
-    p95_mps=("err", lambda x: x.quantile(0.95)),    # x is the column of ONE group
-)
-```
-
-> [!NOTE]
-> **Python note — `lambda`.** `lambda x: x.quantile(0.95)` is a function without a name, written
-> in one expression. It is exactly the same as
-> ```python
-> def p95(x):
->     return x.quantile(0.95)
-> ```
-> and you could write `p95_mps=("err", p95)` instead. pandas calls it once per group, with that
-> group's values as `x`. Example: `square = lambda v: v * v`, then `square(3)` is `9`.
-
-### A table from a dict
-
-When a loop computes several values per flight, collect them in a **dict of dicts**
-`{row label: {column: value}}`, then turn it into a DataFrame in one call:
-
-```python
-rows = {
-    "flight_a": {"n_outages": 3, "longest_outage_s": 40.0},
-    "flight_b": {"n_outages": 0, "longest_outage_s": 0.0},
-}
-table = pd.DataFrame.from_dict(rows, orient="index")    # the outer keys become the row index
-#           n_outages  longest_outage_s
-# flight_a          3              40.0
-# flight_b          0               0.0
-```
-
-`orient="index"` says "the outer keys are the rows". (Without it, the outer keys would become the
-columns.) Add `.sort_index()` to sort the rows by their label.
-
-`shift()` inside a group gives the **previous row of the same flight** — and NaN on the first row
-of each flight, so a flight never borrows the last position of the flight before it:
+**The idea: split, apply, combine.** `df.groupby("flight_id")` splits the rows into one group per flight;
+what you apply runs on each group alone; pandas combines the answers.
 
 ```python
 g = df.groupby("flight_id")
-df["dt_s"] = df["time_s"] - g["time_s"].shift()
+g["alt_m"].max()                                  # one value per flight
+g["time_s"].shift()                               # the PREVIOUS row's value, inside each flight
+for fid, f in g:                                  # a loop: f is the DataFrame of one flight
+    print(fid, len(f))
 ```
 
-## 3. Distances and speeds from positions
+`shift()` moves a column down by one row, so each row sees the value of the row before; inside a
+groupby it restarts for each flight, and the first row of a flight gets NaN. So
+`df["time_s"] - g["time_s"].shift()` is the time step **within** each flight.
 
-The speed logged by the autopilot and the speed computed from two consecutive positions should
-agree. Comparing them measures the **noise of each position source**. For the distance between
-consecutive fixes we use the **haversine** formula (lesson 6 derives it), written with NumPy so that
-it works on whole columns:
+For the distance between two positions you get `haversine_m(lat1, lon1, lat2, lon2)`, finished, in your
+`logbook.py`. It works on whole columns at once, NaN in → NaN out. (Mission 06 derives it, and you
+write it there.)
+
+**Worked example.** Two flights, sorted by flight then time:
+
+| flight | time_s | lat | lon | shift(time_s) in the flight | dt_s | step_m | speed (m/s) |
+|---|---|---|---|---|---|---|---|
+| a | 100 | 51.5000 | −0.1000 | NaN | NaN | NaN | NaN |
+| a | 102 | 51.5002 | −0.1000 | 100 | 2 | 22.2 | 11.1 |
+| b | 50 | 51.6000 | −0.1000 | NaN | NaN | NaN | NaN |
+
+0.0002° of latitude is 0.0002 × 111 195 m = 22.2 m. Without the groupby, row b would get dt = 50 − 102
+= −52 s and a step of 11.1 km.
+
+> [!QUESTION] ✏️ Check
+> The first row of each flight has NaN in `dt_s`. Should you fill it with 0, or with 2 (the logging
+> period)? What would each choice do to a speed?
+
+<details><summary>Answer</summary>
+Neither: there is no previous row, so there is no step and no speed. dt = 0 gives a division by zero
+(inf); dt = 2 invents a step from nowhere. NaN says "unknown", and pandas statistics skip it.
+</details>
+
+## 4. Outages are runs
+
+**Why.** "GPS was lost in 46 rows" is not a result: one loss of 92 s needs another position source, 46
+losses of 2 s mean a noisy antenna. You need each **outage** (a run of consecutive lost rows), its start
+and its duration.
+
+**The idea.** Mark lost rows with 1, pad with a 0 at both ends, and take `np.diff`: it is +1 where a run
+starts and −1 just after it ends. `np.flatnonzero(mask)` gives the positions where a mask is True.
+
+![Finding the runs of lost rows with np.diff on the padded array: +1 marks a start, −1 the row after the end](assets/outage.svg)
+
+**Worked example** (the figure): `gps_valid = [1, 1, 0, 0, 0, 1, 0, 0, 1]`, one row every 2 s from
+t = 0. Lost: `[0, 0, 1, 1, 1, 0, 1, 1, 0]`; padded: `[0, 0, 0, 1, 1, 1, 0, 1, 1, 0, 0]`; diff:
++1 at 2 and 6, −1 at 5 and 8. Runs **(2, 5)** and **(6, 8)**, the end excluded like a slice. A run of
+rows i0 … i1−1 lasts `t[i1−1] − t[i0] + Δt`: (8 − 4) + 2 = **6 s** and (14 − 12) + 2 = **4 s**. The
+`+ Δt` is there because each row stands for one logging period: one lost row is 2 s of outage, not 0.
+The padding at the end closes a run that lasts until the last row, the classic bug of loop versions.
+
+> [!QUESTION] ✏️ Check
+> `gps_valid = [0, 0, 1, 0]`. Runs? Durations with Δt = 2 s?
+
+<details><summary>Answer</summary>
+Padded lost: [0, 1, 1, 0, 1, 0]; diff: +1 at 0 and 3, −1 at 2 and 4. Runs (0, 2) and (3, 4): 4 s and 2 s.
+The first starts at row 0, the second ends at the last row: both need the padding.
+</details>
+
+## 5. How noisy? Mean and σ, or median and MAD
+
+**Why.** The speed from a source's positions minus the speed the autopilot logged is an **error**; its
+spread says how noisy the source is. Which number describes that spread?
+
+**Two families of statistics.** The **mean** and **σ** use every value, squared for σ: one wild value
+moves them a lot. The **median** (the middle of the sorted values) and the **MAD** (the median of
+|x − median|) only care about the order of the middle values: they are **robust**.
+
+**Worked example.** Nine speed errors (m/s): `[2, 3, 3, 4, 4, 5, 5, 6, 250]`, the last one a glitch.
+
+(σ here is pandas' `.std()`, which divides by n − 1, "ddof 1"; numpy's `np.std` divides by n. Say which.)
+
+| | mean | σ (ddof 1) | median | MAD |
+|---|---|---|---|---|
+| with the glitch | 31.3 | 82.0 | 4 | 1 |
+| without it | 4.0 | 1.31 | 4 | 1 |
+
+One glitch multiplies the mean by 8 and σ by 60; the median and the MAD do not move.
+
+![Nine errors on a line: the mean is pulled far to the right by one glitch, the median stays in the crowd](assets/robust.svg)
+
+**MAD to σ.** For Gaussian errors, half the values lie within 0.674 σ of the centre, so
+MAD ≈ 0.674 σ and **σ ≈ 1.4826 × MAD**. Scaled this way, the MAD is a σ you can compare with a theory:
+here 1.4826 × 1 = 1.48, close to the 1.31 of the clean values.
+
+**Percentiles, the course rule.** The p-th percentile of n sorted values sits at position
+`p/100 × (n − 1)`, with **linear interpolation** between neighbours (numpy's and pandas' default). p90
+of the nine errors: position 0.9 × 8 = 7.2, between 6 (position 7) and 250 (position 8):
+6 + 0.2 × 244 = **54.8**. The median says what is typical; p90/p95 and the maximum say how bad the bad
+cases are. Report both.
+
+**What noise to expect.** A speed from positions divides a position **difference** by Δt. The difference
+of two independent errors of σ each has variance σ² + σ² = 2σ² (variances add), so its σ is √2 σ, and
 
 ```
-a = sin²(Δφ/2) + cos φ1 · cos φ2 · sin²(Δλ/2)        d = 2 R · asin(√a)        R = 6 371 000 m
+σ_speed ≈ √2 · σ_position / Δt          example: σ = 3 m, Δt = 2 s  →  2.12 m/s
 ```
 
-**Worked example.** London (51.507° N, 0.128° W, so longitude −0.128°) to Paris (48.857° N,
-2.352° E): `Δφ = −2.650° = −0.046251 rad`, `Δλ = 2.480° = 0.043284 rad`,
-`a = sin²(−0.023126) + cos(51.507°)·cos(48.857°)·sin²(0.021642) = 5.347e−4 + 0.6223 × 0.6581 × 4.683e−4
-= 7.265e−4`, `d = 2 × 6 371 000 × asin(0.026953) = 343.5 km`.
+The logged speed has its own small noise; the two add as variances (0.3 m/s gives √(2.12² + 0.3²) = 2.14).
+Forget the √2 and you predict 30 % too little. The formula assumes the position noise is small next to the
+step v·Δt; lab Step 7 shows what changes when it is not.
 
-With NumPy the same lines compute 1500 distances at once: `np.radians`, `np.sin`, `np.cos`,
-`np.arcsin` work element by element on Series and arrays, and NaN in gives NaN out.
+> [!QUESTION] ✏️ Check
+> A source's errors have σ = 9.5 m/s but a MAD-based σ of 1.6 m/s. What does that say about its
+> errors? Which number goes in a report as "typical noise", and what else must the report give?
 
-**How noisy will the speed be?** If each position has an independent error of standard deviation
-`σ` per axis, the difference of two positions has `σ·√2` (variances add: `Var(a − b) = Var a + Var b`).
-Divided by `Δt = 2 s`:
+<details><summary>Answer</summary>
+Most errors are small (about 1.6 m/s), and a few are huge: they inflate σ. The robust 1.6 m/s is the
+typical noise; the report must also give the tail (p95 or max) and the number of samples, because the
+wild values are real events (a wrong match, a jump) that a user of the data must know about.
+</details>
 
-```
-σ_speed ≈ √2 · σ / Δt         GPS, σ = 1.5 m  →  1.1 m/s        day vision, σ = 6 m  →  4.2 m/s
-```
+## 6. Errors that no statistic can repair
 
-A speed computed from vision fixes 2 s apart is four times noisier than from GPS, even if each
-vision fix is "only" 6 m off. You will measure this in the lab.
+**Why.** The median survives a few glitches, not a **systematic error**: a clock in the wrong time zone, a
+column in the wrong unit, frames labelled with the wrong places. They move a whole flight the same way,
+and every statistic built on them is wrong, robust or not. So check the data **before** any statistic.
 
-### NumPy broadcasting
+**The idea: compare with an independent record.**
 
-In lesson 3, an array and a number met in one operation: `e - 100.0` subtracted 100 from every
-element. This is the simplest case of **broadcasting**, NumPy's rule to combine arrays of different
-shapes: a size-1 (or missing) dimension is stretched to match the other one. It is why the haversine
-above works with a whole column `lat2` and a single number `lat1`.
+- **Clocks.** Test sheets, radio logs and ATC records use **UTC**. Local time = UTC + the zone's offset
+  (Tunisia: UTC+1 all year; Cape Town: UTC+2; Quito: UTC−5). Compare each flight's first logged time with
+  its take-off on the sheet: a difference of a whole number of hours is a time-zone mistake. Another
+  clue: one drone cannot fly two flights at the same time.
+- **Units.** Compare a column with a physical limit (mission 03's `VEHICLES` table: a drone flies at most
+  30 m/s) and with another measurement of the same quantity. If the logged speed is steadily 1.944 times
+  the speed from positions, it is in knots (1 kn = 0.5144 m/s); 3.6 times, km/h.
+- **Repair as data.** The raw file stays as it is. You write the corrections down
+  (`{"flight_x": -7200}` seconds, `{"flight_y": 0.5144}`), apply them in code, and say so in the report.
 
-![Broadcasting: an (N,) array minus a number, and an (N, 2) array minus a (2,) vector](assets/broadcasting.svg)
+**Worked example.** A boat log in Cape Town: the sheet says departure 06:00:00 UTC; the log's first
+`time_s` is 28 800 (08:00:00). The difference, +7 200 s, is exactly 2 h: the logger kept South African
+time. Its `speed_mps` has a median of 9.7 while the positions give 5.0 m/s: ratio 1.94, knots. The
+corrections: clock −7 200 s, speed × 0.5144.
 
-```python
-e = np.array([0.0, 12.1, 24.3])
-e - 100.0                          # [-100., -87.9, -75.7]: 100 subtracted from every element
-P = np.array([[0, 0], [12, 1], [24, 1]])   # shape (3, 2): one (east, north) point per row
-home = np.array([5, 1])                     # shape (2,)
-d = P - home                       # shape (3, 2): home subtracted from EVERY row
-d[:, 0]                            # first column (all east values), shape (3,)
-np.hypot(d[:, 0], d[:, 1])         # distance of every point to home: [5.10, 7.0, 19.0]
-P.mean(axis=0)                     # column means: the centre of the points, shape (2,)
-```
+> [!QUESTION] ✏️ Check
+> Quito: the sheet gives take-off at 23:40:00 UTC; the log's first `time_s` is 67 200. What happened, and
+> which clock correction do you write (with its sign)?
 
-`d[:, 0]` means "all rows, column 0". `axis=0` means "along the rows", i.e. one result per column.
-You will also meet a shorter form of the distance line: `np.hypot(*d.T)`. `.T` **transposes** the
-array (rows become columns: shape (2, 3)), and `*` unpacks its two rows into the two arguments of
-`np.hypot` (the `*` unpacking of lesson 3, section 2). Both forms give the same result; use the
-one you can read.
+<details><summary>Answer</summary>
+67 200 s = 18:40:00, exactly 5 h before 23:40 UTC: the logger kept Ecuador's local time (UTC−5). The
+log is BEHIND UTC, so the correction ADDS +18 000 s. Check the sign by recomputing the first row's time.
+</details>
 
-Rule: compare the shapes from the **right**; two sizes fit when they are equal or one of them is
-1. `(3, 2)` with `(2,)` fits; `(3, 2)` with `(3,)` does not:
-`ValueError: operands could not be broadcast together with shapes (3,2) (3,)`.
-
-### Worked example: from lat/lon to metres
-
-Near a reference point `(φ0, λ0)`, latitude and longitude can be turned into metres east and north
-with a **flat-Earth** (equirectangular) approximation (lesson 6 derives it; angles in radians,
-`R = 6 371 000 m`):
-
-```
-east  = R · (λ − λ0) · cos φ0
-north = R · (φ − φ0)
-```
-
-With London (51.507° N, −0.128°) as the reference, Paris (48.857° N, 2.352° E) is at
-`east = 6 371 000 × (2.480 × π/180) × cos 51.507° = 171.6 km` and
-`north = 6 371 000 × (−2.650 × π/180) = −294.7 km`: 341.0 km away. The haversine distance above is
-343.5 km, so the flat formula is wrong by 0.7 % (2.5 km). For Madrid, 1263 km away, the error grows
-to 5.6 km. Over the few kilometres of a test flight it stays around one metre. With broadcasting,
-`lat` and `lon` can be whole columns and `φ0`, `λ0` single numbers: the helper `plot_tracks()` of the lab draws every flight in metres exactly like this.
-
-## 4. Outages: run-length logic
-
-An **outage** is a run of consecutive rows with `gps_valid == 0`. A loop with a counter works, but
-NumPy finds every run at once: mark the lost rows with 1, pad with a 0 at both ends, and take
-`np.diff`. It is `+1` where a run **starts** and `−1` just after it **stops**.
-
-![Finding the runs of 0 with np.diff on the padded array](assets/outage.svg)
-
-```python
-lost = (gps_valid == 0).astype(int)            # [0 0 1 1 1 0 1 1 0]
-edges = np.diff(np.concatenate([[0], lost, [0]]))
-starts = np.flatnonzero(edges == 1)            # [2 6]
-stops = np.flatnonzero(edges == -1)            # [5 8]   (stop is excluded, like a slice)
-```
-
-`np.flatnonzero(mask)` gives the indices where the mask is `True`. A run of rows `start … stop−1`
-lasts `time_s[stop−1] − time_s[start] + Δt`: one lost row = one logging period of 2 s. Padding at the
-end makes an outage that lasts **until the last row** close correctly — the classic bug of the loop
-version.
-
-## 5. Statistics that survive bad data
-
-| Statistic | Definition | Sensitive to one wild value? |
-|---|---|---|
-| mean | `Σx / n` | yes |
-| median | middle value of the sorted data | no |
-| standard deviation | `√( Σ(x − mean)² / (n − 1) )` (pandas default) | yes, a lot |
-| p-th **percentile** | value below which p % of the data lies | the high ones yes, the median no |
-
-**Worked example.** Speed errors (m/s) `[2, 4, 4, 5, 7, 9, 30]` — one wild value. Mean `8.71`,
-median `5`, standard deviation `9.66`. The 90th percentile with pandas' linear interpolation: position
-`0.9 × (7 − 1) = 5.4` in the sorted list, so `9 + 0.4 × (30 − 9) = 17.4`. One glitch moves the mean
-and the standard deviation a lot and the median not at all. That is why NAVERA's validation tables
-report **median, p90 and max**, never only a mean: the median tells the typical case, p90 and the
-maximum the bad cases.
-
-> [!NOTE]
-> Percentile definitions differ slightly between tools (`numpy.percentile`, `pandas.quantile`,
-> a hand-written "nearest rank" like NAVERA's `pct()`). On large samples the difference is tiny; on
-> 7 values it is not. Say which definition you used.
-
-## 6. Plots with matplotlib (no screen)
-
-The sandbox has no display, so matplotlib must draw into a file. Select the **Agg** backend before
-importing `pyplot`, draw on an **axes** object, and save:
-
-```python
-import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-
-fig, ax = plt.subplots(figsize=(9, 3.5))       # a figure with one axes
-ax.plot(t, alt, label="altitude")              # a line
-ax.scatter(east, north, s=4, color="tab:orange")   # points
-ax.axvspan(560, 976, color="tab:red", alpha=0.2)   # a shaded time interval
-ax.set_xlabel("time (s)"); ax.set_ylabel("altitude (m)"); ax.set_title("sahel_hills")
-ax.legend()
-fig.savefig("altitude.png", dpi=100)
-plt.close(fig)                                 # free the memory
-```
-
-`plt.show()` would try to open a window: do not use it here. The **📝 Code** editor displays PNG
-files: open them from the file list.
-
-## 7. Saving results: json
-
-```python
-import json
-results = {"rows_clean": int(len(df)), "longest_outage": {"flight_id": "x", "duration_s": 416.0}}
-with open("results.json", "w") as f:
-    json.dump(results, f, indent=2)
-```
-
-JSON holds dicts, lists, strings, numbers, `true`/`false` and `null`. As in lesson 3, convert
-NumPy/pandas scalars with `int()`, `float()`, `bool()` first.
-
-## Errors you will meet
-
-| Message (last line) | Meaning |
-|---|---|
-| `KeyError: 'alt'` | no column with that name: check `df.columns` (spelling, spaces) |
-| `ValueError: could not convert string to float: ''` | `float()` on an empty CSV cell (csv module) |
-| `TypeError: unsupported operand type(s) for -: 'str' and 'int'` | a column is `object` (text): look at `df.dtypes` |
-| `ValueError: operands could not be broadcast together with shapes (3,2) (3,)` | array shapes that do not fit the broadcasting rule (section 3) |
-| `ValueError: The truth value of a Series is ambiguous` | `and`/`or`/`if` used on a Series: use `&`, `\|` and parentheses |
-| `SettingWithCopyWarning` | you changed a filtered **view**; build a new DataFrame (`.copy()`) or use `.loc[mask, "col"] = …` |
-| a result is `nan` | NaN propagated: a NumPy function on data with empty cells; use pandas methods or drop NaN first |
-| `SyntaxError: f-string: unmatched '['` | `f"{r["alt_m"]}"`: use the other quote inside (lesson 3) |
-
-## 🐦 How birds do it
-
-Bird scientists are data engineers too. Shorebirds such as bar-tailed godwits, knots and
-sandpipers have been counted and tracked for decades on the great tidal flats where they stop or
-winter — the Wadden Sea in Europe, the Yellow Sea in Asia, the coasts of New Zealand and Australia.
-In 2022 a tagged young godwit flew non-stop from Alaska to Tasmania, about 13 500 km in 11 days. A satellite or
-GPS tag on a godwit produces exactly our kind of file: one row per fix, with time, latitude,
-longitude, sometimes altitude and battery voltage, and **gaps** when the tag could not get a fix or
-had too little solar energy to send it. Before any conclusion, the scientists remove duplicate
-transmissions and impossible positions (a "fix" 500 km away for a few minutes), then group the rows
-per bird and per season — the same cleaning and groupby of this lesson.
-
-Tiny birds are tracked differently. A **light-level geolocator** of about one gram records only the
-light intensity and the time. From the times of sunrise and sunset the scientists compute, once per
-day, the length of the day (which gives the latitude) and the time of local noon (which gives the
-longitude). These positions are coarse — typically 100–200 km — and the latitude is unusable around
-the equinoxes, when day length is the same everywhere. With such tags, Arctic terns were shown in
-2010 to fly about 70 000 km per year between the Arctic and the Antarctic. Good analysis means knowing
-the **error of each source**, exactly like comparing GPS and day vision in our speed check.
-
-Navi has never carried a tag, but ringing and tracking studies of her species show that barn swallows
-from Europe spread over a large part of Africa for the winter — a result that only exists because
-thousands of messy records were cleaned and grouped.
+> [!WARNING] Common wrong ideas
+> - "Clean data = no empty cells." Empty cells can be real (NO_FIX); remove rows only by written rules.
+> - "The median protects me from bad data." From a few wild values, yes; from a wrong unit or clock, no.
+> - "A bigger sample fixes a bias." More rows with the same wrong clock are still wrong.
+> - "σ is σ." Say ddof 0 or 1, and robust or not.
 
 ## In NAVERA
 
-NAVERA's day vision reads its map tile table with pandas
-([day_localizer.py](file:navera/day_pkg/day_pkg/nodes/day_localizer.py)):
+NAVERA's validation report states each result with its **conditions** and **several statistics**,
+never a mean alone: for example, day vision during a 13 km simulated flight over uniform desert with
+GPS jammed, 185 matches, **median 351 m, p90 853 m** (simulator, 2026-10-01; that was the tile-retrieval
+method of the time: with local feature matching, added later, the same flight kept a usable fix until the end of
+the test); after a motion gate was
+added to day vision, over 4 GPS losses in the mission simulator, **median 83 m, p90 258 m, max 448 m**
+(QA campaign of 2026-09-30, backlog item QA-9). NAVERA's evaluation tool groups errors per source, as your
+`noise_by_source` does. Its percentile takes the sorted sample at index `round(q/100 × (n − 1))`,
+without interpolation (a "nearest-rank" rule): on small samples it differs from the course rule, and
+mission 32 compares the two. The mission brief's sentence is in the same report: when the labels
+of a data set are wrong, the numbers are withdrawn, however carefully they were computed.
 
-```python
-        df    = pd.read_csv(CSV_PATH)
-        df    = df.rename(columns={"filename": "imageName"})
-        total = len(df)
-```
+**In NAVERA Lite**, these tools are your `navera_lite/logbook.py` (TODO 1–7); missions 31 and 32 use it, finished,
+on simulated campaigns of the whole stack.
 
-and keeps only the rows whose image exists with `df.iloc[valid_idx].reset_index(drop=True)` — the
-same `reset_index` you use after cleaning.
+## 🐦 How birds do it
 
-The tool that measures each source against GPS in a recorded session,
-[evaluate_session.py](file:navera/navera_tools/evaluate_session.py), reports exactly the
-statistics of section 5, with its own nearest-rank percentile:
+A tag on a bar-tailed godwit logs exactly our kind of table: time, latitude, longitude, battery, and
+gaps when the tag could not get a fix. Before any conclusion (in 2022 a young godwit flew about
+13 500 km non-stop from Alaska to Tasmania), scientists remove duplicate transmissions and impossible
+positions, then group the rows per bird and per season. Light-level geolocators on small birds give a
+position from sunrise and sunset times, so a wrong clock moves the bird: a 4-minute clock error shifts
+the computed longitude by 1°, about 100 km near the equator.
 
-```python
-def pct(v, q):
-    s = sorted(v)
-    return s[min(len(s) - 1, int(round(q / 100.0 * (len(s) - 1))))]
-...
-    for (src, mode), errs in sorted(groups.items()):
-        within = [100.0 * sum(e < d for e in errs) / len(errs) for d in (50, 100, 300)]
-        print(f"{src:10s} {mode:14s} {len(errs):5d} {pct(errs, 50):7.0f}m {pct(errs, 90):7.0f}m "
-              f"{max(errs):7.0f}m {within[0]:5.0f}% {within[1]:5.0f}% {within[2]:5.0f}%")
-```
+## Summary
 
-A group per (source, mode), the median, p90, maximum, and the share of errors below 50, 100 and
-300 m — printed with the format widths of lesson 3. Its docstring states the rule of the team: "This
-is how accuracy claims in docs/VALIDATION_STATUS.md must be produced from real data."
+1. The raw log is evidence: never edit it. Clean with **written rules**, in a fixed order, and count
+   what each rule removed; keep empty cells that mean something (NO_FIX).
+2. Per-flight quantities need **groupby**: `shift()` inside it gives the previous row of the same flight.
+3. An **outage** is a run of lost rows; padded `np.diff` finds every run; duration = t_last − t_first + Δt.
+4. **Mean/σ** describe all the data and are pulled by wild values; **median/MAD** (× 1.4826) describe
+   the typical value. Report a robust centre and spread, a tail (p95, max) and the sample size.
+5. **Systematic errors** (clock, unit, labels) survive every statistic: find them first, by comparing
+   with an independent record, and repair them as written corrections.
 
-## Glossary
+**Next mission:** git, so that every change to your code, and every correction, is recorded.
 
-| Term | Meaning |
-|---|---|
-| **CSV** | text table: a header line, then one line per row, values separated by commas |
-| **context manager (`with`)** | runs a block and always cleans up after it (closes the file) |
-| **DataFrame / Series** | pandas table / one labelled column |
-| **dtype** | the type of a column: `int64`, `float64`, `object` (text), `bool` |
-| **NaN** | "not a number": pandas' marker for a missing value |
-| **boolean mask** | a Series of True/False used to select rows |
-| **groupby / aggregation** | split rows into groups, compute one value per group |
-| **`lambda`** | a small function without a name: `lambda x: x.quantile(0.95)` |
-| **broadcasting** | NumPy's rule to combine arrays of different shapes |
-| **shift** | the value of the previous (or next) row |
-| **run-length** | describing a sequence by its runs of equal values |
-| **percentile (p90, p95)** | the value below which 90 % (95 %) of the data lies |
-| **median** | the 50th percentile: robust to outliers |
-| **outlier / glitch** | a value far outside the plausible range, usually an error |
-| **Agg backend** | matplotlib drawing into files, without a window |
+## Check yourself
 
-## Check what you learned
+Answer without scrolling up.
 
-<details><summary>1. <code>df["lat"]</code> has dtype float64 although some cells are empty. Why, and what does <code>df["lat"].mean()</code> do with them?</summary>
-An empty cell becomes NaN, which is a float, so the column stays float64. pandas statistics skip NaN by default:
-the mean is computed over the non-empty cells only (NumPy's <code>np.mean</code> would return nan).
+<details><summary>1. Why must a cleaning rule never be "drop the rows with an empty cell"?</summary>
+Empty cells can be real events (no position = NO_FIX); dropping them shortens outages and removes rows
+for unrelated reasons (a missing battery value). Only written, justified rules remove rows.
 </details>
 
-<details><summary>2. Why <code>(df.a == 0) &amp; (df.b == 0)</code> and not <code>df.a == 0 and df.b == 0</code>?</summary>
-<code>and</code> needs one True/False, but a Series holds many: Python raises "The truth value of a Series is ambiguous".
-<code>&amp;</code> combines element by element. The parentheses are needed because <code>&amp;</code> binds more strongly than <code>==</code>.
+<details><summary>2. <code>gps_valid = [1, 0, 1, 0, 0]</code>, Δt = 2 s: runs and total outage time?</summary>
+(1, 2) and (3, 5): 2 s + 4 s = 6 s. The second run reaches the end.
 </details>
 
-<details><summary>3. Two flights are stored one after the other. What goes wrong if you compute <code>df["lat"].shift()</code> without groupby?</summary>
-The first row of the second flight gets the last position of the first flight as its "previous" position: a step of
-hundreds of kilometres and an absurd speed. <code>df.groupby("flight_id")["lat"].shift()</code> gives NaN there instead.
+<details><summary>3. Errors [1, 1, 2, 2, 3, 40]: median, MAD, and the robust σ?</summary>
+Median 2; |x − 2| = [1, 1, 0, 0, 1, 38] → sorted [0, 0, 1, 1, 1, 38], MAD 1; σ ≈ 1.48.
 </details>
 
-<details><summary>4. <code>gps_valid = [0, 0, 1, 1, 0, 0, 0]</code>, one row every 2 s. Runs and durations?</summary>
-Padded lost array <code>[0, 1, 1, 0, 0, 1, 1, 1, 0]</code>; diff is +1 at 0 and 4, −1 at 2 and 7: runs (0, 2) and (4, 7).
-Durations: (2 − 0) + 2 = 4 s and (12 − 8) + 2 = 6 s. The second one lasts until the end of the log.
+<details><summary>4. A log's first time is 3 h after the take-off on the sheet, in a country at UTC+3. What happened, and what do you write?</summary>
+The logger kept local time. Write a correction of −10 800 s for that flight, apply it in code, say so in
+the report; leave the raw file unchanged.
 </details>
 
-<details><summary>5. Positions have σ = 3 m per axis, one row per second. Rough noise of the speed computed from them?</summary>
-√2 × 3 / 1 ≈ 4.2 m/s. Halving the rate (Δt = 2 s) halves it to about 2.1 m/s; averaging over a longer window
-reduces it further — that is why NAVERA fits a velocity over 20 s of fixes instead of using two.
+<details><summary>5. (Mission 01) GPS is fresh with σ 35 m, day vision fresh with σ 30 m. Which source does NAVERA's judge use, in which state?</summary>
+GPS (priority, not precision), DEGRADED (35 m > 25 m).
 </details>
 
-<details><summary>6. A validation report gives only "mean error 12 m". What is missing?</summary>
-The distribution: one bad fix of 1 km among good ones changes the mean a lot. Report median, p90 (or p95) and the
-maximum, the number of samples, and the conditions (bench, simulation, flight).
-</details>
-
-<details><summary>7. <code>P</code> has shape (100, 2) and <code>v = np.array([3.0, 4.0, 5.0])</code>. Does <code>P - v</code> work? And <code>P - v[:2]</code>?</summary>
-No: (100, 2) and (3,) do not fit from the right (2 ≠ 3), so NumPy raises "operands could not be broadcast together".
-<code>v[:2]</code> has shape (2,), which fits: the vector (3, 4) is subtracted from every row.
-</details>
 
 Now open the **🛠️ Lab** tab.

@@ -1,0 +1,1 @@
+{"name": "blind", "vehicle": "drone", "vision": "target", "seed": 16, "duration_s": 60, "faults": [[30, "gps", "jammed"], [30, "camera", "blackout"]]}

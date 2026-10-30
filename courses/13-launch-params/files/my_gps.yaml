@@ -1,23 +1,11 @@
-# Parameters of TWO fake GNSS receivers, for:
-#   python3 fake_gps_node.py --ros-args -r __ns:=/car  --params-file my_gps.yaml
-#   python3 fake_gps_node.py --ros-args -r __ns:=/boat --params-file my_gps.yaml
+# my_gps.yaml — the parameters of TWO fake GNSS receivers, one drone and one boat (lab Step 5).
 #
-# Structure of a ROS 2 parameters file:
-#   <fully qualified node name, or /** for every node>:
+#   python3 -m navera_lite.ros.gps_node --ros-args -r __ns:=/boat --params-file my_gps.yaml
+#
+# A ROS 2 parameters file is made of SECTIONS:
+#   <a node's full name, or /** for every node>:
 #     ros__parameters:              (two underscores)
 #       <parameter>: <value>
-# Indent with spaces, never tabs. Decimal numbers WITH a dot (1.0, not 1); text between quotes.
-# When several sections match a node, the LAST one in the file wins: put /** first.
+# Spaces, never tabs. Decimal numbers with a dot (1.0, not 1). Text between quotes ("boat").
 #
-# TODO 3: complete the three sections with the values of the lab (step 4).
-/**:
-  ros__parameters:
-    rate_hz: 2.0
-
-/car/fake_gps:
-  ros__parameters:
-    vehicle: "car"
-
-/boat/fake_gps:
-  ros__parameters:
-    vehicle: "boat"
+# TODO (Step 5): write three sections, with the values of the lab: /** first, then the drone, then the boat.

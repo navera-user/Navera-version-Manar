@@ -1,0 +1,234 @@
+"""navera_lite/output.py — the messenger: NAVERA Lite's position sent to an autopilot as a MAVLink 2 GPS_INPUT
+message, and the receiving side (frames, decoding, flags, lost frames). Part of NAVERA Lite, the course's
+teaching stack (mission 31). Written for the course from the public MAVLink specification; it is not NAVERA code.
+
+A MAVLink 2 frame (lesson §3):
+    offset 0   STX 0xFD            offset 4   seq (0–255)          offset 7   msgid, 3 bytes, little-endian
+    offset 1   len (payload)       offset 5   sysid                offset 10  payload (len bytes)
+    offset 2   incompat_flags      offset 6   compid               then       checksum, 2 bytes, little-endian
+    offset 3   compat_flags                                         (+ 13 signature bytes if incompat_flags bit 0)
+The checksum is CRC-16/MCRF4XX (crc_x25) over bytes 1 … end of payload, then over ONE more byte, the message's
+CRC_EXTRA (151 for GPS_INPUT), which is never sent. MAVLink 2 drops the payload's trailing zero bytes: a receiver
+pads the payload with zeros back to its full length (65 bytes for GPS_INPUT) before unpacking it.
+"""
+import math
+import struct
+
+# @part 31
+STX = 0xFD                       # first byte of every MAVLink 2 frame
+# @part 31
+GPS_INPUT_ID = 232               # GPS_INPUT's message id
+# @part 31
+CRC_EXTRA = {0: 50, 232: 151}    # message id → its CRC_EXTRA (HEARTBEAT 50, GPS_INPUT 151)
+# @part 31
+GPS_INPUT_FORMAT = "<QIiifffffffffHHBBBH"    # struct format of the 65-byte payload (fields ordered by size)
+# @part 31
+GPS_INPUT_LEN = 65
+# @part 31
+GPS_INPUT_FIELDS = ("time_usec", "time_week_ms", "lat", "lon", "alt", "hdop", "vdop", "vn", "ve", "vd",
+                    "speed_accuracy", "horiz_accuracy", "vert_accuracy", "ignore_flags", "time_week", "gps_id",
+                    "fix_type", "satellites_visible", "yaw")
+# @part 31
+IGNORE_FLAGS = (("alt", 1), ("hdop", 2), ("vdop", 4), ("vel_horiz", 8), ("vel_vert", 16), ("speed_accuracy", 32),
+                ("horiz_accuracy", 64), ("vert_accuracy", 128))     # GPS_INPUT_IGNORE_FLAG_…: name, bit value
+# @part 31
+FIX_NONE, FIX_2D, FIX_3D = 1, 2, 3       # GPS_FIX_TYPE values used here (0 would be "no GPS at all")
+# @part 31
+UERE_M = 2.0                             # hdop sent = σ / UERE_M (the receiver rule of mission 15: σ = 2 × HDOP)
+# @part 31
+GPS_EPOCH_UNIX_S = 315964800             # 1980-01-06 00:00:00 UTC, the start of GPS time, in Unix seconds
+# @part 31
+LEAP_S = 18                              # GPS time is ahead of UTC by 18 s (since 2017)
+
+
+# @part 31
+def crc_x25(data, crc=0xFFFF):
+    """CRC-16/MCRF4XX ("X.25" in MAVLink's code) of some bytes, starting from crc (lesson §3).
+
+    Example: crc_x25(b"123456789") → 0x6F91 (28561)
+    """
+    # from mission 31 — finished: read it, use it, do not change it
+    for b in bytes(data):
+        tmp = b ^ (crc & 0xFF)
+        tmp = (tmp ^ (tmp << 4)) & 0xFF
+        crc = ((crc >> 8) ^ (tmp << 8) ^ (tmp << 3) ^ (tmp >> 4)) & 0xFFFF
+    return crc
+
+
+# @part 31
+def frame_crc(frame, msgid):
+    """The checksum a frame must carry: crc_x25 of frame[1 : 10 + len] (header without STX, then the payload),
+    continued over the byte CRC_EXTRA[msgid]. None if msgid has no known CRC_EXTRA.
+
+    frame: bytes starting with STX (at least 10 + len bytes). Example: for every frame f made by encode_gps_input,
+    frame_crc(f, 232) == int.from_bytes(f[-2:], "little")
+    """
+    # from mission 31 — finished: read it, use it, do not change it
+    if msgid not in CRC_EXTRA:
+        return None
+    n = frame[1]
+    return crc_x25(bytes([CRC_EXTRA[msgid]]), crc_x25(frame[1:10 + n]))
+
+
+# @part 31
+def gps_time(t_unix_s):
+    """(week, ms of the week) of a UTC instant in GPS time (leap seconds added). The week is the full number
+    (GPS_INPUT's time_week is 16 bits; the old 10-bit week of the satellites' own message rolled over on
+    2019-04-06, lesson §3).
+
+    Example: gps_time(1792054800.0) → (2440, 378018000)   (2026-10-15 09:00 UTC)
+    """
+    # from mission 31 — finished: read it, use it, do not change it
+    g = float(t_unix_s) - GPS_EPOCH_UNIX_S + LEAP_S
+    week = int(g // 604800)
+    return week, int(round((g - week * 604800) * 1000.0))
+
+
+# @part 31
+def gps_input_fields(decision, t_unix_s, vel_en=None):
+    """The GPS_INPUT fields NAVERA Lite sends for one decision of the judge (lesson §3, "honest fields"):
+      - STARTING / NO_FIX: fix_type 1 (no fix), latitude and longitude 0, every flag set: never an old position;
+      - FIX / DEGRADED: the winner's measured position (its stamp, never "now"), fix_type 3 (a 2-D fix is ignored
+        by autopilots: NAVERA's OUT-2) with IGNORE alt when the source gives no altitude; horiz_accuracy = the
+        σ the winner states, or IGNORE horiz_accuracy and hdop when it states none (DEGRADED "σ unknown");
+        velocity (east, north m/s) only when vel_en is given (the GPS receiver's), else IGNORE vel_horiz.
+    decision: the judge's Decision (state, estimate, sigma_m); t_unix_s: the Unix time of the judge's clock 0.
+    Example: gps_input_fields(<Decision FIX, gps σ 1.8 m, alt 150 m>, 1.79e9, (3.0, 4.0))["ignore_flags"]
+             → 180 (vdop 4 + vel_vert 16 + speed_accuracy 32 + vert_accuracy 128)
+    """
+    # from mission 31 — finished: read it, use it, do not change it
+    f = dict.fromkeys(GPS_INPUT_FIELDS, 0)
+    f.update(alt=0.0, hdop=0.0, vdop=0.0, vn=0.0, ve=0.0, vd=0.0, speed_accuracy=0.0, horiz_accuracy=0.0,
+             vert_accuracy=0.0)
+    est = getattr(decision, "estimate", None)
+    if decision.state not in ("FIX", "DEGRADED") or est is None:
+        week, ms = gps_time(t_unix_s)
+        f.update(time_usec=int(t_unix_s * 1e6), time_week=week, time_week_ms=ms, fix_type=FIX_NONE,
+                 ignore_flags=255)
+        return f
+    t = t_unix_s + est.stamp_s
+    week, ms = gps_time(t)
+    ignore = 4 | 16 | 32 | 128                      # vdop, vertical velocity, speed and vertical accuracy
+    f.update(time_usec=int(round(t * 1e6)), time_week=week, time_week_ms=ms, fix_type=FIX_3D,
+             lat=int(round(est.lat * 1e7)), lon=int(round(est.lon * 1e7)))
+    if math.isfinite(getattr(est, "alt_m", math.nan)):
+        f["alt"] = float(est.alt_m)
+    else:
+        ignore |= 1
+    sigma = decision.sigma_m
+    if sigma is not None and math.isfinite(sigma):
+        f["horiz_accuracy"] = float(sigma)
+        f["hdop"] = float(min(sigma / UERE_M, 99.9))
+    else:
+        ignore |= 2 | 64
+    if vel_en is not None:
+        f["ve"], f["vn"] = float(vel_en[0]), float(vel_en[1])
+    else:
+        ignore |= 8
+    f["satellites_visible"] = 10 if est.source == "gps" else 0
+    f["ignore_flags"] = ignore
+    return f
+
+
+# @part 31
+def encode_gps_input(fields, seq, sysid=1, compid=191):
+    """One MAVLink 2 GPS_INPUT frame (bytes) from a dict of the 19 fields (GPS_INPUT_FIELDS; lat/lon in 1e-7
+    degrees, as on the wire): payload packed with GPS_INPUT_FORMAT, trailing zero bytes dropped (MAVLink 2), header,
+    checksum. seq is taken modulo 256.
+
+    Example: len(encode_gps_input(gps_input_fields(<NO_FIX decision>, 1.79e9), 0)) → 10 + n + 2 with n ≤ 65
+    """
+    # from mission 31 — finished: read it, use it, do not change it
+    payload = struct.pack(GPS_INPUT_FORMAT, *(fields[k] for k in GPS_INPUT_FIELDS))
+    payload = payload.rstrip(b"\x00") or b"\x00"
+    head = bytes([STX, len(payload), 0, 0, seq % 256, sysid, compid]) + GPS_INPUT_ID.to_bytes(3, "little")
+    frame = head + payload
+    return frame + frame_crc(frame + b"\x00\x00", GPS_INPUT_ID).to_bytes(2, "little")
+
+
+# @part 31 todo 1
+def decode_gps_input(payload):
+    """The 19 fields of a GPS_INPUT payload as a dict (keys GPS_INPUT_FIELDS), lat and lon converted to DEGREES
+    (the wire carries degrees × 10⁷ as integers). A MAVLink 2 payload may be SHORTER than 65 bytes (its trailing
+    zero bytes were dropped): pad it with zero bytes first. Longer than 65 bytes: ValueError.
+
+    payload: bytes (or bytearray). Returns a dict: ints stay ints, floats are floats, lat/lon floats in degrees.
+    Example: decode_gps_input(bytes(65))["fix_type"] → 0;
+             decode_gps_input(struct.pack(GPS_INPUT_FORMAT, 0, 0, 358242433, 106360050, *[0.0] * 9, 0, 0, 0, 3, 0,
+             0)[:62])["lat"] → 35.8242433   (62 bytes: everything after fix_type was zero)
+    """
+    payload = bytes(payload)
+    if len(payload) > GPS_INPUT_LEN:
+        raise ValueError(f"a GPS_INPUT payload has at most {GPS_INPUT_LEN} bytes, got {len(payload)}")
+    values = struct.unpack(GPS_INPUT_FORMAT, payload + bytes(GPS_INPUT_LEN - len(payload)))
+    out = dict(zip(GPS_INPUT_FIELDS, values))
+    out["lat"] = out["lat"] / 1e7
+    out["lon"] = out["lon"] / 1e7
+    return out
+
+
+# @part 31 todo 2
+def parse_frames(data):
+    """Every MAVLink 2 frame in a stream of bytes, in order (lesson §3, "reading a stream"). Bytes before an STX
+    (0xFD) are noise: skip them one at a time. At an STX, the frame's length is 10 + len + 2 (+ 13 when bit 0 of
+    incompat_flags is set: a signed frame); a frame cut by the end of the data is not returned. Each frame gives a
+    dict {"seq", "sysid", "compid", "msgid" (3 bytes little-endian), "payload" (bytes), "crc_ok"}: crc_ok is True
+    when the received checksum equals frame_crc(frame, msgid), False when it differs, None when msgid has no known
+    CRC_EXTRA. After a frame whose crc_ok is True, continue after its last byte; otherwise (False or None: it may be
+    noise that only looks like a frame) search again from the byte after its STX.
+
+    data: bytes. Returns a list of dicts ([] for no frame).
+    Example: parse_frames(b"\\x00\\x13" + f + f[:5]) with f = encode_gps_input(fields, 7) → one dict:
+             {"seq": 7, "sysid": 1, "compid": 191, "msgid": 232, "payload": f[10:-2], "crc_ok": True}
+    """
+    data = bytes(data)
+    out, i = [], 0
+    while i < len(data):
+        if data[i] != STX or i + 10 > len(data):
+            i += 1
+            continue
+        n = data[i + 1]
+        size = 10 + n + 2 + (13 if data[i + 2] & 1 else 0)
+        if i + size > len(data):
+            i += 1
+            continue
+        frame = data[i:i + size]
+        msgid = int.from_bytes(frame[7:10], "little")
+        want = frame_crc(frame, msgid)
+        got = int.from_bytes(frame[10 + n:12 + n], "little")
+        ok = None if want is None else got == want
+        out.append({"seq": frame[4], "sysid": frame[5], "compid": frame[6], "msgid": msgid,
+                    "payload": frame[10:10 + n], "crc_ok": ok})
+        i = i + size if ok is True else i + 1
+    return out
+
+
+# @part 31
+def ignored(flags):
+    """The names of the fields an autopilot must ignore, from GPS_INPUT's ignore_flags (a bit mask), in the order
+    of IGNORE_FLAGS. flags: an int from 0 to 255 (else ValueError).
+
+    Example: ignored(57) → ["alt", "vel_horiz", "vel_vert", "speed_accuracy"]   (57 = 1 + 8 + 16 + 32)
+    """
+    # from mission 31 — finished: read it, use it, do not change it
+    if isinstance(flags, bool) or not isinstance(flags, int) or not 0 <= flags <= 255:
+        raise ValueError(f"ignore_flags must be an int from 0 to 255, got {flags!r}")
+    return [name for name, bit in IGNORE_FLAGS if flags & bit]
+
+
+# @part 31 todo 3
+def lost_frames(seqs):
+    """Lost and doubled frames from the sequence numbers received, in order (lesson §3): seq counts 0, 1, …, 255,
+    0, 1, … (modulo 256). Between two consecutive numbers a and b: b == a is a DOUBLED frame; otherwise
+    (b − a − 1) modulo 256 frames were lost on the way (0 when b follows a).
+
+    seqs: a list of ints 0–255. Returns (lost, doubled): two ints.
+    Example: lost_frames([250, 251, 253, 253, 0, 1]) → (3, 1)   (252 lost, 253 doubled, 254 and 255 lost)
+    """
+    lost = doubled = 0
+    for a, b in zip(seqs, seqs[1:]):
+        if b == a:
+            doubled += 1
+        else:
+            lost += (b - a - 1) % 256
+    return lost, doubled

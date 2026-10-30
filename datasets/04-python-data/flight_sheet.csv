@@ -1,0 +1,5 @@
+flight_id,drone,takeoff_utc,landing_utc,jam_start_utc,jam_end_utc,notes
+monastir_coast,LITE-2,07:30:00,07:40:36,07:35:00,07:36:00,"coastal route, jammer test 1"
+sousse_port,LITE-2,08:20:00,08:31:00,08:23:20,08:24:20,"harbour loop, jammer test 2"
+sahel_hills,LITE-2,09:10:00,09:24:10,09:19:20,09:35:00,"inland hills, jammer left on past the landing (until 09:35)"
+grid_survey,LITE-2,10:05:00,10:15:44,10:15:00,10:15:16,"survey grid over the shore, short jamming"

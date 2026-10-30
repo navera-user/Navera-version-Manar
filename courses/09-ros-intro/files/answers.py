@@ -1,58 +1,57 @@
-# Lab 9 — answers. Fill each value, save (Ctrl+S), then press "Check my work".
-# Every answer comes from a command you run in the lab (the step number is given).
-# Text between quotes "like this"; numbers without quotes (3 or 1.5); True / False with a capital;
-# lists in brackets: [1, 2] or ["/a", "/b"].
+# Lab 9 — your answers. Fill each value, save (Ctrl+S), then press ✔ Check my work.
+# Text between quotes "like this"; numbers without quotes (25.0); True / False with a capital letter, no quotes;
+# lists in brackets: ["/a", "/b"].
+# PREDICT_… : your guess BEFORE you run the step. Never marked right or wrong: write it honestly.
+# EXPLAIN_… : after the run, in your own words (one to three sentences). Your teacher reads them.
 
-# ---- Step 1 — your domain
-MY_DOMAIN_ID = None          # echo $ROS_DOMAIN_ID
-DISCOVERY_PORT = None        # 7400 + 250 * domain
+# ======== Session 1 — Map the graph ========
 
-# ---- Step 2 — the talker, measured
-CHATTER_TYPE = ""            # the `Type:` of /chatter, e.g. "package/msg/Name"
-CHATTER_RELIABILITY = ""     # publisher's Reliability in `ros2 topic info -v /chatter`
-CHATTER_DURABILITY = ""      # publisher's Durability
-TALKER_HZ = None             # average rate from `ros2 topic hz /chatter`
-CHATTER_MSG_BYTES = None     # "Message size mean" from `ros2 topic bw /chatter`, in bytes
-DDS_PORTS = []               # the UDP ports printed by the `ss ... awk` command
+# ---- Step 0: the silent listener ---------------------------------------------------------------
+PREDICT_SILENT = ""          # why could a listener hear nothing on a topic that exists and that echo can read?
 
-# ---- Step 3 — one listener
-CHATTER_SUBSCRIBERS = None   # subscription count with exactly one listener running (no echo)
+# ---- Step 1: run a node from a package --------------------------------------------------------
+MODULE_ERROR = ""            # the error NAME printed when you run arbiter_v0.py by its path (one word)
 
-# ---- Step 4 — domain isolation
-OTHER_DOMAIN_SEES_CHATTER = None     # True or False
+# ---- Step 2: read the code, then map the node --------------------------------------------------
+PREDICT_SUBSCRIBES = ""      # from the code only, BEFORE `ros2 node info`: which topics will /arbiter subscribe to?
+ARBITER_SUBSCRIBES = []      # its subscriptions, from `ros2 node info /arbiter` (leave out /parameter_events)
+ARBITER_PUBLISHES = []       # its publications (leave out /parameter_events and /rosout)
+EXTRA_PARAMS = []            # parameters of `ros2 param list /arbiter` that are NOT keys of navera_lite.yaml
+EXPLAIN_LAG = ""             # a listing was empty/incomplete right after a start: why, and what do you do?
 
-# ---- Step 5 — QoS experiments (True = messages arrived, False = nothing arrived)
-BE_PUB_RELIABLE_SUB_RECEIVED = None  # BEST_EFFORT publisher, RELIABLE subscriber
-BE_PUB_BE_SUB_RECEIVED = None        # BEST_EFFORT publisher, BEST_EFFORT subscriber
-LATCHED_TRANSIENT_RECEIVED = None    # late TRANSIENT_LOCAL subscriber of /mission_start
-LATCHED_VOLATILE_RECEIVED = None     # late VOLATILE subscriber of /mission_start
+# ---- Step 3: message types ---------------------------------------------------------------------
+STATUS_NO_FIX = None            # the value of NavSatStatus's constant STATUS_NO_FIX
+DEGRADED_LEVEL = None            # the level NUMBER the arbiter puts in its status while the state is DEGRADED (Step 3, seen in Step 4)
 
-# ---- Step 6 — a service and an action
-SERVICE_SUM = None           # the `sum` returned for a = your domain, b = 1000
-FIBONACCI_8 = []             # the final `sequence` of the Fibonacci action with order 8
+# ---- Step 4: watch the judge -------------------------------------------------------------------
+PREDICT_HZ = ""              # how many status messages per second? (tick_hz is 5.0)
+STATUS_HZ = 0.0              # the average rate printed by `ros2 topic hz /navera_lite/status`
+EXPLAIN_HZ = ""              # why that rate and not exactly tick_hz?
+GATE_ALLOWED_M = 0           # arbiter.log, FIRST refused GPS fix: the distance the gate allowed (m)
+EXPLAIN_GATE = ""            # why does the gate allow that much, and not 150 m?
 
-# ---- Step 7 — NAVERA's message constants
-MODE_REPLAYED = None         # in navera_msgs/msg/PositionEstimate
-STATE_FIX = None             # in navera_msgs/msg/NavStatus
+# ---- Step 5: two judges ------------------------------------------------------------------------
+STATUS_PUBLISHERS = 0        # "Publisher count" of /navera_lite/status with the second arbiter running
+EXPLAIN_TWO_JUDGES = ""      # why does ROS allow it, and why is it dangerous for a subscriber?
 
-# ---- Step 8 — NAVERA's arbiter
-ESTIMATOR_SUBSCRIBES = []    # its 5 subscriptions (leave out /parameter_events and /rosout)
-ESTIMATOR_PUBLISHES = []     # its 2 /navera/... publications
-FIRST_STATE = None           # `state` in /navera/nav_status with no source running: the NUMBER
-                             # printed after `state:` (0 = STATE_INITIALIZING, 1 = STATE_NO_FIX…)
-NAV_STATUS_HZ = None         # average rate of /navera/nav_status
-FIX_MAX_SIGMA_M = None       # double_value returned by the get_parameters service call
+# ---- Step 6: domains ---------------------------------------------------------------------------
+OTHER_DOMAIN_SEES_STATUS = None   # True or False
+EXPLAIN_ISOLATION = ""       # NAVERA's WEB-12: what could go wrong, and which two settings prevent it?
 
-# ---- Quiz — write "a", "b" or "c"
-# Q1. A GPS driver publishes BEST_EFFORT. Which subscription receives its messages?
-#   a) both kinds        b) only a RELIABLE one        c) only a BEST_EFFORT one
-Q1 = ""
-# Q2. In domain 42, what is the discovery multicast port?
-#   a) 7442        b) 17900        c) 10900
-Q2 = ""
-# Q3. A node restarts in flight and must learn that the mission has already started. Which QoS
-#     makes the "mission started" message reach it without anybody sending it again?
-#   a) TRANSIENT_LOCAL durability on both sides, depth >= 1
-#   b) BEST_EFFORT, depth 10
-#   c) RELIABLE, VOLATILE, depth 100
-Q3 = ""
+# ======== Session 2 — The silent listener ========
+
+# ---- Step 7: offered vs requested, by hand (True = messages arrived, False = nothing arrived) -----
+PREDICT_QOS = ""                     # your five guesses, BEFORE the experiments (e.g. "yes no ...")
+BE_PUB_RELIABLE_SUB_RECEIVED = None  # A1: BEST_EFFORT publisher, RELIABLE subscriber
+BE_PUB_BE_SUB_RECEIVED = None        # A2: BEST_EFFORT publisher, BEST_EFFORT subscriber
+LATE_TL_RELIABLE_RECEIVED = None     # B1: late subscriber, TRANSIENT_LOCAL + RELIABLE
+LATE_VOLATILE_RECEIVED = None        # B2: late subscriber, VOLATILE + RELIABLE
+LATE_TL_BEST_EFFORT_RECEIVED = None  # B3: late subscriber, TRANSIENT_LOCAL + BEST_EFFORT
+INCOMPATIBLE_POLICY = ""             # the policy named at the end of the WARN line in A1 (one word, as printed)
+
+# ---- Step 9: the doctor on the live graph -------------------------------------------------------
+LISTENER_REQUESTS = ""       # the reliability imu_listener requests (one word, as printed)
+EXPLAIN_TEN = ""             # imu_listener never wrote "RELIABLE": where does it come from?
+
+# ---- Step 10: the repair ------------------------------------------------------------------------
+EXPLAIN_REPAIR = ""          # what you changed, and why in the SUBSCRIBER and not in the publisher

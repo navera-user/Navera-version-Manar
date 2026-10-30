@@ -1,0 +1,95 @@
+"""Tests of arbiter v0's decision logic (navera_lite/ros/arbiter_v0.py, NaiveJudge), without a ROS graph.
+They also pin its HOLES (mission 12): what v0 wrongly accepts, and what use_eligible changes.
+Written for the course; it is not NAVERA code.
+
+Run from the lesson folder:  python3 -m pytest navera_lite/tests/test_arbiter_v0.py -q
+"""
+import math
+
+import pytest
+
+from navera_lite import estimate
+from navera_lite.estimate import Estimate
+from navera_lite.geo import offset
+from navera_lite.ros.arbiter_v0 import NaiveJudge, naive_sigma
+from navera_lite.settings import DEFAULTS
+
+START = (35.8256, 10.6084)
+GOOD = (9.0, 0.0, 0.0, 0.0, 9.0, 0.0, 0.0, 0.0, 36.0)
+
+
+def fix(source="gps", e_m=0.0, t=0.0, cov=GOOD, cov_type=1, **kw):
+    lat, lon = offset(START[0], START[1], e_m, 0.0)
+    return Estimate(source, kw.pop("lat", lat), kw.pop("lon", lon), t, cov=cov, cov_type=cov_type, **kw)
+
+
+def test_starting_then_fix_on_gps():
+    j = NaiveJudge(DEFAULTS)
+    assert j.decide(0.0)["state"] == "STARTING"
+    j.receive(fix(t=10.0), 10.0)
+    d = j.decide(10.2)
+    assert (d["state"], d["source"], d["reason"]) == ("FIX", "gps", "gps: σ 3.0 m")
+
+
+def test_priority_and_the_gps_gap():
+    j = NaiveJudge(DEFAULTS)
+    j.receive(fix(t=10.0), 10.0)
+    j.receive(fix("day", 20.0, 11.0, cov=(900.0, 0, 0, 0, 900.0, 0, 0, 0, 0)), 11.0)
+    assert j.decide(12.0)["source"] == "gps"                       # GPS first while fresh
+    d = j.decide(13.5)                                             # GPS 3.5 s old
+    assert (d["state"], d["source"]) == ("DEGRADED", "day")
+    assert d["sources"]["gps"] == "stale (3.5 s > 3.0 s)" and d["reason"] == "day: σ 30.0 m > 25.0 m"
+
+
+def test_no_fix_lists_why():
+    j = NaiveJudge(DEFAULTS)
+    j.receive(fix(t=0.0), 0.0)
+    d = j.decide(10.0)
+    assert d["state"] == "NO_FIX" and d["source"] is None
+    assert d["reason"] == "no usable source (gps: stale (10.0 s > 3.0 s))"
+
+
+def test_jump_refused_and_nan_gives_no_fix():
+    j = NaiveJudge(DEFAULTS)
+    j.receive(fix(t=0.0), 0.0)
+    ok, why = j.receive(fix(e_m=5000.0, t=1.0), 1.0)
+    assert not ok and why.startswith("jump 5000 m")
+    assert j.decide(1.1)["sources"]["gps"].endswith("last fix refused: jump 5000 m > 150 m in 1.0 s")
+    j2 = NaiveJudge(DEFAULTS)
+    j2.receive(fix(t=0.0, lat=math.nan, lon=math.nan), 0.0)
+    assert j2.decide(0.1)["state"] == "NO_FIX"
+
+
+@pytest.mark.parametrize("name,kw,now", [
+    ("zero covariance looks perfect", {"cov": (0.0,) * 9}, 0.1),
+    ("unknown type still read", {"cov_type": 0}, 0.1),
+    ("not a covariance", {"cov": (25.0, 30.0, 0, 30.0, 16.0, 0, 0, 0, 1.0)}, 0.1),
+    ("stamp from the future", {"t": 60.0}, 0.1),
+])
+def test_v0_holes_and_use_eligible_closes_them(name, kw, now):
+    naive = NaiveJudge(DEFAULTS)
+    naive.receive(fix(**kw), now)
+    assert naive.decide(now)["state"] == "FIX", name               # the hole: v0 says FIX
+    strict = NaiveJudge(DEFAULTS, use_eligible=True)
+    strict.receive(fix(**kw), now)
+    assert strict.decide(now)["state"] != "FIX", name              # the student's eligible/stated_sigma
+
+
+def test_naive_sigma_reads_numbers_blindly():
+    assert naive_sigma(fix(cov=(0.0,) * 9)) == 0.0
+    assert naive_sigma(fix(cov=(-4.0, 0, 0, 0, -9.0, 0, 0, 0, 0))) == 0.0
+    assert naive_sigma(fix(cov=(16.0, 0, 0, 0, 9.0, 0, 0, 0, 0))) == 4.0
+
+
+def test_use_eligible_without_mission_12(monkeypatch):
+    monkeypatch.delattr(estimate, "eligible")
+    with pytest.raises(ValueError, match="mission 12"):
+        NaiveJudge(DEFAULTS, use_eligible=True)
+
+
+def test_a_stub_eligible_is_reported_not_crashed(monkeypatch):
+    monkeypatch.setattr(estimate, "eligible", lambda est, now_s, cfg: None)
+    j = NaiveJudge(DEFAULTS, use_eligible=True)
+    j.receive(fix(), 0.0)
+    d = j.decide(0.1)
+    assert d["state"] == "NO_FIX" and "eligible() returned None" in d["sources"]["gps"]

@@ -1,23 +1,49 @@
-# Lab 2 — Ground engineer for the NAVERA training flights
+# Lab 2 — Ground engineer: the box on the bench and the flight logs
 
-**Goal:** process the files of two training flights entirely from the terminal: tidy them, fix a
-permission, record the environment, stop a running process cleanly, write a reusable bash script
-that summarises any NAVERA log, explore the NAVERA code, and write a short flight report.
-**Time:** about 3 hours for this lab (about 4 h 30 for the whole mission with the lesson).
+**Goal:** work on a NAVERA Lite box entirely from the terminal: explore the stack's skeleton, tidy the
+box's files, repair a permission fault, find and stop an orphan arbiter, restart a hung node; then
+answer questions about two flights with pipelines and write a script that summarises any log.
+**Time:** 2 h 30 to 3 h 30 (about 5 h in all, reading included, if you have never used a terminal: plan the
+two sessions on two days).
 
-**The data.** The two logs (`sousse_2026-09-21.log`, `range_2026-09-22.log`) are **synthetic**: they
-were generated for this lab in the exact format of NAVERA's ROS 2 nodes, and the GPS losses in them
-are simulated. The three photos are real aerial frames from NAVERA's test data, which covers
-**Sousse, Tunisia**, where NAVERA is developed.
+Your files (📝 Code tab): [answers.py](file:./answers.py) (your answers), [cheatsheet.md](file:./cheatsheet.md)
+(every command), [mission_brief.txt](file:./mission_brief.txt), `box.sh` (the simulated box; you don't
+edit it), `inbox/` (files copied from the box, in a mess), `navera_lite/` (your stack: empty today).
 
-Click the **⌨️ Terminal** tab. Every `bash` block has a **▶ Run** button, but type as much as you
-can yourself, with `Tab` completion: your fingers learn faster than your eyes. Use `↑` to recall and
-edit a previous command.
+| Lesson | Lab | You do |
+|---|---|---|
+| (nothing to read first) | Step 0 | start the box and watch its decisions |
+| §1–§2 Shell, paths, find | Steps 1–3 | explore the skeleton (Q1–Q5), tidy the inbox |
+| §3 Permissions | Step 4 | a script without x, a service without its group (P1–P3) |
+| §4 Environment | Step 5 | E1, E2, `ros_env.txt` |
+| §5 Processes, signals | Step 6 | the orphan arbiter, the hung camera |
+| §6 Streams, pipelines | Steps 7–8 | `ls_out.txt`/`ls_err.txt`, Q6–Q8 |
+| §7 Scripts | Steps 9–10 | `log_report.sh`, the flight report |
 
 > [!NOTE]
-> **Paths in this lab.** The terminal starts in `~/lessons/02-terminal`, which is the same folder as
-> `/home/student/lessons/02-terminal`. If you get lost, `cd ~/lessons/02-terminal` brings you back.
-> Commands such as `find` print long paths (`/home/student/navera/…`); that is the same as `~/navera/…`.
+> **Type** the commands as much as you can (with `Tab` completion); the ▶ Run button is there when you
+> are stuck. If you get lost: `cd ~/lessons/02-terminal`. **Predict, then run:** each `PREDICT_…` is
+> written *before* the step that answers it, and is never marked right or wrong.
+
+## Session 1 — The box on the bench (about 1 h 30)
+
+## Step 0 — Start the box
+
+A NAVERA Lite box is simulated in your lesson folder: a few small programs that behave like the box's
+services. Start it (it takes about seven seconds), and look at the last decisions of its arbiter:
+
+```bash
+./box.sh start
+```
+
+```bash
+tail -n 6 box/log/decisions.log
+```
+
+Run the `tail` again a few times, and read the messages, not only the states. A box should judge with
+**one** arbiter. Keep this picture in mind: you will explain it in Step 6. (The box lives in this
+terminal tab: a "＋ new" terminal is a separate sandbox and does not see it. If you close the terminal or
+reload the page, run `./box.sh start` again.)
 
 ## Step 1 — Orientation
 
@@ -29,114 +55,107 @@ pwd
 ls -la
 ```
 
-You see `answers.py`, `fake_node.sh`, `inbox/` and `mission_brief.txt`, plus `.`, `..` and
-`.academy_version` (a file the academy uses: ignore it). Read the
-first column of `ls -la`: `d` for a folder, `-` for a file, then the 9 permission bits. `fake_node.sh`
-has `x` bits; the other files do not. The third and fourth columns are the owner (`student`) and the
-group — the group may show a name from the host computer instead of `student`; ignore it.
+Read the first column: `d` for a folder, `-` for a file, then the 9 permission bits. `box.sh` has `x`
+bits; most files do not. (`.academy_version` is the academy's own file: ignore it.)
 
 ```bash
 cat mission_brief.txt
 ```
 
-```bash
-wc -l mission_brief.txt
-```
+`wc -l mission_brief.txt` prints `20 mission_brief.txt`; `wc -l < mission_brief.txt` prints only `20`.
+**Why?** (Who opens the file in each case: `wc`, or the shell? Lesson §6.) You will need the second form
+in Step 9.
 
-It should say 20. `wc -l < mission_brief.txt` prints only the number: try it and compare.
+## Step 2 — Explore the NAVERA Lite skeleton
 
-## Step 2 — Look before you touch
-
-```bash
-ls -l inbox
-```
-
-Ten files: three photos, two logs, three temporary files, the pilot's notes and a script. Look at the
-start and the end of a log, and count its lines:
+The skeleton of the stack you will build is read-only course data:
 
 ```bash
-head -n 8 inbox/sousse_2026-09-21.log
-```
-
-```bash
-tail -n 3 inbox/sousse_2026-09-21.log
-```
-
-```bash
-wc -l inbox/*.log
-```
-
-Each line is `[LEVEL] [unix_seconds.nanoseconds] [node]: message` (course, section 7). Convert the
-time of the first line into a date — first in UTC, then in Tunisian time:
-
-```bash
-date -u -d @1789975800
-```
-
-```bash
-TZ=Africa/Tunis date -d @1789975800
-```
-
-The flight started at 08:30 in Sousse, which is 07:30 UTC (Tunisia = UTC+1).
-
-## Step 3 — Walk around your NAVERA copy
-
-```bash
-cd ~/navera
+cd /data/academy/02-terminal/navera_lite_tree
 ```
 
 ```bash
 ls
 ```
 
-There are about 40 names. You will use only a few in this course: `day_pkg` (day vision),
-`gps_pkg`, `navera_estimator` (the arbiter), `navera_msgs` (message definitions), `navera_output`
-(output to the autopilot), `deploy` (installation), `navera_tools`, `docs`. The `isaac_ros_*` folders
-are libraries from NVIDIA; `build/`, `install/` and `log/` are made by the build.
-
-Type `cd navera_m` and press `Tab`: the shell completes `navera_msgs/`. Type `m`, `Tab` again, `Enter`.
-
 ```bash
-pwd
+cat README.md
 ```
 
-The answer is `/home/student/navera/navera_msgs/msg` — the same folder as `~/navera/navera_msgs/msg`.
+Type `cd navera_lite/r` and press `Tab`: the shell completes `ros/`. Press `Enter`, then `pwd` and
+`ls`. Look at one file: `cat arbiter_v0.py` — names and one-line descriptions, no code yet. `cd ..`
+twice brings you back to the skeleton's top folder (check with `pwd`).
 
-```bash
-ls -l
-```
+Now answer **Q1–Q5** of [answers.py](file:./answers.py) from the skeleton's top folder. Paths are written
+relative to it (`"navera_lite/geo.py"`).
+
+- **Q1** `ls` shows one level; `find` visits every sub-folder. Count with `| wc -l`. Which folder
+  do you search in?
+- **Q2** `grep -r` searches inside every file of a folder; `-l` prints only the file names:
+
+  ```bash
+  grep -rl "def mahalanobis2" .
+  ```
+
+  Three names: which one is the **source**?
+- **Q3** `find` prints names on its output, but `wc -l` wants names as **arguments**. `xargs CMD` turns
+  its input lines into arguments of CMD. Build the pipeline yourself; the last line of `wc` is the total.
+- **Q4** how many systemd **service** units (files ending in `.service`) does the skeleton define?
+  `deploy/systemd` is not the only folder that may hold one, and copies do not count.
+- **Q5** which part file says that you write it in mission 17? One command, no `cd`, run from the
+  skeleton's top folder.
+
+<details><summary>Stuck? Hints</summary>
+
+1. Q1 = 140? You searched from `.`: that counts the copies in `build/` and `install/` too. Search in
+   `navera_lite`. Q1 = 0? Did you quote `"*.py"`?
+2. Q2: the source is the path that does not start with `build/` or `install/`. Drop the `./`.
+3. Q3: `find navera_lite/ros -name "*.py" | xargs wc -l`. The total line says `total`; do not add the
+   numbers yourself.
+4. Q4: `find` with `-name "*.service"`, but where? 4? You looked in `deploy/systemd` only. 10? You
+   counted the copies in `install/` too: search in `deploy`.
+5. Q5: `grep -l` prints only the names of the matching files. Which files are the *part* files
+   (`navera_lite/*.py`)?
+</details>
+
+Go back to your lesson folder:
 
 ```bash
 cd ~/lessons/02-terminal
 ```
 
-## Step 4 — Build the mission folder and sort the inbox
+> [!TASK]
+> Q1–Q5 are answered in `answers.py` (saved with `Ctrl+S`).
+
+## Step 3 — Tidy the inbox
 
 ```bash
-mkdir -p mission/photos mission/logs mission/docs mission/bin
+ls -l inbox
 ```
+
+Ten files from the box: three camera views (`.jpg`, synthetic images rendered from the course map),
+two flight logs, three cache files (`.tmp`), the pilot's notes and a pre-flight script. Build the
+mission folder:
 
 ```bash
-ls mission
+mkdir -p mission/photos mission/logs mission/docs mission/bin mission/deploy
 ```
 
-Move all the photos with one wildcard. The shell expands `inbox/*.jpg` into the three names before
-`mv` runs:
+Move all the camera views with one wildcard (the shell expands `inbox/*.jpg` into three names first):
 
 ```bash
 mv inbox/*.jpg mission/photos/
 ```
 
-Now **type yourself**: move the two `.log` files into `mission/logs/`, move
-`inbox/notes_for_pilot.txt` to `mission/docs/notes.txt` (move and rename in one `mv`), and move
-`inbox/preflight.sh` into `mission/bin/`. Then only the `.tmp` files are left. **Look first** with
-the same pattern you will delete:
+Now **type yourself**: move the two `.log` files into `mission/logs/`; move `inbox/notes_for_pilot.txt`
+to `mission/docs/notes.txt` (move and rename in one `mv`); move `inbox/preflight.sh` into
+`mission/bin/`. Then only the `.tmp` files are left. **Look first** with the pattern you will delete:
 
 ```bash
 ls inbox/*.tmp
 ```
 
-If it lists exactly the three cache files, delete them and remove the now-empty folder:
+If it lists exactly the three cache files, delete them, then the empty folder:
 
 ```bash
 rm inbox/*.tmp
@@ -146,92 +165,116 @@ rm inbox/*.tmp
 rmdir inbox
 ```
 
-`rmdir` refuses a folder that is not empty: if it complains, `ls inbox` shows what you forgot.
-
-```bash
-ls -R mission
-```
-
-Open a photo in the editor: [mission/photos/frame_0001.jpg](file:./mission/photos/frame_0001.jpg).
+`rmdir` refuses a folder that is not empty: if it complains, `ls inbox` shows what you forgot. Then
+`ls -R mission`, and open a view in the editor: [mission/photos/cam_0001.jpg](file:./mission/photos/cam_0001.jpg).
 
 > [!TASK]
-> `mission/photos`, `mission/logs`, `mission/docs`, `mission/bin` exist; the 3 photos and the 2 logs
-> are **moved** (not copied) there; the notes are `mission/docs/notes.txt`; `preflight.sh` is in
-> `mission/bin/`; the `.tmp` files and the `inbox` folder are gone.
+> `mission/photos`, `logs`, `docs`, `bin`, `deploy` exist; the 3 views and the 2 logs are **moved**
+> there; the notes are `mission/docs/notes.txt`; `preflight.sh` is in `mission/bin/`; the `.tmp` files
+> and `inbox/` are gone.
 
-## Step 5 — Permissions: make the pre-flight script executable
+## Step 4 — Permissions
+
+**4a. A script without x.**
 
 ```bash
 ls -l mission/bin/preflight.sh
 ```
 
-`-rw-r--r--` (or `-rw-rw-r--`): nobody may execute it. Try:
-
 ```bash
 ./mission/bin/preflight.sh
 ```
 
-`Permission denied`. Read the script in the editor:
-[preflight.sh](file:./mission/bin/preflight.sh). Its first line is a shebang, and it uses
-`${ROS_DOMAIN_ID:-NOT SET}`, `[ -e "$f" ]`, a `for` loop and `exit 0` / `exit 1` — the syntax of the
-course. Without the x bit you can still run it through bash:
+`Permission denied`. Read it in the editor: [preflight.sh](file:./mission/bin/preflight.sh) (a shebang,
+`${ROS_DOMAIN_ID:-NOT SET}`, `[ -f … ]`, `exit 0` / `exit 1`: the syntax of lesson §7). Without the x
+bit it still runs through bash:
 
 ```bash
 bash mission/bin/preflight.sh
 ```
 
-Now give the owner the execute permission — **type it yourself** with `chmod` (symbolic `u+x`, or the
-octal mode that gives `rwxr-xr-x`). Check with `ls -l`, then:
+Now give the **owner** the execute permission with `chmod` (type it yourself), check with `ls -l`, and run
+`./mission/bin/preflight.sh` again. It now runs, and reports a problem with the GPS service. (Not
+`chmod 777`, which you may find on forums: then anyone could edit a script the box runs.)
+
+**4b. A service without its group.** The engineer of a test box saved some evidence:
 
 ```bash
-./mission/bin/preflight.sh
+ls /data/academy/02-terminal/evidence
 ```
 
 ```bash
-echo $?
+cat /data/academy/02-terminal/evidence/README.txt
 ```
 
-`PRE-FLIGHT OK` and exit code `0`.
+Read the four other files with `cat`. Be the detective: why does the GPS reader work when the
+developer starts it by hand, but not as a service? Write **P1** (the octal mode of the port) and **P2**
+(the missing group).
+
+<details><summary>Stuck? Hints</summary>
+
+1. `ls_dev.txt`: owner, group and mode of the port. `rw-` = 6.
+2. Compare the groups in `id_developer.txt` and `id_navera_lite.txt`. Which group of the port's line
+   does the developer have, and the service user not?
+</details>
+
+The fix belongs in the service's **unit file**, the file that tells systemd how to run the service. Copy
+the skeleton's unit into your mission folder (`cp`, not `mv`: the skeleton is read-only, and it is the
+reference):
+
+```bash
+cp /data/academy/02-terminal/navera_lite_tree/deploy/systemd/navera_lite-gps.service mission/deploy/
+```
+
+Open [mission/deploy/navera_lite-gps.service](file:./mission/deploy/navera_lite-gps.service). In the
+`[Service]` section, add **one line** that gives the service's user the extra group: the setting is
+called `SupplementaryGroups`. The skeleton's camera unit already does this for its own device: read
+`cat /data/academy/02-terminal/navera_lite_tree/deploy/systemd/navera_lite-camera.service` and do the
+same for the GPS. Unit files are not YAML or Python: a `#` is a comment only at the start of a line, and you write `SupplementaryGroups=` followed directly by
+the group's name, **without quotes** (quotes are for Python, as in answers.py; systemd tolerates spaces
+around `=`, but the usual style has none). Change nothing
+else. Save, then compare with the original — `diff` prints only the lines that differ:
+
+```bash
+diff /data/academy/02-terminal/navera_lite_tree/deploy/systemd/navera_lite-gps.service mission/deploy/navera_lite-gps.service
+```
+
+```bash
+./mission/bin/preflight.sh; echo "exit code: $?"
+```
+
+`PRE-FLIGHT OK` and exit code `0`. (If it says the map is missing, the data disk is not connected: not
+your mistake, tell the teacher and go on.)
+
+<details><summary>Stuck? Hints</summary>
+
+1. `diff` shows `> SupplementaryGroups=dialout` and nothing else: right. A line starting with `<` means
+   you changed or deleted an original line.
+2. Changing `Group=navera_lite` into `Group=dialout` is wrong: the service would lose its own group.
+   `User=root` "works" and is exactly what a service must never do.
+3. The line goes between `[Service]` and `[Install]`; in `[Install]` systemd ignores it.
+</details>
 
 > [!TASK]
-> `mission/bin/preflight.sh` is executable by its owner, unchanged, and prints `PRE-FLIGHT OK`.
+> `mission/bin/preflight.sh` is executable by its owner and unchanged; `mission/deploy/navera_lite-gps.service`
+> is the original plus one `SupplementaryGroups=dialout` line in `[Service]`; P1, P2 and **P3** (the
+> octal mode of your `preflight.sh` now, read on `ls -l`) are in `answers.py`.
 
-## Step 6 — Copy NAVERA's GPS settings
-
-```bash
-find ~/navera -name gps_params.yaml
-```
-
-Two results: one under `install/` (a link made by the build) and the **source** in
-`gps_pkg/gps_pkg/config/`. Copy the source — `cp`, not `mv`: NAVERA needs it.
-
-```bash
-cp ~/navera/gps_pkg/gps_pkg/config/gps_params.yaml mission/docs/
-```
-
-```bash
-head -n 6 mission/docs/gps_params.yaml
-```
-
-The serial port `/dev/ttyTHS1` and 9600 baud: the device of the course's permissions section.
-
-> [!TASK]
-> `mission/docs/gps_params.yaml` is an exact copy, and the original is still in `~/navera`.
-
-## Step 7 — Environment variables
+## Step 5 — The environment
 
 ```bash
 echo $ROS_DOMAIN_ID
 ```
 
 ```bash
-env | grep ^NAVERA_
+env | grep ^NAVERA_LITE
 ```
 
-Write the value of `ROS_DOMAIN_ID` as `E1` and the value of `NAVERA_MBTILES` as `E2` in
-[answers.py](file:./answers.py).
-
-See inheritance in action. A shell variable is **not** given to a child process; an exported one is:
+Write **E1** (the value of `ROS_DOMAIN_ID`, a number) and **E2** (the value of `NAVERA_LITE_MAP`, in
+quotes). Now see inheritance. A shell variable is not given to a child process; an exported one is.
+Type the **single** quotes `'…'` of the `bash -c` commands exactly: they stop **your** shell from
+replacing `$MY_SPEED_KMH`, so the child does it (with double quotes, your shell would replace it before
+the child even starts, and the test would prove nothing).
 
 ```bash
 MY_SPEED_KMH=90
@@ -249,99 +292,154 @@ export MY_SPEED_KMH
 bash -c 'echo "child sees: [$MY_SPEED_KMH]"'
 ```
 
-(The single quotes stop **your** shell from replacing `$MY_SPEED_KMH`: the child shell does it.)
-Now save the ROS part of your environment, sorted, into a file. **Build the pipeline yourself**:
-`env`, then a `grep` that keeps only the lines that **start** with `ROS_`, then `sort`, redirected
-into `ros_env.txt`. Check it:
+A setting for one command only: `ROS_DOMAIN_ID= ./mission/bin/preflight.sh` — read its first line.
+
+A colleague left a note in the environment of this box:
 
 ```bash
-cat ros_env.txt
+export MY_NOTE="read ROS_DOMAIN_ID first"
 ```
 
-> [!TASK]
-> `E1` and `E2` are filled in, and `ros_env.txt` contains only the `ROS_…` variables, sorted
-> (including `ROS_DOMAIN_ID` and `ROS_LOCALHOST_ONLY=1`).
+Now **build the pipeline yourself**: `env`, then a `grep` that keeps only the lines that **start** with
+`ROS_`, then `sort`, all redirected into `ros_env.txt`. Check with `cat ros_env.txt`: is `MY_NOTE` in it?
+It must not be (lesson §6: `^`).
 
-## Step 8 — stdout and stderr
+> [!TASK]
+> E1 and E2 are filled in; `ros_env.txt` holds only the `ROS_…` variables, sorted (with
+> `ROS_DOMAIN_ID` and `ROS_LOCALHOST_ONLY=1`).
+
+## Step 6 — The detective: two arbiters
+
+Back to Step 0's picture:
+
+```bash
+tail -n 6 box/log/decisions.log
+```
+
+One judge says FIX, another NO_FIX, every second: two arbiters are running, with the same node name.
+Which one does not belong? First, without stopping anything:
+
+> [!TASK]
+> **Predict** (`PREDICT_PKILL`): what would `pkill -f navera_lite_arbiter` do on this box, exactly?
+> (Which processes, and what happens a second later? Remember what a supervisor does, lesson §5.)
+
+Now investigate. Find the PIDs and command lines:
+
+```bash
+pgrep -a -f navera_lite_arbiter
+```
+
+Then the parents and start times — write the two PIDs you found after `-p`, separated by a comma (for
+example `ps -o pid,ppid,lstart,args -p 23,71`; your numbers differ). Then look at each **parent**:
+`ps -o pid,args -p PPID`. The whole family: `ps -ef | cut -c1-120` (the very long line of PID 1 is the
+sandbox itself). Other processes hang from PID 1 too, on purpose: the box's three `supervise` programs
+(they run on their own, like services under systemd) and `ros2cli.daemon`, ROS 2's discovery helper (a
+**daemon**). Leave them alone: an orphan is a process whose **starter** is gone, and the supervised
+arbiter's parent is a supervisor. The box's journal tells the story too (its times and the `STARTED` times of `ps` may
+differ by a second: they are read at slightly different moments):
+
+```bash
+cat box/log/journal.log
+```
+
+Which arbiter listens to a simulator that no longer runs? Who started it, and is that parent still
+alive? When you are sure, stop **that PID** politely: `kill` followed by the number (not `kill -9`, not
+`pkill`). Then check: `pgrep -a -f navera_lite_arbiter` and `tail -n 4 box/log/decisions.log`.
+
+<details><summary>Stuck? Hints</summary>
+
+1. `ps -o pid,ppid,lstart,args -p A,B` with your two PIDs. The older one is not automatically the bad
+   one: whose parent is still alive?
+2. `ps -o pid,args -p` on the other PPID: is it a supervisor of the box?
+3. The command lines differ: `--params-file box/config/sim.yaml` vs `navera_lite.yaml`.
+4. You stopped the wrong one? The supervisor starts it again a second later (see the journal): no harm,
+   and you have already observed the next paragraph. Find the orphan and stop it. (If you already
+   stopped the box, `./box.sh start` and do Step 6 in the new run: one correct run is enough.)
+</details>
+
+**Observe your prediction.** The orphan is gone; now see what a supervisor does with a kill. Find the
+PID of the remaining arbiter, `kill` it, wait 2 s, then run `pgrep -a -f navera_lite_arbiter` and
+`tail -n 3 box/log/journal.log`. Same PID or a new one? Its exit code is `0`, not 143: it *caught*
+SIGTERM and ended by itself ("shutting down cleanly"); 128 + N is reported only when the signal itself
+ends the program (the camera's 137 below is that case). Compare with your PREDICT_PKILL: what would
+`pkill` have done to the orphan **and** to this one?
+
+So on this box `pkill -f navera_lite_arbiter` would even have *looked* right. It is still wrong:
+(1) for a second the good arbiter was down too: on a flying vehicle, a second with no position;
+(2) `-f` matches every command line that contains the text: a test you started in another terminal, or
+your own `tail -f …/navera_lite_arbiter.log` (and, under sudo, other users' processes too); (3) most processes have no supervisor: without one, the good
+arbiter would never have come back. (The check refuses a run where both arbiters got SIGTERM in the
+same second.)
+
+> [!TASK]
+> The orphan arbiter received SIGTERM (its journal line says so); the supervised arbiter was stopped and
+> restarted by its supervisor; `ORPHAN_PPID` and `EXPLAIN_ORPHAN` (two clues that told you which one was
+> the orphan) are in `answers.py`.
+
+**The hung camera.** The journal also complains about the camera reader:
+
+```bash
+grep camera box/log/journal.log
+```
+
+Restart it the right way: the supervisor starts it again when it ends, so you only have to end it.
+Find its PID (`pgrep -a -f box/bin/camera`), send **SIGTERM** (`kill PID`), wait five seconds, and check
+whether it is still alive (`ps -p PID`) and what the journal says. Use the next step of the ladder only
+if you need it. Then read the end of the journal: `tail -n 5 box/log/journal.log`.
+
+> [!TASK]
+> The camera reader received SIGTERM first, and SIGKILL at least 2 s later; a new camera reader runs.
+> `KILL_EXIT_CODE` (read in the journal) and `EXPLAIN_KILL` are in `answers.py`.
+
+Stop the box when you are done (the next steps do not need it):
+
+```bash
+./box.sh stop
+```
+
+> [!TIP] 🏅 End of session 1 — Orphan hunter
+> Press **✔ Check my work**. When checks 1–8 pass, you earn the **Orphan hunter** badge (checks 9–15
+> are session 2). If you start the box again, nothing is lost: earlier runs are kept in `box/old/`, the
+> check reads them all, and one correct run is enough.
+
+## Session 2 — The flight logs (about 1 h 30)
+
+The two logs in `mission/logs/` are **synthetic**: written for this lab in the format of NAVERA Lite's
+nodes, with simulated GPS losses, on a flight along the Sousse coast and one over an inland test range.
+
+## Step 7 — stdout and stderr
 
 `ls` with one file that exists and one that does not prints a normal line **and** an error:
 
 ```bash
-ls ~/navera/README.md ~/navera/NO_SUCH_FILE.md
+ls navera_lite.yaml no_such_file.yaml
 ```
-
-Both reach the screen, but by two different streams. Prove it — only stdout goes into the file:
 
 ```bash
-ls ~/navera/README.md ~/navera/NO_SUCH_FILE.md > ls_out.txt
+ls navera_lite.yaml no_such_file.yaml > ls_out.txt
 ```
 
-The error still appeared. Now **write the command yourself** that sends stdout into `ls_out.txt` and
-stderr into `ls_err.txt` (nothing on the screen), then look at both files with `cat`.
+The error still appears: only stdout went into the file. Now **write the command yourself** that sends
+stdout into `ls_out.txt` and stderr into `ls_err.txt` (nothing on the screen), and look at both files.
 
 > [!TASK]
-> `ls_out.txt` holds the normal output of that `ls` and `ls_err.txt` its error message.
+> `ls_out.txt` holds the normal output of that `ls`, `ls_err.txt` its error message.
 
-## Step 9 — Processes and signals
+## Step 8 — Questions with pipelines
 
-First, the foreground. This command waits 1000 s:
-
-```bash
-sleep 1000
-```
-
-The prompt does not come back. Press **Ctrl+C**: the terminal sends SIGINT and `sleep` dies. Check
-the exit code — 130 = 128 + 2 (SIGINT):
+Look at the start and the end of a log, and convert the time of its first line:
 
 ```bash
-echo $?
-```
-
-Now a pretend ROS node in the **background**. Read [fake_node.sh](file:./fake_node.sh) first: it
-writes its PID into `fake_node.pid` and a line into `fake_node.log` when it catches SIGINT or SIGTERM.
-
-```bash
-./fake_node.sh &
-```
-
-The shell prints `[1]` and a PID, and the prompt comes back. Find it in four ways:
-
-```bash
-jobs
+head -n 4 mission/logs/sousse_2026-09-21.log
 ```
 
 ```bash
-pgrep -a -f fake_node.sh
+TZ=Africa/Tunis date -d @1789975800 +%T
 ```
 
-```bash
-cat fake_node.pid
-```
-
-```bash
-ps -f
-```
-
-In `ps -f`, the PPID of `fake_node.sh` is the PID of your `bash`, and the `sleep 1` below it has
-`fake_node.sh` as its parent. Now stop it **politely, by its PID** — type `kill` followed by the
-number you found (for example `kill 4321`; your number is different). Do not use Ctrl+C, `kill -9`,
-`pkill` or `killall`. Then read the log:
-
-```bash
-cat fake_node.log
-```
-
-You should see `received SIGTERM, shutting down cleanly`. With `kill -9` the last line would be
-missing: SIGKILL cannot be caught. (If you ran it twice, stop every copy: `pgrep -a -f fake_node.sh`
-must print nothing at the end.)
-
-> [!TASK]
-> `fake_node.log` shows that `fake_node.sh` started and then **received SIGTERM**, and no
-> `fake_node.sh` is still running.
-
-## Step 10 — Reading the logs with pipelines
-
-Count the WARN lines of the Sousse flight in two ways:
+`08:30:00`: the flight started at 08:30 in Sousse (07:30 UTC). (The academy computer's clock happens to
+be set to Tunisian time, so `date` alone gives the same answer here. A robot's computer is usually on
+UTC: always write `TZ=…` or `-u`.) Count the WARN lines in two ways:
 
 ```bash
 grep -c WARN mission/logs/sousse_2026-09-21.log
@@ -351,91 +449,39 @@ grep -c WARN mission/logs/sousse_2026-09-21.log
 grep -c "^\[WARN\]" mission/logs/sousse_2026-09-21.log
 ```
 
-The numbers differ by one. Which line is counted by the first command and not by the second?
-`-v` inverts a match — the second grep keeps the lines that do **not** start with `[WARN]`:
-
-```bash
-grep WARN mission/logs/sousse_2026-09-21.log | grep -v "^\[WARN\]"
-```
-
-An INFO line that only *mentions* WARN. A severity is the **first field**, so anchor your patterns.
-
-Which nodes complained? Build the pipeline of the course step by step: run the first stage, then
-press `↑` and add the next stage each time (`| cut -d' ' -f3`, then `| sort`, `| uniq -c`,
-`| sort -rn`). The first and the last command:
-
-```bash
-grep "^\[WARN\]" mission/logs/sousse_2026-09-21.log
-```
-
-```bash
-grep "^\[WARN\]" mission/logs/sousse_2026-09-21.log | cut -d' ' -f3 | sort | uniq -c | sort -rn
-```
-
-When did the arbiter first lose every source? `-m 1` stops at the first match:
-
-```bash
-grep -m 1 "state NO_FIX" mission/logs/sousse_2026-09-21.log
-```
-
-Keep only the time field, then only the whole seconds (characters 2 to 11 of `[1789976724.070430279]`):
-
-```bash
-grep -m 1 "state NO_FIX" mission/logs/sousse_2026-09-21.log | cut -d' ' -f2 | cut -c2-11
-```
-
-Convert that number to Tunisian time with `TZ=Africa/Tunis date -d @NUMBER +%T` (replace NUMBER).
+They differ: find the line that makes the difference with `grep WARN … | grep -v "^\[WARN\]"`.
 
 > [!TASK]
-> In `answers.py`: **Q6** = the node with the most WARN lines in the Sousse log (just its name, without
-> brackets), **Q7** = the Tunisian time of the first `state NO_FIX` in the Sousse log, as `"HH:MM:SS"`.
+> **Predict** (`PREDICT_UNIQ`): if you forget `sort`, how many lines does
+> `grep "^\[WARN\]" mission/logs/sousse_2026-09-21.log | cut -d' ' -f3 | uniq -c` print: 3, about 10,
+> about 40, or 84? Why? Write your guess, then run it and count its lines with `| wc -l`.
 
-## Step 11 — Exploring the NAVERA code with find, grep and xargs
+Now answer with pipelines you build yourself, one stage at a time (`↑` recalls the last command; add a
+stage, look, add the next):
 
-Answer Q1–Q5 of [answers.py](file:./answers.py). Any of the forms `"~/navera/x/y"`,
-`"/home/student/navera/x/y"` or `"x/y"` is accepted for a path. Some help:
+- **Q6** the node with the most WARN lines in the Sousse log (lesson §6 shows the method on another log);
+- **Q7** the Tunisian time of the first `state NO_FIX` in the Sousse log: `grep -m 1`, then the time
+  field, then only the whole seconds (`cut -c2-11` keeps characters 2 to 11 of
+  `[1789976724.070430279]`), then `TZ=Africa/Tunis date -d @SECONDS +%T`;
+- **Q8** the number of **different** nodes that wrote an ERROR line, in both logs together
+  (`cat mission/logs/*.log | …`).
 
-- **Q1** — `ls` shows only one level; `find` visits every sub-folder:
+<details><summary>Stuck? Hints</summary>
 
-  ```bash
-  find ~/navera/day_pkg -name "*.py" | wc -l
-  ```
-
-- **Q2** — `find ~/navera -name PositionEstimate.msg`, and keep the result outside `build/` and `install/`.
-- **Q3** — the total number of lines of Python of the arbiter package. `wc -l` needs the file names
-  as arguments; `xargs` builds that command from `find`'s output, and the last line is the total:
-
-  ```bash
-  find ~/navera/navera_estimator -name "*.py" | xargs wc -l
-  ```
-
-- **Q4** — `ls ~/navera/deploy/systemd/*.service` then count the lines with `wc -l`.
-- **Q5** — `find ~/navera -name nmea.py`: the package is the first folder after `navera/`.
-
-Which file decides the ROS domain on a deployed box? Search **inside** files with `grep -rn`:
-
-```bash
-grep -rn "ROS_DOMAIN_ID=42" ~/navera/deploy
-```
-
-<details><summary>Answer (not graded)</summary>
-Three files contain it. <code>deploy/navera.env.example</code> is the template of <code>/etc/navera/navera.env</code>, the
-settings file of a deployed box: the line <code>ROS_DOMAIN_ID=42</code> written there sets the domain (the systemd
-units load it with <code>EnvironmentFile=</code>) — unless a later file of the same units,
-<code>/var/lib/navera/settings.env</code> or <code>/var/lib/navera/discovered.env</code>, sets it again: the last one loaded wins. <code>deploy/systemd/navera_boot_lib.sh</code> is only the safety net: it
-uses 42 when the value is not a number. <code>deploy/README.md</code> is documentation.
+1. Q6: it is lesson §6's worked example on another file: the same six commands. Write the name without
+   brackets and colon.
+2. Q7: one hour off? You wrote UTC (`date -u`); Tunisia is UTC+1.
+3. Q8: ERROR lines, then field 3, then `sort -u`, then `wc -l`. 7? You counted lines, not different
+   nodes. 2? You read the Sousse log only.
+4. Still stuck on Q6: `grep "^\[WARN\]" … | cut -d' ' -f3 | sort | uniq -c | sort -rn | head -n 1`.
 </details>
 
-and for the theory questions: **Q8** is the octal form of `rw-r-----` and **Q9** the name of the
-signal sent by Ctrl+C (both in the course).
-
 > [!TASK]
-> Q1–Q5, Q8 and Q9 are answered in `answers.py` (saved with `Ctrl+S`).
+> Q6, Q7, Q8 and PREDICT_UNIQ are in `answers.py`.
 
-## Step 12 — Your script: `log_report.sh`
+## Step 9 — Your script: `log_report.sh`
 
-Write `mission/bin/log_report.sh`, a script that prints a summary of **any** NAVERA log. Create the
-file and open it in the editor:
+Write `mission/bin/log_report.sh`, a script that summarises **any** log in this format:
 
 ```bash
 touch mission/bin/log_report.sh
@@ -443,10 +489,10 @@ touch mission/bin/log_report.sh
 
 Open [mission/bin/log_report.sh](file:./mission/bin/log_report.sh). The specification:
 
-- Usage: `./mission/bin/log_report.sh LOGFILE` (exactly one argument).
-- First line `#!/bin/bash`, then `set -e`.
-- Without an argument: a usage message on **stderr**, nothing on stdout, exit code 2.
-  If the file does not exist: a message on stderr and exit code 1.
+- Usage: `./mission/bin/log_report.sh LOGFILE` (exactly one argument). First line `#!/bin/bash`, then
+  `set -e`.
+- No argument (or more than one): a usage message on **stderr**, nothing on stdout, exit code 2.
+  A file that does not exist: a message on stderr, exit code 1.
 - Otherwise print **exactly these 7 lines** (here for the Sousse log; your numbers come from the file):
 
   ```text
@@ -459,11 +505,20 @@ Open [mission/bin/log_report.sh](file:./mission/bin/log_report.sh). The specific
   no_fix: …
   ```
 
-  `file` is the name without the folders (`basename`); `lines` all the lines; `INFO`, `WARN`,
-  `ERROR` the lines whose **severity** (first field) is that level; `nodes` the number of
-  **different** node names (field 3); `no_fix` the lines that contain `state NO_FIX`.
+  `file` is the name without the folders; `lines` all the lines; `INFO`, `WARN`, `ERROR` the lines whose
+  **severity** (first field) is that level; `nodes` the number of **different** node names (field 3);
+  `no_fix` the lines that contain `state NO_FIX`.
 
-Make it executable, then test it — on a log, without an argument, and on a missing file:
+Lesson §7's `count_level.sh` shows every piece you need, but not this script: write it yourself.
+
+> [!TIP] 🧰 Build it in 4 runs, not 1
+> (1) shebang, `set -e`, the `$#` test with `>&2` and `exit 2`; `chmod u+x`; test without an argument (if it hangs,
+> `Ctrl+C`: see hint 8).
+> (2) the `-f` test and `exit 1`; test on `/tmp/nothing.log`. (3) the `file:` and `lines:` lines only;
+> run it on the Sousse log. (4) the counts, one per line; compare WARN with Step 8. Run after each part:
+> one new error at a time is much easier to find.
+
+Make it executable, then test it on a log, without an argument, and on a missing file:
 
 ```bash
 ./mission/bin/log_report.sh mission/logs/sousse_2026-09-21.log
@@ -477,13 +532,48 @@ Make it executable, then test it — on a log, without an argument, and on a mis
 ./mission/bin/log_report.sh /tmp/nothing.log; echo "exit code: $?"
 ```
 
-Compare your WARN count with Step 10. The checker will also run your script on a **log it has never
-seen**: it has no ERROR line at all, and an INFO message that contains the words WARN and ERROR.
-Re-read the `set -e` rule of the course before you press Check: **every** `grep -c` in your script
-needs `|| true`, also the ones inside `echo "…$(…)"`.
+Compare your WARN count with Step 8. The check also runs your script on **a log it has never seen**:
+it has no ERROR line at all, INFO messages that contain the words WARN and ERROR, and it sits in a
+folder whose name has a space. Before you press
+Check, make your own test log with no ERROR line and run your script on it:
 
-Finally, save one report per flight with a `for` loop. `basename "$f" .log` also removes the `.log`
-ending:
+```bash
+grep -v "^\[ERROR\]" mission/logs/range_2026-09-22.log > /tmp/no_error.log
+```
+
+```bash
+./mission/bin/log_report.sh /tmp/no_error.log; echo "exit code: $?"
+```
+
+The check also uses a folder whose name has a space. Test that too: any `No such file or directory` or
+`ambiguous redirect` here shows which `$log` you forgot to quote.
+
+```bash
+mkdir -p "/tmp/flight logs" && cp mission/logs/range_2026-09-22.log "/tmp/flight logs/"
+```
+
+```bash
+./mission/bin/log_report.sh "/tmp/flight logs/range_2026-09-22.log"
+```
+
+<details><summary>Stuck? Hints</summary>
+
+1. The script stops early (some count lines are missing) with no message on a log without ERROR lines:
+   `grep -c` found 0 and exited with 1 under `set -e`. Add `|| true` (lesson §7).
+2. `file: mission/logs/sousse…`: use `basename`.
+3. `lines: 310 mission/logs/…`: `wc -l < "$log"` prints the number only.
+4. `WARN: 85` instead of 84: anchor the pattern, `"^\[WARN\]"`. All counts 0 (or the script stops right
+   after `lines:`)? You wrote `[WARN]` without `\`: in grep, `[…]` means "one of these letters".
+5. `nodes: 310`, `nodes: 1` or `nodes: 183`: field 3, then `sort -u` (`uniq` alone counts runs), then `wc -l`.
+6. Exit code 0 without an argument: test `$#` and `exit 2`.
+7. The check says the path has a space in it? Every `$log` must be `"$log"`, also inside
+   `$(basename …)` and after `wc -l <` (lesson §7: quote variables).
+8. Your script **hangs** (no prompt comes back)? Press `Ctrl+C`. A `grep` got no file name and is reading
+   the keyboard: your `$#` test did not stop the script. Look at the first error printed:
+   `[0: command not found` means `[` needs spaces: `if [ $# -ne 1 ]; then`.
+</details>
+
+Then save one report per flight with a `for` loop (`basename "$f" .log` also removes the `.log` ending):
 
 ```bash
 for f in mission/logs/*.log; do ./mission/bin/log_report.sh "$f" > "mission/docs/report_$(basename "$f" .log).txt"; done
@@ -494,44 +584,51 @@ head mission/docs/report_*.txt
 ```
 
 > [!TASK]
-> `mission/bin/log_report.sh` has a shebang, is executable, fails correctly without an argument or
-> with a missing file, and prints the exact 7-line summary for any log;
-> `mission/docs/report_sousse_2026-09-21.txt` and `mission/docs/report_range_2026-09-22.txt` hold its
-> output for the two flights.
+> `mission/bin/log_report.sh` has a shebang, is executable, fails correctly without an argument or with a
+> missing file, and prints the exact 7 lines for any log; `mission/docs/report_sousse_2026-09-21.txt` and
+> `mission/docs/report_range_2026-09-22.txt` hold its output for the two flights.
 
-## Step 13 — The flight report
+## Step 10 — The flight report
 
-Write `mission/docs/flight_report.md` for the test team (create it with `touch`, edit it in the
-editor). It must have three sections with these headings:
+Write `mission/docs/flight_report.md` for the test team (create it with `touch`, write it in the editor),
+with three sections:
 
-- `## Sousse` — the numbers of the flight from your report (lines, WARN, ERROR, **number of NO_FIX
-  events**), the **Tunisian time of the first NO_FIX** (`HH:MM:SS`), and in one or two sentences what
-  happened (look at the WARN messages around it: where was the drone, why did vision fail?).
-- `## Range` — the same numbers (**NO_FIX** and **ERROR** counts), and what the arbiter did with the
-  GPS jump (`grep -n "jump" mission/logs/range_2026-09-22.log`).
-- `## Conclusion` — at least 40 words: what the two flights show about day vision as a backup of GPS,
-  and one recommendation for the next test.
+- `## Sousse` — the numbers of the flight from your report (lines, WARN, ERROR, **NO_FIX** count), the
+  **Tunisian time of the first NO_FIX**, and one or two sentences on what happened: read the WARN lines
+  around it (`grep -n`), where was the drone, why did vision fail?
+- `## Range` — the same numbers (**NO_FIX** and **ERROR** counts), and what the arbiter did with the GPS
+  jump (`grep -n "jump" mission/logs/range_2026-09-22.log`).
+- `## Conclusion` — at least 40 words: what the two flights show about day vision as a backup of GPS, and
+  one recommendation for the next test.
 
 > [!TASK]
-> `mission/docs/flight_report.md` has the three sections; each flight section gives its NO_FIX and
-> ERROR counts, the Sousse section the Tunisian time of the first NO_FIX, and the conclusion has at least 40 words.
+> `mission/docs/flight_report.md` has the three sections; each flight section gives its NO_FIX and ERROR
+> counts, the Sousse section the Tunisian time of the first NO_FIX; the conclusion has at least 40 words.
 
-## Step 14 — Check your work
+## Step 11 — Check, then look back
 
-Press **✔ Check my work**. Each red line names what is missing and gives a hint.
+Press **✔ Check my work**. Each ✘ names what is missing and gives a hint. When everything passes, you earn
+the **Log detective** badge. Then, without the lesson:
+
+1. Explain to a colleague, in three sentences, how you told the orphan arbiter from the good one.
+2. Which `Permission denied` of today was a missing bit, and which a missing group? How did you tell?
+3. Which of your predictions was the most wrong, and why?
 
 > [!NOTE]
-> Made a mess? **↺ Reset lab files** puts this lesson's files back as at the start (your current
-> files are kept in a backup). It never touches `~/navera`.
+> Made a mess? **↺ Reset lab files** puts this lesson's files back as at the start (your current files
+> are kept in a backup).
 
 ## Going further (optional)
 
-- **awk**, the next tool after `cut`: `awk '{print $3}' mission/logs/*.log | sort | uniq -c` does the
-  node count without `cut`, and `awk '$1=="[ERROR]"' mission/logs/*.log` prints the ERROR lines. Add a
-  line `first_no_fix: HH:MM:SS` (Tunisian time, or `-` when there is none) to a copy of your script.
-- **Durations.** With the Unix times of the `state DEGRADED` and the next `state FIX` lines, compute
-  how long each GPS loss lasted, with shell arithmetic: `echo $(( 1789976223 - 1789976103 ))`.
-- **History.** `history | tail -n 20` lists your last commands. (In a brand-new terminal the history
-  can be empty: it is saved when a shell exits.) Turn the commands of Steps 4–6 into a script
-  `mission/bin/tidy.sh` that does the whole tidy-up on a fresh copy of the inbox.
-- **Disk usage.** `du -sh ~/navera/*_pkg | sort -h` — which package is the biggest, and why?
+- **A watchdog.** Write `mission/bin/watchdog.sh CMD…` that runs a command, starts it again when it ends
+  with a non-zero code, and gives up after 3 tries (exit code 1). This is what the supervisor of the box
+  does, and what NAVERA once lacked ("crashed nodes never restarted"). Test it with
+  `./mission/bin/watchdog.sh bash -c 'exit 3'`.
+- **Several files.** Make your script accept several logs (`for f in "$@"`) and print one block per file;
+  what should the exit code be if one file is missing?
+- **awk.** `awk '{print $3}' mission/logs/*.log | sort | uniq -c` counts nodes without `cut`. Add a line
+  `first_no_fix: HH:MM:SS` (Tunisian time, or `-` when there is none) to a copy of your script.
+- **Durations.** With the Unix times of a `state DEGRADED` line and the next `state FIX`, compute how long
+  a GPS loss lasted: `echo $(( 1789976223 - 1789976103 ))`.
+- **Disk usage.** `du -sh /data/academy/02-terminal/navera_lite_tree/*`: which folder is the biggest, and
+  why is that a reason never to edit `build/` or `install/`?

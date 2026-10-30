@@ -1,0 +1,85 @@
+"""navera_lite/track.py — a track: time-ordered positions of one vehicle, with NumPy. Part of NAVERA Lite,
+the course's teaching stack (mission 03). Written for the course; it is not NAVERA code.
+
+Positions are local metres east (e_m) and north (n_m) of a reference point; times are seconds (t_s).
+"""
+import numpy as np
+
+
+# @part 03
+class Track:
+    """Time-stamped positions (t_s, e_m, n_m) of one vehicle, kept in time order."""
+
+    def __init__(self, name="track"):
+        self.name = name
+        self.t_s = []                  # three lists of floats, one value per position
+        self.e_m = []
+        self.n_m = []
+
+    # @part 03 todo 10
+    def add(self, t_s, e_m, n_m):
+        """Append one position at time t_s (s), e_m metres east and n_m metres north.
+        The three values are stored as floats. Returns nothing.
+        Raises ValueError if the track is not empty and t_s is not strictly after the last time.
+
+        Example:  tr = Track(); tr.add(0, 0, 0); tr.add(1, 3, 4)  ->  len(tr) is 2, tr.e_m is [0.0, 3.0]
+                  then tr.add(1, 6, 8)  ->  ValueError (time 1 is not after 1)
+        """
+        if self.t_s and t_s <= self.t_s[-1]:
+            raise ValueError(f"time {t_s} s is not after the last time {self.t_s[-1]} s")
+        self.t_s.append(float(t_s))
+        self.e_m.append(float(e_m))
+        self.n_m.append(float(n_m))
+
+    def __len__(self):
+        return len(self.t_s)
+
+    def arrays(self):
+        """The track as three NumPy arrays (t_s, e_m, n_m)."""
+        return np.array(self.t_s), np.array(self.e_m), np.array(self.n_m)
+
+    # @part 03 todo 11
+    def length_m(self):
+        """Total path length (m): the sum of the straight segments between consecutive positions,
+        without a Python loop. 0.0 with fewer than 2 positions. Returns a float.
+
+        Example:  a track through (0, 0), (6, 8), (6, 20)  ->  length_m() is 22.0
+        """
+        _, e, n = self.arrays()
+        if len(e) < 2:
+            return 0.0
+        return float(np.sum(np.hypot(np.diff(e), np.diff(n))))
+
+    # @part 03 todo 12
+    def speeds_mps(self):
+        """The ground speed (m/s) of each segment, as a NumPy array of len(track) − 1 values, without a
+        Python loop: element i is the speed from position i to position i + 1. An empty array with
+        fewer than 2 positions.
+
+        Example:  positions (0, 0) at 0 s, (6, 8) at 2 s, (6, 20) at 3 s  ->  array([ 5., 12.])
+        """
+        t, e, n = self.arrays()
+        if len(t) < 2:
+            return np.array([])
+        return np.hypot(np.diff(e), np.diff(n)) / np.diff(t)
+
+    # @part 03 todo 13
+    def glitches(self, max_mps):
+        """The indices of the positions REACHED faster than max_mps (m/s): a position i (i >= 1) is listed
+        when the segment that ends at it is faster than max_mps. Returns a list of Python ints, in
+        increasing order (an empty list when nothing is too fast).
+
+        Example:  positions (0, 0), (10, 0), (20, 0), (95, 0), one per second, max_mps 50  ->  [3]
+        """
+        fast = self.speeds_mps() > max_mps
+        return (np.flatnonzero(fast) + 1).tolist()
+
+
+# @part 03
+def load_track(path, name=None):
+    """Read a CSV file with the header t_s,e_m,n_m (one position per line) into a Track."""
+    data = np.loadtxt(path, delimiter=",", skiprows=1, ndmin=2)
+    tr = Track(name or path.rsplit("/", 1)[-1].rsplit(".", 1)[0])
+    for t, e, n in data:
+        tr.add(t, e, n)
+    return tr

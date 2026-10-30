@@ -14,16 +14,17 @@
   <text x="14" y="78" font-weight="bold" fill="#b3261e">Single-</text>
   <text x="14" y="94" font-weight="bold" fill="#b3261e">Threaded</text>
   <text x="14" y="110" fill="#56606b" font-size="11">1 thread</text>
-  <rect x="150" y="70" width="150" height="34" rx="4" fill="#fde7c8" stroke="#a8680d"/>
-  <text x="225" y="92" text-anchor="middle" fill="#1d2733">on_fix (0.3 s)</text>
-  <rect x="400" y="70" width="150" height="34" rx="4" fill="#fde7c8" stroke="#a8680d"/>
-  <text x="475" y="92" text-anchor="middle" fill="#1d2733">on_fix (0.3 s)</text>
+  <rect x="158" y="70" width="150" height="34" rx="4" fill="#fde7c8" stroke="#a8680d"/>
+  <text x="233" y="92" text-anchor="middle" fill="#1d2733">on_fix (0.3 s)</text>
+  <rect x="408" y="70" width="150" height="34" rx="4" fill="#fde7c8" stroke="#a8680d"/>
+  <text x="483" y="92" text-anchor="middle" fill="#1d2733">on_fix (0.3 s)</text>
   <g fill="#0b6e8a">
-    <rect x="300" y="70" width="8" height="34"/><rect x="350" y="70" width="8" height="34"/>
-    <rect x="550" y="70" width="8" height="34"/><rect x="600" y="70" width="8" height="34"/>
+    <rect x="150" y="70" width="8" height="34"/><rect x="308" y="70" width="8" height="34"/>
+    <rect x="350" y="70" width="8" height="34"/><rect x="400" y="70" width="8" height="34"/>
+    <rect x="558" y="70" width="8" height="34"/><rect x="600" y="70" width="8" height="34"/>
     <rect x="650" y="70" width="8" height="34"/>
   </g>
-  <text x="150" y="128" fill="#b3261e">timer due at 0.1, 0.2, 0.3 s: waits, runs once at 0.3 s → gap 0.3 s, ticks lost</text>
+  <text x="150" y="128" fill="#b3261e">timer due at 0.1, 0.2, 0.3 s: waits, runs once at 0.3 s → longest gap 0.3 s, ticks lost</text>
   <!-- multi threaded -->
   <text x="14" y="178" font-weight="bold" fill="#2e7d32">Multi-</text>
   <text x="14" y="194" font-weight="bold" fill="#2e7d32">Threaded</text>

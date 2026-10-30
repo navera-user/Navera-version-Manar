@@ -1,20 +1,20 @@
-# Lab 7 report — map scales around the world and NAVERA's map file
+# Map memo — the course map of Sousse, its scales and the corner bug
 
-<!-- Write 150-400 words in your own words. Keep the three headings exactly as they are.
-     Quote numbers from results.json and from explore_db.py. -->
+<!-- Write 150–400 words in your own words, for an engineer who will use this map in a navigation stack.
+     Keep the three headings exactly as they are. Quote your numbers with their units. -->
 
-## World scales
+## Scales and zooms
 
-<!-- Metres per pixel at zoom 17 in Singapore and in Reykjavik (and why they differ); the zooms that
-     zoom_for_gsd() chooses for the example camera at 150-2000 m over Singapore, compared with the
-     map's own altitude_zoom_map. Which rule would you trust, and why? -->
+<!-- How big is a zoom-17 pixel in Quito, Sousse and Reykjavik, and why does it change? Which zoom does your
+     rule choose for the lab's camera at 1000 m over Sousse, and which does the map's table choose?
+     Which would you use, and why? -->
 
 ## The map file
 
-<!-- The real size of /data/map.mbtiles in GB (measure it), the value of estimated_size_mb in its
-     metadata, and which one you trust. How many tiles, how are they found so fast (the index)? -->
+<!-- What is in the file (tables, number of tiles, real size in MB)? How is one tile found among
+     a quarter of a million? What does the metadata say about the area, and what do the tiles really cover? -->
 
 ## The corner bug
 
-<!-- What NAVERA did wrong, how many metres it cost at zoom 17 in Sousse, how many it would cost in
-     Singapore, and why the two numbers differ. -->
+<!-- What was wrong, how large is the error in Sousse and in Quito at zoom 17, why do they differ,
+     and what is the fix? -->

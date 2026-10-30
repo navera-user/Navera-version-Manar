@@ -1,60 +1,34 @@
-# Lab 1 — answers. Numbers without quotes (GATE_M = 123.4), text and letters in quotes (Q1 = "b").
-# Save with Ctrl+S, then press ✔ Check my work.
-
-# ---- Step 1: the computer ----------------------------------------------------------
-ARCH = "aarch64"    # what `uname -m` prints (the processor architecture)
-CPU_CORES = 6    # what `nproc` prints
-
-# ---- Step 3: your NAVERA copy ------------------------------------------------------
-GPS_TIMEOUT_S = 3.0    # gps_timeout_s in navera_estimator/.../config/estimator_params.yaml
-FIX_MAX_SIGMA_M = 25.0    # fix_max_sigma_m in the same file
-SOURCE_DAY_VISION = 2    # the number of SOURCE_DAY_VISION in navera_msgs/msg/PositionEstimate.msg
-
-# ---- Step 4: the GNSS solver (gnss_fix.py) — 1 decimal is enough ------------------
-BIAS_FOUND_M = 148.1    # "clock bias found" with the DEFAULT settings (8 satellites, 0.5 µs)
-H_ERR_4_SATS_M = 4.3    # "horizontal error" with USE_SATELLITES = 4
-RESID_4_SATS_M = 0.0    # "residual RMS" with USE_SATELLITES = 4
-SPOOF_H_ERR_M = 499.5    # "horizontal error" with 8 satellites and SPOOF_EAST_M = 500.0
-SPOOF_RESID_M = 1.8    # "residual RMS" in that same spoofed case
-
-# ---- Step 5: the arbiter's GPS jump gate --------------------------------------------
-# v_max = 100 m/s, margin = 50 m, the new GPS fix comes 2.0 s after the last trusted one.
-# Beyond what distance (m) is the new fix refused?
-GATE_M = 250.0
-
-# ---- Step 7: quiz — write the letter --------------------------------------------------
-# Q1. Why does a receiver need at least 4 satellites for a 3-D fix?
-#   a) one per axis, plus one spare in case a satellite fails
-#   b) the unknowns are x, y, z and the receiver clock bias
-#   c) the 4th satellite gives the local time zone
-Q1 = "b"
-
-# Q2. With exactly 4 satellites the residual RMS is 0.0 m. What does that tell you?
-#   a) the fix is perfect
-#   b) nothing: 4 equations for 4 unknowns always fit, so an error cannot be detected
-#   c) the receiver is being spoofed
-Q2 = "b"
-
-# Q3. A spoofer moved the fix 500 m east and the residual RMS stayed normal. Conclusion?
-#   a) a consistent spoof looks like a normal fix: an independent source is needed to see it
-#   b) the clock bias always reveals spoofing
-#   c) spoofing is impossible with 8 satellites
-Q3 = "a"
-
-# Q4. Real GNSS signals are recorded and re-broadcast with a delay. This attack is called:
-#   a) jamming     b) multipath     c) meaconing
-Q4 = "c"
-
-# Q5. Which NAVERA node decides which source's position is published?
-#   a) gps_node     b) estimator_node (the arbiter)     c) vehicle_output_node
-Q5 = "b"
-
-# Q6. How does NAVERA give its position to an ArduPilot autopilot?
-#   a) like a GPS receiver would: NMEA sentences or the MAVLink message GPS_INPUT
-#   b) it replaces the autopilot's firmware
-#   c) through the operator web page
-Q6 = "a"
-
-# Q7. GPS is jammed and day vision has a fresh match. Which state does NAVERA report today?
-#   a) FIX     b) DEGRADED     c) NO_FIX
-Q7 = "b"
+V_MAX_MPS = 100.0
+MARGIN_M = 50.0
+GPS_TIMEOUT_S = 3.0
+DAY_TIMEOUT_S = 5.0
+PREDICT_STEALTH = "About 100 m/s, the top speed."
+PREDICT_CLOCK = "Near (3, 4) but a bit off, with a small but non-zero mismatch."
+CLOCK_ERROR_M = 141
+EXPLAIN_CLOCK = "The clock bias adds the same 0.3 km to every range; as an unknown it is solved together with the position, so the residuals vanish."
+PREDICT_TWO = "Several solutions."
+EXPLAIN_TWO = "There are three unknowns (x, y and the bias) but only two measurements, so a whole curve of guesses fits. Real GPS has x, y, z and bias, so it needs 4 satellites."
+CURVE = "hyperbola"
+GN_STEPS = 3
+HDOP_TRIANGLE = 1.22
+HDOP_OUTSIDE = 1.60
+COLLINEAR_RANK = 2
+EXPLAIN_GN = "Each step linearises the ranges with the Jacobian and solves one small least-squares system instead of trying every point; a bad starting guess can make it diverge, and with beacons on a line H loses rank, so the position across the line cannot be determined. Moving C outside the triangle raises HDOP from 1.22 to 1.60: a flatter valley."
+PREDICT_SPOOF = "The fake point, with mismatch 0."
+EXPLAIN_SPOOF = "The fake pseudoranges are consistent because they were computed for one point, so the solver fits them exactly and the receiver cannot tell anything is wrong; jamming is noticed because the signal is lost."
+PREDICT_PARTIAL = "A position near the fake one but with a mismatch above zero."
+EXPLAIN_PARTIAL = "With a spare real measurement from D, no single point explains all four ranges, so a residual remains in the mismatch; a full spoof fakes D too and stays consistent. Better receivers also monitor signal power or use OSNMA signatures."
+PREDICT_GATE = "A: 2 refused, B: none."
+JUMP_REFUSED = 2
+DRIFT_REFUSED = 0
+ARBITER_SOURCE = "gps"
+ARBITER_STATE = "DEGRADED"
+PREDICT_FLIGHT = "The gate will not catch it; the cross-check only when vision sees land again."
+FLIGHT_REFUSED = 0
+CAUGHT_AT_S = 450
+EXPLAIN_FLIGHT = "The spoof started at about 250 s, over the sea, dragging about 2 m/s north; vision had no match over the water, so nothing could disagree until the coast at 450 s."
+STEALTH_SPEED_MPS = 150
+REFUSED_ONE_FASTER = 60
+DEFENDER_MARGIN_M = 56
+DEFENDER_STEALTH_MPS = 71
+EXPLAIN_TRADEOFF = "A tighter v_max cuts the stealth speed from 150 to 71 m/s, but a small margin refuses honest fixes with multipath spikes; and a slow drag below the gate is never refused without a vision cross-check."

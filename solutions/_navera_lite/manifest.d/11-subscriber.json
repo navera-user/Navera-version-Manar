@@ -1,0 +1,2 @@
+{"parts": ["ros.trip_node", "ros.gps_node", "ros.arbiter_v0", "ros.replay_node"], "todo_missions": [11], "tests": [], "extra": [],
+ "note": "11 writes the trip computer: trip_node TODO 1-5 (TripComputer.update, speed_window, Watchdog.silent, TripNode.listen/on_fix). Executor demo and status_listener stay mission files."}

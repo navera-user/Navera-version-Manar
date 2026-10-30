@@ -1,0 +1,2 @@
+{"parts": ["geo"], "todo_missions": [6], "tests": [], "extra": [],
+ "note": "Mission 06 introduces geo.py (TODO 1-12). tests/test_geo.py exists for mission 14 onward; not shipped here (pytest is taught in 14)."}

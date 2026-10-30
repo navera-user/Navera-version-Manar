@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 300" font-family="sans-serif" font-size="12">
+  <rect width="760" height="300" fill="#f7fafc"/>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#1d2733"/></marker>
+  </defs>
+  <text x="20" y="24" font-size="15" font-weight="bold" fill="#1d2733">The newest frame, or a queue? (a program that wants 2 frames per second)</text>
+  <!-- time axis: x = 60 + 120 * s, 0 .. 5 s -->
+  <line x1="60" y1="262" x2="690" y2="262" stroke="#1d2733" stroke-width="1.5" marker-end="url(#a)"/>
+  <g fill="#5a6775" text-anchor="middle">
+    <text x="60" y="280">0 s</text><text x="180" y="280">1 s</text><text x="300" y="280">2 s</text>
+    <text x="420" y="280">3 s</text><text x="540" y="280">4 s</text><text x="660" y="280">5 s</text>
+  </g>
+
+  <!-- row 1: the newest frame -->
+  <text x="20" y="62" fill="#1d2733" font-weight="bold">newest frame (queue = 1)</text>
+  <g stroke="#9aa7b4" stroke-width="1">
+    <path d="M60 90 v12 M64 90 v12 M68 90 v12 M72 90 v12 M76 90 v12 M80 90 v12 M84 90 v12 M88 90 v12 M92 90 v12 M96 90 v12 M100 90 v12 M104 90 v12 M108 90 v12 M112 90 v12 M116 90 v12 M120 90 v12 M124 90 v12 M128 90 v12 M132 90 v12 M136 90 v12 M140 90 v12 M144 90 v12 M148 90 v12 M152 90 v12 M156 90 v12 M160 90 v12 M164 90 v12 M168 90 v12 M172 90 v12 M176 90 v12 M180 90 v12 M184 90 v12 M188 90 v12 M192 90 v12 M196 90 v12 M200 90 v12 M204 90 v12 M208 90 v12 M212 90 v12 M216 90 v12 M220 90 v12 M224 90 v12 M228 90 v12 M232 90 v12 M236 90 v12 M240 90 v12 M244 90 v12 M248 90 v12 M252 90 v12 M256 90 v12 M260 90 v12 M264 90 v12 M268 90 v12 M272 90 v12 M276 90 v12 M280 90 v12 M284 90 v12 M288 90 v12 M292 90 v12 M296 90 v12 M300 90 v12 M304 90 v12 M308 90 v12 M312 90 v12 M316 90 v12 M320 90 v12 M324 90 v12 M328 90 v12 M332 90 v12 M336 90 v12 M340 90 v12 M344 90 v12 M348 90 v12 M352 90 v12 M356 90 v12 M360 90 v12 M364 90 v12 M368 90 v12 M372 90 v12 M376 90 v12 M380 90 v12 M384 90 v12 M388 90 v12 M392 90 v12 M396 90 v12 M400 90 v12 M404 90 v12 M408 90 v12 M412 90 v12 M416 90 v12 M420 90 v12 M424 90 v12 M428 90 v12 M432 90 v12 M436 90 v12 M440 90 v12 M444 90 v12 M448 90 v12 M452 90 v12 M456 90 v12 M460 90 v12 M464 90 v12 M468 90 v12 M472 90 v12 M476 90 v12 M480 90 v12 M484 90 v12 M488 90 v12 M492 90 v12 M496 90 v12 M500 90 v12 M504 90 v12 M508 90 v12 M512 90 v12 M516 90 v12 M520 90 v12 M524 90 v12 M528 90 v12 M532 90 v12 M536 90 v12 M540 90 v12 M544 90 v12 M548 90 v12 M552 90 v12 M556 90 v12 M560 90 v12 M564 90 v12 M568 90 v12 M572 90 v12 M576 90 v12 M580 90 v12 M584 90 v12 M588 90 v12 M592 90 v12 M596 90 v12 M600 90 v12 M604 90 v12 M608 90 v12 M612 90 v12 M616 90 v12 M620 90 v12 M624 90 v12 M628 90 v12 M632 90 v12 M636 90 v12 M640 90 v12 M644 90 v12 M648 90 v12 M652 90 v12 M656 90 v12 M660 90 v12"/>
+  </g>
+  <text x="680" y="100" fill="#5a6775">frames arrive</text>
+  <text x="680" y="114" fill="#5a6775">(28.8 per s)</text>
+  <!-- takes every 0.5 s the frame that just arrived -->
+  <g fill="#0b6e8a">
+    <circle cx="240" cy="80" r="5"/><circle cx="300" cy="80" r="5"/><circle cx="360" cy="80" r="5"/>
+    <circle cx="420" cy="80" r="5"/><circle cx="480" cy="80" r="5"/><circle cx="540" cy="80" r="5"/><circle cx="600" cy="80" r="5"/>
+  </g>
+  <text x="240" y="125" fill="#0b6e8a">each frame taken arrived a few ms ago: the stamp grab − L is right</text>
+
+  <!-- row 2: a queue of 4 -->
+  <text x="20" y="160" fill="#1d2733" font-weight="bold">queue of 4, read only when wanted</text>
+  <g stroke="#9aa7b4" stroke-width="1">
+    <path d="M60 188 v12 M64 188 v12 M68 188 v12 M72 188 v12"/>
+    <path d="M242 188 v12 M302 188 v12 M362 188 v12 M422 188 v12 M482 188 v12 M542 188 v12 M602 188 v12"/>
+  </g>
+  <g fill="#d64545">
+    <circle cx="240" cy="178" r="5"/><circle cx="300" cy="178" r="5"/><circle cx="360" cy="178" r="5"/>
+    <circle cx="420" cy="178" r="5"/><circle cx="480" cy="178" r="5"/><circle cx="540" cy="178" r="5"/><circle cx="600" cy="178" r="5"/>
+  </g>
+  <path d="M600 172 Q 480 140 364 186" stroke="#d64545" stroke-width="1.5" fill="none" marker-end="url(#a)"/>
+  <text x="300" y="146" fill="#d64545">at 4.5 s the program takes the frame that entered the queue at 2.5 s</text>
+  <text x="680" y="198" fill="#5a6775">frames kept</text>
+  <text x="60" y="222" fill="#1d2733">The queue fills at once; when it is full, new frames are lost. Each frame then waits 4 × 0.5 s = 2 s,</text>
+  <text x="60" y="239" fill="#1d2733">and a program that stamps "now − L" is 2 s wrong — no delay setting can fix that.</text>
+</svg>

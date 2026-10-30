@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 300" font-family="sans-serif" font-size="12">
+  <rect width="760" height="300" fill="#f7fafc"/>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#1d2733"/></marker>
+  </defs>
+  <text x="20" y="24" font-size="15" font-weight="bold" fill="#1d2733">One frame's journey: from the light to the program</text>
+
+  <!-- the boxes of the chain -->
+  <g stroke="#0b6e8a" stroke-width="1.5" fill="#ffffff">
+    <rect x="20" y="50" width="104" height="66" rx="6"/>
+    <rect x="150" y="50" width="104" height="66" rx="6"/>
+    <rect x="280" y="50" width="104" height="66" rx="6"/>
+    <rect x="410" y="50" width="104" height="66" rx="6"/>
+    <rect x="540" y="50" width="200" height="66" rx="6" fill="#e6f3f7"/>
+  </g>
+  <g fill="#1d2733" text-anchor="middle">
+    <text x="72" y="72" font-weight="bold">exposure</text>
+    <text x="72" y="90">light makes</text>
+    <text x="72" y="104">the picture</text>
+    <text x="202" y="72" font-weight="bold">in the camera</text>
+    <text x="202" y="90">read the sensor,</text>
+    <text x="202" y="104">compress (JPEG)</text>
+    <text x="332" y="72" font-weight="bold">USB + driver</text>
+    <text x="332" y="90">transfer, wait</text>
+    <text x="332" y="104">in a buffer</text>
+    <text x="462" y="72" font-weight="bold">grab</text>
+    <text x="462" y="90">the program</text>
+    <text x="462" y="104">receives it</text>
+    <text x="640" y="72" font-weight="bold">the program</text>
+    <text x="640" y="90">decodes only the frame it sends,</text>
+    <text x="640" y="104">reads the attitude at the exposure</text>
+  </g>
+  <g stroke="#1d2733" stroke-width="1.5" marker-end="url(#a)">
+    <line x1="124" y1="83" x2="148" y2="83"/>
+    <line x1="254" y1="83" x2="278" y2="83"/>
+    <line x1="384" y1="83" x2="408" y2="83"/>
+    <line x1="514" y1="83" x2="538" y2="83"/>
+  </g>
+
+  <!-- the latency brace -->
+  <line x1="72" y1="140" x2="462" y2="140" stroke="#d64545" stroke-width="2"/>
+  <line x1="72" y1="132" x2="72" y2="148" stroke="#d64545" stroke-width="2"/>
+  <line x1="462" y1="132" x2="462" y2="148" stroke="#d64545" stroke-width="2"/>
+  <text x="267" y="162" text-anchor="middle" fill="#d64545" font-weight="bold">latency L: no clock sees it — measure it once, on a bench</text>
+  <text x="267" y="180" text-anchor="middle" fill="#d64545">exposure time  tₑ = t_g − L          (t_g: the grab time, read on the computer's clock)</text>
+
+  <!-- numbers of NAVERA's camera -->
+  <rect x="20" y="200" width="720" height="84" rx="6" fill="#ffffff" stroke="#c9d3dc"/>
+  <text x="34" y="222" fill="#1d2733" font-weight="bold">NAVERA's bench camera (Insta360 ONE R in USB webcam mode), 2026-10-06:</text>
+  <text x="34" y="242" fill="#1d2733">MJPG 1920 × 1080 = two 1920 × 540 halves (top lens: the one NAVERA uses) · 28.8 frames per second · about 160 kB per frame</text>
+  <text x="34" y="260" fill="#1d2733">latency setting 0.138 s (a screen-flash median: it includes the screen's own delay) · straightened view capped at 111°</text>
+  <text x="34" y="277" fill="#5a6775">Ignore the inside of each box: what matters is that every step adds time between the light and the grab.</text>
+</svg>

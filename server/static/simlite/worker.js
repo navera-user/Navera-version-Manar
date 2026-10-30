@@ -1,5 +1,5 @@
 // NAVERA Sim Lite — the simulation thread. Python (Pyodide) runs here, off the page's thread:
-// the world, the student's estimator from their copy, and their flight script.
+// NAVERA Lite's world (navera_lite/sim/world.py), the student's NAVERA Lite parts, and their flight script.
 importScripts('/static/vendor/pyodide/pyodide.js');
 let py = null, ready = null;
 
@@ -7,6 +7,10 @@ async function boot() {
   // stdlib under a .dat name: download managers (IDM…) grab .zip URLs out of the browser, and Python then
   // cannot start ("Program terminated with exit(1)")
   py = await loadPyodide({ indexURL: '/static/vendor/pyodide/', stdLibURL: '/static/vendor/pyodide/python_stdlib.dat' });
+  // numpy (NAVERA Lite's parts use it): Pyodide's own wheel, served under a .dat name for the same reason, written
+  // into site-packages (no .whl / .zip URL is ever fetched by the browser)
+  const npBytes = new Uint8Array(await (await fetch('/static/vendor/pyodide/numpy-1.26.4-pyodide.dat')).arrayBuffer());
+  await py.unpackArchive(npBytes, 'wheel', { extractDir: '/lib/python3.12/site-packages' });   // also loads its libraries
   const list = await (await fetch('/static/simlite/py/manifest.json', { cache: 'no-cache' })).json();
   for (const rel of list) {
     const text = await (await fetch('/static/simlite/py/' + rel, { cache: 'no-cache' })).text();
@@ -25,9 +29,9 @@ onmessage = async (ev) => {
     if (!ready) ready = boot();
     await ready;
     if (cmd === 'ping') return reply(id, true, 'ready');
-    if (cmd === 'load') {                     // the student's NAVERA files
-      py.globals.set('_files', py.toPy(args.files));
-      py.runPython("world.install_navera(_files, '/navera')");
+    if (cmd === 'load') {                     // the student's NAVERA Lite (files, the parts report, the vision profile)
+      py.globals.set('_payload', py.toPy(args));
+      py.runPython("world.install_lite(_payload)");
       return reply(id, true, Object.keys(args.files).length);
     }
     if (cmd === 'start') {
@@ -42,7 +46,7 @@ onmessage = async (ev) => {
     }
     if (cmd === 'fault') {
       py.globals.set('_k', args.key); py.globals.set('_v', args.value);
-      py.runPython("run.world.set_fault(_k, _v)");
+      py.runPython("run.fault(_k, _v)");
       return reply(id, true, null);
     }
     if (cmd === 'speed') {
@@ -65,6 +69,6 @@ onmessage = async (ev) => {
       out.push(msg[i]);
     }
     if (out.length && /^Traceback/.test(out[0]) && !(out[1] || '').startsWith('  File')) out.shift();   // no frame left to show
-    reply(id, false, out.join('\n'));
+    reply(id, false, out.join('\n').split('/navera_lite_user/').join(''));
   }
 };

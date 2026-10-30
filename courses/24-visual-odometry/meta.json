@@ -1,0 +1,3 @@
+{"number": "24", "title": "Visual odometry: phase correlation, drift and fusion", "module": 5, "duration": "7 h",
+ "summary": "Measure how far the ground slid between two frames with a phase correlation you write with numpy's FFT, check it against OpenCV, turn it into metres east and north, race it against keypoints and your own learned descriptor, then find why dead reckoning drifts, when to refuse a step, and how map fixes bound the error.",
+ "resources": [], "open": ["navera_lite/vo.py", "answers.py"], "check_timeout_s": 300}

@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 330" font-family="sans-serif" font-size="12.5">
+  <rect width="780" height="330" fill="#f7fafc"/>
+  <defs>
+    <marker id="r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#d64545"/></marker>
+    <marker id="b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#0b6e8a"/></marker>
+    <marker id="k" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#1d2733"/></marker>
+  </defs>
+  <text x="20" y="24" fill="#1d2733" font-weight="bold" font-size="13.5">The heading sign: a photo whose top looks at heading 50° turns 50° clockwise to put north up</text>
+
+  <!-- panel 1: seen from above, north up -->
+  <text x="30" y="52" fill="#1d2733" font-weight="bold">1. Seen from above (north up)</text>
+  <rect x="30" y="62" width="210" height="210" fill="#e9eef2" stroke="#9aa5b1"/>
+  <line x1="52" y1="120" x2="52" y2="78" stroke="#d64545" stroke-width="3" marker-end="url(#r)"/>
+  <text x="46" y="136" fill="#d64545" font-weight="bold">N</text>
+  <g transform="rotate(50 135 167)">
+    <rect x="85" y="130" width="100" height="74" fill="#fbe6c8" stroke="#a8680d" stroke-width="2"/>
+    <line x1="135" y1="167" x2="135" y2="110" stroke="#0b6e8a" stroke-width="3" marker-end="url(#b)"/>
+    <text x="113" y="146" fill="#a8680d" font-size="11">top</text>
+  </g>
+  <path d="M135 120 A47 47 0 0 1 171 137" fill="none" stroke="#1d2733" stroke-dasharray="3 3"/>
+  <line x1="135" y1="167" x2="135" y2="112" stroke="#1d2733" stroke-dasharray="3 3"/>
+  <text x="150" y="108" fill="#1d2733">50°</text>
+  <text x="30" y="292" fill="#1d2733">the camera's footprint; the blue arrow is</text>
+  <text x="30" y="308" fill="#1d2733">the photo's top = the heading, clockwise from N</text>
+
+  <!-- panel 2: the photo as stored -->
+  <text x="290" y="52" fill="#1d2733" font-weight="bold">2. The photo as stored</text>
+  <rect x="300" y="110" width="180" height="134" fill="#fbe6c8" stroke="#a8680d" stroke-width="2"/>
+  <text x="372" y="104" fill="#a8680d" font-size="11">top</text>
+  <g transform="rotate(-50 390 190)">
+    <line x1="390" y1="190" x2="390" y2="140" stroke="#d64545" stroke-width="3" marker-end="url(#r)"/>
+    <text x="384" y="134" fill="#d64545" font-weight="bold" transform="rotate(50 390 130)">N</text>
+  </g>
+  <text x="285" y="272" fill="#1d2733">north appears 50° COUNTER-clockwise</text>
+  <text x="285" y="288" fill="#1d2733">from the photo's top</text>
+
+  <line x1="505" y1="177" x2="545" y2="177" stroke="#1d2733" stroke-width="1.5" marker-end="url(#k)"/>
+
+  <!-- panel 3: turned north up -->
+  <text x="555" y="52" fill="#1d2733" font-weight="bold">3. Turned 50° clockwise</text>
+  <g transform="rotate(50 655 177)">
+    <rect x="590" y="129" width="130" height="96" fill="#fbe6c8" stroke="#a8680d" stroke-width="2"/>
+    <text x="645" y="144" fill="#a8680d" font-size="11">top</text>
+  </g>
+  <line x1="655" y1="200" x2="655" y2="150" stroke="#d64545" stroke-width="3" marker-end="url(#r)"/>
+  <text x="649" y="144" fill="#d64545" font-weight="bold">N</text>
+  <text x="555" y="272" fill="#1d2733">north is up again. OpenCV turns</text>
+  <text x="555" y="288" fill="#1d2733">counter-clockwise, so this is</text>
+  <text x="555" y="304" fill="#1d2733" font-weight="bold">affine_matrix(−50, s, centre)</text>
+</svg>

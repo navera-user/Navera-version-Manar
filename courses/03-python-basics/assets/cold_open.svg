@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 260" font-family="sans-serif" font-size="13">
+  <rect width="640" height="260" fill="#0f1d2e"/>
+  <circle cx="320" cy="560" r="400" fill="#b5532f"/>
+  <path d="M 30 140 Q 320 175 610 140" fill="none" stroke="#7fd1a8" stroke-width="2" stroke-dasharray="7 5"/>
+  <text x="40" y="128" fill="#7fd1a8">planned: closest pass 226 km above Mars</text>
+  <path d="M 30 140 Q 320 210 610 140" fill="none" stroke="#ff7a59" stroke-width="2"/>
+  <text x="385" y="208" fill="#ffb199">real: about 57 km — lost</text>
+  <line x1="20" y1="190" x2="620" y2="190" stroke="#f4d35e" stroke-dasharray="3 4"/>
+  <text x="470" y="185" fill="#f4d35e" font-size="11">80 km: lowest survivable</text>
+  <text x="20" y="30" fill="#e8eef5" font-size="16" font-weight="bold">Mars Climate Orbiter, 23 September 1999</text>
+  <text x="20" y="52" fill="#c9d6e3">One program wrote thruster impulses in pound-force·seconds;</text>
+  <text x="20" y="70" fill="#c9d6e3">the navigation program read them as newton·seconds (1 lbf·s = 4.45 N·s).</text>
+  <text x="20" y="88" fill="#c9d6e3">No line of code crashed. A number without its unit did. (Drawing not to scale.)</text>
+</svg>

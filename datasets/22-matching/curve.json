@@ -1,0 +1,350 @@
+[
+ {
+  "name": "curve_00",
+  "map": "map_city.png",
+  "photo": "photos/curve_00.jpg",
+  "prior": {
+   "heading_deg": 110.8,
+   "heading_sigma_deg": 10.0,
+   "zoom": 1.63
+  },
+  "effects": "mild",
+  "map_m_per_px": 0.9683,
+  "H": [
+   [
+    -0.677614303,
+    1.489366645,
+    112.097276794
+   ],
+   [
+    -1.489366645,
+    -0.677614303,
+    793.163632143
+   ],
+   [
+    0.0,
+    0.0,
+    1.0
+   ]
+  ]
+ },
+ {
+  "name": "curve_01",
+  "map": "map_olives.png",
+  "photo": "photos/curve_01.jpg",
+  "prior": {
+   "heading_deg": 327.2,
+   "heading_sigma_deg": 10.0,
+   "zoom": 1.794
+  },
+  "effects": "shaken",
+  "map_m_per_px": 0.9694,
+  "H": [
+   [
+    1.438102974,
+    -0.960458304,
+    197.461786961
+   ],
+   [
+    0.960458304,
+    1.438102974,
+    -373.332406618
+   ],
+   [
+    0.0,
+    0.0,
+    1.0
+   ]
+  ]
+ },
+ {
+  "name": "curve_02",
+  "map": "map_harbour.png",
+  "photo": "photos/curve_02.jpg",
+  "prior": {
+   "heading_deg": 16.2,
+   "heading_sigma_deg": 10.0,
+   "zoom": 1.5
+  },
+  "effects": "mild",
+  "map_m_per_px": 0.9688,
+  "H": [
+   [
+    1.403431993,
+    0.37775919,
+    -135.594347144
+   ],
+   [
+    -0.37775919,
+    1.403431993,
+    -22.559401228
+   ],
+   [
+    0.0,
+    0.0,
+    1.0
+   ]
+  ]
+ },
+ {
+  "name": "curve_03",
+  "map": "map_city.png",
+  "photo": "photos/curve_03.jpg",
+  "prior": {
+   "heading_deg": 197.3,
+   "heading_sigma_deg": 10.0,
+   "zoom": 1.847
+  },
+  "effects": "mild",
+  "map_m_per_px": 0.9683,
+  "H": [
+   [
+    -1.702359787,
+    -0.485761609,
+    878.565016757
+   ],
+   [
+    0.485761609,
+    -1.702359787,
+    550.340834338
+   ],
+   [
+    0.0,
+    0.0,
+    1.0
+   ]
+  ]
+ },
+ {
+  "name": "curve_04",
+  "map": "map_olives.png",
+  "photo": "photos/curve_04.jpg",
+  "prior": {
+   "heading_deg": 288.7,
+   "heading_sigma_deg": 10.0,
+   "zoom": 1.391
+  },
+  "effects": "shaken",
+  "map_m_per_px": 0.9694,
+  "H": [
+   [
+    0.399523495,
+    -1.349545108,
+    562.230521946
+   ],
+   [
+    1.349545108,
+    0.399523495,
+    -207.387027991
+   ],
+   [
+    0.0,
+    0.0,
+    1.0
+   ]
+  ]
+ },
+ {
+  "name": "curve_05",
+  "map": "map_harbour.png",
+  "photo": "photos/curve_05.jpg",
+  "prior": {
+   "heading_deg": 46.7,
+   "heading_sigma_deg": 10.0,
+   "zoom": 1.707
+  },
+  "effects": "mild",
+  "map_m_per_px": 0.9688,
+  "H": [
+   [
+    1.270217564,
+    1.046210905,
+    -272.347473684
+   ],
+   [
+    -1.046210905,
+    1.270217564,
+    182.266298645
+   ],
+   [
+    0.0,
+    0.0,
+    1.0
+   ]
+  ]
+ },
+ {
+  "name": "curve_06",
+  "map": "map_city.png",
+  "photo": "photos/curve_06.jpg",
+  "prior": {
+   "heading_deg": 99.5,
+   "heading_sigma_deg": 10.0,
+   "zoom": 1.491
+  },
+  "effects": "shaken",
+  "map_m_per_px": 0.9683,
+  "H": [
+   [
+    -0.511227995,
+    1.464333684,
+    75.981496637
+   ],
+   [
+    -1.464333684,
+    -0.511227995,
+    744.256009005
+   ],
+   [
+    0.0,
+    0.0,
+    1.0
+   ]
+  ]
+ },
+ {
+  "name": "curve_07",
+  "map": "map_olives.png",
+  "photo": "photos/curve_07.jpg",
+  "prior": {
+   "heading_deg": 60.2,
+   "heading_sigma_deg": 10.0,
+   "zoom": 1.648
+  },
+  "effects": "mild",
+  "map_m_per_px": 0.9694,
+  "H": [
+   [
+    1.053676451,
+    1.32554077,
+    -288.389999744
+   ],
+   [
+    -1.32554077,
+    1.053676451,
+    308.961333485
+   ],
+   [
+    0.0,
+    0.0,
+    1.0
+   ]
+  ]
+ },
+ {
+  "name": "curve_08",
+  "map": "map_harbour.png",
+  "photo": "photos/curve_08.jpg",
+  "prior": {
+   "heading_deg": 128.7,
+   "heading_sigma_deg": 10.0,
+   "zoom": 1.757
+  },
+  "effects": "mild",
+  "map_m_per_px": 0.9688,
+  "H": [
+   [
+    -1.110393869,
+    1.346080625,
+    259.282033863
+   ],
+   [
+    -1.346080625,
+    -1.110393869,
+    867.129233243
+   ],
+   [
+    0.0,
+    0.0,
+    1.0
+   ]
+  ]
+ },
+ {
+  "name": "curve_09",
+  "map": "map_city.png",
+  "photo": "photos/curve_09.jpg",
+  "prior": {
+   "heading_deg": 27.6,
+   "heading_sigma_deg": 10.0,
+   "zoom": 1.633
+  },
+  "effects": "mild",
+  "map_m_per_px": 0.9683,
+  "H": [
+   [
+    1.53645576,
+    0.686601725,
+    -248.491187324
+   ],
+   [
+    -0.686601725,
+    1.53645576,
+    22.362294004
+   ],
+   [
+    0.0,
+    0.0,
+    1.0
+   ]
+  ]
+ },
+ {
+  "name": "curve_10",
+  "map": "map_olives.png",
+  "photo": "photos/curve_10.jpg",
+  "prior": {
+   "heading_deg": 75.8,
+   "heading_sigma_deg": 10.0,
+   "zoom": 1.652
+  },
+  "effects": "mild",
+  "map_m_per_px": 0.9694,
+  "H": [
+   [
+    0.551738173,
+    1.613438381,
+    -233.702609412
+   ],
+   [
+    -1.613438381,
+    0.551738173,
+    510.764403059
+   ],
+   [
+    0.0,
+    0.0,
+    1.0
+   ]
+  ]
+ },
+ {
+  "name": "curve_11",
+  "map": "map_harbour.png",
+  "photo": "photos/curve_11.jpg",
+  "prior": {
+   "heading_deg": 222.1,
+   "heading_sigma_deg": 10.0,
+   "zoom": 1.425
+  },
+  "effects": "shaken",
+  "map_m_per_px": 0.9688,
+  "H": [
+   [
+    -1.024340643,
+    -1.007586064,
+    838.657273725
+   ],
+   [
+    1.007586064,
+    -1.024340643,
+    243.780795055
+   ],
+   [
+    0.0,
+    0.0,
+    1.0
+   ]
+  ]
+ }
+]

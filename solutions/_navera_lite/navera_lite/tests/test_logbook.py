@@ -1,0 +1,72 @@
+"""Tests of navera_lite/logbook.py (mission 04). Written for the course; it is not NAVERA code."""
+import math
+
+import numpy as np
+import pandas as pd
+
+from navera_lite.logbook import (add_motion, apply_corrections, clean, haversine_m, noise_by_source, outage_runs,
+                                 outage_table, state_shares, unit_suspects)
+
+NAN = float("nan")
+
+
+def test_haversine_london_paris():
+    assert abs(haversine_m(51.5074, -0.1278, 48.8566, 2.3522) - 343_556.1) < 1.0
+
+
+def test_clean_counts_in_order_and_keeps_empty_cells():
+    df = pd.DataFrame({"flight_id": ["b", "a", "a", "a", "a", "a"], "time_s": [0, 0, 2, 2, 4, 6],
+                       "lat": [1.0, 1.0, 0.0, 0.0, NAN, 1.0], "lon": [2.0, 2.0, 0.0, 0.0, NAN, 2.0],
+                       "alt_m": [10.0, 10.0, 10.0, 10.0, 10.0, 9999.0]})
+    out, removed = clean(df)
+    assert removed == {"duplicates": 1, "null_island": 1, "bad_altitude": 1}
+    assert list(out["flight_id"]) == ["a", "a", "b"] and list(out.index) == [0, 1, 2]
+    assert out["lat"].isna().sum() == 1
+    assert len(df) == 6                                    # the input is not changed
+
+
+def test_add_motion_stays_within_each_flight():
+    df = pd.DataFrame({"flight_id": ["f1", "f1", "f2"], "time_s": [0, 2, 0], "lat": [35.0, 35.0002, 36.0],
+                       "lon": [10.0, 10.0, 11.0]})
+    out = add_motion(df)
+    assert math.isnan(out["dt_s"][0]) and math.isnan(out["dt_s"][2]) and out["dt_s"][1] == 2.0
+    assert abs(out["pos_speed_mps"][1] - 11.12) < 0.01
+
+
+def test_outage_runs_edges():
+    assert outage_runs([1, 0, 0, 1, 0]) == [(1, 3), (4, 5)]
+    assert outage_runs([0, 0, 1]) == [(0, 2)]
+    assert outage_runs([1, 1]) == []
+    assert outage_runs(np.array([True, False])) == [(1, 2)]
+
+
+def test_outage_table_and_shares():
+    t = pd.DataFrame({"flight_id": ["a"] * 4 + ["b"] * 2, "time_s": [0, 2, 4, 6, 0, 2],
+                      "gps_valid": [1, 0, 0, 1, 1, 1], "state": ["FIX", "DEGRADED", "DEGRADED", "FIX", "FIX", "FIX"]})
+    out = outage_table(t)
+    assert list(out.index) == ["a", "b"]
+    assert out.loc["a", "longest_s"] == 4.0 and out.loc["b", "total_s"] == 0.0
+    assert state_shares(t) == {"a": {"FIX": 50.0, "DEGRADED": 50.0, "NO_FIX": 0.0},
+                               "b": {"FIX": 100.0, "DEGRADED": 0.0, "NO_FIX": 0.0}}
+
+
+def test_noise_by_source_example():
+    e = np.array([-30.0, -2.0, -1.0, 0.0, 0.0, 1.0, 1.0])
+    df = pd.DataFrame({"source": ["gps"] * 7, "pos_speed_mps": e + 5.0, "speed_mps": [5.0] * 7})
+    r = noise_by_source(df).loc["gps"]
+    assert r["n"] == 7 and abs(r["std_mps"] - 11.33) < 0.01 and abs(r["mad_sigma_mps"] - 1.4826) < 1e-6
+    assert abs(r["p95_abs_mps"] - 21.6) < 1e-9
+
+
+def test_apply_corrections_leaves_other_flights():
+    df = pd.DataFrame({"flight_id": ["a", "b"], "time_s": [100, 100], "speed_mps": [36.0, 10.0]})
+    out = apply_corrections(df, {"a": -60}, {"a": 1 / 3.6})
+    assert list(out["time_s"]) == [40, 100] and abs(out["speed_mps"][0] - 10.0) < 1e-9 and out["speed_mps"][1] == 10.0
+    assert list(df["time_s"]) == [100, 100]
+
+
+def test_unit_suspects():
+    df = pd.DataFrame({"flight_id": ["a"] * 3 + ["b"] * 3 + ["c"] * 3,
+                       "speed_mps": [19.5, 19.4, 19.6, 10.1, 10.0, 10.2, 5.0, 5.0, 5.0],
+                       "pos_speed_mps": [10.0, 10.0, NAN, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0]})
+    assert unit_suspects(df) == {"a": "kn", "c": "?"}

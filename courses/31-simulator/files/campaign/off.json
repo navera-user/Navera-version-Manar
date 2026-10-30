@@ -1,0 +1,1 @@
+{"name": "off", "vehicle": "drone", "vision": "target", "seed": 13, "duration_s": 110, "faults": [[30, "gps", "off"], [70, "gps", "ok"]]}

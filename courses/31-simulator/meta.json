@@ -1,0 +1,3 @@
+{"number": "31", "title": "Simulation and fault injection: SITL, MAVLink and NAVERA's simulator", "module": 7, "duration": "7 h 30",
+ "summary": "Close the loop: your NAVERA Lite flies a simulated vehicle whose autopilot only knows the MAVLink bytes you send it. Decode GPS_INPUT byte by byte, check the simulator's sensor models (Gauss–Markov noise, Rayleigh errors), derive expected values from the rules, run a fault-injection campaign (jam, silence, jump, drift, blackout, late camera, IMU) as a test engineer, diagnose the run that fails — then fly your own judge, guard, Kalman filter and trained networks in the loop.",
+ "resources": [], "open": ["navera_lite/output.py", "navera_lite/sim/sensors.py", "campaign.py", "answers.py"], "check_timeout_s": 300}

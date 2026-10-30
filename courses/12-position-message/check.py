@@ -1,296 +1,518 @@
+import contextlib
+import csv
+import io
 import json
 import math
+import os
 import re
+import tempfile
 import time
 
-from academy_check import Background, Checker, load_student, need, wait_for_messages
+from academy_check import (Background, CheckFailed, Checker, explained, hidden, is_stub, load_student, need,
+                           predicted, publishers_ok, run, wait_for_messages)
 
 c = Checker()
-STAMP = (1_800_000_000, 250_000_000)
-REF_COV = [83.25, 81.8394, 0.0, 81.8394, 177.75, 0.0, 0.0, 0.0, 36.0]
+
+# ---------------------------------------------------------------- expected values (course reference:
+# solutions/12-position-message/expected.py on datasets/12-position-message/day_vision_lag.csv; the unseen
+# eligibility faults are courses/12-position-message/hidden/eligible_faults.json)
+DEFAULTS = {"gps_timeout_s": 3.0, "day_timeout_s": 5.0, "night_timeout_s": 5.0, "celestial_timeout_s": 45.0,
+            "future_tolerance_s": 0.5, "fix_max_sigma_m": 25.0, "min_stated_sigma_m": 0.01,
+            "switch_holdoff_s": 2.0, "tick_hz": 5.0, "max_speed_mps": 100.0, "gps_jump_margin_m": 50.0,
+            "vehicle": "drone"}
+TIMEOUT_KEY = {"gps": "gps_timeout_s", "day": "day_timeout_s", "night": "night_timeout_s",
+               "celestial": "celestial_timeout_s"}
+SOURCES = ("gps", "day", "night", "celestial")
+LAB = {"LAG_PLANE_MEDIAN_M": (64.30, 0.06), "LAG_PLANE_WITHIN_PCT": (0.0, 0.01),
+       "LAG_DRONE_WITHIN_PCT": (76.88, 0.07), "LAG_OLD_WINDOW_REFUSED": (6, 0),
+       "LAG_SPEED_MAX_MPS": (13.025, 0.175)}     # 12.85–13.2: 13.0 measured, 13.1 = 30 / p90 (2.284 s)
+NIGHT = {"source": "night", "lat": 35.7712, "lon": 10.8265, "stamp_s": 812.4,
+         "a": 324.0, "b": 0.0, "c": 576.0, "up": 900.0, "cov_type": 2}          # lab Step 1
+ATTACKS = ("zero", "unknown", "not_psd", "future")
 
 
-def src():
-    return load_student("my_source.py")
+def quiet(name):
+    with contextlib.redirect_stdout(io.StringIO()):
+        return load_student(name, fresh=True)
 
 
-def E():
-    """NAVERA's own arbiter class, imported from the student's NAVERA copy."""
-    from navera_estimator.nodes.estimator_node import EstimatorNode
-    return EstimatorNode
+def functions(*names):
+    fns = need(quiet("navera_lite.estimate"), *names)
+    for f in fns:
+        if is_stub(f):
+            raise CheckFailed(f"{f.__name__}() is not written yet (it is still the TODO stub in navera_lite/estimate.py)")
+    return fns
 
 
-def build(cov=None):
-    from builtin_interfaces.msg import Time
-    from navera_msgs.msg import PositionEstimate as P
-    (b, ec) = need(src(), "build_estimate", "enu_covariance")
-    m = b(35.8277, 10.6388, cov if cov is not None else ec(15.0, 6.0, 30.0, 6.0),
-          P.COVARIANCE_TYPE_APPROXIMATED, Time(sec=STAMP[0], nanosec=STAMP[1]))
-    c.ok(isinstance(m, P), f"build_estimate should return a PositionEstimate, got {type(m).__name__}")
-    return m
+def answers(*names):
+    return need(quiet("answers.py"), *names)
 
 
-def fault(name):
-    (f,) = need(src(), "apply_fault")
-    m = f(build(), name)
-    c.ok(m is not None, "apply_fault must return the message (return est)")
-    return m
+TIPS = [("is not iterable", " — refuse what is not a list of 9 numbers first (try/except TypeError), before you "
+                               "loop over it"),
+        ("has no len()", " — refuse what is not a list of 9 numbers first (try/except TypeError, or isinstance)"),
+        ("not subscriptable", " — cov9[k] on something that is not a list: refuse it with \"not 9 numbers\" first"),
+        ("could not convert", " — float() of a text: catch ValueError and answer \"not 9 numbers\""),
+        ("KeyError", " — cfg keys are the names of navera_lite.yaml; TIMEOUT_KEY[source] names a source's timeout: "
+                     "test `source in TIMEOUT_KEY` before using it"),
+        ("'tuple' object has no attribute", " — stated_sigma(est, cfg) takes an Estimate (est.cov, est.cov_type)"),
+        ("not supported between instances", " — a comparison with None or a text: one value is not a number")]
 
 
-def secs(t):
-    return t.sec + t.nanosec * 1e-9
-
-
-@c.test("my_source.py and probability.py load without errors",
-        hint="Run `python3 -c \"import my_source, probability\"` and read the error.")
-def _():
-    need(src(), "enu_covariance", "is_psd_2x2", "error_ellipse", "build_estimate", "apply_fault", "MySource")
-    need(load_student("probability.py"), "mahalanobis2", "p_inside")
-
-
-@c.test("TODO 1 — enu_covariance(): Σ = R·diag(σa², σc²)·Rᵀ, row-major, floats",
-        hint="Σ_EE = A·sin²h + C·cos²h, Σ_NN = A·cos²h + C·sin²h, Σ_EN = Σ_NE = (A − C)·sin h·cos h, Σ_UU = σ_up²; "
-             "h in radians; 9 floats.")
-def _():
-    (f,) = need(src(), "enu_covariance")
-    cov = f(15.0, 6.0, 30.0, 6.0)
-    c.ok(isinstance(cov, (list, tuple)) and len(cov) == 9, f"expected 9 numbers, got {cov!r}")
-    c.ok(all(isinstance(x, float) for x in cov), f"all 9 numbers must be floats, got {cov!r}")
-    for i, want in enumerate(REF_COV):
-        c.near(cov[i], want, 1e-3, f"enu_covariance(15, 6, 30, 6)[{i}]")
-    c.eq([round(x, 9) for x in f(10.0, 2.0, 0.0)], [4.0, 0.0, 0.0, 0.0, 100.0, 0.0, 0.0, 0.0, 0.0],
-         "enu_covariance(10, 2, 0) (along = north)")
-
-
-@c.test("TODO 2 — is_psd_2x2() agrees with NAVERA's _sane() on six matrices",
-        hint="Finite; Σ_EE ≥ 0 and Σ_NN ≥ 0; |Σ_EN − Σ_NE| small; Σ_EE·Σ_NN − Σ_EN·Σ_NE ≥ −tolerance.")
-def _():
-    from navera_msgs.msg import PositionEstimate as P
-    (f,) = need(src(), "is_psd_2x2")
-    cases = [REF_COV, [100.0, 120.0, 0.0, 120.0, 100.0, 0.0, 0.0, 0.0, 0.0],
-             [4.0, 1.0, 0.0, 2.0, 4.0, 0.0, 0.0, 0.0, 0.0], [-1.0, 0.0, 0.0, 0.0, 4.0, 0.0, 0.0, 0.0, 0.0],
-             [4.0, 2.0, 0.0, 2.0, 1.0, 0.0, 0.0, 0.0, 0.0], [math.nan, 0.0, 0.0, 0.0, 4.0, 0.0, 0.0, 0.0, 0.0]]
-    for cov in cases:
-        m = P(latitude=35.8277, longitude=10.6388, position_covariance=[float(x) for x in cov])
-        c.eq(bool(f(cov)), E()._sane(m), f"is_psd_2x2({cov[:5]}…) compared with NAVERA's _sane")
-
-
-@c.test("TODO 3 — error_ellipse(): semi-axes from the eigenvalues, heading of the major axis",
-        hint="λ = (a+c)/2 ± √(((a−c)/2)² + b²); heading = ½·atan2(2b, c − a) in degrees, modulo 180.")
-def _():
-    (f, ec) = need(src(), "error_ellipse", "enu_covariance")
-    for a, cc, h in ((15.0, 6.0, 30.0), (30.0, 5.0, 45.0), (20.0, 4.0, 120.0), (8.0, 3.0, 0.0)):
-        out = f(ec(a, cc, h))
-        c.ok(isinstance(out, (tuple, list)) and len(out) == 3, f"error_ellipse should return 3 numbers, got {out!r}")
-        c.near(out[0], a, 1e-6, f"semi-major for ({a}, {cc}, {h}°)")
-        c.near(out[1], cc, 1e-6, f"semi-minor for ({a}, {cc}, {h}°)")
-        c.near(out[2] % 180.0, h, 1e-6, f"heading of the major axis for ({a}, {cc}, {h}°)")
-
-
-@c.test("TODO 4 — build_estimate(): WHO, HOW and the stamps",
-        hint="source DAY_VISION, mode MEASURED, valid True, reason \"\"; header.stamp AND sensor_stamp = stamp; "
-             "producer \"my_source\", model_id \"lesson12\", frame_index -1, frame_id \"student_camera\".")
-def _():
-    from navera_msgs.msg import PositionEstimate as P
-    m = build()
-    c.eq((m.source, m.mode, m.valid, m.reason), (P.SOURCE_DAY_VISION, P.MODE_MEASURED, True, ""),
-         "(source, mode, valid, reason)")
-    c.eq((m.header.stamp.sec, m.header.stamp.nanosec), STAMP, "header.stamp")
-    c.eq((m.sensor_stamp.sec, m.sensor_stamp.nanosec), STAMP, "sensor_stamp")
-    c.eq((m.producer, m.model_id, m.frame_index, m.header.frame_id),
-         ("my_source", "lesson12", -1, "student_camera"), "(producer, model_id, frame_index, frame_id)")
-
-
-@c.test("TODO 4 — WHERE: NaN altitude, your covariance, and NAVERA finds it sane with a stated 13.3 m",
-        hint="Course section 1 ('where'): an unknown altitude is not 0, it is 'not a number'; the covariance and its "
-             "type are the ones you built in TODO 1–3. Section 6, 'What stated σ means in the code', explains the 13.3 m.")
-def _():
-    m = build()
-    c.ok(math.isnan(m.altitude), f"altitude is {m.altitude} — unknown must be math.nan (0.0 is sea level)")
-    c.near(m.latitude, 35.8277, 1e-9, "latitude")
-    c.near(m.position_covariance[1], REF_COV[1], 1e-3, "position_covariance[1]")
-    c.ok(E()._sane(m), "NAVERA's EstimatorNode._sane(your message) is False")
-    c.near(E()._stated_sigma(m), math.sqrt(177.75), 1e-6, "NAVERA's _stated_sigma(your message)")
-
-
-@c.test("TODO 5 — faults that break the WHERE: nan, not_psd, unknown_cov, big_sigma, tilted",
-        hint="not_psd: indices 1 AND 3 = 2·√(Σ_EE·Σ_NN). unknown_cov: nine 0.0 + COVARIANCE_TYPE_UNKNOWN. "
-             "big_sigma / tilted: enu_covariance(30, 30, HEADING_DEG, SIGMA_UP_M) / (30, 5, 45.0, SIGMA_UP_M).")
-def _():
-    from navera_msgs.msg import PositionEstimate as P
-    k = E()
-    m = fault("nan")
-    c.ok(math.isnan(m.latitude) and not k._sane(m), "fault 'nan': latitude must be NaN and NAVERA must refuse it")
-    m = fault("not_psd")
-    cov = list(m.position_covariance)
-    c.ok(cov[1] == cov[3] and cov[1] > math.sqrt(cov[0] * cov[4]), f"fault 'not_psd': indices 1 and 3 = {cov[1]}, {cov[3]}")
-    c.ok(not k._sane(m) and math.isfinite(m.latitude), "fault 'not_psd': NAVERA must refuse it (and the position stays)")
-    m = fault("unknown_cov")
-    c.ok(list(m.position_covariance) == [0.0] * 9 and m.position_covariance_type == P.COVARIANCE_TYPE_UNKNOWN,
-         "fault 'unknown_cov': nine zeros and COVARIANCE_TYPE_UNKNOWN")
-    c.ok(k._sane(m) and k._stated_sigma(m) is None, "fault 'unknown_cov' must stay sane, with no stated sigma")
-    c.near(k._stated_sigma(fault("big_sigma")), 30.0, 1e-6, "stated sigma of fault 'big_sigma'")
-    c.near(k._stated_sigma(fault("tilted")), math.sqrt(462.5), 1e-6, "stated sigma of fault 'tilted'")
-    c.ok(k._sane(fault("none")), "fault 'none' must leave a good estimate")
-
-
-@c.test("TODO 5 — faults of WHEN and HOW: stale, latency, future, invalid, replayed, held, propagated",
-        hint="stale / latency: ONLY sensor_stamp, 10 s / 2 s earlier (use shifted()). future: BOTH stamps +5 s. "
-             "invalid: valid False, reason \"lens covered\". replayed / held / propagated: the mode.")
-def _():
-    from navera_msgs.msg import PositionEstimate as P
-    t0 = STAMP[0] + STAMP[1] * 1e-9
-    m = fault("stale")
-    c.near(secs(m.sensor_stamp), t0 - 10.0, 1e-6, "fault 'stale': sensor_stamp")
-    c.near(secs(m.header.stamp), t0, 1e-6, "fault 'stale': header.stamp (must NOT change: published now)")
-    m = fault("latency")
-    c.near(secs(m.sensor_stamp), t0 - 2.0, 1e-6, "fault 'latency': sensor_stamp")
-    c.near(secs(m.header.stamp), t0, 1e-6, "fault 'latency': header.stamp")
-    m = fault("future")
-    c.near(secs(m.sensor_stamp), t0 + 5.0, 1e-6, "fault 'future': sensor_stamp")
-    c.near(secs(m.header.stamp), t0 + 5.0, 1e-6, "fault 'future': header.stamp")
-    m = fault("invalid")
-    c.eq((m.valid, m.reason), (False, "lens covered"), "fault 'invalid': (valid, reason)")
-    for name, mode in (("replayed", P.MODE_REPLAYED), ("held", P.MODE_HELD), ("propagated", P.MODE_PROPAGATED)):
-        c.eq(fault(name).mode, mode, f"fault '{name}': mode")
-
-
-def results():
+def go(fn, *args, **kw):
+    """run() with one more sentence for the errors students meet most in this mission."""
     try:
-        return json.load(open("results.json"))
-    except FileNotFoundError:
-        c.ok(False, "results.json does not exist yet — run `python3 probability.py`")
-    except ValueError as e:
-        c.ok(False, f"results.json is not valid JSON: {e}")
+        return run(fn, *args, **kw)
+    except CheckFailed as e:
+        msg = str(e)
+        for key, tip in TIPS:
+            if key in msg:
+                raise CheckFailed(msg + tip)
+        raise
 
 
-@c.test("TODO 6/7 — probability.py: Mahalanobis distance, theory and sampling agree (results.json)",
-        hint="Course section 3: the Mahalanobis distance uses the INVERSE of the 2 × 2 covariance (write it with the "
-             "determinant), and the probability inside k σ in 2-D is the closed form derived there — not the "
-             "1-D 68 % rule. Then run `python3 probability.py`.")
+def pair(got, what):
+    """(ok, reason) as returned by is_covariance / eligible, or a clear ✘."""
+    if not (isinstance(got, (tuple, list)) and len(got) == 2):
+        raise CheckFailed(f"{what} must return a pair (ok, reason), like (False, \"not finite\"), got {got!r}")
+    if not isinstance(got[0], bool):
+        raise CheckFailed(f"{what}: the first item must be True or False (a bool), got {got[0]!r}")
+    if not isinstance(got[1], str):
+        raise CheckFailed(f"{what}: the second item must be the reason as text, got {got[1]!r}")
+    return got[0], got[1]
+
+
+def cov9(a, b, c, up=0.0):
+    return [float(a), float(b), 0.0, float(b), float(c), 0.0, 0.0, 0.0, float(up)]
+
+
+def number(v, name):
+    if isinstance(v, bool) or isinstance(v, str) or v is None:
+        raise CheckFailed(f"{name} should be a number without quotes, got {v!r}")
+    try:
+        x = float(v)
+    except (TypeError, ValueError):
+        raise CheckFailed(f"{name} should be a number, got {v!r}")
+    if not math.isfinite(x):
+        raise CheckFailed(f"{name} is {x}: not a usable number")
+    return x
+
+
+# ---------------------------------------------------------------- the checker's own judges (models of arbiter v0
+# and of an honest judge, written independently of the student's files) for the attack scenarios
+def _dist_m(lat1, lon1, lat2, lon2):
+    k = math.pi / 180.0 * 6371000.0
+    return math.hypot((lon2 - lon1) * k * math.cos(math.radians((lat1 + lat2) / 2)), (lat2 - lat1) * k)
+
+
+def _finite_latlon(lat, lon):
+    return (math.isfinite(lat) and math.isfinite(lon) and abs(lat) <= 90 and abs(lon) <= 180
+            and not (lat == 0 and lon == 0))
+
+
+def _is_cov(a, b, c):
+    vals = (a, b, c)
+    size = max(1.0, abs(a), abs(c))
+    return all(math.isfinite(v) for v in vals) and a >= 0 and c >= 0 and a * c - b * b >= -1e-9 * size * size
+
+
+def read_attack(path):
+    """The rows of an attack CSV, as the replay node reads them, or a CheckFailed with the reason."""
+    rows = []
+    with open(path, newline="") as f:
+        reader = csv.DictReader(f)
+        need_cols = {"t_s", "source", "lat", "lon"}
+        if not reader.fieldnames or not need_cols <= set(h.strip() for h in reader.fieldnames):
+            raise CheckFailed(f"{path}: the header must be t_s,source,lat,lon,a,b,c,cov_type,valid,delay_s "
+                              f"(got {reader.fieldnames})")
+        for n, raw in enumerate(reader, start=2):
+            raw = {k.strip(): (v or "").strip() for k, v in raw.items() if k}
+            try:
+                row = {"t_s": float(raw["t_s"]), "source": raw["source"], "lat": float(raw["lat"]),
+                       "lon": float(raw["lon"])}
+                for key, default, kind in (("a", 0.0, float), ("b", 0.0, float), ("c", 0.0, float),
+                                           ("cov_type", 0, int), ("valid", 1, int), ("delay_s", 0.0, float)):
+                    row[key] = kind(raw[key]) if raw.get(key) else default
+            except (KeyError, ValueError) as e:
+                raise CheckFailed(f"{path} line {n}: this row cannot be read ({e})")
+            if row["source"] not in SOURCES:
+                raise CheckFailed(f"{path} line {n}: source must be one of {', '.join(SOURCES)}")
+            rows.append(row)
+    if not rows:
+        raise CheckFailed(f"{path} has no row: write at least one fix under the header")
+    return sorted(rows, key=lambda r: r["t_s"])
+
+
+def verdict(rows, honest, extra_s=0.5):
+    """(state, reason, judged_row) at extra_s after the last row: arbiter v0's rules, or an honest judge's."""
+    latest, trusted = {}, None
+    for r in rows:
+        stamp = r["t_s"] - r["delay_s"]
+        if r["source"] == "gps" and r["valid"] and _finite_latlon(r["lat"], r["lon"]):
+            if trusted is not None:
+                el = max(0.0, stamp - trusted[2])
+                if _dist_m(trusted[0], trusted[1], r["lat"], r["lon"]) > 100.0 * el + 50.0:
+                    continue                                  # the jump gate refuses it
+            trusted = (r["lat"], r["lon"], stamp)
+        latest[r["source"]] = r
+    now = rows[-1]["t_s"] + extra_s
+    whys = []
+    for name in SOURCES:
+        r = latest.get(name)
+        if r is None:
+            continue
+        age = now - (r["t_s"] - r["delay_s"])
+        timeout = DEFAULTS[TIMEOUT_KEY[name]]
+        stated = r["cov_type"] in (1, 2, 3)
+        if not r["valid"]:
+            why = "no position"
+        elif not _finite_latlon(r["lat"], r["lon"]):
+            why = "bad position"
+        elif honest and stated and not _is_cov(r["a"], r["b"], r["c"]):
+            why = "not a covariance"
+        elif honest and age < -DEFAULTS["future_tolerance_s"]:
+            why = "from the future"
+        elif age > timeout:
+            why = "stale"
+        else:
+            if honest:
+                ok = stated and _is_cov(r["a"], r["b"], r["c"])
+                sigma = math.sqrt(max(r["a"], r["c"])) if ok else None
+                if sigma is not None and sigma < DEFAULTS["min_stated_sigma_m"]:
+                    sigma = None
+            else:
+                m = max(r["a"], r["c"], 0.0)
+                sigma = math.sqrt(m) if math.isfinite(m) else None
+            if sigma is None:
+                return "DEGRADED", f"{name}: σ unknown", r
+            if sigma > DEFAULTS["fix_max_sigma_m"]:
+                return "DEGRADED", f"{name}: σ {sigma:.1f} m > 25.0 m", r
+            return "FIX", f"{name}: σ {sigma:.1f} m", r
+        whys.append(f"{name}: {why}")
+    return "NO_FIX", "no usable source (" + "; ".join(whys) + ")", None
+
+
+def attack_rows(name):
+    path = f"attacks/{name}.csv"
+    if not os.path.exists(path):
+        raise CheckFailed(f"{path} does not exist yet (lab Step 5)")
+    return read_attack(path)
+
+
+# ================================================================ Session 1 — the contract
+@c.test("Step 1 — MY_ESTIMATE fills the contract for the night-vision fix",
+        hint="Lesson §1 and §2: the stamp is when the frame was TAKEN; the covariance holds variances (σ², m²); "
+             "a type that says what is known and nothing more; an unknown altitude is nan, not 0.")
 def _():
-    p = load_student("probability.py")
-    c.near(p.p_inside(2.0), 1 - math.exp(-2.0), 1e-9, "p_inside(2)")
-    c.near(p.mahalanobis2(15.0 * math.sin(math.radians(30)), 15.0 * math.cos(math.radians(30)), REF_COV), 1.0, 1e-3,
-           "mahalanobis2 of a 1-sigma error along the major axis")
-    r = (results() or {}).get("probability")
-    c.ok(isinstance(r, dict), "results.json has no `probability` section — run python3 probability.py")
-    for k, want in (("1.0", 0.3935), ("2.0", 0.8647), ("2.448", 0.9500)):
-        c.near(r["theory"][k], want, 1e-3, f"probability.theory[{k}]")
-        c.near(r["sampled"][k], want, 0.006, f"probability.sampled[{k}]")
-    c.near(r["east_within_1sigma"], 0.6827, 0.006, "probability.east_within_1sigma")
-    s = (results() or {}).get("stated_vs_max") or {}
-    c.ok("tilted" in s and s["tilted"].get("stated_sigma_m") is not None, "results.json has no stated_vs_max.tilted")
-    c.near(s["tilted"]["sigma_max_m"], 30.0, 1e-3, "stated_vs_max.tilted.sigma_max_m")
-    c.near(s["tilted"]["stated_sigma_m"], math.sqrt(462.5), 1e-3, "stated_vs_max.tilted.stated_sigma_m")
+    (e,) = answers("MY_ESTIMATE")
+    c.ok(e is not None, "MY_ESTIMATE is still None: write Estimate(...) for the night-vision fix of lab Step 1")
+    try:
+        src, lat, lon, stamp = e.source, e.lat, e.lon, e.stamp_s
+        cov, ctype, alt, valid = list(e.cov), e.cov_type, e.alt_m, e.valid
+    except Exception:
+        raise CheckFailed(f"MY_ESTIMATE must be an Estimate(...) (from navera_lite.estimate), got {e!r}")
+    c.ok(src == NIGHT["source"], f"source is {src!r}: which source matched a THERMAL frame? (estimate.SOURCES)")
+    c.ok(abs(number(lat, "lat") - NIGHT["lat"]) < 1e-6 and abs(number(lon, "lon") - NIGHT["lon"]) < 1e-6,
+         f"lat, lon = {lat}, {lon}: copy the position of the sentence (degrees, north and east are positive)")
+    st = number(stamp, "stamp_s")
+    c.ok(abs(st - 813.5) > 1e-6, "stamp_s is when the result was PUBLISHED: the contract stamps the MEASUREMENT "
+                                 "(when the frame was taken) — lesson §4")
+    c.ok(abs(st - NIGHT["stamp_s"]) < 1e-6, f"stamp_s = {stamp}: the instant the frame was taken, on the judge's clock")
+    c.ok(len(cov) == 9, f"cov must hold 9 numbers, got {len(cov)}")
+    if abs(cov[0] - 18.0) < 1e-6 or abs(cov[4] - 24.0) < 1e-6:
+        raise CheckFailed("cov holds σ (18, 24): a covariance holds VARIANCES, σ² in m² (lesson §2)")
+    c.ok(abs(cov[0] - NIGHT["a"]) < 1e-6 and abs(cov[4] - NIGHT["c"]) < 1e-6,
+         f"cov[0], cov[4] = {cov[0]}, {cov[4]}: a = σE² at index 0, c = σN² at index 4 (lesson §2)")
+    c.ok(cov[1] == 0 and cov[3] == 0, "b (indices 1 and 3) must be 0: the matcher does not know the correlation, and "
+                                       "a type that says so is how you tell it (not an invented number)")
+    c.ok(abs(cov[8] - NIGHT["up"]) < 1e-6, f"cov[8] = {cov[8]}: the up variance, σU² (m²)")
+    c.ok(ctype == NIGHT["cov_type"], f"cov_type = {ctype!r}: the three variances are known, the correlations are not "
+                                    "— which type says exactly that? (lesson §3)")
+    c.ok(isinstance(alt, float) and math.isnan(alt), f"alt_m = {alt!r}: the altitude is unknown — 0.0 would mean sea "
+                                                      "level (lesson §1)")
+    c.ok(valid is True, "valid must be True: the source has a position")
 
 
-LIVE_FAULTS = ("none", "stale", "latency", "not_psd", "future", "big_sigma", "tilted")
-RES = {}
-
-
-def verdicts():
-    """Run NAVERA's estimator once, and the source with several faults; keep the last status of each."""
-    if not RES:
-        from navera_msgs.msg import NavStatus, PositionEstimate
-        RES["_"] = None
-        with Background("ros2 run navera_estimator estimator_node.py", settle=2.5):
-            for f in LIVE_FAULTS:
-                with Background(f"python3 -u my_source.py {f}", settle=2.0) as bg:
-                    time.sleep(3.5)       # slow machines: let the arbiter discover the new source
-                    msgs = wait_for_messages("/navera/nav_status", NavStatus, count=3, timeout=6)
-                    pos = wait_for_messages("/navera/position", PositionEstimate, count=1, timeout=5.0) \
-                        if f == "none" else []
-                RES[f] = (msgs[-1] if msgs else None, pos, bg.output())
-    return RES
-
-
-def status_of(f):
-    st, pos, out = verdicts()[f]
-    c.ok(st is not None, "no /navera/nav_status message — the estimator did not run. Your node printed:\n" + out[-500:])
-    return st, pos
-
-
-@c.test("live — `python3 my_source.py`: FIX from day vision, and NAVERA republishes your position",
-        hint="Run the estimator and your source, then `ros2 topic echo /navera/nav_status --field reason`. "
-             "A FIX needs valid, MEASURED, fresh (sensor_stamp), sane, and a stated sigma ≤ 25 m.")
+@c.test("TODO 1 — is_covariance() accepts real covariances it has never seen",
+        hint="Lesson §2: symmetric, a ≥ 0, c ≥ 0, σU² ≥ 0 and a·c − b² ≥ 0, with a tolerance RELATIVE to the size of the "
+             "numbers (the docstring says how). A negative b is allowed; a correlation of exactly ±1 is allowed, even "
+             "with km-sized σ where rounding makes a·c − b² slightly negative.")
 def _():
-    from navera_msgs.msg import NavStatus
-    st, pos = status_of("none")
-    c.ok(st.state == NavStatus.STATE_FIX and st.active_source == NavStatus.SOURCE_DAY_VISION,
-         f"state {st.state}, source {st.active_source}, reason: {st.reason!r}")
-    c.ok(pos and abs(pos[0].latitude - 35.8277) < 1e-6 and pos[0].producer == "navera_estimator",
-         "no /navera/position with your latitude (35.8277) re-signed by navera_estimator")
+    (f,) = functions("is_covariance")
+    good = [("a=400, b=−150, c=100 (a negative correlation)", cov9(400, -150, 100, 2500)),
+            ("a=16, b=12, c=9 (correlation exactly 1: determinant 0)", cov9(16, 12, 9)),
+            ("all zero", cov9(0, 0, 0)),
+            ("b differs by 1e-12 between its two places", [4.0, 0.5, 0, 0.5 + 1e-12, 4.0, 0, 0, 0, 1.0]),
+            ("a tuple, not a list", tuple(cov9(25, 5, 36, 49))),
+            ("σ 1.5 km and 4.3 km, correlation exactly 1 (a·c − b² rounds to −0.016 m⁴)",
+             cov9(1533.134075052139 ** 2, 1533.134075052139 * 4338.682908789684, 4338.682908789684 ** 2))]
+    for label, m in good:
+        ok, why = pair(go(f, m), f"is_covariance({label})")
+        c.ok(ok is True and why == "ok", f"is_covariance({label}) → ({ok}, {why!r}): it is a covariance, "
+                                         "expected (True, \"ok\")")
+    ok, why = pair(go(f, cov9(4, 2.05, 1), tol=0.5), "is_covariance(a=4, b=2.05, c=1, tol=0.5)")
+    c.ok(ok is True, "a=4, b=2.05, c=1 with tol=0.5: a·c − b² = −0.2025 is within the tolerance you were given, so "
+                     "it is accepted — use the tol argument, not a fixed number")
 
 
-@c.test("live — stale is refused, latency is not: freshness is judged on sensor_stamp",
-        hint="'stale': sensor_stamp 10 s old → NO_FIX `day: stale (…)`. 'latency': sensor_stamp 2 s old, inside "
-             "the 3 s window → still FIX.")
+@c.test("TODO 1 — is_covariance() names the first broken rule, on matrices it has never seen",
+        hint="The docstring's order: 9 numbers, finite, symmetric, variances ≥ 0, then the determinant. A matrix with "
+             "a = c = −1 and b = 0 has a positive determinant: only the variance rule catches it.")
 def _():
-    from navera_msgs.msg import NavStatus
-    st, _ = status_of("stale")
-    c.ok(st.state == NavStatus.STATE_NO_FIX and "day: stale" in st.reason, f"stale: state {st.state}, reason {st.reason!r}")
-    st, _ = status_of("latency")
-    c.ok(st.state == NavStatus.STATE_FIX, f"latency: state {st.state}, reason {st.reason!r} — expected FIX")
+    (f,) = functions("is_covariance")
+    bad = [("a=16, b=12.5, c=9", cov9(16, 12.5, 9), "not positive semi-definite"),
+           ("a=4, b=2.05, c=1 (default tol)", cov9(4, 2.05, 1), "not positive semi-definite"),
+           ("a=−1, b=0, c=−1 (determinant +1)", cov9(-1, 0, -1), "negative variance"),
+           ("an up variance of −1", cov9(9, 0, 9, -1), "negative variance"),
+           ("a=9, b=10, c=9 with an up variance of 10⁶ m² (altitude unknown)", cov9(9, 10, 9, 1e6),
+            "not positive semi-definite"),
+           ("a=−4, b=1, c=4 (negative variance AND negative determinant)", cov9(-4, 1, 4), "negative variance"),
+           ("b = 0.5 at index 1, 0.5000001 at index 3", [4.0, 0.5, 0, 0.5000001, 4.0, 0, 0, 0, 1.0], "not symmetric"),
+           ("an infinite c", cov9(4, 0, float("inf")), "not finite"),
+           ("a nan AND b not symmetric", [float("nan"), 1.0, 0, 2.0, 4.0, 0, 0, 0, 0], "not finite"),
+           ("b not symmetric AND a < 0", [-4.0, 1.0, 0, 2.0, 4.0, 0, 0, 0, 0], "not symmetric")]
+    for label, m, want in bad:
+        ok, why = pair(go(f, m), f"is_covariance({label})")
+        c.ok(ok is False and why == want, f"is_covariance({label}) → ({ok}, {why!r}); expected (False, {want!r})")
 
 
-@c.test("live — not_psd and future are refused with the right reasons",
-        hint="not_psd → `day: non-finite position or covariance`; future → `day: timestamp …s in the future`.")
+@c.test("TODO 1 — is_covariance() answers anything without crashing",
+        hint="Whatever arrives from the network: None, a number, 8 or 10 numbers, text. Refuse it with "
+             "(False, \"not 9 numbers\") before you index it (try/except TypeError, ValueError).")
 def _():
-    from navera_msgs.msg import NavStatus
-    st, _ = status_of("not_psd")
-    c.ok(st.state == NavStatus.STATE_NO_FIX and "non-finite" in st.reason, f"not_psd: state {st.state}, reason {st.reason!r}")
-    st, _ = status_of("future")
-    c.ok(st.state == NavStatus.STATE_NO_FIX and "in the future" in st.reason, f"future: state {st.state}, reason {st.reason!r}")
+    (f,) = functions("is_covariance")
+    for label, m in (("None", None), ("the number 12.0", 12.0), ("10 numbers", [1.0] * 10),
+                     ("8 numbers", [1.0] * 8), ("the text 'abc'", "abc"), ("an empty list", [])):
+        ok, why = pair(go(f, m), f"is_covariance({label})")
+        c.ok(ok is False and why == "not 9 numbers", f"is_covariance({label}) → ({ok}, {why!r}); expected "
+                                                     "(False, \"not 9 numbers\")")
 
 
-@c.test("live — big_sigma is DEGRADED but tilted is FIX (the design question)",
-        hint="big_sigma: a 30 m circle → `uncertainty 30 m > 25 m`. tilted: 30 m × 5 m at 45° → stated √462.5 = 21.5 m.")
+@c.test("TODO 2 — stated_sigma() on estimates it has never seen",
+        hint="Lesson §3: None unless the type states an accuracy (1, 2 or 3), the numbers ARE a covariance (your "
+             "is_covariance) and √max(a, c) is at least cfg[\"min_stated_sigma_m\"]. Read the minimum from cfg.")
 def _():
-    from navera_msgs.msg import NavStatus
-    st, _ = status_of("big_sigma")
-    c.ok(st.state == NavStatus.STATE_DEGRADED and "30 m > 25 m" in st.reason, f"big_sigma: state {st.state}, reason {st.reason!r}")
-    st, _ = status_of("tilted")
-    c.ok(st.state == NavStatus.STATE_FIX, f"tilted: state {st.state}, reason {st.reason!r}")
+    (f,) = functions("stated_sigma")
+    E = quiet("navera_lite.estimate").Estimate
+    base = {"source": "gps", "lat": 35.76, "lon": 10.81, "stamp_s": 50.0}
+    cases = [("type KNOWN, a=400, c=100", cov9(400, 0, 100), 3, DEFAULTS, 20.0),
+             ("type DIAGONAL_KNOWN, a=36, c=64", cov9(36, 0, 64), 2, DEFAULTS, 8.0),
+             ("type APPROXIMATED, a=900, b=200, c=100", cov9(900, 200, 100), 1, DEFAULTS, 30.0),
+             ("type UNKNOWN, a=c=100", cov9(100, 0, 100), 0, DEFAULTS, None),
+             ("type 7 (not a defined type), a=c=100", cov9(100, 0, 100), 7, DEFAULTS, None),
+             ("type APPROXIMATED, all 1e-6 m² (σ 1 mm)", cov9(1e-6, 0, 1e-6), 1, DEFAULTS, None),
+             ("type KNOWN, a = c = 1e-4 m² (σ exactly 0.01 m, the minimum)", cov9(1e-4, 0, 1e-4), 3, DEFAULTS, 0.01),
+             ("type APPROXIMATED, a=c=9 but b=10 (not PSD)", cov9(9, 10, 9), 1, DEFAULTS, None),
+             ("type APPROXIMATED, a=−9, c=4", cov9(-9, 0, 4), 1, DEFAULTS, None),
+             ("σ 3 m with min_stated_sigma_m = 5.0", cov9(9, 0, 9), 1, dict(DEFAULTS, min_stated_sigma_m=5.0), None)]
+    for label, cov, ctype, cfg, want in cases:
+        got = go(f, E(cov=tuple(cov), cov_type=ctype, **base), cfg)
+        if want is None:
+            c.ok(got is None, f"stated_sigma({label}) → {got!r}; expected None: this estimate states no usable "
+                              "accuracy")
+        else:
+            c.ok(isinstance(got, (int, float)) and not isinstance(got, bool),
+                 f"stated_sigma({label}) → {got!r}; expected a number of metres")
+            c.ok(abs(got - want) < 1e-6, f"stated_sigma({label}) → {got!r}: σ = √max(a, c), in metres (lesson §3)")
 
 
-WANT = {"none": (2, ["day vision fix"]), "nan": (1, ["non-finite"]), "not_psd": (1, ["non-finite"]),
-        "stale": (1, ["stale", ">3.0s"]), "latency": (2, ["day vision fix"]), "future": (1, ["in the future"]),
-        "invalid": (1, ["invalid", "lens covered"]), "replayed": (1, ["replayed not usable"]),
-        "held": (1, ["held not usable"]), "propagated": (3, ["propagated"]),
-        "unknown_cov": (3, ["uncertainty unknown"]), "big_sigma": (3, ["30 m > 25 m"]), "tilted": (2, ["day vision fix"])}
-
-
-@c.test("verdicts.py — the state and reason of all 13 runs, and Q1/Q2",
-        hint="For each fault, copy `state` (a number) and the day-vision part of `reason` from /navera/nav_status. "
-             "Q1/Q2: read the warning box 'The arbiter believes the stated σ'.")
+@c.test("TODO 3 — staleness_m() on values it has never seen",
+        hint="Lesson §4: the distance flown during the age. A negative speed or age raises ValueError.")
 def _():
-    (v, q1, q2) = need(load_student("verdicts.py"), "VERDICTS", "Q1", "Q2")
-    for name, (state, words) in WANT.items():
-        got = v.get(name)
-        c.ok(isinstance(got, (tuple, list)) and len(got) == 2, f"VERDICTS[{name!r}] should be (state, \"reason\")")
-        c.ok(got[0] == state, f"VERDICTS[{name!r}] state = {got[0]!r} is not what the arbiter says")
-        c.ok(all(w in str(got[1]) for w in words), f"VERDICTS[{name!r}] reason = {got[1]!r} is not what the arbiter says")
-    c.ok(str(q1).strip().lower() == "c" and str(q2).strip().lower() == "a", f"Q1 = {q1!r}, Q2 = {q2!r}: not both right")
+    (f,) = functions("staleness_m")
+    for v, a, want in ((12.5, 0.4, 5.0), (75.0, 0.8, 60.0), (0.0, 3.0, 0.0), (10, 2, 20.0)):
+        got = go(f, v, a)
+        c.ok(isinstance(got, (int, float)) and not isinstance(got, bool), f"staleness_m({v}, {a}) → {got!r}: a number")
+        c.ok(abs(got - want) < 1e-9, f"staleness_m({v}, {a}) → {got!r}: not the distance flown during the age")
+    for v, a in ((-3.0, 1.0), (20.0, -0.1)):
+        try:
+            got = f(v, a)
+        except ValueError:
+            continue
+        except Exception as e:
+            raise CheckFailed(f"staleness_m({v}, {a}) raised {type(e).__name__}; it must raise ValueError")
+        raise CheckFailed(f"staleness_m({v}, {a}) → {got!r}: a negative {'speed' if v < 0 else 'age'} must raise "
+                          "ValueError (an age below 0 is a stamp from the future: lesson §4)")
 
 
-@c.test("report.md — Covariance, Probability and Stated sigma, with your numbers",
-        hint="Keep the three headings, at least 40 words each. Covariance must quote the determinant 8100; "
-             "Probability your sampled 1-sigma fraction (0.39…); Stated sigma the value 21.5 and a design choice.")
+@c.test("Step 0 and Step 4 — the dead GPS and the lag study",
+        hint="python3 contract_lab.py lag; for the fastest speed, 30 m ÷ the p90 age, confirmed with one run of "
+             "lag --speed. Numbers without quotes; the EXPLAIN answers need a real sentence.")
 def _():
-    c.file_exists("report.md")
-    txt = open("report.md", encoding="utf-8", errors="replace").read()
-    secs_ = {}
-    for title in ("Covariance", "Probability", "Stated sigma"):
-        m = re.search(r"^##\s*" + title + r"\s*$(.*?)(?=^##\s|\Z)", txt, re.M | re.S)
-        c.ok(m is not None, f"the heading `## {title}` is missing")
-        body = re.sub(r"^\*(?=\S)[^*]+?\*\s*$", "", m.group(1), flags=re.M | re.S)
-        words = len(re.findall(r"[A-Za-z0-9_.]+", body))
-        c.ok(words >= 40, f"section {title} has {words} words of yours — write at least 40")
-        secs_[title] = body
-    c.ok("8100" in secs_["Covariance"].replace(" ", "").replace(",", ""), "the Covariance section does not give the determinant (8100)")
-    c.ok(re.search(r"0\.39|39\s*%|39\.\d\s*%", secs_["Probability"]), "the Probability section does not quote the 1-sigma fraction")
-    c.ok("21.5" in secs_["Stated sigma"], "the Stated sigma section does not quote NAVERA's stated sigma for tilted (21.5 m)")
+    a = quiet("answers.py")
+    for name in ("PREDICT_DEAD", "PREDICT_LAG"):
+        predicted(name, getattr(a, name, ""))
+    for name, (want, tol) in LAB.items():
+        x = number(getattr(a, name, None), name)
+        c.ok(abs(x - want) <= tol + 1e-9, f"{name} = {x!r} is not what `python3 contract_lab.py lag` gives "
+             + ("(compute 30 m / the p90 age, then confirm with one run of --speed: about 90 % within 30 m)"
+                if name == "LAG_SPEED_MAX_MPS" else ""))
+    explained("EXPLAIN_DEAD", getattr(a, "EXPLAIN_DEAD", ""),
+              ([r"futur", r"ahead", r"later than", r"in advance", r"negative", r"in front", r"clock", r"before now"],
+               "that the fixes were stamped in the future"),
+              ([r"age", r"old", r"negative", r"stale", r"fresh", r"timeout"],
+               "what that does to the age / the freshness test"))
+    explained("EXPLAIN_LAG", getattr(a, "EXPLAIN_LAG", ""),
+              ([r"age", r"old", r"late", r"latenc", r"delay", r"lag", r"second"], "the age of the fix"),
+              ([r"mov", r"fl[iy]", r"travel", r"speed", r"m/s", r"distance"], "that the vehicle keeps moving"))
 
 
+# ================================================================ Session 2 — attack, then defend
+@c.test("Step 5 — four attacks that fool arbiter v0",
+        hint="attacks/zero.csv, unknown.csv, not_psd.csv, future.csv (header in lab Step 5). Each must end with v0 "
+             "saying FIX: `python3 contract_lab.py attacks` shows v0's verdict.")
+def _():
+    for name in ATTACKS:
+        rows = attack_rows(name)
+        state, reason, _ = verdict(rows, honest=False)
+        c.ok(state == "FIX", f"attacks/{name}.csv: arbiter v0 says {state} ({reason}) 0.5 s after your last fix — "
+                             "the attack must make v0 say FIX")
+
+
+@c.test("Step 5 — each attack uses its own hole (an honest judge refuses it)",
+        hint="zero: a stated type with a = b = c = 0. unknown: type 0 with numbers in it. not_psd: a stated type, "
+             "a ≥ 0, c ≥ 0, but a·c < b². future: delay_s more negative than −0.5. Lesson §5, \"Attacker's view\".")
+def _():
+    rules = {
+        "zero": (lambda r: r["cov_type"] in (1, 2, 3) and r["a"] == 0 and r["b"] == 0 and r["c"] == 0,
+                 "the judged fix must state a type (1, 2 or 3) and have a = b = c = 0"),
+        "unknown": (lambda r: r["cov_type"] not in (1, 2, 3) and max(r["a"], r["c"]) > 0,
+                    "the judged fix must have cov_type 0 (unknown) and numbers in a and c that v0 reads anyway"),
+        "not_psd": (lambda r: r["cov_type"] in (1, 2, 3) and r["a"] >= 0 and r["c"] >= 0
+                    and r["a"] * r["c"] - r["b"] ** 2 < 0,
+                    "the judged fix must state a type, have a ≥ 0 and c ≥ 0, and a·c − b² < 0"),
+        "future": (lambda r: r["delay_s"] < -DEFAULTS["future_tolerance_s"],
+                   "the judged fix must be stamped in the future by more than 0.5 s (delay_s < −0.5)"),
+    }
+    for name in ATTACKS:
+        rows = attack_rows(name)
+        _, _, judged = verdict(rows, honest=False)
+        test, what = rules[name]
+        c.ok(judged is not None and test(judged), f"attacks/{name}.csv: {what}")
+        state, reason, _ = verdict(rows, honest=True)
+        c.ok(state != "FIX", f"attacks/{name}.csv: an honest judge also says FIX ({reason}) — it is a good fix, "
+                             "not an attack on a hole")
+
+
+def _load_faults():
+    try:
+        return json.loads(hidden("eligible_faults.json"))
+    except Exception as e:
+        raise CheckFailed(f"the check's test data could not be read ({e}) — tell your teacher")
+
+
+@c.test("TODO 4 — eligible() gives the right verdict on 20 situations it has never seen",
+        hint="The docstring's order of rules; the source's timeout is cfg[TIMEOUT_KEY[source]] (day 5 s, celestial "
+             "45 s); a stamp in the future is age < −cfg[\"future_tolerance_s\"]; read every number from cfg.")
+def _():
+    (f,) = functions("eligible")
+    E = quiet("navera_lite.estimate").Estimate
+    wrong = []
+    for fault in _load_faults():
+        kw = dict(fault["est"])
+        if "cov" in kw:
+            kw["cov"] = tuple(kw["cov"])
+        cfg = dict(DEFAULTS)
+        cfg.update(fault["cfg"])
+        ok, why = pair(go(f, E(**kw), fault["now"], cfg), f"eligible({fault['label']})")
+        want = tuple(fault["want"])
+        if (ok, why) != want:
+            wrong.append(f"{fault['label']}: you return ({ok}, {why!r}), expected {want!r}")
+    c.ok(not wrong, f"{len(wrong)} wrong verdict(s) of 20, e.g. " + "; ".join(wrong[:2]))
+
+
+@c.test("Steps 6 and 8 — the verdicts you saw, v0 then your judge",
+        hint="Copy the line `python3 contract_lab.py status` prints while the attack plays live (Steps 6 and 8): the "
+             "state, then the message, e.g. \"FIX | gps: σ 0.0 m\".")
+def _():
+    v0, mine = answers("VERDICTS_V0", "VERDICTS_MINE")
+    for label, table, honest in (("VERDICTS_V0", v0, False), ("VERDICTS_MINE", mine, True)):
+        c.ok(isinstance(table, dict), f"{label} must stay a dict {{\"zero\": \"…\", …}}")
+        for name in ATTACKS:
+            text = str(table.get(name, "")).strip()
+            c.ok(text, f"{label}[\"{name}\"] is empty")
+            state, reason, _ = verdict(attack_rows(name), honest=honest)
+            c.ok(" | " in text, f"{label}[\"{name}\"]: copy the whole LIVE line of `python3 contract_lab.py status`, "
+                                "\"STATE | message\" (the simulation's tables never print it)")
+            first = text.split()[0].upper().strip(":,")
+            c.ok(first == state, f"{label}[\"{name}\"] starts with {first!r}: for your attacks/{name}.csv this judge "
+                                 f"says {state}" + ("" if honest else " (the attack must fool v0)"))
+            if state == "NO_FIX":
+                c.ok("no usable source" in text.lower(), f"{label}[\"{name}\"]: copy the LIVE status line "
+                     "(`python3 contract_lab.py status`): its NO_FIX message starts \"no usable source (…\"")
+            m = re.search(r"\((?:\w+): ([a-z ]+)", reason)          # NO_FIX: "no usable source (gps: from the future)"
+            key = m.group(1).strip() if (state == "NO_FIX" and m) else ("unknown" if "unknown" in reason else "σ")
+            c.ok(key in text.lower() or (key == "σ" and "sigma" in text.lower()),
+                 f"{label}[\"{name}\"] does not give the judge's message (it should contain {key!r}): copy the "
+                 "message after the state")
+
+
+@c.test("Step 8 — live: arbiter v0 with YOUR eligible() refuses a GPS stamped in the future",
+        hint="Stop every node of the lab first (`kill -INT $(jobs -p)`). The check starts arbiter v0 with "
+             "-p use_eligible:=true and plays a GPS stamped 30 s ahead: your eligible() must say \"from the future\".")
+def _():
+    functions("eligible", "stated_sigma")
+    publishers_ok("/navera_lite/status", expected=0)
+    publishers_ok("/navera_lite/fix/gps", expected=0)
+    from diagnostic_msgs.msg import DiagnosticStatus
+    fd, path = tempfile.mkstemp(suffix=".csv", prefix="probe_", dir=os.getcwd())
+    try:
+        with os.fdopen(fd, "w") as f:
+            f.write("t_s,source,lat,lon,a,b,c,cov_type,valid,delay_s\n")
+            for k in range(3):
+                f.write(f"{k}.0,gps,35.7604,10.81{k},4.0,0.0,4.0,1,1,-30.0\n")
+        with Background("python3 -m navera_lite.ros.arbiter_v0 --ros-args -p use_eligible:=true", settle=2.0) as arb:
+            with Background(f"python3 -m navera_lite.ros.replay_node --ros-args -p file:={path} -p loop:=true",
+                            settle=1.0):
+                end, seen = time.time() + 14.0, []
+                while time.time() < end:
+                    seen += [m.message for m in wait_for_messages("/navera_lite/status", DiagnosticStatus,
+                                                                  count=10, timeout=2.0)]
+                    if any("from the future" in s for s in seen):
+                        break
+        if not any("from the future" in s for s in seen):
+            fixes = [s for s in seen if s.startswith("gps: σ")]
+            if fixes:
+                raise CheckFailed(f"the judge said {fixes[-1]!r} (FIX) for a GPS stamped 30 s in the future: your "
+                                  "eligible() let it through")
+            if not seen:
+                raise CheckFailed("no status message in 14 s: did arbiter v0 start? Run it yourself as in Step 8 "
+                                  "and read its first lines.\n" + arb.output()[-600:])
+            raise CheckFailed(f"the judge never said \"from the future\"; its last message was {seen[-1]!r}")
+    finally:
+        os.remove(path)
+
+
+@c.test("Step 8 — the dead source that comes back",
+        hint="Predict before the 75 s watch, then explain: what does the judge keep from a refused fix, and what "
+             "changes when the clock reaches its stamp?")
+def _():
+    a = quiet("answers.py")
+    predicted("PREDICT_REVIVE", getattr(a, "PREDICT_REVIVE", ""))
+    explained("EXPLAIN_REVIVE", getattr(a, "EXPLAIN_REVIVE", ""),
+              ([r"stor", r"kept", r"keep", r"remember", r"latest", r"newest", r"last fix", r"memory", r"still there",
+                r"again", r"re-?check", r"re-?test", r"every tick", r"each tick"], "that the judge keeps the refused fix "
+               "and tests it again"),
+              ([r"clock", r"catch", r"reach", r"no longer", r"not .*future", r"becom", r"fresh", r"age", r"time pass",
+                r"60 ?s", r"now"], "what changes when the time reaches the stamp"))
+
+
+@c.test("Step 9 — the limit of a checklist",
+        hint="Which of your rules could see that a stated 3 m is a lie? Think about what the judge can compare a "
+             "source with (mission 01).")
+def _():
+    (t,) = answers("EXPLAIN_HONEST")
+    explained("EXPLAIN_HONEST", t,
+              ([r"believ", r"trust", r"claim", r"stat", r"says", r"self", r"own", r"valid", r"nothing", r"inside",
+                r"possib", r"true", r"truth", r"real", r"sense", r"plausib", r"accura", r"rule", r"pass", r"check",
+                r"in the message", r"covariance", r"lie", r"honest", r"look(s)? (fine|right|correct|normal)",
+                r"well.formed", r"correct", r"form"], "why the message itself looks fine to the judge"),
+              ([r"cross", r"another", r"other source", r"independent", r"compar", r"second", r"validat", r"measur",
+                r"vision", r"jump", r"gate", r"ground truth", r"reference"],
+               "what can catch it (something independent of that source)"),
+              min_words=12)
+
+
+c.milestone("session1", "Step 1", "TODO 1", "TODO 2", "TODO 3", "Step 0", label="Contract keeper")
+c.milestone("session2", "Step 1", "TODO", "Step", label="Honest judge")
 c.run()

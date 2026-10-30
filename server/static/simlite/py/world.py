@@ -1,67 +1,34 @@
-"""NAVERA Sim Lite — the world, in the browser.
+"""NAVERA Sim Lite — the browser side. The world is NAVERA Lite's own (navera_lite/sim/world.py, mission 31: the
+same file as the headless simulator); this module only installs the student's files, builds the judge, adds the
+page's needs (a route between two places, faults clicked during the flight, the flight script, a picture for the
+map) and never leaves the page dead: a part that is missing or broken flies as the course's (the server chose
+which files to send and says why in `parts`).
 
-What runs, and what is simulated (same split as NAVERA's full mission simulator):
-
-    REAL  the student's navera_estimator (their own estimator_node.py and navera_common,
-          loaded from their copy), on a stand-in for rclpy with simulated time.
-    SIM   the vehicle's true motion (simple kinematics instead of ArduPilot's physics),
-          the GPS estimate gps_node would publish (noise, jamming, jump and drift spoofing),
-          the vision fixes with the same error profiles as the full simulator
-          ("measured": what day/night vision measure today; "target": the accuracy goal),
-          the IMU (liveness), and an autopilot whose ONLY position input is NAVERA's output.
-
-So when NAVERA is wrong, the vehicle goes the wrong way — exactly the closed loop of the
-real system. Simplified on purpose: no wind, no terrain, no camera images.
+    REAL  the student's NAVERA Lite: mission 29's judge (Arbiter), mission 30's guard (GuardedArbiter), mission 28's
+          Kalman filter in the autopilot, mission 31's decoder when it is written — or the course's parts.
+    SIM   the truth, the GPS receiver, the cameras (an error profile: a browser cannot run PyTorch, so "my networks"
+          uses the profile vision_check.py measured), the IMU, the autopilot (navera_lite/sim/world.py).
 """
 import json
 import math
 import os
-import random
 import sys
 import traceback
 
-import rclpy
-from rclpy._core import BUS, NS
-from rclpy.node import Node
-
-M_PER_DEG = 111_320.0
-DT = 0.1                                          # simulation step (s)
-DAY_MEASURED_SIGMA = 440.0 / math.sqrt(2.0 * math.log(2.0))   # docs/VALIDATION_STATUS.md, day ~440 m median
-DAY_TARGET_SIGMA = 15.0
-NIGHT_TARGET_SIGMA = 25.0
-NIGHT_MEASURED_GAIN = 0.25                        # night estimate advanced ~25 % of the true motion
-VEHICLES = {  # cruise m/s, altitude m, NAVERA max_speed_mps, turn rate deg/s, accel m/s²
-    "drone": (15.0, 150.0, 30.0, 45.0, 3.0),
-    "plane": (40.0, 300.0, 100.0, 12.0, 4.0),
-    "boat": (8.0, 0.0, 20.0, 10.0, 1.0),
-    "robot": (4.0, 0.0, 10.0, 40.0, 1.5),
-}
 PLACES = {
     "sousse": (35.8256, 10.6360), "sousse medina": (35.8270, 10.6380), "port el kantaoui": (35.8920, 10.5980),
     "monastir": (35.7643, 10.8113), "monastir harbour": (35.7778, 10.8317), "monastir marina": (35.7778, 10.8317),
     "monastir airport": (35.7581, 10.7547), "skanes": (35.7560, 10.7680), "hammam sousse": (35.8606, 10.5944),
     "kantaoui": (35.8920, 10.5980),
 }
-SRC = {1: "GPS", 2: "DAY VISION", 3: "NIGHT VISION", 4: "CELESTIAL", 5: "INERTIAL"}
-STATE = {0: "STARTING", 1: "NO FIX", 2: "FIX", 3: "DEGRADED"}
-
-
-def offset(lat, lon, east_m, north_m):
-    return lat + north_m / M_PER_DEG, lon + east_m / (M_PER_DEG * math.cos(math.radians(lat)))
-
-
-def enu(lat0, lon0, lat, lon):
-    return (lon - lon0) * M_PER_DEG * math.cos(math.radians(lat0)), (lat - lat0) * M_PER_DEG
-
-
-def dist(a, b):
-    e, n = enu(a[0], a[1], b[0], b[1])
-    return math.hypot(e, n)
-
-
-def bearing(a, b):
-    e, n = enu(a[0], a[1], b[0], b[1])
-    return math.degrees(math.atan2(e, n)) % 360
+DEFAULTS = {"gps_timeout_s": 3.0, "day_timeout_s": 5.0, "night_timeout_s": 5.0, "celestial_timeout_s": 45.0,
+            "future_tolerance_s": 0.5, "fix_max_sigma_m": 25.0, "min_stated_sigma_m": 0.01, "switch_holdoff_s": 2.0,
+            "tick_hz": 5.0, "max_speed_mps": 100.0, "gps_jump_margin_m": 50.0, "vehicle": "drone"}
+TOP_SPEED = {"drone": 30.0, "plane": 100.0, "boat": 20.0, "robot": 10.0}      # vehicle.VEHICLES (the jump gate)
+PAGE_FAULT = {("camera", "failed"): "blackout", ("imu", "failed"): "off"}      # the page's buttons → the world's modes
+SRC = {"gps": "GPS", "day": "DAY VISION", "night": "NIGHT VISION", "celestial": "CELESTIAL"}
+ROOT = "/navera_lite_user"
+INFO = {"parts": {}, "profile": None, "settings": dict(DEFAULTS)}
 
 
 def place(where):
@@ -73,399 +40,209 @@ def place(where):
     raise ValueError(f"unknown place '{where}': use (lat, lon) or one of {sorted(PLACES)}")
 
 
-# ---------------------------------------------------------------- loading the student's NAVERA
-def install_navera(files, root):
-    """Write the student's NAVERA files (navera_common, the estimator, navera_msgs/*.msg) under
-    root and build the navera_msgs package from the .msg definitions."""
-    for mod in [m for m in list(sys.modules) if m.split(".")[0] in ("navera_common", "navera_estimator", "navera_msgs")]:
-        del sys.modules[mod]
-    msgs = {}
-    for rel, text in files.items():
-        if rel.startswith("navera_msgs/msg/") and rel.endswith(".msg"):
-            msgs[os.path.basename(rel)[:-4]] = text
+def read_settings(text):
+    """navera_lite.yaml's values (a ROS 2 params file: 'key: value  # comment' lines), on top of DEFAULTS. A browser
+    has no PyYAML; numbers, true/false and quoted texts are enough for this file."""
+    cfg = dict(DEFAULTS)
+    for line in (text or "").splitlines():
+        line = line.split("#", 1)[0].strip()
+        if ":" not in line:
             continue
-        path = os.path.join(root, rel)
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, "w") as f:
-            f.write(text)
-    for pkg in ("navera_common", "navera_estimator", "navera_estimator/nodes"):
-        init = os.path.join(root, pkg, "__init__.py")
-        if not os.path.exists(init):
-            os.makedirs(os.path.dirname(init), exist_ok=True)
-            open(init, "w").close()
-    d = os.path.join(root, "navera_msgs", "msg")
-    os.makedirs(d, exist_ok=True)
-    open(os.path.join(root, "navera_msgs", "__init__.py"), "w").close()
-    with open(os.path.join(d, "__init__.py"), "w") as f:
-        f.write("from _rosmsg import define\n")
-        # SourceHealth first: NavStatus uses it
-        for name in sorted(msgs, key=lambda n: (n != "SourceHealth", n)):
-            f.write(f"{name} = define('navera_msgs', {name!r}, {msgs[name]!r})\n")
-    if root not in sys.path:
-        sys.path.insert(0, root)
-    for rel, text in files.items():                # a typo in the student's code is shown when it is loaded
+        k, v = (x.strip() for x in line.split(":", 1))
+        if k not in DEFAULTS or v == "":
+            continue
+        v = v.strip("\"'")
+        try:
+            cfg[k] = v if isinstance(DEFAULTS[k], str) else type(DEFAULTS[k])(float(v))
+        except ValueError:
+            pass
+    return cfg
+
+
+# ---------------------------------------------------------------- loading the student's NAVERA Lite
+def install_lite(payload, root=ROOT):
+    """payload: {"files": {"navera_lite/arbiter.py": text, …, "navera_lite.yaml": text}, "parts": {part: why},
+    "profile": my_vision_profile.json's dict or None}. Writes the files, checks every .py compiles."""
+    files = payload.get("files", payload)
+    for mod in [m for m in list(sys.modules) if m == "navera_lite" or m.startswith("navera_lite.")]:
+        del sys.modules[mod]
+    for rel, text in files.items():
         if rel.endswith(".py"):
             try:
                 compile(text, rel, "exec")
             except SyntaxError as e:
                 raise SyntaxError(f"{rel}, line {e.lineno}: {e.msg}") from None
+        path = os.path.join(root, rel)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w") as f:
+            f.write(text)
+    if root not in sys.path:
+        sys.path.insert(0, root)
     import importlib
     importlib.invalidate_caches()
+    INFO["parts"] = dict(payload.get("parts") or {})
+    INFO["profile"] = payload.get("profile")
+    INFO["settings"] = read_settings(files.get("navera_lite.yaml", ""))
+    import navera_lite.sim.world  # noqa: F401  — fail now (with the student's file and line), not at ▶ Fly
 
 
-# ---------------------------------------------------------------- the world
-class World(Node):
-    def __init__(self, cfg):
-        super().__init__("navera_sim_lite")
-        from navera_msgs.msg import NavStatus, PositionEstimate
-        from sensor_msgs.msg import Imu
-        self.PE, self.Imu = PositionEstimate, Imu
-        self.cfg = cfg
-        self.rng = random.Random(cfg.get("seed", 7))
-        cruise, alt, self.max_speed, self.turn_rate, self.accel = VEHICLES[cfg["vehicle"]]
-        self.cruise = float(cfg.get("speed") or cruise)
-        self.alt = float(cfg.get("alt") if cfg.get("alt") is not None else alt)
-        self.start, self.dest = place(cfg["start"]), place(cfg["dest"])
-        self.truth = list(self.start)
-        self.heading = bearing(self.start, self.dest)
-        self.speed = 0.0
-        self.phase = "waiting"                     # waiting (for a NAVERA position) → flying → arrived
-        self.faults = {"gps": "ok", "camera": "ok", "light": cfg.get("light", "day"), "imu": "ok"}
-        self.spoof = [0.0, 0.0]
-        self.gps_noise = [0.0, 0.0]
-        self.night_est = None
-        self.had_gps = False
-        # where the onboard map has imagery ([south, west, north, east] boxes, from the academy's map
-        # files): real day vision matches each photo against this prepared map, so outside it there is
-        # no day fix. None = not known (the page could not ask): day vision is then assumed everywhere.
-        boxes = cfg.get("map_boxes")
-        self.map_boxes = [tuple(float(v) for v in b) for b in boxes] if isinstance(boxes, list) else None
-        self.on_map = None
-        self.nav = {"state": 0, "source": 0, "reason": "", "lat": None, "lon": None, "t": None, "mode": 0}
-        self.belief = None                         # the autopilot's own position: NAVERA + dead reckoning
-        self.vel = (0.0, 0.0)
-        self.events, self.trail, self.gps_pts, self.vis_pts, self.nav_pts = [], [], [], [], []
-        self.err_hist = []
-        self.t = 0.0
-        self.arrival = None
-        self.enroute_at = None                      # sim time when the vehicle left (for scenario times)
-        self.rows = []                              # one row per simulated second, sim_ctl.py's columns
-        self.pub_gps = self.create_publisher(PositionEstimate, "/navera/estimate/gps", 10)
-        self.pub_day = self.create_publisher(PositionEstimate, "/navera/estimate/day", 10)
-        self.pub_night = self.create_publisher(PositionEstimate, "/navera/estimate/night", 10)
-        self.pub_imu = self.create_publisher(Imu, "/navera/sensors/imu", 50)
-        self.create_subscription(PositionEstimate, "/navera/position", self._on_pos, 10)
-        self.create_subscription(NavStatus, "/navera/nav_status", self._on_status, 10)
-        self.create_timer(0.2, self._gps)          # 5 Hz receiver
-        self.create_timer(1.0, self._vision)       # 1 vision fix per second
-        self.create_timer(0.05, self._imu)         # 20 Hz IMU (liveness)
-        self.event("info", f"{cfg['vehicle']} ready at the start, {self.cruise:.0f} m/s — waiting for NAVERA's first position")
+def decoder_ready(out):
+    """True when the student's parse_frames and decode_gps_input (mission 31, TODOs 1–2) are written."""
+    import inspect
+    for name in ("parse_frames", "decode_gps_input"):
+        try:
+            src = inspect.getsource(getattr(out, name))
+        except (OSError, TypeError, AttributeError):
+            return False
+        if "# TODO: replace this line" in src or "# TODO: write your code" in src or 'NotImplementedError("TODO' in src:
+            return False
+    return True
 
-    # -- log
-    def event(self, level, text):
-        self.events.append({"t": round(self.t, 1), "level": level, "text": text})
 
-    # -- NAVERA's outputs
-    def _on_pos(self, m):
-        first = self.nav["lat"] is None
-        self.nav.update(lat=m.latitude, lon=m.longitude, t=self.t, mode=m.mode)
-        self.belief = [m.latitude, m.longitude]
-        self.nav_pts.append((round(m.latitude, 7), round(m.longitude, 7), m.source))
-        if first:
-            self.event("ok", f"NAVERA: first position ({SRC.get(m.source, m.source)})")
+def make_world_class():
+    from navera_lite.sim import world as W
 
-    def _on_status(self, m):
-        if m.state != self.nav["state"] or m.active_source != self.nav["source"]:
-            lvl = "ok" if m.state == 2 else ("warn" if m.state == 3 else "bad")
-            src = SRC.get(m.active_source, "none")
-            self.event(lvl, f"NAVERA: {STATE.get(m.state, m.state)} — source {src}" + (f" ({m.reason})" if m.reason else ""))
-        self.nav.update(state=m.state, source=m.active_source, reason=m.reason)
-        imu = next((h.alive for h in (m.sources or []) if h.source == 5), None)      # NAVERA's own IMU health row
-        if imu is not None and imu != self.nav.get("imu_alive", True):
-            self.event("ok" if imu else "warn", "NAVERA: IMU " + ("alive again" if imu else
-                       "NOT alive (its health row says so — in this version the IMU only proves the vehicle is alive)"))
-        if imu is not None:
-            self.nav["imu_alive"] = imu
+    class PageWorld(W.World):
+        """The world plus what the page draws (sensor points, a trail), the onboard-map rule for day vision, and a
+        direct link when the student's decoder is not written yet."""
 
-    # -- sensors
-    def _stamp(self, m):
-        now = self.get_clock().now().to_msg()
-        m.header.stamp = now
-        if hasattr(m, "sensor_stamp"):
-            m.sensor_stamp = now
+        def __init__(self, *a, map_boxes=None, direct=False, **kw):
+            self.gps_pts, self.vis_pts, self.trail, self.err_hist = [], [], [], []
+            self.map_boxes, self.on_map, self.direct, self.fields = map_boxes, None, direct, []
+            self.stopped = None
+            super().__init__(*a, **kw)
 
-    def _gps(self):
-        mode = self.faults["gps"]
-        if mode == "off":
-            return
-        dt = 0.2
-        for i in (0, 1):                           # first-order Gauss-Markov noise (as the full simulator)
-            self.gps_noise[i] += -self.gps_noise[i] * dt / 20.0 + self.rng.gauss(0, 0.6) * math.sqrt(dt)
-        m = self.PE()
-        self._stamp(m)
-        m.header.frame_id = "gps"
-        m.source, m.mode, m.producer, m.model_id, m.frame_index = self.PE.SOURCE_GPS, self.PE.MODE_MEASURED, "gps_node", "nmea_gga", -1
-        if mode == "jammed":                       # receiver reports "no fix": gps_node publishes valid=false
-            m.valid, m.reason = False, "no fix (qual=0)"
-            m.latitude = m.longitude = m.altitude = math.nan
-            self.pub_gps.publish(m)
-            self.gps_pts.append(None)
-            return
-        if mode == "spoof_drift":
-            self.spoof[0] += 4.0 * dt * 0.8
-            self.spoof[1] += 4.0 * dt * 0.6
-        e, n = self.gps_noise[0] + self.spoof[0], self.gps_noise[1] + self.spoof[1]
-        m.latitude, m.longitude = offset(self.truth[0], self.truth[1], e, n)
-        m.altitude = self.alt
-        hdop = 0.9
-        cov = (hdop * 2.0) ** 2                    # gps_node: sigma = HDOP x 2 m
-        m.position_covariance = [cov, 0.0, 0.0, 0.0, cov, 0.0, 0.0, 0.0, cov * 4]
-        m.position_covariance_type = self.PE.COVARIANCE_TYPE_APPROXIMATED
-        m.valid, m.confidence = True, 0.0
-        m.details_json = json.dumps({"hdop": hdop, "num_sats": 9, "gps_qual": 1, "simulated": True})
-        self.pub_gps.publish(m)
-        self.had_gps = True
-        self.gps_pts.append((round(m.latitude, 7), round(m.longitude, 7), mode != "ok"))
+        def gps_fix(self):
+            n = len(self.arrivals)
+            super().gps_fix()
+            if len(self.arrivals) > n:
+                est = self.arrivals[-1][1]
+                self.gps_pts.append(None if not est.valid else
+                                    (round(est.lat, 7), round(est.lon, 7), self.faults["gps"] != "ok"))
 
-    def _vision(self):
-        if not self.had_gps or self.faults["camera"] != "ok":
-            self.night_est = None if self.faults["camera"] != "ok" else self.night_est
-            return                                 # like the real nodes: no prior, no position
-        lat, lon = self.truth
-        night = self.faults["light"] == "night"
-        target = self.cfg.get("profile") == "target"
-        nav_gps = self.nav["source"] == 1 and self.nav["lat"] is not None
-        if night:
-            if target:
-                sig = NIGHT_TARGET_SIGMA
-                vlat, vlon = offset(lat, lon, self.rng.gauss(0, sig), self.rng.gauss(0, sig))
-            else:
-                if nav_gps or self.night_est is None:
-                    self.night_est = [(self.nav["lat"], self.nav["lon"]) if nav_gps else (lat, lon), (lat, lon)]
-                est, prev = self.night_est
-                de, dn = enu(prev[0], prev[1], lat, lon)
-                est = offset(est[0], est[1], NIGHT_MEASURED_GAIN * de + self.rng.gauss(0, 10),
-                             NIGHT_MEASURED_GAIN * dn + self.rng.gauss(0, 10))
-                self.night_est = [est, (lat, lon)]
-                vlat, vlon = est
-                sig = None
-        else:
-            self.night_est = None
-            if self.map_boxes is not None:
+        def vision_fix(self):
+            if self.faults["light"] == "day" and self.map_boxes is not None:
+                lat, lon = self.frame.latlon(*self.truth)
                 inside = any(b[0] <= lat <= b[2] and b[1] <= lon <= b[3] for b in self.map_boxes)
                 if inside != self.on_map:
                     if not inside:
-                        self.event("warn", "day vision: no onboard map here — no fix (real NAVERA day vision "
-                                           "matches each photo against its prepared map of the area)")
+                        self.event("day vision: no onboard map here — no fix (day vision matches each photo "
+                                   "against the prepared map of the area)")
                     elif self.on_map is not None:
-                        self.event("info", "day vision: back over the onboard map — fixes again")
+                        self.event("day vision: back over the onboard map — fixes again")
                     self.on_map = inside
                 if not inside:
                     return
-            sig = DAY_TARGET_SIGMA if target else None
-            s = DAY_TARGET_SIGMA if target else DAY_MEASURED_SIGMA
-            vlat, vlon = offset(lat, lon, self.rng.gauss(0, s), self.rng.gauss(0, s))
-        m = self.PE()
-        self._stamp(m)
-        m.header.frame_id = "night_camera" if night else "day_camera"
-        m.latitude, m.longitude, m.altitude = vlat, vlon, math.nan
-        if sig is not None:
-            m.position_covariance = [sig ** 2, 0.0, 0.0, 0.0, sig ** 2, 0.0, 0.0, 0.0, (2 * sig) ** 2]
-            m.position_covariance_type = self.PE.COVARIANCE_TYPE_DIAGONAL_KNOWN
-        else:
-            m.position_covariance_type = self.PE.COVARIANCE_TYPE_UNKNOWN
-        m.source = self.PE.SOURCE_NIGHT_VISION if night else self.PE.SOURCE_DAY_VISION
-        m.mode, m.valid = self.PE.MODE_MEASURED, True
-        m.confidence = 0.9 if target else 0.3
-        m.producer, m.model_id, m.frame_index = "navera_sim_lite", f"sim-{self.cfg.get('profile', 'measured')}", -1
-        m.details_json = json.dumps({"simulated": True, "profile": self.cfg.get("profile", "measured")})
-        (self.pub_night if night else self.pub_day).publish(m)
-        self.vis_pts.append((round(vlat, 7), round(vlon, 7), "night" if night else "day"))
+            n = len(self.arrivals)
+            super().vision_fix()
+            if len(self.arrivals) > n:
+                est = self.arrivals[-1][1]
+                self.vis_pts.append((round(est.lat, 7), round(est.lon, 7), est.source))
 
-    def _imu(self):
-        if self.faults["imu"] != "ok":
-            return
-        m = self.Imu()
-        self._stamp(m)
-        m.header.frame_id = "imu"
-        m.linear_acceleration.z = 9.81
-        m.orientation_covariance[0] = -1.0          # no orientation
-        self.pub_imu.publish(m)
+        def send(self, fields):
+            if self.direct:                      # the student's decoder is not written: no bytes on the link
+                self.fields.append(dict(fields, lat=fields["lat"] / 1e7, lon=fields["lon"] / 1e7))
+                self.seq = (self.seq + 1) % 256
+                self.counts["frames"] += 1
+                return
+            super().send(fields)
 
-    # -- faults (also used by the flight script)
-    def set_fault(self, key, value):
-        if key not in self.faults:
-            raise ValueError(f"unknown fault '{key}'")
-        if self.faults[key] == value:
-            return
-        if key == "gps":
-            self.spoof = [0.0, 0.0]
-            if value == "spoof_jump":
-                ang = self.rng.uniform(0, 2 * math.pi)
-                self.spoof = [2000.0 * math.cos(ang), 2000.0 * math.sin(ang)]
-        self.faults[key] = value
-        to = ""
-        if key == "gps" and value == "spoof_jump":       # the direction matters: see the estimator's gate
-            to = " to the " + ("N", "NE", "E", "SE", "S", "SW", "W", "NW")[
-                int(((math.degrees(math.atan2(self.spoof[0], self.spoof[1])) % 360) + 22.5) // 45) % 8]
-        names = {"ok": "normal", "jammed": "JAMMED", "spoof_jump": f"SPOOFED (2 km jump{to})", "spoof_drift": "SPOOFED (slow drift)",
-                 "off": "OFF", "failed": "FAILED", "day": "day", "night": "NIGHT"}
-        self.event("warn" if value not in ("ok", "day") else "info", f"{key.upper()} → {names.get(value, value)}")
+        def autopilot(self, read_messages):
+            if self.direct:
+                msgs, self.fields = self.fields, []
+                self.ap_update(msgs)
+                return
+            super().autopilot(read_messages)
 
-    # -- the vehicle and its autopilot
-    def step(self):
-        """Advance the world by DT: autopilot (from NAVERA's position only), then true motion."""
-        self.t += DT
-        if self.phase == "waiting" and self.belief is not None:
-            self.phase = "flying"
-            self.enroute_at = self.t
-            self.event("info", "take-off: the autopilot follows NAVERA's position")
-        target_speed = 0.0
-        if self.phase == "stopped":
-            pass                                    # slows down and stays
-        elif self.phase == "flying":
-            # the autopilot's belief: NAVERA's last position, carried forward with its own velocity
-            if self.belief is not None:
-                self.belief = list(offset(self.belief[0], self.belief[1], self.vel[0] * DT, self.vel[1] * DT))
-            togo = dist(self.belief, self.dest)
-            if togo < max(10.0, self.cruise * 1.5):
-                self.phase = "arrived"
-                miss = dist(self.truth, self.dest)
-                radius = max(10.0, self.cruise * 1.5)       # the autopilot calls it "arrived" this close (its belief)
-                good = miss < radius + 30.0
-                self.arrival = {"t": round(self.t, 1), "miss_m": round(miss, 1), "radius_m": round(radius), "good": good}
-                self.event("ok" if good else "bad",
-                           f"arrived (by its own estimate) — really {miss:.0f} m from the destination")
-            else:
-                want = bearing(self.belief, self.dest)
-                diff = (want - self.heading + 540) % 360 - 180
-                turn = max(-self.turn_rate * DT, min(self.turn_rate * DT, diff))
-                self.heading = (self.heading + turn) % 360
-                target_speed = self.cruise
-        dv = max(-self.accel * DT, min(self.accel * DT, target_speed - self.speed))
-        self.speed = max(0.0, self.speed + dv)
-        ve = self.speed * math.sin(math.radians(self.heading))
-        vn = self.speed * math.cos(math.radians(self.heading))
-        self.vel = (ve, vn)
-        self.truth = list(offset(self.truth[0], self.truth[1], ve * DT, vn * DT))
-        if int(round(self.t / DT)) % 10 == 0:
-            self.rows.append(self.row())
-        if int(self.t / DT) % 10 == 0:
-            self.trail.append((round(self.truth[0], 7), round(self.truth[1], 7)))
-            if self.nav["lat"] is not None:
-                self.err_hist.append((round(self.t, 1), round(self.error_m(), 1)))
+        def move(self):
+            if self.stopped:
+                self.phase = "stopped"
+            super().move()
+            if self.k % 10 == 0:
+                self.trail.append(tuple(round(v, 7) for v in self.frame.latlon(*self.truth)))
+                if self.lite is not None and self.mission_t is not None:
+                    self.err_hist.append((round(self.t, 1), round(self.dist_truth(self.lite[0], self.lite[1]), 1)))
 
-    def row(self):
-        """Same columns as the full simulator's recorder (courses/28-simulator/files/sim_ctl.py)."""
-        f = lambda v, d=1: "" if v is None else f"{v:.{d}f}"           # noqa: E731
-        fresh = self.nav["t"] is not None and self.t - self.nav["t"] <= 1.5
-        phase = {"waiting": "waiting_gps", "flying": "enroute", "arrived": "arrived", "stopped": "stopped"}[self.phase]
-        ap_err = dist(self.belief, self.truth) if self.belief is not None else None
-        return {"t_s": f(self.t), "phase": phase, "gps_mode": self.faults["gps"],
-                "navera_state": STATE.get(self.nav["state"], ""), "navera_source": SRC.get(self.nav["source"], ""),
-                "navera_lat": f(self.nav["lat"] if fresh else None, 7), "navera_lon": f(self.nav["lon"] if fresh else None, 7),
-                "navera_err_m": f(self.error_m()), "truth_lat": f(self.truth[0], 7), "truth_lon": f(self.truth[1], 7),
-                "truth_alt_m": f(self.alt), "truth_speed_mps": f(self.speed), "ap_mode": "GUIDED" if self.phase == "flying" else "",
-                "ap_err_m": f(ap_err), "reason": self.nav["reason"], "camera": self.faults["camera"]}
-
-    def stop(self, why="stopped"):
-        if self.phase != "stopped":
-            self.phase = "stopped"
-            self.event("info", f"mission stopped ({why})")
-
-    def error_m(self):
-        if self.nav["lat"] is None:
-            return None
-        return dist(self.truth, (self.nav["lat"], self.nav["lon"]))
-
-    def snapshot(self, since):
-        """What the page draws. `since` = counts already sent, so only new points travel."""
-        s = since or {}
-        out = {
-            "t": round(self.t, 1), "phase": self.phase, "truth": self.truth, "heading": self.heading,
-            "speed": round(self.speed, 1), "alt": self.alt, "belief": self.belief,
-            "nav": {"state": STATE.get(self.nav["state"]), "source": SRC.get(self.nav["source"], "none"),
-                    "reason": self.nav["reason"], "lat": self.nav["lat"], "lon": self.nav["lon"],
-                    "age": None if self.nav["t"] is None else round(self.t - self.nav["t"], 1)},
-            "error_m": None if self.error_m() is None else round(self.error_m(), 1),
-            "togo_m": round(dist(self.truth, self.dest)), "faults": dict(self.faults), "arrival": self.arrival,
-            "gps_lost_for": None,
-        }
-        out["enroute_s"] = None if self.enroute_at is None else round(self.t - self.enroute_at, 1)
-        for k in ("trail", "gps_pts", "vis_pts", "nav_pts", "events", "err_hist", "rows"):
-            arr = getattr(self, k)
-            out[k] = arr[s.get(k, 0):]
-            s[k] = len(arr)
-        return out, s
+    return PageWorld
 
 
 # ---------------------------------------------------------------- the flight script's view
 class _NavView:
-    def __init__(self, w): self._w = w
+    def __init__(self, run): self._r = run
     @property
-    def state(self): return STATE.get(self._w.nav["state"])
+    def state(self):
+        d = self._r.world.decision
+        return d.state if d else "STARTING"
     @property
     def source(self):
-        return {1: "gps", 2: "vision", 3: "vision", 4: "celestial"}.get(self._w.nav["source"], "none")
+        d = self._r.world.decision
+        return {"gps": "gps", "day": "vision", "night": "vision", "celestial": "celestial"}.get(d.source if d else None, "none")
     @property
     def error_m(self):
-        e = self._w.error_m()
+        e = self._r.error_m()
         return float("inf") if e is None else e
     @property
-    def position(self): return None if self._w.nav["lat"] is None else (self._w.nav["lat"], self._w.nav["lon"])
+    def position(self): return self._r.lite_latlon()
     @property
-    def reason(self): return self._w.nav["reason"]
+    def reason(self):
+        d = self._r.world.decision
+        return d.reason if d else ""
 
 
 class SimAPI:
     """`sim` in the student's flight script."""
 
-    def __init__(self, w):
-        self._w = w
-        self.navera = _NavView(w)
+    def __init__(self, run):
+        self._r = run
+        self.nav = _NavView(run)
+        self.navera = self.nav                    # the name used by flight scripts saved before NAVERA Lite
 
     @property
-    def t(self): return round(self._w.t, 1)
+    def t(self): return round(self._r.world.t, 1)
     @property
-    def truth(self): return tuple(self._w.truth)
+    def truth(self): return tuple(self._r.world.frame.latlon(*self._r.world.truth))
     @property
-    def speed(self): return self._w.speed
+    def speed(self): return self._r.world.speed
     @property
-    def phase(self): return self._w.phase
+    def phase(self): return self._r.world.phase
+    @property
+    def enroute_s(self): return self._r.world.mission_t
 
     def goto(self, where, speed=None, alt=None):
-        self._w.dest = place(where)
+        w = self._r.world
+        w.dest = w.frame.en(*place(where))
         if speed is not None:
-            self._w.cruise = float(speed)
+            w.cruise = float(speed)
         if alt is not None:
-            self._w.alt = float(alt)
-        if self._w.phase == "arrived":
-            self._w.phase = "flying"
-        self._w.event("info", f"new destination {where}" + (f" at {speed} m/s" if speed else ""))
+            w.alt = float(alt)
+        if w.phase == "arrived":
+            w.phase, w.ap_mode, w.arrived_t = "enroute", "MISSION", None
+            self._r.arrival = None
+        w.event(f"new destination {where}" + (f" at {speed} m/s" if speed else ""))
 
-    @property
-    def enroute_s(self):
-        """Seconds since the vehicle left (None before): the time base of my_scenario.json."""
-        return None if self._w.enroute_at is None else round(self._w.t - self._w.enroute_at, 1)
+    def stop(self, why="by the flight script"): self._r.stop(why)
+    def set_speed(self, mps): self._r.world.cruise = float(mps)
+    def jam_gps(self, **_): self._r.world.set_fault("gps", "jammed")
+    def spoof_gps(self, kind="jump"): self._r.world.set_fault("gps", "spoof_jump" if kind == "jump" else "spoof_drift")
+    def restore_gps(self): self._r.world.set_fault("gps", "ok")
+    def gps_off(self): self._r.world.set_fault("gps", "off")
+    def camera_fail(self): self._r.world.set_fault("camera", "blackout")
+    def camera_ok(self): self._r.world.set_fault("camera", "ok")
+    def camera_late(self): self._r.world.set_fault("camera", "late")
+    def imu_bias(self): self._r.world.set_fault("imu", "bias")
+    def imu_off(self): self._r.world.set_fault("imu", "off")
+    def imu_ok(self): self._r.world.set_fault("imu", "ok")
+    def night(self): self._r.world.set_fault("light", "night")
+    def day(self): self._r.world.set_fault("light", "day")
+    def log(self, *a): self._r.world.event("script: " + " ".join(str(x) for x in a))
+    def distance_to(self, where):
+        w = self._r.world
+        e, n = w.frame.en(*place(where))
+        return w.dist_truth(e, n)
 
-    def stop(self, why="by the flight script"): self._w.stop(why)
-    def set_speed(self, mps): self._w.cruise = float(mps)
-    def jam_gps(self, **_): self._w.set_fault("gps", "jammed")
-    def spoof_gps(self, kind="jump"): self._w.set_fault("gps", "spoof_jump" if kind == "jump" else "spoof_drift")
-    def restore_gps(self): self._w.set_fault("gps", "ok")
-    def gps_off(self): self._w.set_fault("gps", "off")
-    def camera_fail(self): self._w.set_fault("camera", "failed")
-    def camera_ok(self): self._w.set_fault("camera", "ok")
-    def night(self): self._w.set_fault("light", "night")
-    def day(self): self._w.set_fault("light", "day")
-    def log(self, *a): self._w.event("script", " ".join(str(x) for x in a))
-    def distance_to(self, where): return dist(self._w.truth, place(where))
 
-
-# ---------------------------------------------------------------- one run
 def _short_tb():
     """The traceback from the student's script only (not the simulator's own frames)."""
-    import sys
     etype, e, tb = sys.exc_info()
     while tb is not None and tb.tb_frame.f_code.co_filename != "flight_script.py":
         tb = tb.tb_next
@@ -473,22 +250,81 @@ def _short_tb():
     return "".join(lines)
 
 
+def _level(text):
+    if text.startswith("FAULT"):
+        return "warn"
+    if text.startswith("script: "):
+        return "script"
+    if "FAILSAFE" in text or "NO_FIX" in text or "really" in text and "arrived" not in text:
+        return "bad"
+    if "DEGRADED" in text or "no onboard map" in text or "reset" in text:
+        return "warn"
+    if "FIX" in text or text.startswith("arrived") or text.startswith("take-off"):
+        return "ok"
+    return "info"
+
+
+# ---------------------------------------------------------------- one run
 class Run:
-    """A simulation: the world, the student's estimator, and their optional flight script."""
+    """A simulation: the world, the student's NAVERA Lite (or the course's parts), the optional flight script.
+    cfg (from the page): vehicle, start, dest, profile ("measured" | "target" | "mine"), light, speed, max_speed,
+    seed, map_boxes, and for a mission-31 scenario: scenario (my_scenario.json's dict: faults, duration_s, vision…)."""
 
     def __init__(self, cfg, script_text="", log=None):
-        BUS.reset()
-        rclpy.init()
+        from navera_lite import arbiter, kalman, output
+        from navera_lite.sim import world as W
         self.logs = []
-        BUS.log = lambda level, node, text: self.logs.append({"level": level, "node": node, "text": text})
-        BUS.params["estimator_node"] = {"max_speed_mps": float(cfg.get("max_speed") or VEHICLES[cfg["vehicle"]][2])}
-        self.world = World(cfg)
-        from navera_estimator.nodes.estimator_node import EstimatorNode
-        self.estimator = EstimatorNode()
-        self.api = SimAPI(self.world)
-        self.script = {}
-        self.script_error = None
-        self.error_sent = False
+        sc_in = cfg.get("scenario") or {}
+        vehicle = sc_in.get("vehicle") or cfg.get("vehicle", "drone")
+        settings = dict(INFO["settings"])
+        settings["vehicle"] = vehicle
+        settings["max_speed_mps"] = float(cfg.get("max_speed") or sc_in.get("max_speed_mps") or TOP_SPEED.get(vehicle, 30.0))
+        judge = arbiter.Arbiter(settings)
+        try:
+            from navera_lite import spoof
+            judge = spoof.GuardedArbiter(judge, spoof.SpoofGuard(settings))
+            guard = True
+        except ImportError:
+            guard = False
+        kind = sc_in.get("vision") or cfg.get("profile", "measured")
+        if kind in ("mine", "profile"):
+            prof = INFO["profile"]
+            if prof:
+                vision = W.ProfileVision("profile", prof)
+                self.logs.append({"level": "info", "node": "vision",
+                                  "text": "your networks' measured profile (my_vision_profile.json): a browser cannot "
+                                          "run PyTorch, so the errors are drawn from what vision_check.py measured"})
+            else:
+                vision = W.ProfileVision("target")
+                self.logs.append({"level": "warn", "node": "vision", "text": "no my_vision_profile.json yet (mission "
+                                  "31, lab Step 11): flying the target profile instead"})
+        else:
+            vision = W.ProfileVision("target" if kind == "target" else "measured")
+        start = place(cfg.get("start", "sousse"))
+        dest = place(cfg.get("dest", "monastir"))
+        self.frame = W.LocalFrame(*(place(cfg["origin"]) if cfg.get("origin") else start))   # mission 31: the corridor's
+        sc = {"name": sc_in.get("name", "lite_run"), "vehicle": vehicle, "vision": kind, "seed": int(sc_in.get("seed",
+              cfg.get("seed", 7))), "light": sc_in.get("light") or cfg.get("light", "day"),
+              "faults": [list(f) for f in sc_in.get("faults", [])],
+              "duration_s": float(sc_in.get("duration_s") or 1e9), "speed": sc_in.get("speed") or cfg.get("speed")}
+        self.limit = float(sc_in["duration_s"]) if sc_in.get("duration_s") else None
+        direct = not decoder_ready(output)
+        PageWorld = make_world_class()
+        self.world = PageWorld(sc, judge, output, kalman, vision, self.frame, (self.frame.en(*start), self.frame.en(*dest)),
+                               map_boxes=cfg.get("map_boxes") if isinstance(cfg.get("map_boxes"), list) else None,
+                               direct=direct)
+        self.world.event(("guard (mission 30) in front of the judge" if guard else "no guard") + " · autopilot link: "
+                         + ("YOUR decoder (bytes)" if not direct else "direct (your mission-31 decoder is not written "
+                                                                       "yet)"))
+        for part, why in INFO["parts"].items():
+            self.logs.append({"level": "info", "node": "parts", "text": f"{part}: {why}"})
+        self.read = self._reader(output)
+        self.columns = W.COLUMNS
+        self.api = SimAPI(self)
+        self.script, self.script_error, self.error_sent = {}, None, False
+        self.sent_ev = self.sent_rows = 0
+        self.sent = {}
+        self.arrival = None
         if script_text.strip():
             try:
                 exec(compile(script_text, "flight_script.py", "exec"), self.script)
@@ -496,26 +332,97 @@ class Run:
                     self.script["on_start"](self.api)
             except Exception:
                 self.script_error = _short_tb()
-                self.world.event("bad", "flight script error — see the console (the flight goes on without your script)")
-        self.sent = {}
+                self.world.event("flight script error — see the console (the flight goes on without your script)")
+
+    @staticmethod
+    def _reader(out):
+        def read(data):
+            msgs = []
+            for fr in out.parse_frames(data) or []:
+                if fr.get("msgid") == out.GPS_INPUT_ID and fr.get("crc_ok") is True:
+                    msgs.append(out.decode_gps_input(fr["payload"]))
+            return msgs
+        return read
+
+    def stop(self, why="stopped"):
+        if not self.world.stopped:
+            self.world.stopped = why
+            self.world.event(f"mission stopped ({why})")
+
+    def lite_latlon(self):
+        w = self.world
+        if w.lite is None or w.decision is None or w.decision.state not in ("FIX", "DEGRADED"):
+            return None
+        return w.frame.latlon(w.lite[0], w.lite[1])
+
+    def error_m(self):
+        w = self.world
+        return None if w.lite is None else w.dist_truth(w.lite[0], w.lite[1])
+
+    def fault(self, key, value):
+        self.world.set_fault(key, PAGE_FAULT.get((key, value), value))
 
     def advance(self, seconds):
-        """Run `seconds` of simulated time; returns the new picture for the page."""
-        steps = max(1, int(round(seconds / DT)))
-        for _ in range(steps):
-            BUS.advance(BUS.now_ns + int(DT * NS))
-            self.world.step()
+        w = self.world
+        for _ in range(max(1, int(round(seconds / 0.1)))):
+            w.step(self.read)
             tick = self.script.get("on_tick")
             if tick and not self.script_error:
                 try:
-                    tick(self.api, round(self.world.t, 1))
+                    tick(self.api, round(w.t, 1))
                 except Exception:
                     self.script_error = _short_tb()
-                    self.world.event("bad", "flight script error — see the console (the flight goes on without your script)")
-        snap, self.sent = self.world.snapshot(self.sent)
-        snap["logs"], self.logs = self.logs, []
-        # the error is sent once; the script stays off for the rest of the flight
-        snap["script_error"] = self.script_error if not self.error_sent else None
+                    w.event("flight script error — see the console (the flight goes on without your script)")
+            m = w.mission_t
+            if self.limit is not None and m is not None and m >= self.limit:
+                self.stop("scenario finished")
+            if w.failsafe_t is not None and m is not None and m >= w.failsafe_t + 10.0:
+                self.stop(f"autopilot failsafe ({w.ap_mode})")
+            if w.arrived_t is not None and self.arrival is None:
+                miss = math.hypot(w.dest[0] - w.truth[0], w.dest[1] - w.truth[1])
+                radius = max(10.0, 1.5 * w.cruise)
+                self.arrival = {"t": round(w.t, 1), "miss_m": round(miss, 1), "radius_m": round(radius),
+                                "good": miss < radius + 30.0}
+            if w.stopped or self.arrival:
+                break
+        return self.snapshot()
+
+    def snapshot(self):
+        w = self.world
+        d = w.decision
+        lat_lon = self.lite_latlon()
+        err = self.error_m()
+        phase = "stopped" if w.stopped else ("arrived" if self.arrival else ("flying" if w.phase == "enroute" else w.phase))
+        page_faults = dict(w.faults)
+        if page_faults["camera"] == "blackout":
+            page_faults["camera"] = "failed"
+        if page_faults["imu"] == "off":
+            page_faults["imu"] = "failed"
+        out = {"t": round(w.t, 1), "phase": phase, "truth": list(w.frame.latlon(*w.truth)), "heading": w.heading,
+               "speed": round(w.speed, 1), "alt": w.alt,
+               "belief": None if w.belief() is None else list(w.frame.latlon(*w.belief())),
+               "nav": {"state": d.state if d else "STARTING", "source": SRC.get(d.source, "none") if d else "none",
+                       "reason": d.reason if d else "", "lat": None if lat_lon is None else lat_lon[0],
+                       "lon": None if lat_lon is None else lat_lon[1],
+                       "age": None if w.lite is None else round(w.t - w.lite[3], 1)},
+               "error_m": None if err is None else round(err, 1),
+               "togo_m": round(math.hypot(w.dest[0] - w.truth[0], w.dest[1] - w.truth[1])), "faults": page_faults,
+               "arrival": self.arrival, "gps_lost_for": None, "enroute_s": w.mission_t,
+               "columns": list(self.columns)}
+        s = self.sent
+        for k in ("trail", "gps_pts", "vis_pts", "err_hist", "rows"):
+            arr = getattr(w, k)
+            out[k] = arr[s.get(k, 0):]
+            s[k] = len(arr)
+        if lat_lon is not None:
+            out["nav_pts"] = [(round(lat_lon[0], 7), round(lat_lon[1], 7), d.source)]
+        else:
+            out["nav_pts"] = []
+        evs = w.events[s.get("events", 0):]
+        s["events"] = len(w.events)
+        out["events"] = [{"t": t if m is None else m, "level": _level(text), "text": text} for t, m, text in evs]
+        out["logs"], self.logs = self.logs, []
+        out["script_error"] = self.script_error if not self.error_sent else None
         if self.script_error:
             self.error_sent = True
-        return snap
+        return out

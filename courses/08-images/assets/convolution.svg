@@ -30,7 +30,7 @@
 <rect x="182" y="216" width="38" height="38" fill="rgb(160,160,160)" stroke="#999"/><text x="201.0" y="240.0" fill="#1d2733" font-size="12" text-anchor="middle">80</text>
 <rect x="68" y="102" width="114" height="114" fill="none" stroke="#d64545" stroke-width="3"/>
 <text x="30" y="274" fill="#d64545" font-size="12">red: neighbourhood of (y=2, x=2)</text>
-<text x="280" y="56" fill="#1d2733" font-size="12">kernel k (Sobel x, as cv2.Sobel uses it)</text>
+<text x="280" y="56" fill="#1d2733" font-size="12">kernel k (Sobel x, as cv2.Sobel correlates it)</text>
 <rect x="280" y="64" width="38" height="38" fill="#fbe6c8" stroke="#a8680d"/><text x="299.0" y="88.0" fill="#1d2733" font-size="13" text-anchor="middle">-1</text>
 <rect x="318" y="64" width="38" height="38" fill="#fbe6c8" stroke="#a8680d"/><text x="337.0" y="88.0" fill="#1d2733" font-size="13" text-anchor="middle">0</text>
 <rect x="356" y="64" width="38" height="38" fill="#fbe6c8" stroke="#a8680d"/><text x="375.0" y="88.0" fill="#1d2733" font-size="13" text-anchor="middle">1</text>
@@ -44,17 +44,17 @@
 <text x="280" y="218" fill="#1d2733" font-size="12.5">out(y,x) = Σ k(i,j)·img(y+i, x+j)</text>
 <text x="280" y="240" fill="#1d2733" font-size="12.5">true convolution flips the kernel:</text>
 <text x="280" y="258" fill="#1d2733" font-size="12.5">out(y,x) = Σ k(i,j)·img(y−i, x−j)</text>
-<text x="280" y="276" fill="#555" font-size="12">(same thing for symmetric kernels: Gaussian)</text>
+<text x="280" y="276" fill="#555" font-size="12">(same for a symmetric kernel)</text>
 <text x="540" y="70" fill="#1d2733" font-size="12.5" font-weight="bold">Result at (2, 2):</text>
 <text x="540" y="90" fill="#1d2733" font-size="12.5">(−1)·10 + 0·10 + 1·80</text>
 <text x="540" y="110" fill="#1d2733" font-size="12.5">+ (−2)·10 + 0·10 + 2·80</text>
 <text x="540" y="130" fill="#1d2733" font-size="12.5">+ (−1)·10 + 0·10 + 1·80</text>
-<text x="540" y="150" fill="#1d2733" font-size="12.5" font-weight="bold">= 280  > 0</text>
+<text x="540" y="150" fill="#1d2733" font-size="12.5" font-weight="bold">= 280;  ÷ 8 → 35 > 0</text>
 <text x="540" y="170" fill="#1d2733" font-size="12.5">brighter to the right:</text>
 <text x="540" y="190" fill="#1d2733" font-size="12.5">a vertical edge</text>
 <text x="540" y="230" fill="#1d2733" font-size="12.5">Gaussian blur: all weights > 0,</text>
 <text x="540" y="250" fill="#1d2733" font-size="12.5">sum = 1 → local average</text>
 <text x="540" y="270" fill="#1d2733" font-size="12.5">Sobel: weights sum to 0 →</text>
 <text x="540" y="290" fill="#1d2733" font-size="12.5">0 on flat areas, large on edges</text>
-<text x="20" y="331" fill="#555" font-size="12">At the border the neighbourhood leaves the picture: OpenCV mirrors it ("reflect 101": … c b | a b c …) = np.pad(mode="reflect").</text>
+<text x="20" y="331" fill="#555" font-size="12">At the border OpenCV mirrors the picture ("reflect 101": … c b | a b c …), np.pad(…, mode="reflect").</text>
 </svg>

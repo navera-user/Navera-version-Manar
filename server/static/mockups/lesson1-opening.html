@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mockup — Mission 01 opening</title>
+<link rel="stylesheet" href="/static/style.css">
+<style>
+  body { background: #e9eef3; overflow: auto; height: auto; }
+  .mock { position: sticky; top: 0; z-index: 5; background: #14202b; color: #ffd9cf; text-align: center; font-size: 13px;
+          letter-spacing: 2px; text-transform: uppercase; padding: 7px; font-weight: 600; }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 22px 16px 60px; }
+  .label { font-size: 12px; letter-spacing: 2.4px; text-transform: uppercase; color: #5d6b78; font-weight: 700; margin: 34px 0 10px; }
+  .label b { color: #d9634f; }
+
+  /* A — cold open */
+  .cold { border-radius: 22px; overflow: hidden; background: linear-gradient(180deg, #0b1730 0%, #13284a 55%, #1d4e6b 100%);
+          box-shadow: 0 18px 44px rgba(10,30,50,.22); position: relative; color: #fff; }
+  .cold svg { display: block; width: 100%; height: auto; }
+  .cold .cap { padding: 14px 22px 18px; font-family: Fraunces, Georgia, serif; font-size: 21px; line-height: 1.3;
+               background: #0b1730; transition: opacity .5s; min-height: 62px; }
+  .cold .hud { position: absolute; top: 14px; right: 16px; font: 600 12.5px/1.5 ui-monospace, Menlo, monospace; text-align: right;
+               background: rgba(11,23,48,.62); border: 1px solid rgba(255,255,255,.14); border-radius: 12px; padding: 8px 12px; }
+  .hud .err { color: #ff8f7a; font-size: 18px; } .hud .ok { color: #7fe0d3; }
+  .cold .kick { position: absolute; top: 16px; left: 20px; font-size: 11.5px; letter-spacing: 3px; text-transform: uppercase;
+                color: #ffb3a3; font-weight: 700; }
+  .title { padding: 22px 26px 24px; background: #fff; border-radius: 0 0 22px 22px; margin-top: -8px; position: relative;
+           box-shadow: 0 18px 44px rgba(10,30,50,.10); }
+  .title h1 { margin: 0 0 6px; font-size: 30px; } .title p { margin: 0; color: #5d6b78; font-size: 16px; line-height: 1.55; }
+  .chips { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+  .chip { font-size: 12.5px; padding: 5px 11px; border-radius: 99px; background: #eef5f8; color: #13284a; font-weight: 600; }
+
+  /* B — step 0 */
+  .card { background: #fff; border-radius: 22px; padding: 22px 24px; box-shadow: 0 18px 44px rgba(10,30,50,.10); }
+  .card h2 { margin: 0 0 6px; font-size: 22px; } .card p { color: #5d6b78; margin: 6px 0 12px; line-height: 1.55; }
+  .cmd { display: flex; align-items: center; gap: 10px; background: #0b1730; color: #e8f0f5; border-radius: 14px; padding: 12px 14px;
+         font: 14px ui-monospace, Menlo, monospace; }
+  .cmd button { margin-left: auto; }
+  .term { margin-top: 10px; background: #08111f; color: #cfe3ea; border-radius: 14px; padding: 14px 16px; min-height: 196px;
+          font: 13.5px/1.65 ui-monospace, Menlo, monospace; white-space: pre-wrap; }
+  .term .r { color: #ff8f7a; font-weight: 700; } .term .g { color: #7fe0d3; } .term .d { color: #7d8fa3; }
+  .then { margin-top: 14px; padding: 12px 14px; border-radius: 14px; background: #fde9e4; color: #5a2219; font-weight: 600; }
+
+  /* C — sessions */
+  .rail { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .sess { background: #fff; border-radius: 22px; padding: 18px 20px; box-shadow: 0 18px 44px rgba(10,30,50,.10); position: relative; }
+  .sess h3 { margin: 4px 0 8px; font-size: 19px; } .sess .k { font-size: 11.5px; letter-spacing: 2.4px; text-transform: uppercase;
+             color: #1d7f8c; font-weight: 700; }
+  .sess ol { margin: 0 0 12px; padding-left: 20px; color: #14202b; line-height: 1.6; font-size: 14.5px; }
+  .sess .time { font-size: 13px; color: #5d6b78; }
+  .reward { display: flex; align-items: center; gap: 12px; margin-top: 12px; padding: 10px 12px; border-radius: 14px;
+           background: linear-gradient(135deg, #0b1730, #1d4e6b); color: #fff; }
+  .reward svg { flex: none; } .reward b { display: block; font-size: 15px; } .reward span { font-size: 12.5px; color: #c9dbe6; }
+  .note { font-size: 13.5px; color: #5d6b78; line-height: 1.55; margin-top: 10px; }
+  @media (max-width: 620px) { .rail { grid-template-columns: 1fr; } .cold .cap { font-size: 17px; } .title h1 { font-size: 25px; } }
+</style></head><body>
+<div class="mock">Mockup — Mission 01 opening (not live)</div>
+<div class="wrap">
+
+  <div class="label"><b>A</b> · The first thing the student sees: a 15-second cold open, then the title</div>
+  <div class="cold">
+    <div class="kick">Mission 01 · cold open</div>
+    <svg viewBox="0 0 720 360" aria-label="A drone flies along a coast; its GPS position is slowly dragged out over the sea, then caught at the coast">
+      <defs>
+        <linearGradient id="sea" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#1d4e6b"/><stop offset="1" stop-color="#13284a"/></linearGradient>
+        <radialGradient id="glow"><stop offset="0" stop-color="#ff8f7a" stop-opacity=".9"/><stop offset="1" stop-color="#ff8f7a" stop-opacity="0"/></radialGradient>
+      </defs>
+      <rect width="720" height="360" fill="url(#sea)"/>
+      <!-- land: two headlands with a bay of sea between -->
+      <path d="M0 360 L0 205 C60 196 120 214 190 206 C215 204 228 214 236 230 L236 360 Z" fill="#2f5a4d"/>
+      <path d="M484 360 L484 232 C494 214 512 206 540 208 C610 214 660 196 720 204 L720 360 Z" fill="#2f5a4d"/>
+      <path d="M0 205 C60 196 120 214 190 206 C215 204 228 214 236 230" fill="none" stroke="#f6c7a8" stroke-width="2" opacity=".7"/>
+      <path d="M484 232 C494 214 512 206 540 208 C610 214 660 196 720 204" fill="none" stroke="#f6c7a8" stroke-width="2" opacity=".7"/>
+      <text x="40" y="282" fill="#cfe3d9" font-size="13" font-family="Inter, sans-serif" opacity=".8">land: vision matches</text>
+      <text x="300" y="300" fill="#9fc4d8" font-size="13" font-family="Inter, sans-serif" opacity=".8">sea: no vision match</text>
+      <text x="556" y="282" fill="#cfe3d9" font-size="13" font-family="Inter, sans-serif" opacity=".8">land again</text>
+      <!-- true route -->
+      <line x1="30" y1="240" x2="700" y2="240" stroke="#7fe0d3" stroke-width="2" stroke-dasharray="6 6" opacity=".55"/>
+      <!-- gps trail -->
+      <polyline id="trail" points="" fill="none" stroke="#ff8f7a" stroke-width="2.5" opacity=".9"/>
+      <line id="gap" x1="0" y1="0" x2="0" y2="0" stroke="#ff8f7a" stroke-width="1.4" stroke-dasharray="3 4" opacity="0"/>
+      <!-- drone (true) -->
+      <g id="drone"><circle r="18" fill="#7fe0d3" opacity=".18"/><path d="M-9 0 L9 0 M0 -9 L0 9" stroke="#7fe0d3" stroke-width="3" stroke-linecap="round"/>
+        <circle cx="-9" cy="0" r="4" fill="none" stroke="#7fe0d3" stroke-width="2"/><circle cx="9" cy="0" r="4" fill="none" stroke="#7fe0d3" stroke-width="2"/>
+        <circle cx="0" cy="-9" r="4" fill="none" stroke="#7fe0d3" stroke-width="2"/><circle cx="0" cy="9" r="4" fill="none" stroke="#7fe0d3" stroke-width="2"/></g>
+      <!-- gps dot -->
+      <g id="gps"><circle r="22" fill="url(#glow)"/><circle r="6" fill="#ff8f7a" stroke="#fff" stroke-width="2"/></g>
+      <g id="caught" opacity="0"><circle r="26" fill="none" stroke="#ffd166" stroke-width="3"/>
+        <text x="32" y="6" fill="#ffd166" font-size="16" font-weight="700" font-family="Inter, sans-serif">CAUGHT</text></g>
+    </svg>
+    <div class="hud"><span class="d">GPS error</span><br><span class="err" id="err">0 m</span><br><span class="ok" id="state">GPS · FIX</span></div>
+    <div class="cap" id="cap">A survey drone flies along the coast. Its GPS looks perfect.</div>
+  </div>
+  <div class="title">
+    <h1>Mission 01 — Ghost position</h1>
+    <p>In 2017, twenty ships in the Black Sea saw their GPS place them on an airport. Today you build a receiver,
+       fool it the same way, and catch the attack the way NAVERA does.</p>
+    <div class="chips"><span class="chip">⏱ Session 1 · about 2 h</span><span class="chip">⏱ Session 2 · about 2 h</span>
+      <span class="chip">You write 9 functions</span><span class="chip">2 badges</span></div>
+  </div>
+
+  <div class="label"><b>B</b> · Lab Step 0 — the first 5 minutes: they launch an attack before writing any code</div>
+  <div class="card">
+    <h2>Step 0 — Hijack a position</h2>
+    <p>One command. A ready-made receiver computes your position from three beacons; then a spoofer switches on.
+       Watch what the receiver says.</p>
+    <div class="cmd">$ python3 where_am_i.py hijack <button class="primary" id="run">▶ Run</button></div>
+    <div class="term" id="term"><span class="d">(press ▶ Run)</span></div>
+    <div class="then">No alarm, 4.5 km off, and the "mismatch" is exactly zero. Before you can defend against this, you
+      need to understand why. Next: build the receiver yourself.</div>
+  </div>
+
+  <div class="label"><b>C</b> · Two sessions with a clear finish line and a reward each</div>
+  <div class="rail">
+    <div class="sess"><div class="k">Session 1 · Build &amp; spoof</div><h3>Make it, break it, fool it</h3>
+      <ol><li>Step 0 — hijack (5 min)</li><li>Your own receiver: brute force</li><li>The clock: 4 unknowns</li>
+        <li>Gauss–Newton, like a real receiver</li><li>Spoof it fully, then partially</li></ol>
+      <div class="time">about 2 h · ends after the partial spoof</div>
+      <div class="reward"><svg width="40" height="40" viewBox="0 0 40 40"><circle cx="20" cy="20" r="18" fill="#ff8f7a"/>
+        <path d="M12 21 L18 27 L29 14" fill="none" stroke="#2a0d08" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <div><b>Spoof hunter</b><span>Your receiver, fooled and explained</span></div></div>
+    </div>
+    <div class="sess"><div class="k">Session 2 · Detect &amp; defend</div><h3>Catch it, attack, defend</h3>
+      <ol><li>NAVERA's rules in the real code</li><li>Write the jump gate</li><li>Be the arbiter</li>
+        <li>Detective: the spoofed flight</li><li>Attacker vs defender</li></ol>
+      <div class="time">about 2 h · ends on the attacker/defender duel</div>
+      <div class="reward"><svg width="40" height="40" viewBox="0 0 40 40"><circle cx="20" cy="20" r="18" fill="#7fe0d3"/>
+        <path d="M20 9 L29 13 V20 C29 26 25 30 20 32 C15 30 11 26 11 20 V13 Z" fill="#0b1730"/></svg>
+        <div><b>Gatekeeper</b><span>You found the hole, and closed part of it</span></div></div>
+    </div>
+  </div>
+  <p class="note">Also in this version: the <code>grep</code> of NAVERA's settings moves from Step 1 to the jump-gate step,
+    where it is needed. The rest of the 10/10 lesson and lab stays as it is.</p>
+</div>
+
+<script>
+(function () {
+  const W = 720, Y0 = 240, T = 15000;              // 15 s loop
+  const drone = document.getElementById('drone'), gps = document.getElementById('gps'), trail = document.getElementById('trail');
+  const caught = document.getElementById('caught'), gap = document.getElementById('gap');
+  const err = document.getElementById('err'), state = document.getElementById('state'), cap = document.getElementById('cap');
+  const caps = [[0, 'A survey drone flies along the coast. Its GPS looks perfect.'],
+                [0.30, 'Over the sea, a spoofer starts dragging the GPS — 2 metres every second.'],
+                [0.50, 'No jump, no alarm. Nothing out here can check the GPS.'],
+                [0.68, 'At the coast, the camera finds the map again…'],
+                [0.74, '…and NAVERA catches the lie. 391 m off.'],
+                [0.88, 'Today you do both: the attack, and the catch.']];
+  let pts = [], lastCap = -1;
+  function frame(now) {
+    const u = (now % T) / T;                         // 0..1
+    const x = 30 + u * 640;
+    const sea0 = 236, sea1 = 484, start = 0.30, catchAt = 0.70;
+    const isCaught = u >= catchAt;
+    const uu = isCaught ? catchAt : u;
+    let off = uu > start ? (uu - start) * 280 : 0;   // pixels dragged north
+    const gx = isCaught ? 30 + catchAt * 640 : x, gy = Y0 - off;
+    if (u < 0.01) pts = [];
+    pts.push(gx.toFixed(1) + ',' + gy.toFixed(1)); if (pts.length > 400) pts.shift();
+    trail.setAttribute('points', pts.join(' '));
+    drone.setAttribute('transform', `translate(${x},${Y0})`);
+    gps.setAttribute('transform', `translate(${gx},${gy})`);
+    const metres = Math.round(off / ((catchAt - start) * 280) * 391);   // 0 → 391 m at the catch (the lab's value)
+    err.textContent = metres + ' m';
+    state.textContent = isCaught ? 'GPS · REFUSED' : (u > start && x > sea0 && x < sea1 ? 'GPS · FIX (fooled)' : 'GPS · FIX');
+    state.style.color = isCaught ? '#ffd166' : '#7fe0d3';
+    caught.setAttribute('opacity', isCaught ? 1 : 0);
+    caught.setAttribute('transform', `translate(${gx},${gy})`);
+    gap.setAttribute('opacity', isCaught ? .9 : 0);
+    gap.setAttribute('x1', gx); gap.setAttribute('y1', Y0); gap.setAttribute('x2', gx); gap.setAttribute('y2', gy);
+    let c = 0; caps.forEach((p, i) => { if (u >= p[0]) c = i; });
+    if (c !== lastCap) { cap.style.opacity = 0; setTimeout(() => { cap.textContent = caps[c][1]; cap.style.opacity = 1; }, 250); lastCap = c; }
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+
+  const lines = [['d', '$ python3 where_am_i.py hijack'], ['', 'Beacons A, B, C. Receiver clock unknown.'],
+    ['g', 'receiver: you are at (3.00, 4.00) km     mismatch 0.0000'], ['', ''], ['r', '>>> spoofer ON: fake signals for (7, 2)'],
+    ['', 'receiver: you are at (3.62, 3.70) km     mismatch 0.0000'], ['', 'receiver: you are at (5.31, 2.85) km     mismatch 0.0000'],
+    ['', 'receiver: you are at (7.00, 2.00) km     mismatch 0.0000'], ['', ''],
+    ['r', 'position error: 4 472 m   ·   alarms raised: 0']];
+  document.getElementById('run').onclick = () => {
+    const term = document.getElementById('term'); term.innerHTML = '';
+    lines.forEach((l, i) => setTimeout(() => { const s = document.createElement('span'); if (l[0]) s.className = l[0];
+      s.textContent = l[1] + '\n'; term.appendChild(s); }, 380 * i));
+  };
+})();
+</script>
+</body></html>

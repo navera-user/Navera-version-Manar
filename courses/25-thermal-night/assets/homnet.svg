@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 200" font-family="sans-serif" font-size="12">
+  <rect width="760" height="200" fill="#f7fafc"/>
+  <g fill="#1d2733">
+    <rect x="12" y="50" width="70" height="70" fill="#d9d9d9" stroke="#1d2733"/><rect x="20" y="58" width="70" height="70" fill="#7f7f7f" stroke="#1d2733"/>
+    <text x="12" y="150">pair 2 × 64 × 64</text><text x="12" y="166">(reference, thermal)</text>
+    <text x="12" y="40" font-weight="bold">to_input</text>
+    <rect x="125" y="55" width="54" height="64" fill="#cfe3ee" stroke="#1d2733"/><text x="120" y="140">conv1 16</text><text x="120" y="155">→ 16×32×32</text>
+    <rect x="205" y="65" width="44" height="46" fill="#cfe3ee" stroke="#1d2733"/><text x="198" y="140">conv2 32</text><text x="198" y="172">→ 32×16×16</text>
+    <rect x="275" y="72" width="36" height="32" fill="#cfe3ee" stroke="#1d2733"/><text x="268" y="140">conv3 64</text><text x="268" y="155">→ 64×8×8</text>
+    <rect x="337" y="78" width="28" height="20" fill="#cfe3ee" stroke="#1d2733"/><text x="330" y="140">conv4 64</text><text x="330" y="172">→ 64×?×?</text>
+    <text x="120" y="40">each: 3 × 3 conv (padding 1), ReLU, 2 × 2 max-pool</text>
+    <rect x="425" y="45" width="16" height="90" fill="#e7d4ee" stroke="#1d2733"/><text x="415" y="155">fc1 128</text><text x="410" y="170">(ReLU)</text>
+    <rect x="475" y="70" width="16" height="40" fill="#f3d9c4" stroke="#1d2733"/><text x="470" y="155">fc2 8</text>
+    <text x="520" y="78">8 numbers × ρ (16 px)</text><text x="520" y="94">= the 4 corner offsets</text>
+    <text x="520" y="120">→ offsets_to_H → centre_shift</text><text x="520" y="136">→ position correction (m)</text>
+  </g>
+  <g stroke="#1d2733" stroke-width="1.5"><line x1="95" y1="90" x2="122" y2="88"/><line x1="181" y1="88" x2="202" y2="88"/>
+    <line x1="251" y1="88" x2="272" y2="88"/><line x1="313" y1="88" x2="334" y2="88"/><line x1="367" y1="88" x2="422" y2="88"/>
+    <line x1="443" y1="88" x2="472" y2="88"/><line x1="493" y1="88" x2="516" y2="84"/></g>
+</svg>

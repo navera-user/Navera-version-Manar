@@ -1,15 +1,18 @@
-# Lab 10 — analysis
+# Memo — the fake GNSS receiver (mission 10)
 
-Write each section in your own words (at least 40 words per section). Replace the lines in
-*italics*; keep the two headings exactly as they are.
+To: the NAVERA Lite team. At least 150 words of your own, in full sentences. Replace every TODO.
 
-## Timing
+## 1. What the receiver publishes, and how often
 
-*Your measured rate, minimum, maximum and standard deviation of the period (step 6). Is the timer
-exact? Why does the node integrate the motion with the measured dt instead of 0.5 s?*
+TODO: the topic, the message, what each fix states (stamp, covariance and its type), the rate and the
+standard deviation of the intervals you measured with `ros2 topic hz`.
 
-## Flat Earth
+## 2. Why it integrates with the real dt
 
-*Your three errors for heading 30° (1, 10 and 100 km), how the error grows with the distance, and
-whether the formula d² tan(φ)/(2R) agrees with the due-east column. Up to which distance would you
-accept the flat model for a bench test, and why?*
+TODO: what a nominal-dt receiver did in Step 3 (its error in metres after the busy second, the largest speed
+a listener computed), and what yours did in Step 7.
+
+## 3. Two things arbiter v0 believed that it should not
+
+TODO: from Step 9, the two verdicts of v0 that are wrong, with the reason v0 gave, and what a better judge
+must check (mission 12 builds it).

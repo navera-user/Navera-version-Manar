@@ -1,0 +1,7 @@
+# navera_lite.target — all NAVERA Lite services: sudo systemctl start navera_lite.target
+[Unit]
+Description=NAVERA Lite (all services)
+Wants=navera_lite-gps.service navera_lite-camera.service navera_lite-arbiter.service
+
+[Install]
+WantedBy=multi-user.target

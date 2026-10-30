@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 330" font-family="sans-serif" font-size="13">
+  <rect width="640" height="330" fill="#f7fafc"/>
+  <text x="20" y="26" fill="#1d2733" font-weight="bold">From descriptors to a trusted match (NAVERA Lite: match.py, your gates)</text>
+  <g fill="#ffffff" stroke="#0b6e8a" stroke-width="2">
+    <rect x="20" y="48" width="130" height="58" rx="8"/>
+    <rect x="175" y="48" width="130" height="58" rx="8"/>
+    <rect x="330" y="48" width="130" height="58" rx="8"/>
+    <rect x="485" y="48" width="135" height="58" rx="8"/>
+  </g>
+  <g fill="#1d2733" text-anchor="middle">
+    <text x="85" y="72" font-weight="bold">2 nearest</text><text x="85" y="92">neighbours (k = 2)</text>
+    <text x="240" y="72" font-weight="bold">ratio test</text><text x="240" y="92">d1 &lt; 0.8 · d2</text>
+    <text x="395" y="72" font-weight="bold">RANSAC fit</text><text x="395" y="92">6 px threshold</text>
+    <text x="552" y="72" font-weight="bold">similarity</text><text x="552" y="92">rotation, scale, shift</text>
+  </g>
+  <g stroke="#1d2733" stroke-width="2"><path d="M150 77 H170"/><path d="M305 77 H325"/><path d="M460 77 H480"/></g>
+  <g fill="#1d2733"><path d="M168 72 L176 77 L168 82 Z"/><path d="M323 72 L331 77 L323 82 Z"/><path d="M478 72 L486 77 L478 82 Z"/></g>
+  <path d="M552 106 V126 H85 V140" stroke="#1d2733" stroke-width="2" fill="none"/><path d="M80 138 L85 146 L90 138 Z" fill="#1d2733"/>
+  <text x="20" y="168" fill="#1d2733" font-weight="bold">Gates — the first one that fails gives the reason:</text>
+  <g fill="#fff4e0" stroke="#f2a33a" stroke-width="2">
+    <rect x="20" y="180" width="140" height="64" rx="8"/>
+    <rect x="173" y="180" width="140" height="64" rx="8"/>
+    <rect x="326" y="180" width="140" height="64" rx="8"/>
+    <rect x="479" y="180" width="141" height="64" rx="8"/>
+  </g>
+  <g fill="#1d2733" text-anchor="middle">
+    <text x="90" y="204" font-weight="bold">1. a fit?</text><text x="90" y="224">"no fit"</text>
+    <text x="243" y="204" font-weight="bold">2. inliers ≥ 6</text><text x="243" y="224">"too few inliers"</text>
+    <text x="396" y="204" font-weight="bold">3. scale ±15 %</text><text x="396" y="224">vs altitude: "scale off"</text>
+    <text x="549" y="204" font-weight="bold">4. spread (4 × 2)</text><text x="549" y="224">≥ 1/4: "inliers bunched"</text>
+  </g>
+  <rect x="20" y="262" width="290" height="52" rx="8" fill="#e3f4ea" stroke="#2e8b57" stroke-width="2"/>
+  <text x="34" y="284" fill="#1d2733" font-weight="bold">all pass → accepted</text>
+  <text x="34" y="303" fill="#1d2733">(True, "ok"): a position for the judge</text>
+  <rect x="330" y="262" width="290" height="52" rx="8" fill="#fbe4e4" stroke="#d64545" stroke-width="2"/>
+  <text x="344" y="284" fill="#1d2733" font-weight="bold">one fails → refused, with a reason</text>
+  <text x="344" y="303" fill="#1d2733">(False, "scale off"), for example</text>
+</svg>

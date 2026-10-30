@@ -1,0 +1,6 @@
+# navera_lite.yaml of the bench box (lab 02): the arbiter listens to the box's own GPS reader
+/**:
+  ros__parameters:
+    gps_topic: /navera_lite/fix/gps
+    gps_timeout_s: 3.0
+    fix_max_sigma_m: 25.0

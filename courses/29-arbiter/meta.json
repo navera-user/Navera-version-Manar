@@ -1,0 +1,3 @@
+{"number": "29", "title": "Who to trust? The arbiter as a state machine", "module": 6, "duration": "6 h – 7 h 30",
+ "summary": "Write NAVERA Lite's real judge as a state machine: who may compete, who wins, how long a returning source must wait, and a door that refuses impossible fixes for good, so that a fix stamped in the future can never come back. Race it live on ROS against the course's reference, then measure the price of the hold-off, of the freshness window and of fusion.",
+ "resources": [], "open": ["navera_lite/arbiter.py", "answers.py"], "check_timeout_s": 240}

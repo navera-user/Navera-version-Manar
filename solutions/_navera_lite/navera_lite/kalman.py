@@ -1,0 +1,192 @@
+"""navera_lite/kalman.py — the linear Kalman filter: a constant-velocity model, predict, update, a height
+filter, an honesty test (NEES) and a 2-D tracker with a gate. Part of NAVERA Lite, the course's teaching stack
+(mission 28). Written for the course; it is not NAVERA code.
+
+Conventions (courses/_lib/CONVENTIONS.md):
+- A state x is a numpy vector, its covariance P a square numpy matrix (variances in m², (m/s)², …).
+- State order: positions first, then velocities. One axis: x = [p, v]; two axes: x = [east, north, v_east,
+  v_north] (m, m, m/s, m/s); a height: x = [height above ground, climb rate] (m, m/s).
+- q is the variance of the random acceleration (m²/s⁴): q = σ_a², σ_a in m/s². R is the measurement's
+  covariance (m²): R = σ² for one number.
+- Times in seconds; dt ≥ 0.
+"""
+import math
+
+import numpy as np
+
+from navera_lite.uncertainty import chi2_threshold
+
+
+# ====================================================================== the model and the two steps
+
+# @part 28 todo 1
+def cv_model(dt, q, dims=2):
+    """The constant-velocity model for a time step dt (s): (F, Q), two numpy arrays of shape (2·dims, 2·dims).
+    F moves the state forward by dt at constant velocity; Q is the covariance that a random acceleration of
+    variance q (m²/s⁴, constant during the step, independent from one step to the next) adds (lesson §2).
+    State order: [p_1 … p_dims, v_1 … v_dims] — every position first, then every velocity.
+
+    Example: cv_model(0.5, 4.0, dims=1) → F = [[1.0, 0.5], [0.0, 1.0]], Q = [[0.0625, 0.25], [0.25, 1.0]]
+             cv_model(0.5, 4.0) → F and Q of shape (4, 4); F[0, 2] = 0.5, Q[1, 3] = 0.25, Q[0, 1] = 0.0
+    """
+    dt, q = float(dt), float(q)
+    F1 = np.array([[1.0, dt], [0.0, 1.0]])
+    g = np.array([dt * dt / 2.0, dt])
+    Q1 = q * np.outer(g, g)
+    eye = np.eye(dims)
+    return np.kron(F1, eye), np.kron(Q1, eye)
+
+
+# @part 28 todo 2
+def kf_predict(x, P, F, Q):
+    """The prediction step (lesson §2): the state and its covariance one step later, (x, P) as numpy arrays.
+    x: state vector (n,); P: its covariance (n, n); F, Q: the model (from cv_model). Lists are accepted too.
+    Nothing is changed in place.
+
+    Example: F, Q = cv_model(1.0, 0.25, dims=1)
+             kf_predict([80.0, 2.0], [[9.0, 0.0], [0.0, 4.0]], F, Q)
+             → (array([82., 2.]), array([[13.0625, 4.125], [4.125, 4.25]]))
+    """
+    x, P, F, Q = (np.asarray(a, dtype=float) for a in (x, P, F, Q))
+    return F @ x, F @ P @ F.T + Q
+
+
+# @part 28 todo 3
+def kf_update(x, P, z, H, R):
+    """The update step (lesson §3) with a measurement z = H·x + noise of covariance R.
+    x (n,), P (n, n), z (m,), H (m, n), R (m, m); lists are accepted too. Returns (x, P, nis): the updated
+    state and covariance (numpy arrays) and the normalised innovation squared nis = νᵀ S⁻¹ ν (a float;
+    ν = z − H x, S = H P Hᵀ + R) — the d² of mission 27, measured BEFORE the update, so a caller can still
+    refuse the measurement.
+
+    Example: kf_update([82.0, 2.0], [[13.0625, 4.125], [4.125, 4.25]], [85.0], [[1.0, 0.0]], [[2.25]])
+             → (array([84.559…, 2.808…]), array([[1.919…, 0.606…], [0.606…, 3.139…]]), 0.5877…)
+    """
+    x, P, z, H, R = (np.asarray(a, dtype=float) for a in (x, P, z, H, R))
+    nu = z - H @ x
+    S = H @ P @ H.T + R
+    K = P @ H.T @ np.linalg.inv(S)
+    x_new = x + K @ nu
+    P_new = (np.eye(len(x)) - K @ H) @ P
+    nis = float(nu @ np.linalg.solve(S, nu))
+    return x_new, P_new, nis
+
+
+# ====================================================================== a height filter
+
+# @part 28
+class Height1D:
+    """A Kalman filter on [height above ground, climb rate] fed by independent heights (barometer, GPS minus
+    the ground, vision), each with its own σ. The model the lesson describes as the height filter in NAVERA's
+    day-vision code (§4): constant climb rate with random climb accelerations of σ_a = climb_accel (m/s²), so
+    q = climb_accel². f.x and f.P hold the state and its covariance (None before the first height), f.t the
+    time of the state.
+    """
+
+    def __init__(self, climb_accel=0.5):
+        self.climb_accel = float(climb_accel)
+        self.x = None                  # numpy [height m, climb rate m/s]
+        self.P = None                  # numpy 2 × 2 covariance
+        self.t = None                  # time (s) of x and P
+
+    # @part 28 todo 4
+    def update(self, t, h, sigma):
+        """Take one height h (m) measured at time t (s) with standard deviation sigma (m); return the filter's
+        (height, σ of the height) after it, two floats.
+        - The first usable height starts the filter: x = [h, 0.0], P = diag(sigma², 4.0) (the climb rate is
+          unknown: σ 2 m/s), t.
+        - Every next one: predict over dt = t − self.t with cv_model(dt, climb_accel², dims=1), then
+          update with z = [h], H = [[1, 0]], R = [[sigma²]]. Two heights at the same time are fine (dt = 0).
+        - A height that is not > 0 (0 = "no reading", negative, nan) is ignored: nothing changes, and the call
+          returns the current (height, σ), or None before the first usable height.
+        - A time before self.t raises ValueError("t must not go backwards: …") (a course choice: NAVERA's code
+          treats such a height as dt = 0).
+
+        Example: f = Height1D(); f.update(0.0, 80.0, 3.0) → (80.0, 3.0)
+                 then f.update(1.0, 83.0, 1.5) → (82.559…, 1.385…)
+                 then f.update(2.0, 0.0, 1.5) → (82.559…, 1.385…)   (0 = no reading: ignored)
+        """
+        h, sigma = float(h), float(sigma)
+        if not h > 0.0:
+            if self.x is None:
+                return None
+            return float(self.x[0]), math.sqrt(self.P[0, 0])
+        if self.x is None:
+            self.x = np.array([h, 0.0])
+            self.P = np.diag([sigma * sigma, 4.0])
+            self.t = float(t)
+        else:
+            if t < self.t:
+                raise ValueError(f"t must not go backwards: {t} s after {self.t} s")
+            F, Q = cv_model(t - self.t, self.climb_accel ** 2, dims=1)
+            x, P = kf_predict(self.x, self.P, F, Q)
+            self.x, self.P, _ = kf_update(x, P, [h], [[1.0, 0.0]], [[sigma * sigma]])
+            self.t = float(t)
+        return float(self.x[0]), math.sqrt(self.P[0, 0])
+
+
+# ====================================================================== honesty and the tracker
+
+# @part 28 todo 5
+def nees(err, P):
+    """The normalised estimation error squared (lesson §6): errᵀ P⁻¹ err, a float.
+    err = estimate − truth (n,), P the covariance the filter STATES for that estimate (n, n).
+    For an honest filter its average is n.
+
+    Example: nees([3.0, -1.0], [[4.0, 0.0], [0.0, 1.0]]) → 3.25      nees([2.0], [[4.0]]) → 1.0
+    """
+    err, P = np.asarray(err, dtype=float), np.asarray(P, dtype=float)
+    return float(err @ np.linalg.solve(P, err))
+
+
+# @part 28
+def gate_threshold(p):
+    """The d² below which a share p of honest 2-D innovations fall: mission 27's chi2_threshold(p, 2) =
+    −2 ln(1 − p). Example: gate_threshold(0.99) → 9.21…   gate_threshold(0.95) → 5.99…
+    """
+    # from mission 28 — finished: read it, use it, do not change it
+    return chi2_threshold(p, 2)
+
+
+# @part 28 todo 7
+def run_filter(times, zs, sigma_z, q, gate_p=None, v0_sigma=20.0):
+    """Track a vehicle in 2-D with the constant-velocity filter (lesson §5).
+    times: list of times (s), increasing; zs: one measurement per time, (east, north) in m, or None (no fix);
+    sigma_z: the fixes' σ per axis (m), so R = sigma_z² I; q: the model's acceleration variance (m²/s⁴);
+    gate_p: None = accept every fix; else refuse a fix whose nis > gate_threshold(gate_p).
+    The first time starts the filter (zs[0] is a fix): x = [e0, n0, 0, 0],
+    P = diag(sigma_z², sigma_z², v0_sigma², v0_sigma²). At every next time the state moves on by
+    dt = times[k] − times[k−1]; a fix is used unless the gate refuses it (a refused fix changes nothing).
+    Returns a dict of four lists, one entry per time: "x" (the state after that time, numpy (4,)),
+    "P" (numpy (4, 4)), "d2" (the fix's nis; None without a fix and at k = 0), "accepted" (True / False;
+    None without a fix; True at k = 0).
+
+    Example: r = run_filter([0.0, 1.0, 2.0], [(0.0, 0.0), None, (30.0, 0.0)], 5.0, 1.0)
+             → r["x"][1] = array([0., 0., 0., 0.]), r["d2"] = [None, None, 0.5446…],
+               r["accepted"] = [True, None, True], r["x"][2][2] = 14.559… (it learned a speed east)
+             run_filter(…the same…, gate_p=0.2)["accepted"] = [True, None, False]   (0.5446 > 0.4462)
+    """
+    thr = gate_threshold(gate_p) if gate_p is not None else None
+    H = np.hstack([np.eye(2), np.zeros((2, 2))])
+    R = sigma_z * sigma_z * np.eye(2)
+    out = {"x": [], "P": [], "d2": [], "accepted": []}
+    x = P = None
+    for k, (t, z) in enumerate(zip(times, zs)):
+        if k == 0:
+            x = np.array([z[0], z[1], 0.0, 0.0], dtype=float)
+            P = np.diag([sigma_z ** 2, sigma_z ** 2, v0_sigma ** 2, v0_sigma ** 2])
+            d2, ok = None, True
+        else:
+            F, Q = cv_model(times[k] - times[k - 1], q, dims=2)
+            x, P = kf_predict(x, P, F, Q)
+            d2, ok = None, None
+            if z is not None:
+                x_u, P_u, d2 = kf_update(x, P, np.asarray(z, dtype=float), H, R)
+                ok = thr is None or d2 <= thr
+                if ok:
+                    x, P = x_u, P_u
+        out["x"].append(x.copy())
+        out["P"].append(P.copy())
+        out["d2"].append(d2)
+        out["accepted"].append(ok)
+    return out

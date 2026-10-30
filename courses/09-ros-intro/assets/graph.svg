@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 450" font-family="sans-serif" font-size="12">
+  <rect width="920" height="450" fill="#f7fafc"/>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0 0 L10 5 L0 10 z" fill="#0b6e8a"/>
+    </marker>
+    <marker id="o" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0 0 L10 5 L0 10 z" fill="#c25e00"/>
+    </marker>
+    <marker id="r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0 0 L10 5 L0 10 z" fill="#b3261e"/>
+    </marker>
+  </defs>
+  <text x="460" y="26" text-anchor="middle" font-size="15" font-weight="bold" fill="#1d2733">The graph of this lab: boxes are nodes, orange names are topics</text>
+
+  <!-- replay node -->
+  <rect x="30" y="120" width="150" height="120" rx="10" fill="#ffffff" stroke="#0b6e8a" stroke-width="2"/>
+  <text x="105" y="146" text-anchor="middle" font-weight="bold" font-size="14" fill="#1d2733">/replay</text>
+  <text x="105" y="166" text-anchor="middle" fill="#56606b">replay_node</text>
+  <text x="105" y="190" text-anchor="middle" fill="#56606b">plays a 30 s</text>
+  <text x="105" y="206" text-anchor="middle" fill="#56606b">scenario of fixes,</text>
+  <text x="105" y="222" text-anchor="middle" fill="#56606b">and an IMU heartbeat</text>
+
+  <!-- arbiter node -->
+  <rect x="440" y="110" width="160" height="140" rx="10" fill="#ffffff" stroke="#0b6e8a" stroke-width="3"/>
+  <text x="520" y="138" text-anchor="middle" font-weight="bold" font-size="14" fill="#1d2733">/arbiter</text>
+  <text x="520" y="158" text-anchor="middle" fill="#56606b">arbiter_v0</text>
+  <text x="520" y="184" text-anchor="middle" fill="#1d2733">the judge:</text>
+  <text x="520" y="200" text-anchor="middle" fill="#1d2733">"which position</text>
+  <text x="520" y="216" text-anchor="middle" fill="#1d2733">do I trust?"</text>
+  <text x="520" y="238" text-anchor="middle" fill="#56606b" font-size="11">params: navera_lite.yaml</text>
+
+  <!-- fix topics -->
+  <line x1="180" y1="132" x2="438" y2="132" stroke="#0b6e8a" stroke-width="2" marker-end="url(#a)"/>
+  <text x="300" y="127" text-anchor="middle" fill="#c25e00" font-weight="bold">/navera_lite/fix/gps</text>
+  <line x1="180" y1="160" x2="438" y2="160" stroke="#0b6e8a" stroke-width="2" marker-end="url(#a)"/>
+  <text x="300" y="155" text-anchor="middle" fill="#c25e00" font-weight="bold">/navera_lite/fix/day</text>
+  <line x1="180" y1="188" x2="438" y2="188" stroke="#9aa5b1" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#a)"/>
+  <text x="300" y="183" text-anchor="middle" fill="#c25e00">/navera_lite/fix/night</text>
+  <line x1="180" y1="214" x2="438" y2="214" stroke="#9aa5b1" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#a)"/>
+  <text x="300" y="209" text-anchor="middle" fill="#c25e00">/navera_lite/fix/celestial</text>
+  <text x="300" y="104" text-anchor="middle" fill="#56606b" font-size="11">NavSatFix · RELIABLE (dashed: no fix in the demo)</text>
+
+  <!-- imu -->
+  <line x1="180" y1="236" x2="438" y2="236" stroke="#0b6e8a" stroke-width="2" marker-end="url(#a)"/>
+  <text x="300" y="252" text-anchor="middle" fill="#c25e00" font-weight="bold">/navera_lite/imu</text>
+  <text x="300" y="267" text-anchor="middle" fill="#56606b" font-size="11">Imu · offered BEST_EFFORT</text>
+  <path d="M 150 240 L 150 360 L 438 360" fill="none" stroke="#b3261e" stroke-width="2" stroke-dasharray="7 5" marker-end="url(#r)"/>
+  <text x="300" y="354" text-anchor="middle" fill="#c25e00" font-weight="bold">/navera_lite/imu</text>
+  <text x="290" y="378" text-anchor="middle" fill="#b3261e">requested RELIABLE → ✘ no connection,</text>
+  <text x="290" y="394" text-anchor="middle" fill="#b3261e">no exception, only one WARN line</text>
+
+  <!-- broken listener -->
+  <rect x="440" y="325" width="160" height="70" rx="10" fill="#fff4f2" stroke="#b3261e" stroke-width="2"/>
+  <text x="520" y="352" text-anchor="middle" font-weight="bold" font-size="14" fill="#1d2733">/imu_listener</text>
+  <text x="520" y="372" text-anchor="middle" fill="#b3261e">"heard 0 IMU messages"</text>
+
+  <!-- outputs of the arbiter -->
+  <line x1="600" y1="150" x2="776" y2="150" stroke="#0b6e8a" stroke-width="2" marker-end="url(#a)"/>
+  <text x="604" y="142" fill="#c25e00" font-weight="bold">/navera_lite/position</text>
+  <text x="604" y="168" fill="#56606b" font-size="11">NavSatFix, once per new fix</text>
+  <line x1="600" y1="212" x2="776" y2="212" stroke="#0b6e8a" stroke-width="2" marker-end="url(#a)"/>
+  <text x="604" y="204" fill="#c25e00" font-weight="bold">/navera_lite/status</text>
+  <text x="604" y="230" fill="#56606b" font-size="11">DiagnosticStatus, latched</text>
+  <rect x="780" y="130" width="125" height="104" rx="10" fill="#ffffff" stroke="#9aa5b1" stroke-width="1.5" stroke-dasharray="4 3"/>
+  <text x="842" y="164" text-anchor="middle" fill="#1d2733">you:</text>
+  <text x="842" y="182" text-anchor="middle" fill="#1d2733" font-family="monospace" font-size="11">ros2 topic echo</text>
+  <text x="842" y="200" text-anchor="middle" fill="#56606b" font-size="11">(also a subscriber)</text>
+
+  <text x="460" y="425" text-anchor="middle" fill="#1d2733">Nobody calls anybody: /replay does not know who listens, and /arbiter does not know who publishes.</text>
+  <text x="460" y="443" text-anchor="middle" fill="#56606b" font-size="11">Every node and topic here lives in one ROS_DOMAIN_ID, on this computer only (ROS_LOCALHOST_ONLY=1).</text>
+</svg>

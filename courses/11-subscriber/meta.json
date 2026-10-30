@@ -1,3 +1,3 @@
-{"number": "11", "title": "Subscribers, callbacks and executors: listening with memory", "module": 3, "duration": "4 h",
- "summary": "Write subscribers that filter bad fixes, keep state and compute speed despite GNSS noise; measure how executors and callback groups decide who waits; then follow NAVERA's real arbiter and time how fast it detects a silent receiver.",
- "resources": [], "open": ["gps_listener.py", "executor_demo.py", "status_listener.py", "report.md"], "check_timeout_s": 300}
+{"number": "11", "title": "Subscribers, callbacks and executors: listening with memory", "module": 3, "duration": "4 h 30",
+ "summary": "Reproduce a real polling bug, then write NAVERA Lite's trip computer: a subscriber that judges every GPS fix by its stamp, measures a speed that noise cannot fool, and notices silence with a watchdog. Overload a node on purpose, and time how fast the judge notices a GPS that went silent.",
+ "resources": [], "open": ["navera_lite/ros/trip_node.py", "answers.py", "run_trip.py"], "check_timeout_s": 240}

@@ -1,3 +1,3 @@
-{"number": "12", "title": "The position contract: covariance, stamps and honest uncertainty", "module": 3, "duration": "4 h",
- "summary": "NAVERA's PositionEstimate in depth: ENU covariance matrices, positive semi-definiteness, error ellipses and their probabilities, measurement versus publication stamps. You become a source, inject twelve faults into the real arbiter and judge one of its design choices.",
- "resources": [], "open": ["my_source.py", "probability.py", "verdicts.py", "report.md"], "check_timeout_s": 240}
+{"number": "12", "title": "The position contract: covariance, stamps and honest uncertainty", "module": 3, "duration": "5 h 30",
+ "summary": "What every witness must tell the judge: where, how sure and when. You write NAVERA Lite's contract checks (is it a covariance, what σ does it state, what does a late position cost, may the judge use it), fool the naive arbiter v0 with four forged scenarios, then plug in your own eligible() and watch them fail.",
+ "resources": [], "open": ["navera_lite/estimate.py", "answers.py"], "check_timeout_s": 180}

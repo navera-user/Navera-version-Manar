@@ -1,3 +1,3 @@
-{"number": "02", "title": "Linux and the shell for robotics", "module": 1, "duration": "4 h 30",
- "summary": "The file system, permissions, processes and signals, environment variables (ROS_DOMAIN_ID), streams and pipes, and bash scripts — used to process two training-flight logs from Sousse and an inland test range.",
- "resources": [], "open": ["mission_brief.txt", "answers.py"], "check_timeout_s": 120}
+{"number": "02", "title": "Linux and the shell for robotics", "module": 1, "duration": "4–5 h",
+ "summary": "Files, permissions and groups, processes and signals, the environment, pipelines and bash scripts — on a simulated NAVERA Lite box (an orphan arbiter, a service without its serial-port group, a hung node) and two synthetic flight logs.",
+ "resources": [], "open": ["mission_brief.txt", "answers.py", "cheatsheet.md"], "check_timeout_s": 120}

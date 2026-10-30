@@ -16,7 +16,7 @@
     <path d="M104 64 l2 5 5 .7 -3.6 3.5 .8 5 -4.2 -2.3 -4.2 2.3 .8 -5 -3.6 -3.5 5 -.7 Z"/>
   </g>
   <!-- title -->
-  <text x="400" y="44" text-anchor="middle" font-size="26" font-weight="bold" fill="#243447">Navi's senses → NAVERA's sources</text>
+  <text x="400" y="44" text-anchor="middle" font-size="26" font-weight="bold" fill="#243447">A migrating bird's senses → NAVERA's sources</text>
   <text x="400" y="72" text-anchor="middle" font-size="16" fill="#243447">A swallow crosses continents without GPS. NAVERA copies the trick.</text>
 
   <!-- connectors from bird to cards -->
@@ -50,41 +50,41 @@
     <!-- near wing -->
     <path d="M-4 0 Q-10 46 -50 72 Q-6 60 24 4 Z" fill="#3c5170" stroke="#243447" stroke-width="1.5"/>
   </g>
-  <text x="400" y="368" text-anchor="middle" font-size="15" font-weight="bold" fill="#243447">Navi</text>
+  <text x="400" y="368" text-anchor="middle" font-size="15" font-weight="bold" fill="#243447"></text>
 
   <!-- left cards -->
   <g>
     <rect x="22" y="112" width="240" height="80" rx="16" fill="#ffffff" stroke="#7ccf6a" stroke-width="3"/>
-    <text x="40" y="142" font-size="17" font-weight="bold" fill="#243447">👁 Eyes + landmarks</text>
+    <text x="40" y="142" font-size="17" font-weight="bold" fill="#243447">Eyes + landmarks</text>
     <text x="40" y="172" font-size="15" fill="#d9532f">→ day vision (map)</text>
 
     <rect x="22" y="247" width="240" height="80" rx="16" fill="#ffffff" stroke="#7ccf6a" stroke-width="3"/>
-    <text x="40" y="277" font-size="17" font-weight="bold" fill="#243447">🧲 Magnetic sense</text>
-    <text x="40" y="307" font-size="15" fill="#d9532f">→ magnetometer (IMU)</text>
+    <text x="40" y="277" font-size="17" font-weight="bold" fill="#243447">Magnetic sense</text>
+    <text x="40" y="307" font-size="15" fill="#d9532f">→ magnetometer (heading only)</text>
 
     <rect x="22" y="382" width="240" height="80" rx="16" fill="#ffffff" stroke="#7ccf6a" stroke-width="3"/>
-    <text x="40" y="412" font-size="17" font-weight="bold" fill="#243447">⚖ Inner ear, balance</text>
+    <text x="40" y="412" font-size="17" font-weight="bold" fill="#243447">Inner ear, balance</text>
     <text x="40" y="442" font-size="15" fill="#d9532f">→ IMU (gyros, accel.)</text>
   </g>
 
   <!-- right cards -->
   <g>
     <rect x="538" y="112" width="240" height="80" rx="16" fill="#ffffff" stroke="#ffc94d" stroke-width="3"/>
-    <text x="556" y="142" font-size="17" font-weight="bold" fill="#243447">✦ Stars at night</text>
+    <text x="556" y="142" font-size="17" font-weight="bold" fill="#243447">Stars at night</text>
     <text x="556" y="172" font-size="15" fill="#d9532f">→ celestial camera</text>
 
     <rect x="538" y="247" width="240" height="80" rx="16" fill="#ffffff" stroke="#ffc94d" stroke-width="3"/>
-    <text x="556" y="277" font-size="17" font-weight="bold" fill="#243447">☀ Sun + body clock</text>
+    <text x="556" y="277" font-size="17" font-weight="bold" fill="#243447">Sun + body clock</text>
     <text x="556" y="307" font-size="15" fill="#d9532f">→ exact time, sky</text>
 
     <rect x="538" y="382" width="240" height="80" rx="16" fill="#ffffff" stroke="#ffc94d" stroke-width="3"/>
-    <text x="556" y="412" font-size="17" font-weight="bold" fill="#243447">〰 Sense of own motion</text>
-    <text x="556" y="442" font-size="15" fill="#d9532f">→ dead reckoning</text>
+    <text x="556" y="412" font-size="17" font-weight="bold" fill="#243447">Sense of own motion</text>
+    <text x="556" y="442" font-size="15" fill="#d9532f">→ dead reckoning (future)</text>
   </g>
 
   <!-- arbiter card -->
   <rect x="230" y="488" width="340" height="80" rx="20" fill="#ff7a59"/>
-  <text x="400" y="520" text-anchor="middle" font-size="18" font-weight="bold" fill="#ffffff">🧠 Cross-checking the senses</text>
+  <text x="400" y="520" text-anchor="middle" font-size="18" font-weight="bold" fill="#ffffff">Cross-checking the senses</text>
   <text x="400" y="550" text-anchor="middle" font-size="16" fill="#ffffff">→ the ARBITER (who do I trust?)</text>
   <!-- note on the grass -->
   <text x="400" y="614" text-anchor="middle" font-size="15" fill="#243447">NAVERA's thermal camera adds a sense no bird has: seeing heat at night.</text>

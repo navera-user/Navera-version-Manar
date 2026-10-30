@@ -1,0 +1,152 @@
+[
+ {
+  "name": "city_rot35",
+  "map": "terrain_city.png",
+  "photo": "pair_city_rot35.jpg",
+  "heading_deg": 35.0,
+  "zoom": 1.0,
+  "photo_m_per_px": 0.9683,
+  "H": [
+   [
+    0.819152044,
+    0.573576436,
+    -36.342126804
+   ],
+   [
+    -0.573576436,
+    0.819152044,
+    176.755432172
+   ],
+   [
+    0.0,
+    0.0,
+    1.0
+   ]
+  ]
+ },
+ {
+  "name": "city_zoom2",
+  "map": "terrain_city.png",
+  "photo": "pair_city_zoom2.jpg",
+  "heading_deg": 0.0,
+  "zoom": 2.0,
+  "photo_m_per_px": 0.4842,
+  "H": [
+   [
+    2.0,
+    0.0,
+    -191.5
+   ],
+   [
+    0.0,
+    2.0,
+    -271.5
+   ],
+   [
+    0.0,
+    0.0,
+    1.0
+   ]
+  ]
+ },
+ {
+  "name": "city_zoom4",
+  "map": "terrain_city.png",
+  "photo": "pair_city_zoom4.jpg",
+  "heading_deg": 0.0,
+  "zoom": 4.0,
+  "photo_m_per_px": 0.2421,
+  "H": [
+   [
+    4.0,
+    0.0,
+    -702.5
+   ],
+   [
+    0.0,
+    4.0,
+    -782.5
+   ],
+   [
+    0.0,
+    0.0,
+    1.0
+   ]
+  ]
+ },
+ {
+  "name": "city_rot35_zoom",
+  "map": "terrain_city.png",
+  "photo": "pair_city_rot35_zoom.jpg",
+  "heading_deg": 35.0,
+  "zoom": 1.6,
+  "photo_m_per_px": 0.6052,
+  "H": [
+   [
+    1.310643271,
+    0.917722298,
+    -249.847402886
+   ],
+   [
+    -0.917722298,
+    1.310643271,
+    139.108691475
+   ],
+   [
+    0.0,
+    0.0,
+    1.0
+   ]
+  ]
+ },
+ {
+  "name": "olives_rot35_zoom",
+  "map": "terrain_olives.png",
+  "photo": "pair_olives_rot35_zoom.jpg",
+  "heading_deg": 35.0,
+  "zoom": 1.6,
+  "photo_m_per_px": 0.6059,
+  "H": [
+   [
+    1.310643271,
+    0.917722298,
+    -249.847402886
+   ],
+   [
+    -0.917722298,
+    1.310643271,
+    139.108691475
+   ],
+   [
+    0.0,
+    0.0,
+    1.0
+   ]
+  ]
+ },
+ {
+  "name": "fields_rot35_zoom",
+  "map": "terrain_fields.png",
+  "photo": "pair_fields_rot35_zoom.jpg",
+  "heading_deg": 35.0,
+  "zoom": 1.6,
+  "photo_m_per_px": 0.6059,
+  "H": [
+   [
+    1.310643271,
+    0.917722298,
+    -249.847402886
+   ],
+   [
+    -0.917722298,
+    1.310643271,
+    139.108691475
+   ],
+   [
+    0.0,
+    0.0,
+    1.0
+   ]
+  ]
+ }
+]

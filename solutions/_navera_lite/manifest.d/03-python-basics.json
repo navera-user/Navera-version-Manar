@@ -1,0 +1,2 @@
+{"parts": ["vehicle", "track"], "todo_missions": [3], "tests": [], "extra": [],
+ "note": "Mission 03 introduces vehicle.py (TODO 1-9) and track.py (TODO 10-13). tests/test_vehicle.py and tests/test_track.py exist in the reference for later missions; not shipped in 03 (they would show the answers)."}

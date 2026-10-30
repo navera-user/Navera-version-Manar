@@ -1,0 +1,2 @@
+{"parts": ["estimate", "ros.arbiter_v0", "ros.replay_node", "ros.gps_node"], "todo_missions": [12], "tests": [], "extra": [],
+ "note": "12 writes estimate TODO 1-4 (is_covariance, stated_sigma, staleness_m, eligible), attacks arbiter v0 with replay CSVs / gps_node stamp_offset_s, then relaunches v0 with -p use_eligible:=true."}

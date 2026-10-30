@@ -1,0 +1,58 @@
+"""Tests of navera_lite/settings.py (missions 09 and 13). Written for the course; it is not NAVERA code.
+
+Run from the lesson folder:  python3 -m pytest navera_lite/tests/test_settings.py -q
+"""
+import os
+
+import pytest
+
+from navera_lite import settings
+from navera_lite.settings import DEFAULTS, check_settings, load
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+YAML = os.path.join(HERE, "..", "..", "navera_lite.yaml")
+
+
+def write(tmp_path, body):
+    p = tmp_path / "s.yaml"
+    p.write_text("/**:\n  ros__parameters:\n" + "".join(f"    {line}\n" for line in body))
+    return str(p)
+
+
+def test_the_shipped_file_is_the_defaults_and_is_sane():
+    if not os.path.exists(YAML):
+        pytest.skip("no navera_lite.yaml next to the package")
+    cfg = load(YAML)
+    assert cfg == DEFAULTS
+    assert check_settings(cfg) == []
+
+
+def test_load_updates_defaults_and_refuses_a_typo(tmp_path):
+    cfg = load(write(tmp_path, ["fix_max_sigma_m: 2.0"]))
+    assert cfg["fix_max_sigma_m"] == 2.0 and cfg["gps_timeout_s"] == 3.0
+    with pytest.raises(ValueError, match="fix_max_sigma"):
+        load(write(tmp_path, ["fix_max_sigma: 2.0"]))
+
+
+def test_an_int_is_caught_like_the_loc30_trap():
+    assert check_settings(dict(DEFAULTS, gps_timeout_s=3)) == ["gps_timeout_s must be a float: write 3.0, not 3"]
+    assert any("tick_hz" in p for p in check_settings(dict(DEFAULTS, tick_hz=True)))
+
+
+@pytest.mark.parametrize("key,value,word", [
+    ("day_timeout_s", 0.0, "day_timeout_s must be > 0"),
+    ("tick_hz", -1.0, "tick_hz must be > 0"),
+    ("fix_max_sigma_m", 0.0, "fix_max_sigma_m must be > min_stated_sigma_m"),
+    ("min_stated_sigma_m", -0.5, "min_stated_sigma_m must be >= 0"),
+    ("vehicle", "car", "vehicle must be one of"),
+])
+def test_each_rule(key, value, word):
+    problems = check_settings(dict(DEFAULTS, **{key: value}))
+    assert any(word in p for p in problems), problems
+
+
+def test_the_speed_must_cover_the_vehicle():
+    assert check_settings(dict(DEFAULTS, vehicle="plane", max_speed_mps=30.0)) == \
+        ["max_speed_mps must be >= 100.0 for a plane, got 30.0"]
+    assert check_settings(dict(DEFAULTS, vehicle="boat", max_speed_mps=20.0)) == []
+    assert settings.VEHICLES["drone"] == 30.0

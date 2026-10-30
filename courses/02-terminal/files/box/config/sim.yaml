@@ -1,0 +1,6 @@
+# sim.yaml — settings of a simulated flight (lab 02): the arbiter listens to the SIMULATOR's GPS
+/**:
+  ros__parameters:
+    gps_topic: /sim/fix/gps
+    gps_timeout_s: 3.0
+    fix_max_sigma_m: 25.0

@@ -1,35 +1,29 @@
-# Lab 6 report — how far can NAVERA trust its flat-Earth shortcut?
+# Audit memo — NAVERA's long-route bugs, and which Earth model to use where
 
-## Method
+## Route length (R-6)
 
-The home point is the medina of Sousse (NAVERA's test area) at height 0. For 41 distances from
-10 m to 300 km and 8 bearings, error_study.py places a point exactly in the WGS84 local
-tangent frame (east, north, up = 0) and converts it to latitude and longitude with my
-enu_to_geodetic(). Then it converts that point back to (east, north) with two shortcuts:
-NAVERA's flat_en() (111 320 m per degree for both axes) and a flat version that uses the
-WGS84 radii M and N of the home latitude. The horizontal distance between the shortcut and the
-exact east/north is the error; I keep the worst bearing. It also compares the spherical
-haversine with the ellipsoidal Vincenty distance.
+The server measured the Paris → central Tunisia route with a flat approximation and said 1750 km. The
+closest of my three candidates is a flat formula with cos of the START latitude (Paris, 48.85°): 1746.9 km
+on the sphere (1748.9 km with 111 320 m per degree); the last 1–3 km are not explained by my end points. Paris is the northernmost point, so the east–west part is shrunk too much. With the mean latitude
+the flat length is 1769.7 km, and the great circle (haversine) gives 1767.8 km, the length NAVERA now uses.
+A bug report should say: "flat length with cos(start latitude) is 21 km short on a 1768 km route; use the
+great-circle distance".
 
-## Results
+## Corridor (R-2)
 
-NAVERA's flat error reaches 1 m at 369.0 m and 10 m at 3752.7 m. It is about 3.3 m at 1 km
-and 33.1 m at 10 km, so it grows linearly: 0.33 % of the distance. The WGS84-radii version
-reaches 1 m only at 4855.9 m and is 6.5 m at 10 km; its error grows with the square of the
-distance. From Sousse to Rome the sphere gives 692.906 km and the ellipsoid 691.924 km, a
-difference of 982.2 m (0.142 %).
+The great circle bends towards the pole: it passes north-east of the straight lat/lon line and is up to
+34.2 km away from it near the middle of the route. A ±1 km corridor around the straight line therefore
+covered the real path only near the two ends, which matches the backlog's report that only a small part
+of the downloaded tiles was on the real path. Cutting the route into great-circle legs of about 10 km
+brings the gap down to about 1.09 m per leg, far inside the corridor.
 
-## Discussion
+## Which model, where
 
-The NAVERA error is a scale error. One degree of latitude at Sousse is 110.96 km on WGS84, but
-the code uses 111.32 km, so every north displacement is 0.33 % too long. The east scale is
-almost right because 111 320 m is close to N times pi over 180. The second shortcut removes the
-scale error; what remains is the convergence of the meridians and the curvature, which are
-second-order effects (larger at Sousse than near the equator, because tan of the latitude is 0.72).
-Day vision measures its velocity with _en() and applies it with _move(), so the same wrong
-constant is used in both directions and the scale error cancels in the carried position. It does
-not cancel in numbers that are compared with true metres, such as distance gates and stated
-uncertainties: over 2 km that is about 7 m, small compared with the uncertainty NAVERA states for
-a dead-reckoned position, so it is acceptable. For a 300 km survey flight with a single flat frame
-the error reaches about 6 km: the software must use exact ENU or move its home point often. Using
-the radii M and N costs one square root per call and would remove the scale part of the error.
+My error study compares my flat enu_flat with the exact WGS84 ENU frame. At Sousse the flat error
+reaches 1 m at 477.4 m from home and 10 m at about 4.9 km. Near home the error grows like the distance
+(slope 1): it is the sphere's radius, 0.2 % wrong at Sousse, not the curvature. Far away (above
+100 km) the slope becomes 2 and the curvature dominates. For a drone flying 2 km around its home, a flat
+frame is fine for steering if the same function converts both ways, but metres compared with real
+metres (a jump gate, a stated σ) carry a few metres of error; using M and N of the home latitude
+removes most of it. For a 300 km survey flight, use great-circle legs for planning and the exact
+ellipsoid (or a frame re-centred often) for anything measured in metres.

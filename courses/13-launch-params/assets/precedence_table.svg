@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 300" font-family="sans-serif" font-size="13">
+<rect width="760" height="300" fill="#f7fafc"/>
+<text x="20" y="28" font-size="15" font-weight="bold" fill="#1d2733">--params-file a.yaml  -p heading_deg:=180.0     (node /boat/fake_gps)</text>
+<!-- a.yaml -->
+<rect x="20" y="50" width="230" height="110" rx="6" fill="#fff" stroke="#999"/>
+<text x="30" y="70" fill="#555" font-size="12">a.yaml (read top to bottom)</text>
+<text x="30" y="95" font-family="monospace" fill="#1d2733">/boat/fake_gps:</text>
+<text x="50" y="113" font-family="monospace" fill="#1d2733">heading_deg: 45.0</text>
+<text x="30" y="133" font-family="monospace" fill="#1d2733">/**:</text>
+<text x="50" y="151" font-family="monospace" fill="#1d2733">heading_deg: 0.0</text>
+<rect x="20" y="175" width="230" height="45" rx="6" fill="#fff" stroke="#999"/>
+<text x="30" y="194" fill="#555" font-size="12">then -p (a value for /**)</text>
+<text x="30" y="212" font-family="monospace" fill="#1d2733">heading_deg := 180.0</text>
+<!-- table -->
+<text x="330" y="70" fill="#555" font-size="12">ONE table, one row per section name</text>
+<rect x="330" y="80" width="290" height="40" fill="#e6f2f6" stroke="#0b6e8a"/>
+<text x="340" y="98" fill="#1d2733">row 1  /boat/fake_gps</text>
+<text x="340" y="113" fill="#1d2733" font-size="12">heading_deg 45.0</text>
+<rect x="330" y="120" width="290" height="40" fill="#e6f2f6" stroke="#0b6e8a"/>
+<text x="340" y="138" fill="#1d2733">row 2  /**</text>
+<text x="340" y="153" fill="#1d2733" font-size="12">heading_deg <tspan text-decoration="line-through" fill="#888">0.0</tspan> 180.0 (overwritten in place)</text>
+<path d="M250 108 L 326 100" stroke="#999" fill="none"/><path d="M250 145 L 326 140" stroke="#999" fill="none"/>
+<path d="M250 205 C 290 205, 300 160, 326 152" stroke="#b0453a" fill="none" stroke-dasharray="4 3"/>
+<!-- apply -->
+<path d="M632 90 L 632 150" stroke="#2f855a" stroke-width="3"/><polygon points="632,158 626,146 638,146" fill="#2f855a"/>
+<text x="642" y="104" fill="#2f855a" font-size="12">node applies</text>
+<text x="642" y="120" fill="#2f855a" font-size="12">its rows</text>
+<text x="642" y="136" fill="#2f855a" font-size="12">top to bottom</text>
+<rect x="330" y="185" width="370" height="40" rx="6" fill="#2f855a"/>
+<text x="345" y="210" fill="#fff" font-weight="bold">heading_deg = 180.0: the lowest row wins</text>
+<text x="20" y="260" fill="#555" font-size="12">A row is created where its section name FIRST appears. Without the -p: 0.0, because the file</text>
+<text x="20" y="278" fill="#555" font-size="12">put /** after the node's own section. Code default &lt; this table &lt; ros2 param set. (ROS 2 Humble)</text>
+</svg>

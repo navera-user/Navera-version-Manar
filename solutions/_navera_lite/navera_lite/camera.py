@@ -1,0 +1,196 @@
+"""navera_lite/camera.py — the camera as a measuring instrument: the pinhole model with K, projection,
+back-projection onto flat ground, footprint, ground sampling distance, and the homography that
+straightens a tilted view. Part of NAVERA Lite, the course's teaching stack (mission 18).
+Written for the course; it is not NAVERA code.
+
+Conventions (courses/_lib/CONVENTIONS.md):
+  world  : ENU, metres — x east, y north, z up. The ground is the plane z = 0, so a camera centre
+           C = (e, n, h) is h metres above the ground.
+  body   : FLU — x forward (nose), y left, z up.
+  camera : OpenCV — x to the image right, y to the image BOTTOM, z along the optical axis (out of the lens).
+  R_wc   : 3 × 3 rotation "world from camera":  v_world = R_wc @ v_cam,  and back  v_cam = R_wc.T @ v_world.
+  Pixels : (u, v) = (column, row), the origin at the top-left corner of the image.
+Angles in degrees at the interface, radians only inside trigonometric calls.
+"""
+import math
+
+import numpy as np
+
+from navera_lite.rotations import euler_zyx_to_matrix, q_to_matrix
+
+# @part 18
+R_BODY_NADIR_CAM = np.array([[0.0, -1.0, 0.0],      # columns = the camera axes written in the body (FLU) frame:
+                             [-1.0, 0.0, 0.0],      #   image right = body right (−y), image down = body back (−x),
+                             [0.0, 0.0, -1.0]])     #   optical axis = body down (−z). The image top looks at the nose.
+
+
+# ============================================================================ given helpers
+
+# @part 18
+def camera_rotation(q_body, R_body_cam=R_BODY_NADIR_CAM):
+    """R_wc of a camera fixed to the body: the body's attitude (a quaternion (x, y, z, w), body → world ENU,
+    as an IMU or a ROS message gives it) followed by the camera mount R_body_cam (default: looking
+    straight down, image top towards the nose).
+
+    Example: camera_rotation((0.0, 0.0, 0.7071068, 0.7071068)) → the level nadir camera, nose north:
+             [[1, 0, 0], [0, −1, 0], [0, 0, −1]] (image right = east, image down = south, axis = down)
+    """
+    return np.asarray(q_to_matrix(q_body), dtype=float) @ np.asarray(R_body_cam, dtype=float)
+
+
+# @part 18
+def camera_rotation_hpr(heading_deg, pitch_deg=0.0, roll_deg=0.0, R_body_cam=R_BODY_NADIR_CAM):
+    """R_wc from the "human" angles of the conventions sheet: heading clockwise from north, pitch positive
+    NOSE UP (so a nose-down drone has a negative pitch here), roll positive RIGHT WING DOWN.
+    The ROS pitch of mission 16 has the opposite sign, hence the −pitch below; the ENU yaw is
+    90° − heading.
+
+    Example: camera_rotation_hpr(0.0) → [[1, 0, 0], [0, −1, 0], [0, 0, −1]]   (level, nose north)
+    """
+    R_wb = euler_zyx_to_matrix(math.radians(roll_deg), math.radians(-pitch_deg), math.radians(90.0 - heading_deg))
+    return np.asarray(R_wb, dtype=float) @ np.asarray(R_body_cam, dtype=float)
+
+
+# @part 18
+def off_nadir_deg(R_wc):
+    """Angle (degrees) between the camera's optical axis and straight down: 0 for a level nadir camera.
+
+    Example: off_nadir_deg(camera_rotation_hpr(30.0, -12.0, 0.0)) → 12.0
+    """
+    axis = np.asarray(R_wc, dtype=float) @ np.array([0.0, 0.0, 1.0])
+    return math.degrees(math.acos(max(-1.0, min(1.0, -float(axis[2])))))
+
+
+# @part 18
+def warp_point(H, u, v):
+    """Where a 3 × 3 homography H sends the pixel (u, v): returns (u2, v2), two floats.
+
+    Example: warp_point(np.eye(3), 10.0, 20.0) → (10.0, 20.0)
+    """
+    p = np.asarray(H, dtype=float) @ np.array([float(u), float(v), 1.0])
+    return float(p[0] / p[2]), float(p[1] / p[2])
+
+
+# ============================================================================ the pinhole camera (session 1)
+
+# @part 18 todo 1
+def focal_px(hfov_deg, width_px):
+    """Focal length, in pixels, of an ideal pinhole camera that sees hfov_deg degrees across width_px pixels.
+
+    Inputs: horizontal field of view (degrees, 0 < hfov < 180) and image width (pixels).
+    Returns one float (pixels).
+    Example: focal_px(60.0, 1280) → about 1108.51
+    """
+    return (width_px / 2.0) / math.tan(math.radians(hfov_deg) / 2.0)
+
+
+# @part 18 todo 2
+def K_from_hfov(hfov_deg, width_px, height_px):
+    """The 3 × 3 intrinsic matrix K of an ideal camera: square pixels (fx = fy = focal_px), no skew,
+    principal point at the image centre (width_px / 2, height_px / 2).
+
+    Returns a numpy array of floats, shape (3, 3).
+    Example: K_from_hfov(60.0, 1280, 720) → about [[1108.51, 0, 640], [0, 1108.51, 360], [0, 0, 1]]
+    """
+    f = focal_px(hfov_deg, width_px)
+    return np.array([[f, 0.0, width_px / 2.0], [0.0, f, height_px / 2.0], [0.0, 0.0, 1.0]])
+
+
+# @part 18 todo 3
+def project(K, R_wc, C, X):
+    """The pixel where a world point appears: camera intrinsics K (3 × 3), orientation R_wc (camera → world,
+    3 × 3), camera centre C and world point X (3 numbers each, ENU metres; lists or arrays).
+
+    Returns a numpy array [u, v] of two floats (pixels), or None when the point is not in front of the
+    camera (depth ≤ 0). Points outside the image borders are still returned.
+    Example: project(K_from_hfov(90.0, 960, 540), camera_rotation_hpr(0.0), [0, 0, 100], [20, 10, 0])
+             → array([576., 222.])   (20 m east, 10 m north, seen from 100 m: right of and above the centre)
+    """
+    K = np.asarray(K, dtype=float)
+    R_wc = np.asarray(R_wc, dtype=float)
+    X_cam = R_wc.T @ (np.asarray(X, dtype=float) - np.asarray(C, dtype=float))
+    if X_cam[2] <= 0.0:
+        return None
+    p = K @ X_cam
+    return np.array([p[0] / p[2], p[1] / p[2]])
+
+
+# @part 18 todo 4
+def backproject_ground(K, R_wc, C, u, v):
+    """The ground point (on the plane z = 0) seen at pixel (u, v) by the camera (K, R_wc, C) — the inverse
+    of project() for points on flat ground. C is above the ground (C[2] > 0).
+
+    Returns a numpy array [e, n] of two floats (metres, ENU), or None when the pixel's ray does not go
+    down (it sees the horizon or the sky).
+    Example: backproject_ground(K_from_hfov(90.0, 960, 540), camera_rotation_hpr(0.0), [0, 0, 100], 576, 222)
+             → array([20., 10.])
+    """
+    K = np.asarray(K, dtype=float)
+    C = np.asarray(C, dtype=float)
+    d = np.asarray(R_wc, dtype=float) @ np.linalg.solve(K, np.array([float(u), float(v), 1.0]))
+    if d[2] >= 0.0:
+        return None
+    lam = -C[2] / d[2]
+    X = C + lam * d
+    return np.array([X[0], X[1]])
+
+
+# @part 18 todo 5
+def gsd(h_m, hfov_deg, width_px):
+    """Ground sampling distance of a camera looking straight down from h_m metres above flat ground:
+    the metres of ground covered by one pixel (the footprint width divided by the image width).
+
+    Returns one float (m/px).
+    Example: gsd(100.0, 90.0, 960) → about 0.20833
+    """
+    return 2.0 * h_m * math.tan(math.radians(hfov_deg) / 2.0) / width_px
+
+
+# ============================================================================ errors and straightening (session 2)
+
+# @part 18 todo 6
+def footprint(K, R_wc, C, width_px, height_px):
+    """The ground footprint of the image: the ground points [e, n] of the four image corners, in this order:
+    (0, 0) top-left, (width_px, 0) top-right, (width_px, height_px) bottom-right, (0, height_px) bottom-left.
+
+    Returns a numpy array of shape (4, 2) (metres, ENU), or None if any corner does not see the ground.
+    Example: footprint(K_from_hfov(90.0, 960, 540), camera_rotation_hpr(0.0), [0, 0, 100], 960, 540)
+             → [[−100, 56.25], [100, 56.25], [100, −56.25], [−100, −56.25]]
+    """
+    corners = []
+    for u, v in ((0, 0), (width_px, 0), (width_px, height_px), (0, height_px)):
+        g = backproject_ground(K, R_wc, C, u, v)
+        if g is None:
+            return None
+        corners.append(g)
+    return np.array(corners, dtype=float)
+
+
+# @part 18 todo 7
+def tilt_position_error(h_m, tilt_deg, dtilt_deg):
+    """How far (metres) the ground point seen along the optical axis moves when the camera's tilt is wrong
+    by dtilt_deg: a camera h_m above flat ground, tilted tilt_deg from straight down, believed at
+    tilt_deg but really at tilt_deg + dtilt_deg (both in the same vertical plane). Exact, not a
+    small-angle approximation.
+
+    Returns one float ≥ 0 (metres).
+    Example: tilt_position_error(100.0, 10.0, 1.0) → about 1.805
+    """
+    a = math.radians(tilt_deg)
+    b = math.radians(tilt_deg + dtilt_deg)
+    return abs(h_m * math.tan(b) - h_m * math.tan(a))
+
+
+# @part 18 todo 8
+def nadir_homography(K, R_wc, R_wv):
+    """The 3 × 3 homography that turns the image of a camera (K, orientation R_wc) into the image the SAME
+    camera would take from the same place with the orientation R_wv (for example a level, straight-down
+    camera: camera_rotation_hpr(heading_deg)). A pixel x = [u, v, 1] of the real image goes to H @ x
+    (then divide by the third number: warp_point does it).
+
+    Returns a numpy array (3, 3) scaled so that H[2, 2] = 1.
+    Example: nadir_homography(K, R, R) → the identity matrix, for any K and R (nothing to straighten)
+    """
+    K = np.asarray(K, dtype=float)
+    H = K @ np.asarray(R_wv, dtype=float).T @ np.asarray(R_wc, dtype=float) @ np.linalg.inv(K)
+    return H / H[2, 2]

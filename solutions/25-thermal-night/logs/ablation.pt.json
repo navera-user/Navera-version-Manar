@@ -1,0 +1,15 @@
+{
+ "weights": "ablation.pt",
+ "n_train": 16000,
+ "places": 293,
+ "epochs": 8,
+ "device": "cuda",
+ "ablation": [
+  "norm none"
+ ],
+ "seconds": 51.0,
+ "val_corner_px": 5.48,
+ "val_centre_px": 5.08,
+ "note": "reference ablation (teacher copy), measured 2026-10-15",
+ "seed": 0
+}

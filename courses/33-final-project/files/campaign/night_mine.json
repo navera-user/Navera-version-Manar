@@ -1,0 +1,1 @@
+{"name": "night_mine", "vehicle": "drone", "vision": "mine", "light": "night", "seed": 22, "duration_s": 100, "faults": [[20, "gps", "jammed"]]}

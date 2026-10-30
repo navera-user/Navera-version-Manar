@@ -1,3 +1,3 @@
-{"number": "10", "title": "Your first publisher: a fake GNSS receiver", "module": 3, "duration": "3 h 30",
- "summary": "Write an rclpy node class with parameters, a timer and a publisher: a fake GNSS receiver driving from Sousse. Fill NavSatFix honestly (covariance in m², as floats), measure timer jitter and message size, and quantify the error of a flat Earth.",
- "resources": [], "open": ["fake_gps.py", "analysis.py", "report.md"], "check_timeout_s": 180}
+{"number": "10", "title": "Your first publisher: a fake GNSS receiver", "module": 3, "duration": "4 h 30",
+ "summary": "Write NAVERA Lite's fake GNSS receiver: an rclpy node with parameters, a timer and a publisher that moves a vehicle with the real time between ticks and states its accuracy honestly in NavSatFix. You measure its rate and jitter, then sabotage its stamps and accuracy to find two holes in arbiter v0.",
+ "resources": [], "open": ["navera_lite/ros/gps_node.py", "answers.py"], "check_timeout_s": 180}

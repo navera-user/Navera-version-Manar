@@ -1,0 +1,29 @@
+#!/bin/bash
+# camera — a PRETEND camera reader for the lab-02 bench box.
+# The first one started after ./box.sh start hangs, as a reader does when the camera driver stops
+# answering: it then does not stop on SIGTERM (it keeps waiting for the driver). The next one works.
+BOX="$(cd "$(dirname "$0")/.." && pwd)"
+NAME=camera
+. "$BOX/bin/_common.sh"
+pidfile="$BOX/run/camera-$$.pid"
+echo $$ > "$pidfile"
+if [ -e "$BOX/run/camera.first" ]; then
+    trap 'say "received SIGTERM, shutting down cleanly"; rm -f "$pidfile"; exit 0' TERM
+    trap 'say "received SIGINT, shutting down cleanly"; rm -f "$pidfile"; exit 0' INT
+    say "started: driver reset, 2 frames per second"
+    while true; do
+        sleep 1
+    done
+fi
+touch "$BOX/run/camera.first"
+trap 'say "received SIGTERM: waiting for the camera driver to release /dev/video0 (it does not answer)"' TERM
+trap 'say "received SIGINT: waiting for the camera driver to release /dev/video0 (it does not answer)"' INT
+say "started, 2 frames per second"
+n=0
+while true; do
+    sleep 1
+    n=$((n + 1))
+    if [ $((n % 6)) -eq 3 ]; then
+        say "frame timeout: no frame for $n s, the camera driver does not answer"
+    fi
+done

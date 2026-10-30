@@ -1,2 +1,0 @@
-{"name": "drift_target", "vision": "target",
- "faults": [[30, "gps", "spoof_drift"], [110, "gps", "ok"]], "tail_s": 45}

@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 240" font-family="sans-serif" font-size="13">
+  <rect width="560" height="240" fill="#f7fafc"/>
+  <g font-weight="bold" fill="#1d2733"><text x="20" y="22">day aerial photo</text><text x="205" y="22">thermal at noon</text><text x="390" y="22">thermal at night</text></g>
+  <!-- day colour -->
+  <g transform="translate(20,35)">
+    <rect width="160" height="150" fill="#d9c79c"/><rect x="0" y="62" width="160" height="22" fill="#6b6b6b"/>
+    <rect x="15" y="10" width="40" height="40" fill="#f2efe6"/><rect x="95" y="100" width="50" height="40" fill="#b5452f"/>
+    <rect x="100" y="8" width="45" height="45" fill="#3f7a3a"/><rect x="10" y="98" width="55" height="45" fill="#2a5d7a"/>
+  </g>
+  <!-- noon thermal -->
+  <g transform="translate(205,35)">
+    <rect width="160" height="150" fill="#9a9a9a"/><rect x="0" y="62" width="160" height="22" fill="#f4f4f4"/>
+    <rect x="15" y="10" width="40" height="40" fill="#dddddd"/><rect x="95" y="100" width="50" height="40" fill="#ececec"/>
+    <rect x="100" y="8" width="45" height="45" fill="#555"/><rect x="10" y="98" width="55" height="45" fill="#333"/>
+  </g>
+  <!-- night thermal -->
+  <g transform="translate(390,35)">
+    <rect width="160" height="150" fill="#3a3a3a"/><rect x="0" y="62" width="160" height="22" fill="#9a9a9a"/>
+    <rect x="15" y="10" width="40" height="40" fill="#d0d0d0"/><rect x="95" y="100" width="50" height="40" fill="#e0e0e0"/>
+    <rect x="100" y="8" width="45" height="45" fill="#6a6a6a"/><rect x="10" y="98" width="55" height="45" fill="#bdbdbd"/>
+  </g>
+  <text x="20" y="208" fill="#1d2733" font-size="12">A road, houses, trees and a pool. In the thermal pictures, white = warm.</text>
+  <text x="20" y="226" fill="#1d2733" font-size="12">Water is cold at noon but warmer than the ground at night: the brightness can reverse.</text>
+</svg>

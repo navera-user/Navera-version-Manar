@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 380" font-family="sans-serif" font-size="12.5">
+  <rect width="800" height="380" fill="#f7fafc"/>
+  <defs><marker id="a" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#5a6b7b"/></marker></defs>
+  <text x="400" y="24" text-anchor="middle" font-size="15" fill="#1d2733">Your judge is a state machine: inputs, a memory you can read, outputs</text>
+  <!-- inputs -->
+  <g font-size="12" fill="#1d2733">
+    <rect x="16" y="62" width="96" height="30" rx="6" fill="#e3f0fb" stroke="#1f63d1"/><text x="64" y="81" text-anchor="middle">gps fix</text>
+    <rect x="16" y="102" width="96" height="30" rx="6" fill="#e3f0fb" stroke="#1f63d1"/><text x="64" y="121" text-anchor="middle">day fix</text>
+    <rect x="16" y="142" width="96" height="30" rx="6" fill="#e3f0fb" stroke="#1f63d1"/><text x="64" y="161" text-anchor="middle">night fix</text>
+    <rect x="16" y="182" width="96" height="30" rx="6" fill="#e3f0fb" stroke="#1f63d1"/><text x="64" y="201" text-anchor="middle">celestial fix</text>
+  </g>
+  <text x="64" y="232" text-anchor="middle" font-size="11" fill="#56606b">NavSatFix on</text>
+  <text x="64" y="246" text-anchor="middle" font-size="11" fill="#56606b">navera_lite/fix/…</text>
+  <line x1="112" y1="137" x2="146" y2="137" stroke="#5a6b7b" stroke-width="1.6" marker-end="url(#a)"/>
+  <!-- the door -->
+  <rect x="150" y="54" width="200" height="168" rx="8" fill="#fff4e5" stroke="#c76b00" stroke-width="1.5"/>
+  <text x="250" y="76" text-anchor="middle" font-weight="bold" fill="#8a4a00">① THE DOOR — receive()</text>
+  <g font-size="11.5" fill="#1d2733">
+    <text x="162" y="96">unknown source → refuse</text>
+    <text x="162" y="115">bad stamp (NaN) → refuse</text>
+    <text x="162" y="134">stamped in the future → refuse</text>
+    <text x="172" y="148" font-size="10.5" fill="#8a4a00">(never stored: it cannot come back)</text>
+    <text x="162" y="168">not newer than stored → "old news"</text>
+    <text x="162" y="188">GPS jump (mission 01) → refuse</text>
+    <text x="162" y="211" font-weight="bold" fill="#2e7d32">else: store it as the newest</text>
+  </g>
+  <line x1="250" y1="222" x2="250" y2="262" stroke="#5a6b7b" stroke-width="1.6" marker-end="url(#a)"/>
+  <text x="258" y="247" font-size="11" fill="#56606b">stores / remembers the refusal</text>
+  <!-- memory -->
+  <rect x="150" y="266" width="440" height="98" rx="8" fill="#eef4ec" stroke="#2e7d32" stroke-width="1.5"/>
+  <text x="370" y="286" text-anchor="middle" font-weight="bold" fill="#1d5a21">MEMORY (the Arbiter's attributes)</text>
+  <g font-size="11.5" fill="#1d2733">
+    <text x="162" y="308"><tspan font-weight="bold">latest</tspan>  source → newest stored Estimate</text>
+    <text x="162" y="328"><tspan font-weight="bold">refused</tspan>  source → why its fix was refused</text>
+    <text x="162" y="348"><tspan font-weight="bold">since</tspan>  source → eligible without a break since…</text>
+    <text x="430" y="308"><tspan font-weight="bold">current</tspan>  the last winner</text>
+    <text x="430" y="328"><tspan font-weight="bold">switches</tspan>  (t, old, new) log</text>
+  </g>
+  <!-- decision -->
+  <rect x="400" y="54" width="220" height="168" rx="8" fill="#eef1fb" stroke="#3949ab" stroke-width="1.5"/>
+  <text x="510" y="76" text-anchor="middle" font-weight="bold" fill="#283593">② THE DECISION — step()</text>
+  <text x="510" y="92" text-anchor="middle" font-size="10.5" fill="#56606b">on every arrival, and 5 times a second</text>
+  <g font-size="11.5" fill="#1d2733">
+    <text x="412" y="116">1. candidates: eligible, by priority</text>
+    <text x="412" y="138">2. track_since: unbroken eligibility</text>
+    <text x="412" y="160">3. pick: priority + hold-off</text>
+    <text x="412" y="182">4. the state from the stated σ</text>
+    <text x="412" y="204" font-size="10.5" fill="#56606b">STARTING · NO_FIX · FIX · DEGRADED</text>
+  </g>
+  <line x1="470" y1="262" x2="470" y2="226" stroke="#5a6b7b" stroke-width="1.6" marker-end="url(#a)"/>
+  <line x1="530" y1="226" x2="530" y2="262" stroke="#5a6b7b" stroke-width="1.6" marker-end="url(#a)"/>
+  <text x="476" y="247" font-size="11" fill="#56606b">reads</text>
+  <text x="538" y="247" font-size="11" fill="#56606b">updates since, current, switches</text>
+  <!-- outputs -->
+  <line x1="620" y1="110" x2="650" y2="110" stroke="#5a6b7b" stroke-width="1.6" marker-end="url(#a)"/>
+  <line x1="620" y1="170" x2="650" y2="170" stroke="#5a6b7b" stroke-width="1.6" marker-end="url(#a)"/>
+  <rect x="654" y="88" width="138" height="46" rx="6" fill="#fff" stroke="#5a6b7b"/>
+  <text x="723" y="107" text-anchor="middle" font-size="11.5" fill="#1d2733">navera_lite/status</text>
+  <text x="723" y="123" text-anchor="middle" font-size="10.5" fill="#56606b">state + reason, latched</text>
+  <rect x="654" y="148" width="138" height="46" rx="6" fill="#fff" stroke="#5a6b7b"/>
+  <text x="723" y="167" text-anchor="middle" font-size="11.5" fill="#1d2733">navera_lite/position</text>
+  <text x="723" y="183" text-anchor="middle" font-size="10.5" fill="#56606b">once per new measurement</text>
+  <text x="700" y="300" text-anchor="middle" font-size="11" fill="#56606b">same inputs + same memory</text>
+  <text x="700" y="316" text-anchor="middle" font-size="11" fill="#56606b">→ same outputs: testable</text>
+</svg>

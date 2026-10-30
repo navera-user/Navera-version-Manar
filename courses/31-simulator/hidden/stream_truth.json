@@ -1,0 +1,19 @@
+{
+ "frames": 182,
+ "gps_ok": 176,
+ "bad_crc": 2,
+ "heartbeats": 3,
+ "lost_doubled": [
+  6,
+  1
+ ],
+ "fix3": 176,
+ "nofix": 0,
+ "flag_counts": {
+  "180": 146,
+  "189": 30
+ },
+ "shortest_payload": 62,
+ "max_horiz_accuracy": 15.0,
+ "first_vision_lat": 35.8118619
+}

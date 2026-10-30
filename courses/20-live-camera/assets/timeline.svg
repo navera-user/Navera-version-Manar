@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 300" font-family="sans-serif" font-size="12">
+  <rect width="720" height="300" fill="#f7fafc"/>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#1d2733"/></marker>
+    <marker id="b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#b5651d"/></marker>
+  </defs>
+  <text x="20" y="24" font-size="15" font-weight="bold" fill="#1d2733">Which attitude belongs to this picture?</text>
+
+  <!-- time axis: 20 ms = 26 px -->
+  <line x1="30" y1="170" x2="700" y2="170" stroke="#1d2733" stroke-width="2" marker-end="url(#a)"/>
+  <text x="672" y="160" fill="#1d2733">time</text>
+  <!-- IMU samples every 20 ms -->
+  <g fill="#8a96a3">
+    <circle cx="60" cy="170" r="4"/><circle cx="86" cy="170" r="4"/><circle cx="112" cy="170" r="4"/>
+    <circle cx="138" cy="170" r="4"/><circle cx="164" cy="170" r="4"/>
+    <circle cx="242" cy="170" r="4"/><circle cx="268" cy="170" r="4"/><circle cx="294" cy="170" r="4"/>
+    <circle cx="320" cy="170" r="4"/><circle cx="346" cy="170" r="4"/>
+    <circle cx="398" cy="170" r="4"/><circle cx="424" cy="170" r="4"/><circle cx="450" cy="170" r="4"/>
+    <circle cx="476" cy="170" r="4"/><circle cx="502" cy="170" r="4"/><circle cx="528" cy="170" r="4"/>
+    <circle cx="554" cy="170" r="4"/><circle cx="580" cy="170" r="4"/><circle cx="606" cy="170" r="4"/>
+    <circle cx="632" cy="170" r="4"/>
+  </g>
+  <text x="420" y="200" fill="#5a6775">IMU samples q(t), 50 per second (every 20 ms)</text>
+
+  <!-- the two samples around the exposure -->
+  <circle cx="190" cy="170" r="6" fill="#0b6e8a"/>
+  <circle cx="216" cy="170" r="6" fill="#0b6e8a"/>
+  <text x="182" y="200" text-anchor="end" fill="#0b6e8a" font-weight="bold">t₀, q₀</text>
+  <text x="224" y="200" fill="#0b6e8a" font-weight="bold">t₁, q₁</text>
+
+  <!-- exposure at x=200 -->
+  <line x1="200" y1="70" x2="200" y2="170" stroke="#d64545" stroke-width="3"/>
+  <text x="200" y="62" text-anchor="middle" fill="#d64545" font-weight="bold">exposure tₑ</text>
+
+  <!-- grab: 0.138 s later = 179 px -> x=379 -->
+  <line x1="379" y1="70" x2="379" y2="170" stroke="#1d2733" stroke-width="3"/>
+  <text x="379" y="62" text-anchor="middle" fill="#1d2733" font-weight="bold">grab t_g</text>
+  <!-- latest sample before the grab -->
+  <circle cx="372" cy="170" r="6" fill="#e0a030"/>
+  <text x="372" y="232" text-anchor="middle" fill="#b5651d">latest sample before the grab:</text>
+  <text x="372" y="248" text-anchor="middle" fill="#b5651d">the WRONG attitude (L too new)</text>
+  <line x1="372" y1="218" x2="372" y2="180" stroke="#b5651d" stroke-width="1.2" marker-end="url(#b)"/>
+
+  <!-- delay arrow -->
+  <line x1="204" y1="95" x2="373" y2="95" stroke="#1d2733" stroke-width="1.5" marker-end="url(#a)"/>
+  <text x="290" y="88" text-anchor="middle" fill="#1d2733">latency L (NAVERA: ≤ 0.138 s)</text>
+  <text x="290" y="120" text-anchor="middle" fill="#1d2733">tₑ = t_g − L</text>
+
+  <!-- slerp box -->
+  <rect x="430" y="76" width="270" height="62" rx="6" fill="#ffffff" stroke="#0b6e8a"/>
+  <text x="442" y="98" fill="#0b6e8a" font-weight="bold">attitude of the picture:</text>
+  <text x="442" y="116" fill="#1d2733">f = (tₑ − t₀) / (t₁ − t₀)</text>
+  <text x="442" y="132" fill="#1d2733">q(tₑ) = slerp(q₀, q₁, f)</text>
+
+  <text x="20" y="282" fill="#5a6775">Rolling at 25°/s with NAVERA's setting, 0.138 s: 25 × 0.138 ≈ 3.5° of error — at 150 m above ground, 150 × tan 3.5° ≈ 9 m.</text>
+</svg>

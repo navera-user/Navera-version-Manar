@@ -1,3 +1,0 @@
-{"number": "21", "title": "Matching and geometry: ratio test, DLT and RANSAC", "module": 5, "duration": "5 h 15",
- "summary": "Pair SIFT descriptors with the ratio test, fit a homography with your own normalised DLT and RANSAC, compare with OpenCV, read rotation and scale out of H, and apply NAVERA's trust gates.",
- "resources": [], "open": ["geometry.py", "matching.py", "analysis.md"], "check_timeout_s": 180}

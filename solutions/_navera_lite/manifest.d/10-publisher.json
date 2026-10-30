@@ -1,0 +1,2 @@
+{"parts": ["ros.gps_node", "ros.arbiter_v0", "ros.replay_node"], "todo_missions": [10], "tests": [], "extra": [],
+ "note": "10 writes the fake GNSS receiver: gps_node TODO 1-6 (step, covariance_from_sigma, make_fix, FakeGps.declare_all/start/on_timer). arbiter_v0 judges it directly."}

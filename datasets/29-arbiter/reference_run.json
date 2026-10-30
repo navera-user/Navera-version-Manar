@@ -1,0 +1,115 @@
+{
+ "scenario": "race.csv",
+ "judge": "the course's reference judge (simulated clock, ticks at 5 Hz)",
+ "samples": [
+  {
+   "t_s": 0.5,
+   "what": "nothing published yet",
+   "state": "STARTING",
+   "source": null,
+   "reason": "no position received yet"
+  },
+  {
+   "t_s": 2.0,
+   "what": "GPS only",
+   "state": "FIX",
+   "source": "gps",
+   "reason": "gps: σ 3.0 m"
+  },
+  {
+   "t_s": 5.0,
+   "what": "GPS and day vision",
+   "state": "FIX",
+   "source": "gps",
+   "reason": "gps: σ 3.0 m"
+  },
+  {
+   "t_s": 9.5,
+   "what": "GPS silent for 1.5 s",
+   "state": "FIX",
+   "source": "gps",
+   "reason": "gps: σ 3.0 m"
+  },
+  {
+   "t_s": 12.0,
+   "what": "GPS silent for 4 s",
+   "state": "DEGRADED",
+   "source": "day",
+   "reason": "day: σ 30.0 m > 25.0 m"
+  },
+  {
+   "t_s": 15.0,
+   "what": "GPS back for 1 s, σ 40 m",
+   "state": "DEGRADED",
+   "source": "day",
+   "reason": "day: σ 30.0 m > 25.0 m"
+  },
+  {
+   "t_s": 16.5,
+   "what": "GPS back for 2.5 s, σ 40 m",
+   "state": "DEGRADED",
+   "source": "gps",
+   "reason": "gps: σ 40.0 m > 25.0 m"
+  },
+  {
+   "t_s": 18.5,
+   "what": "GPS says: no fix",
+   "state": "DEGRADED",
+   "source": "day",
+   "reason": "day: σ 30.0 m > 25.0 m"
+  },
+  {
+   "t_s": 21.0,
+   "what": "GPS jumped 5 km",
+   "state": "DEGRADED",
+   "source": "day",
+   "reason": "day: σ 30.0 m > 25.0 m"
+  },
+  {
+   "t_s": 27.0,
+   "what": "day vision silent, night vision",
+   "state": "DEGRADED",
+   "source": "night",
+   "reason": "night: σ unknown"
+  },
+  {
+   "t_s": 30.5,
+   "what": "everything old or refused",
+   "state": "NO_FIX",
+   "source": null,
+   "reason": "no usable source (gps: no position; last fix refused: jump 5045 m > 350 m in 3.0 s; day: stale (8.9 s > 5.0 s); night: stale (7.4 s > 5.0 s); celestial: refused: from the future (60.0 s ahead))"
+  }
+ ],
+ "switches": [
+  {
+   "t_s": 1.0,
+   "from": null,
+   "to": "gps"
+  },
+  {
+   "t_s": 11.2,
+   "from": "gps",
+   "to": "day"
+  },
+  {
+   "t_s": 16.0,
+   "from": "day",
+   "to": "gps"
+  },
+  {
+   "t_s": 17.5,
+   "from": "gps",
+   "to": "day"
+  },
+  {
+   "t_s": 26.6,
+   "from": "day",
+   "to": "night"
+  },
+  {
+   "t_s": 28.2,
+   "from": "night",
+   "to": null
+  }
+ ]
+}

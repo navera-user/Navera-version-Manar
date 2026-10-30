@@ -1,3 +1,0 @@
-{"number": "27", "title": "Detecting GPS spoofing: hypothesis tests in the arbiter", "module": 6, "duration": "4 h 45",
- "summary": "Spoofing detection as hypothesis testing: the kinematic reachability gate, residual tests against vision (Rayleigh tail, persistence, P_FA vs P_D), a Monte-Carlo ROC experiment, re-acceptance and honest limits. Build a GPS guard, then attack NAVERA's real arbiter.",
- "resources": [], "open": ["spoof.py", "detection.py", "report.md"], "check_timeout_s": 90}

@@ -1,0 +1,2 @@
+{"parts": ["arbiter", "ros.arbiter_node", "ros.arbiter_v0", "ros.replay_node", "settings", "uncertainty"], "todo_missions": [29], "tests": [], "extra": [],
+ "note": "29: arbiter.py TODO 1-5 (candidates, track_since, pick, Arbiter.receive, Arbiter.step); ros/arbiter_node.py given (the student's Arbiter on v0's topics); arbiter_v0 and replay_node for comparison and replay; uncertainty (27) for fuse() in experiment.py."}

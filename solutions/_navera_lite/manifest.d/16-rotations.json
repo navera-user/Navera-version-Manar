@@ -1,0 +1,2 @@
+{"parts": ["rotations"], "todo_missions": [16], "tests": [], "extra": [],
+ "note": "Mission 16 introduces rotations.py (TODO 1-11; rot_x, q_normalize, q_from_euler_zyx, heading_deg_from_q, rpy_human given). tests/test_rotations.py exists for missions 17 onward; not shipped here (it would show the answers)."}

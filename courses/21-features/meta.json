@@ -1,0 +1,3 @@
+{"number": "21", "title": "Local features: corners, scale and descriptors", "module": 5, "duration": "8 h",
+ "summary": "Harris corners from the structure tensor, repeatability measured against the truth, ORB and SIFT descriptors, terrains a camera can or cannot find — then your first neural network: you derive, build and train a small CNN patch descriptor with PyTorch, look inside it, run your own experiment and measure it against OpenCV.",
+ "resources": [], "open": ["navera_lite/features.py", "navera_lite/learned_desc.py", "answers.py"], "check_timeout_s": 300}

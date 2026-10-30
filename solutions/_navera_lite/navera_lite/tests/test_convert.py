@@ -1,0 +1,59 @@
+"""Tests of navera_lite/ros/convert.py and ros/qos.py (given in 09; qos.compatible is 09's TODO). No ROS graph
+is needed: only the message classes. Written for the course; it is not NAVERA code.
+
+Run from the lesson folder:  python3 -m pytest navera_lite/tests/test_convert.py -q
+"""
+import math
+
+from diagnostic_msgs.msg import DiagnosticStatus
+from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
+
+from navera_lite.estimate import Estimate
+from navera_lite.ros.convert import (from_navsatfix, level_of, make_status, s_to_stamp, status_values,
+                                     stamp_to_s, to_navsatfix)
+from navera_lite.ros.qos import FIX_QOS, SENSOR_QOS, STATUS_QOS, compatible, describe, incompatible_policies
+
+
+def test_stamps_round_trip():
+    assert stamp_to_s(s_to_stamp(100.25)) == 100.25
+    t = s_to_stamp(1759999999.9999999999)
+    assert 0 <= t.nanosec < 1_000_000_000
+
+
+def test_navsatfix_round_trip_keeps_the_contract():
+    e = Estimate("day", 35.83, 10.64, 100.5, cov=(900.0, 1.0, 0, 1.0, 400.0, 0, 0, 0, 0), cov_type=1)
+    msg = to_navsatfix(e)
+    assert msg.header.frame_id == "day" and msg.status.status == 0 and msg.status.service == 0
+    assert msg.position_covariance_type == 1 and msg.position_covariance[4] == 400.0
+    back = from_navsatfix(msg, now_s=101.0)
+    assert (back.source, back.lat, back.lon, back.stamp_s, back.cov, back.cov_type, back.valid, back.t_recv_s) == \
+        ("day", 35.83, 10.64, 100.5, e.cov, 1, True, 101.0)
+    assert math.isnan(back.alt_m)
+
+
+def test_no_position_is_status_minus_one():
+    msg = to_navsatfix(Estimate("gps", math.nan, math.nan, 5.0, valid=False))
+    assert msg.status.status == -1 and msg.status.service == 1
+    assert from_navsatfix(msg).valid is False
+    assert from_navsatfix(msg, source="night").source == "night"
+
+
+def test_status_levels_and_values():
+    m = make_status("DEGRADED", "day: σ unknown", {"source": "day", "sigma_m": ""})
+    assert m.level == DiagnosticStatus.WARN and level_of(m) == 1 and m.name == "navera_lite/arbiter"
+    assert status_values(m) == {"state": "DEGRADED", "source": "day", "sigma_m": ""}
+    assert [level_of(make_status(s, "", {})) for s in ("FIX", "DEGRADED", "NO_FIX", "STARTING")] == [0, 1, 2, 3]
+
+
+def test_qos_compatible_offered_vs_requested():
+    assert compatible(SENSOR_QOS, FIX_QOS) is False          # the 09 bug: IMU offers BEST_EFFORT
+    assert compatible(FIX_QOS, SENSOR_QOS) is True
+    assert compatible(STATUS_QOS, STATUS_QOS) is True
+    assert compatible(FIX_QOS, STATUS_QOS) is False          # a latched request needs a latched offer
+    assert compatible(STATUS_QOS, FIX_QOS) is True
+    be_latched = QoSProfile(depth=1, reliability=ReliabilityPolicy.BEST_EFFORT,
+                            durability=DurabilityPolicy.TRANSIENT_LOCAL)
+    assert compatible(be_latched, SENSOR_QOS) is True
+    assert describe(STATUS_QOS) == "RELIABLE, TRANSIENT_LOCAL, KEEP_LAST 1"
+    assert incompatible_policies(SENSOR_QOS, STATUS_QOS) == ["RELIABILITY", "DURABILITY"]
+    assert incompatible_policies(FIX_QOS, STATUS_QOS) == ["DURABILITY"]

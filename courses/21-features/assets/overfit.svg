@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 260" font-family="sans-serif" font-size="12">
+  <rect width="520" height="260" fill="#f7fafc"/>
+  <text x="260" y="20" text-anchor="middle" fill="#1d2733" font-weight="bold" font-size="13">What overfitting looks like (a sketch, not your data)</text>
+  <line x1="60" y1="220" x2="480" y2="220" stroke="#1d2733"/><line x1="60" y1="220" x2="60" y2="40" stroke="#1d2733"/>
+  <text x="270" y="245" text-anchor="middle">epochs (passes over the training data)</text>
+  <text x="30" y="130" transform="rotate(-90 30 130)" text-anchor="middle">loss</text>
+  <path d="M60,60 C120,120 180,160 260,185 S400,212 470,216" fill="none" stroke="#0b6e8a" stroke-width="2.5"/>
+  <path d="M60,64 C120,118 170,140 230,146 S360,140 470,125" fill="none" stroke="#d64545" stroke-width="2.5"/>
+  <text x="400" y="208" fill="#0b6e8a">training loss</text><text x="380" y="118" fill="#d64545">validation loss</text>
+  <line x1="230" y1="40" x2="230" y2="220" stroke="#5a6573" stroke-dasharray="4,3"/>
+  <text x="236" y="54" fill="#5a6573">best moment to stop</text>
+  <text x="300" y="168" fill="#5a6573">the gap: memorised, not learned</text>
+</svg>

@@ -1,0 +1,21 @@
+# navera_lite-gps.service — NAVERA Lite's GPS reader started by systemd (course example)
+# Install: copy to /etc/systemd/system/, then: sudo systemctl daemon-reload
+#          sudo systemctl enable --now navera_lite-gps
+[Unit]
+Description=NAVERA Lite GPS reader (NMEA sentences from a serial port)
+PartOf=navera_lite.target
+
+[Service]
+Type=simple
+# the service runs as its own user, never as root
+User=navera_lite
+Group=navera_lite
+# site settings (ROS domain, map path, vehicle): one NAME=value per line; "-" = optional file
+EnvironmentFile=-/etc/navera_lite/navera_lite.env
+ExecStart=/usr/bin/python3 -m navera_lite.ros.nmea_node --ros-args --params-file /etc/navera_lite/gps.yaml
+# a crashed reader is started again after 10 s
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=navera_lite.target

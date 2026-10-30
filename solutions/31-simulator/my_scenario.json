@@ -1,0 +1,1 @@
+{"name": "imu_bias_jam", "vehicle": "drone", "vision": "target", "light": "day", "seed": 41, "duration_s": 90, "faults": [[20, "imu", "bias"], [30, "gps", "jammed"]]}

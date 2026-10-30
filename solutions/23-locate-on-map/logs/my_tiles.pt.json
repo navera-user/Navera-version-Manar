@@ -1,0 +1,125 @@
+{
+ "weights": "my_tiles.pt",
+ "sha256": "daa691bebaa251a9378b24e403464a1709945b0398fa812451be01a7a16438a6",
+ "n_train": 8000,
+ "epochs": 12,
+ "batch": 64,
+ "tau": 0.1,
+ "shift": 0.5,
+ "augment": true,
+ "device": "cuda",
+ "seconds": 233.1,
+ "history": [
+  {
+   "epoch": 1,
+   "train_loss": 3.627305582046509,
+   "val_loss": 3.671030968427658,
+   "val_recall": 0.0390625
+  },
+  {
+   "epoch": 2,
+   "train_loss": 2.8313530864715575,
+   "val_loss": 3.1197021454572678,
+   "val_recall": 0.078125
+  },
+  {
+   "epoch": 3,
+   "train_loss": 2.362329643249512,
+   "val_loss": 2.9195240885019302,
+   "val_recall": 0.11328125
+  },
+  {
+   "epoch": 4,
+   "train_loss": 2.0998054552078247,
+   "val_loss": 2.7601224035024643,
+   "val_recall": 0.125
+  },
+  {
+   "epoch": 5,
+   "train_loss": 1.8308499002456664,
+   "val_loss": 2.634132355451584,
+   "val_recall": 0.13671875
+  },
+  {
+   "epoch": 6,
+   "train_loss": 1.6459801559448242,
+   "val_loss": 2.509443625807762,
+   "val_recall": 0.1640625
+  },
+  {
+   "epoch": 7,
+   "train_loss": 1.4655506658554076,
+   "val_loss": 2.466592311859131,
+   "val_recall": 0.1875
+  },
+  {
+   "epoch": 8,
+   "train_loss": 1.3376251039505005,
+   "val_loss": 2.3999279886484146,
+   "val_recall": 0.203125
+  },
+  {
+   "epoch": 9,
+   "train_loss": 1.1914912700653075,
+   "val_loss": 2.32076396048069,
+   "val_recall": 0.234375
+  },
+  {
+   "epoch": 10,
+   "train_loss": 1.1166736907958985,
+   "val_loss": 2.3214640617370605,
+   "val_recall": 0.24609375
+  },
+  {
+   "epoch": 11,
+   "train_loss": 1.0143563876152037,
+   "val_loss": 2.311860218644142,
+   "val_recall": 0.234375
+  },
+  {
+   "epoch": 12,
+   "train_loss": 0.9234929337501526,
+   "val_loss": 2.29474738240242,
+   "val_recall": 0.2890625
+  }
+ ],
+ "retrieval_400": {
+  "top1": {
+   "n": 80,
+   "accepted": 80,
+   "availability": 1.0,
+   "median_m": 215.08817417093752,
+   "p90_m": 1340.3684611069157,
+   "within_300": 0.5375,
+   "wrong": 74
+  },
+  "prior": {
+   "n": 80,
+   "accepted": 80,
+   "availability": 1.0,
+   "median_m": 493.75107957924024,
+   "p90_m": 815.2307644393894,
+   "within_300": 0.1875,
+   "wrong": 80
+  },
+  "random": {
+   "n": 80,
+   "accepted": 80,
+   "availability": 1.0,
+   "median_m": 873.9140712937913,
+   "p90_m": 1573.2561065605332,
+   "within_300": 0.0875,
+   "wrong": 80
+  },
+  "best": {
+   "n": 80,
+   "accepted": 80,
+   "availability": 1.0,
+   "median_m": 99.53984677927852,
+   "p90_m": 136.84648484556627,
+   "within_300": 1.0,
+   "wrong": 70
+  }
+ },
+ "student": "_reference"
+}

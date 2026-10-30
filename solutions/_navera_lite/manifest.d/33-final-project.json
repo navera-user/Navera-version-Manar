@@ -1,0 +1,4 @@
+{"parts": ["*"], "todo_missions": [33],
+ "tests": ["test_arbiter.py", "test_arbiter_v0.py", "test_camera.py", "test_convert.py", "test_estimate.py", "test_geo.py", "test_gnss.py", "test_gps_node.py", "test_guard.py", "test_image.py", "test_imu.py", "test_launch_util.py", "test_logbook.py", "test_ros_smoke.py", "test_rotations.py", "test_settings.py", "test_stars.py", "test_tiles.py", "test_track.py", "test_trip.py", "test_uncertainty.py", "test_vehicle.py"],
+ "extra": ["navera_lite/tools/init_repo.sh"],
+ "note": "Mission 33 ships the WHOLE stack finished (design §1.5: everything in 33) with the reference suite, and writes no part TODO: the student's project is the one change they choose, with its test. Introduced (given): tools/adopt.py (swap in the student's own parts from earlier lesson folders when the course tests pass). The measuring runner project.py is a mission file (courses/33-final-project/files/)."}

@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 330" font-family="sans-serif" font-size="12.5">
+  <rect width="760" height="330" fill="#f7fafc"/>
+  <text x="380" y="24" text-anchor="middle" font-size="15" fill="#1d2733">A hold-off of 2 s: a GPS that comes and goes no longer makes the output zig-zag</text>
+  <!-- x = 150 + 45 t, t in 0..12 s -->
+  <g font-size="12" fill="#1d2733" text-anchor="end">
+    <text x="140" y="70">GPS eligible</text>
+    <text x="140" y="56" font-size="10.5" fill="#56606b">(day vision: always)</text>
+    <text x="140" y="128">winner, no hold-off</text>
+    <text x="140" y="196">winner, hold-off 2 s</text>
+  </g>
+  <!-- GPS eligible bars: [0,4] [5,5.8] [6.6,7.3] [8,12] -->
+  <g fill="#1f63d1">
+    <rect x="150" y="58" width="180" height="16"/>
+    <rect x="375" y="58" width="36" height="16"/>
+    <rect x="447" y="58" width="31.5" height="16"/>
+    <rect x="510" y="58" width="180" height="16"/>
+  </g>
+  <!-- h = 0 -->
+  <g font-size="11" text-anchor="middle" fill="#fff">
+    <rect x="150" y="116" width="180" height="20" fill="#1f63d1"/><text x="240" y="130">GPS</text>
+    <rect x="330" y="116" width="45" height="20" fill="#ef6c00"/><text x="352" y="130">day</text>
+    <rect x="375" y="116" width="36" height="20" fill="#1f63d1"/>
+    <rect x="411" y="116" width="36" height="20" fill="#ef6c00"/>
+    <rect x="447" y="116" width="31.5" height="20" fill="#1f63d1"/>
+    <rect x="478.5" y="116" width="31.5" height="20" fill="#ef6c00"/>
+    <rect x="510" y="116" width="180" height="20" fill="#1f63d1"/><text x="600" y="130">GPS</text>
+  </g>
+  <text x="700" y="130" font-size="12" fill="#c62828">6 changes</text>
+  <!-- h = 2 -->
+  <defs><pattern id="h" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="6" stroke="#1f63d1" stroke-width="2"/></pattern></defs>
+  <g font-size="11" text-anchor="middle" fill="#fff">
+    <rect x="150" y="184" width="180" height="20" fill="#1f63d1"/><text x="240" y="198">GPS</text>
+    <rect x="330" y="184" width="270" height="20" fill="#ef6c00"/><text x="465" y="198">day</text>
+    <rect x="600" y="184" width="90" height="20" fill="#1f63d1"/><text x="645" y="198">GPS</text>
+  </g>
+  <g fill="url(#h)" opacity="0.8">
+    <rect x="375" y="206" width="36" height="8"/><rect x="447" y="206" width="31.5" height="8"/><rect x="510" y="206" width="90" height="8"/>
+  </g>
+  <text x="700" y="198" font-size="12" fill="#2e7d32">2 changes</text>
+  <text x="380" y="230" font-size="11" fill="#1f63d1">hatched: GPS eligible but not used (0.8 + 0.7 + 2.0 = 3.5 s)</text>
+  <!-- axis -->
+  <line x1="150" y1="250" x2="700" y2="250" stroke="#5a6b7b"/>
+  <g font-size="11" fill="#56606b" text-anchor="middle">
+    <text x="150" y="266">0</text><text x="240" y="266">2</text><text x="330" y="266">4</text><text x="420" y="266">6</text>
+    <text x="510" y="266">8</text><text x="600" y="266">10</text><text x="690" y="266">12 s</text>
+  </g>
+  <line x1="510" y1="78" x2="510" y2="240" stroke="#5a6b7b" stroke-dasharray="3,3"/>
+  <line x1="600" y1="78" x2="600" y2="240" stroke="#5a6b7b" stroke-dasharray="3,3"/>
+  <text x="380" y="292" text-anchor="middle" font-size="11.5" fill="#1d2733">GPS lost at 4 s → day vision at once (a loss never waits). Eligible again at 8 s with no break:</text>
+  <text x="380" y="310" text-anchor="middle" font-size="11.5" fill="#1d2733">since["gps"] = 8.0, and GPS takes over at 8 + 2 = 10 s. The returns at 5 s and 6.6 s were too short.</text>
+</svg>

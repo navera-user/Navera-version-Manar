@@ -1,20 +1,19 @@
-# Lab 13 — analysis
+# Mission 13 — report
 
-Write each section in your own words (at least 40 words per section). Replace the lines in
-*italics*; keep the three headings exactly as they are.
+Write at least 40 words under each heading, in your own words, with YOUR measured values
+(from answers.py). Keep the three headings as they are.
 
 ## Precedence
 
-*Your four rate_hz measurements of step 5 and the rule they show (code default, file, -p, their
-order, sections inside one file). How would you organise a product's parameters so that nobody is
-surprised?*
+(Which value did the drone's speed_mps take in each command of Step 6, and why? State the rule you
+would give a colleague so that they never lose an hour on it.)
 
-## Validation
+## Guards
 
-*What the descriptors (ranges, read_only) and the validation callback refused, with the exact
-messages; why a range alone cannot express the vehicle/speed rule.*
+(Range, read-only, callback, check_settings: which mistake does each one catch, and WHEN — at start, or
+while the node runs? Use your Steps 0–4.)
 
-## NAVERA
+## One setting per vehicle
 
-*The order trap of step 7 (your three gps_timeout_s values) explained with estimator.launch.py, and
-what fix_max_sigma_m = 2.0 did to the verdict of your launch.*
+(The plane of Step 8 and the σ limit of Step 9: what changed in the judge's verdict, and what would
+have stopped the plane's mistake before take-off?)

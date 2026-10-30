@@ -1,0 +1,25 @@
+{
+  "_help": [
+    "Your pre-registration (lesson §2). Fill it in BEFORE the baseline campaign; it is frozen at the tag 'before'.",
+    "python3 project.py plan checks it and prints your decision rule in words. Lines starting with _ are ignored.",
+    "metric names: err_median err_p90 err_p95 err_max ap_err_median ap_err_p95 ap_err_max availability fix_share",
+    "              honest2 bad_fix failsafe detected detect_s false_alarm custom   (project.py lists what each one is)",
+    "window: \"fault\" (first fault → that sensor back to ok), \"all\", or [t0, t1] in mission seconds",
+    "a metric (or the guard-rail's) may hold its own \"scenarios\": [some of the files above] — else all of them",
+    "seeds: explore with seeds below 1000 (project.py one); pre-register a block of 1000 or more you never flew",
+    "better: fixed by the metric (project.py plan says which); \"closer\" needs a \"target\"; guardrail: null if none"
+  ],
+  "title": "(fill in: one sentence that names your change)",
+  "hypothesis": "(fill in: one sentence the measurement can prove wrong)",
+  "idea": 0,
+  "kind": "stack",
+  "test": "navera_lite/tests/test_my_change.py",
+  "scenarios": ["campaign/jam.json"],
+  "seeds": {"first": 1001, "count": 20},
+  "metric": {"name": "err_p95", "window": "fault"},
+  "better": "lower",
+  "min_effect": 0.0,
+  "guardrail": {"metric": {"name": "availability", "window": "fault"}, "better": "higher", "max_loss": 0.05},
+  "B": 2000,
+  "boot_seed": 33
+}

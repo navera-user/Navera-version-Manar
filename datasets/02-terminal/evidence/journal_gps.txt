@@ -1,0 +1,9 @@
+$ journalctl -u navera_lite-gps -n 8
+Sep 30 09:14:02 box python3[2211]: [INFO] [1790756042.104331207] [nmea]: starting, port /dev/ttyTHS1
+Sep 30 09:14:02 box python3[2211]: [ERROR] [1790756042.110908551] [nmea]: cannot open /dev/ttyTHS1: [Errno 13] Permission denied: '/dev/ttyTHS1'
+Sep 30 09:14:02 box systemd[1]: navera_lite-gps.service: Main process exited, code=exited, status=1/FAILURE
+Sep 30 09:14:02 box systemd[1]: navera_lite-gps.service: Failed with result 'exit-code'.
+Sep 30 09:14:12 box systemd[1]: navera_lite-gps.service: Scheduled restart job, restart counter is at 7.
+Sep 30 09:14:12 box systemd[1]: Started NAVERA Lite GPS reader (NMEA sentences from a serial port).
+Sep 30 09:14:12 box python3[2230]: [INFO] [1790756052.087713012] [nmea]: starting, port /dev/ttyTHS1
+Sep 30 09:14:12 box python3[2230]: [ERROR] [1790756052.093374209] [nmea]: cannot open /dev/ttyTHS1: [Errno 13] Permission denied: '/dev/ttyTHS1'

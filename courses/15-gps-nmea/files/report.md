@@ -1,36 +1,20 @@
-# Lab 15 report — the synthetic Sousse drive
+# Memo — what NAVERA Lite's GNSS part refuses, and what it cannot see
 
-Name:
+<!-- Write 150–350 words in your own words, for an engineer of the NAVERA team. Keep the three headings
+     exactly as they are. Quote your numbers from `run_gnss.py log`, `forge`, `dop` and `drive` (results.json).
+     Delete these comment lines if you want. -->
 
-<!-- Replace every TODO line by your own sentences (at least 250 words in total).
-     Quote the numbers from results.json and gps_node_counts.json. -->
+## What the wire did to the drive
 
-## 1. Data quality
+<!-- How many lines did is_valid refuse, and what had happened to them? Which damaged line passed the
+     checksum, and what stopped it? Your forged line: how far did one swap move the fix? -->
 
-TODO: How many lines did is_valid() reject, and what kind of damage was each one (cut, flipped
-character, missing checksum, garbage, glued, non-ASCII byte)? Which two lines passed the checksum
-but were wrong (UTC times), and why could the checksum not see them?
+## What the sky did to σ
 
-## 2. Geometry and DOP
+<!-- Where was the geometry worst (largest HDOP, satellites used), and what σ and state did your stack give
+     there? How many seconds FIX, DEGRADED and NO_FIX, and why NO_FIX? -->
 
-TODO: On how many seconds did you recompute the DOPs, and what was the largest difference with the
-receiver? Give the median and the maximum HDOP. Where on the drive does HDOP spike, and why
-(use dop_timeline.png and the sky plot idea of the course)?
+## What gnss.py cannot see
 
-## 3. Accuracy
-
-TODO: Your UERE estimate, the fraction of fixes inside 2DRMS, and the median / 95 % horizontal
-error. Compare your UERE with the 2 m that gps_node assumes. Is NAVERA's per-axis sigma
-(2 m x HDOP) optimistic or conservative here, and by how much?
-
-## 4. Outage and NAVERA's behaviour
-
-TODO: The longest gap without an accepted fix (from, to, length) and what the receiver wrote during
-it. What did NAVERA's real gps_node publish (valid / invalid counts and reasons)? Which line did
-gps_node accept that your parser refused? Would the estimator's jump gate
-(100 m/s x dt + 50 m) catch the two swapped-digit lines?
-
-## 5. Recommendation
-
-TODO: One or two changes you would propose for gps_node (or its configuration), with a reason
-based on your measurements.
+<!-- The jump your gnss part accepted: when, how far, with what σ? Which part of a navigation stack refuses
+     it, and what would still get through that part too? -->

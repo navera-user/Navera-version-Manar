@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 220" font-family="sans-serif" font-size="13">
+<rect width="720" height="220" fill="#f7fafc"/>
+<line x1="30.0" y1="120" x2="673.5" y2="120" stroke="#8aa3b8" stroke-width="2"/>
+<rect x="187.0" y="98" width="494.5" height="44" rx="10" fill="#fde7c5" opacity=".6"/>
+<circle cx="30.0" cy="120" r="5" fill="#0b6e8a"/>
+<circle cx="46.5" cy="120" r="5" fill="#0b6e8a"/>
+<circle cx="63.0" cy="120" r="5" fill="#0b6e8a"/>
+<circle cx="79.5" cy="120" r="5" fill="#0b6e8a"/>
+<circle cx="96.0" cy="120" r="5" fill="#0b6e8a"/>
+<circle cx="112.5" cy="120" r="5" fill="#0b6e8a"/>
+<circle cx="129.0" cy="120" r="5" fill="#0b6e8a"/>
+<circle cx="145.5" cy="120" r="5" fill="#0b6e8a"/>
+<circle cx="162.0" cy="120" r="5" fill="#0b6e8a"/>
+<circle cx="178.5" cy="120" r="5" fill="#0b6e8a"/>
+<circle cx="195.0" cy="120" r="5" fill="#0b6e8a"/>
+<circle cx="211.5" cy="120" r="5" fill="#0b6e8a"/>
+<circle cx="228.0" cy="120" r="5" fill="#0b6e8a"/>
+<circle cx="244.5" cy="120" r="5" fill="#0b6e8a"/>
+<circle cx="261.0" cy="120" r="5" fill="#0b6e8a"/>
+<circle cx="277.5" cy="120" r="5" fill="#0b6e8a"/>
+<circle cx="294.0" cy="120" r="5" fill="#0b6e8a"/>
+<circle cx="310.5" cy="120" r="5" fill="#0b6e8a"/>
+<circle cx="327.0" cy="120" r="5" fill="#0b6e8a"/>
+<circle cx="343.5" cy="120" r="5" fill="#0b6e8a"/>
+<circle cx="360.0" cy="120" r="5" fill="#0b6e8a"/>
+<circle cx="376.5" cy="120" r="5" fill="#0b6e8a"/>
+<circle cx="393.0" cy="120" r="5" fill="#0b6e8a"/>
+<circle cx="409.5" cy="120" r="5" fill="#0b6e8a"/>
+<circle cx="426.0" cy="120" r="5" fill="#0b6e8a"/>
+<circle cx="442.5" cy="120" r="5" fill="#0b6e8a"/>
+<circle cx="459.0" cy="120" r="5" fill="#0b6e8a"/>
+<circle cx="475.5" cy="120" r="5" fill="#0b6e8a"/>
+<circle cx="492.0" cy="120" r="5" fill="#0b6e8a"/>
+<circle cx="508.5" cy="120" r="5" fill="#0b6e8a"/>
+<circle cx="525.0" cy="120" r="5" fill="#0b6e8a"/>
+<circle cx="541.5" cy="120" r="5" fill="#0b6e8a"/>
+<circle cx="558.0" cy="120" r="5" fill="#0b6e8a"/>
+<circle cx="574.5" cy="120" r="5" fill="#0b6e8a"/>
+<circle cx="591.0" cy="120" r="5" fill="#0b6e8a"/>
+<circle cx="607.5" cy="120" r="5" fill="#0b6e8a"/>
+<circle cx="624.0" cy="120" r="5" fill="#0b6e8a"/>
+<circle cx="640.5" cy="120" r="5" fill="#0b6e8a"/>
+<circle cx="657.0" cy="120" r="5" fill="#0b6e8a"/>
+<circle cx="673.5" cy="120" r="5" fill="#0b6e8a"/>
+<text x="178.5" y="160" text-anchor="middle" fill="#2e8b57" font-weight="700">v0.1 (good)</text>
+<line x1="178.5" y1="128" x2="178.5" y2="146" stroke="#2e8b57"/>
+<text x="673.5" y="160" text-anchor="end" fill="#b0453a" font-weight="700">main (bad)</text>
+<text x="434.25" y="90" text-anchor="middle" fill="#a8680d">30 suspects: which one broke the jump gate?</text>
+<path d="M640.5 120 Q640.5 50 660.5 50" fill="none" stroke="#7a5aa6" stroke-width="2"/>
+<circle cx="660.5" cy="50" r="6" fill="#7a5aa6"/>
+<text x="650.5" y="36" text-anchor="end" fill="#7a5aa6" font-weight="700">kenji/fewer-refusals: review me</text>
+<text x="30" y="192" fill="#4a5866" font-size="12">One dot = one commit: 40 on main, March to September 2026, oldest on the left.</text><text x="30" y="210" fill="#4a5866" font-size="12">Your own branch, my-first-change, will grow from the tip of main.</text>
+</svg>

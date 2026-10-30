@@ -1,3 +1,0 @@
-{"number": "17", "title": "The camera as a measuring instrument", "module": 4, "duration": "3 h 45",
- "summary": "The pinhole model with K, R and t: project world points, back-project pixels onto the ground, compute the footprint of a tilted camera, match the photo's resolution to the map zoom (Reykjavik vs Sousse) and see how a height error becomes a scale error.",
- "resources": [], "open": ["camera_math.py", "measure_pad.py", "report.md"], "check_timeout_s": 120}

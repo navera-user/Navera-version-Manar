@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 320" font-family="sans-serif" font-size="13">
+  <rect width="640" height="320" fill="#f7fafc"/>
+  <text x="20" y="26" fill="#1d2733" font-weight="bold">One threshold, two numbers: how many right pairs you keep, how clean they are</text>
+  <line x1="70" y1="270" x2="420" y2="270" stroke="#1d2733"/><line x1="70" y1="270" x2="70" y2="50" stroke="#1d2733"/>
+  <text x="245" y="300" text-anchor="middle" fill="#1d2733">right pairs kept →</text>
+  <text x="22" y="160" fill="#1d2733" transform="rotate(-90 22 160)" text-anchor="middle">precision = right / kept</text>
+  <polyline points="95,62 150,66 205,74 255,88 300,112 340,150 372,200 400,248" fill="none" stroke="#0b6e8a" stroke-width="3"/>
+  <g fill="#0b6e8a"><circle cx="95" cy="62" r="5"/><circle cx="205" cy="74" r="5"/><circle cx="300" cy="112" r="5"/><circle cx="372" cy="200" r="5"/></g>
+  <text x="100" y="52" fill="#1d2733" font-size="12">strict (0.5)</text>
+  <text x="300" y="214" fill="#1d2733" font-size="12">loose (0.95)</text>
+  <rect x="440" y="58" width="185" height="70" rx="8" fill="#e3f4ea" stroke="#2e8b57"/>
+  <text x="450" y="80" fill="#1d2733">too strict: clean, but the</text><text x="450" y="98" fill="#1d2733">blurred photo keeps too few</text><text x="450" y="116" fill="#1d2733">pairs to pass the gates</text>
+  <rect x="440" y="170" width="185" height="70" rx="8" fill="#fbe4e4" stroke="#d64545"/>
+  <text x="450" y="192" fill="#1d2733">too loose: many wrong pairs:</text><text x="450" y="210" fill="#1d2733">RANSAC needs more tries,</text><text x="450" y="228" fill="#1d2733">a wrong place collects inliers</text>
+  <text x="70" y="316" fill="#5b6b7a" font-size="12">A sketch, not your data: lab Step 9 draws the real curves of SIFT and of YOUR network.</text>
+</svg>

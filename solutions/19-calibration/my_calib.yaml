@@ -1,0 +1,27 @@
+# camera calibration written by NAVERA Lite (python3 -m navera_lite.tools.calibrate) — 34 views of a 9x6 board, 32.94 mm squares
+model: fisheye
+image_width: 1920
+image_height: 540
+camera_matrix:
+- 670.284117778391
+- 0.0
+- 936.2579752931374
+- 0.0
+- 732.4104670177704
+- 321.30768114928634
+- 0.0
+- 0.0
+- 1.0
+distortion:
+- 0.23652910960407467
+- -0.49619785660061483
+- 0.7098855843400054
+- -0.3607479676785249
+rms_px: 0.506
+views: 34
+out_hfov_deg: 110.15
+crop:
+- 0
+- 0
+- 1920
+- 540

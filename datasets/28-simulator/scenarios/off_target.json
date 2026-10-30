@@ -1,2 +1,0 @@
-{"name": "off_target", "vision": "target",
- "faults": [[30, "gps", "off"], [70, "gps", "ok"]], "tail_s": 40}

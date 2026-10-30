@@ -1,0 +1,3 @@
+{"number": "26", "title": "Navigating by the stars", "module": 5, "duration": "7 h 30",
+ "summary": "Build a star fix from first principles: the sky's clock (Julian date, sidereal time), where a star stands, latitude from Polaris, a star detector in OpenCV, plate solving, the camera's direction from the IMU, the two latitude roots and the prior that chooses — and why one degree of attitude costs 111 km. You write NAVERA Lite's star part on six synthetic night photos.",
+ "resources": [], "open": ["navera_lite/stars.py", "answers.py"], "check_timeout_s": 240}

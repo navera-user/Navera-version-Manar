@@ -1,0 +1,20 @@
+# NAVERA arbiter — settings sheet (release 0.2)
+#
+# Written for this course: the values NAVERA's arbiter uses, with what each one means.
+# NAVERA's own code and files are not part of the course.
+
+freshness:                    # a source is "fresh" while its latest position is younger than this
+  gps_timeout_s: 3.0          # GPS: one fix per second, so 2 lost fixes are tolerated
+  day_timeout_s: 5.0          # day vision: one match every 1–4 s
+  night_timeout_s: 5.0        # night vision
+  celestial_timeout_s: 45.0   # star fixes are rare
+
+states:
+  fix_max_sigma_m: 25.0       # FIX only if the source states a σ of at most this; otherwise DEGRADED
+
+switching:
+  switch_holdoff_s: 2.0       # a higher-priority source must stay usable this long before it takes over
+
+jump_gate:                    # a GPS fix farther than max_speed_mps × elapsed + gps_jump_margin_m
+  max_speed_mps: 100.0        #   from the last trusted fix is refused (set per vehicle)
+  gps_jump_margin_m: 50.0

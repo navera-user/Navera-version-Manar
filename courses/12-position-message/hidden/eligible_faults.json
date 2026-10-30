@@ -1,0 +1,415 @@
+[
+ {
+  "label": "day fix 4.0 s old (day timeout 5 s)",
+  "est": {
+   "source": "day",
+   "lat": 35.71,
+   "lon": 10.59,
+   "stamp_s": 500.0,
+   "cov": [
+    900,
+    0,
+    0.0,
+    0,
+    900,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "cov_type": 1
+  },
+  "now": 504.0,
+  "cfg": {},
+  "want": [
+   true,
+   "eligible"
+  ]
+ },
+ {
+  "label": "day fix 5.34 s old",
+  "est": {
+   "source": "day",
+   "lat": 35.71,
+   "lon": 10.59,
+   "stamp_s": 500.0,
+   "cov": [
+    900,
+    0,
+    0.0,
+    0,
+    900,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "cov_type": 1
+  },
+  "now": 505.34,
+  "cfg": {},
+  "want": [
+   false,
+   "stale (5.3 s > 5.0 s)"
+  ]
+ },
+ {
+  "label": "celestial fix 30 s old (timeout 45 s)",
+  "est": {
+   "source": "celestial",
+   "lat": 35.9,
+   "lon": 10.4,
+   "stamp_s": 500.0
+  },
+  "now": 530.0,
+  "cfg": {},
+  "want": [
+   true,
+   "eligible"
+  ]
+ },
+ {
+  "label": "night fix 6.0 s old",
+  "est": {
+   "source": "night",
+   "lat": 35.71,
+   "lon": 10.59,
+   "stamp_s": 500.0
+  },
+  "now": 506.0,
+  "cfg": {},
+  "want": [
+   false,
+   "stale (6.0 s > 5.0 s)"
+  ]
+ },
+ {
+  "label": "GPS stamped 0.4 s in the future (tolerance 0.5 s)",
+  "est": {
+   "source": "gps",
+   "lat": 35.7604,
+   "lon": 10.8113,
+   "stamp_s": 200.4,
+   "cov": [
+    4,
+    0,
+    0.0,
+    0,
+    4,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "cov_type": 1
+  },
+  "now": 200.0,
+  "cfg": {},
+  "want": [
+   true,
+   "eligible"
+  ]
+ },
+ {
+  "label": "GPS stamped 0.8 s in the future",
+  "est": {
+   "source": "gps",
+   "lat": 35.7604,
+   "lon": 10.8113,
+   "stamp_s": 200.8,
+   "cov": [
+    4,
+    0,
+    0.0,
+    0,
+    4,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "cov_type": 1
+  },
+  "now": 200.0,
+  "cfg": {},
+  "want": [
+   false,
+   "from the future"
+  ]
+ },
+ {
+  "label": "GPS with a nan latitude",
+  "est": {
+   "source": "gps",
+   "lat": NaN,
+   "lon": 10.8113,
+   "stamp_s": 200.0
+  },
+  "now": 200.2,
+  "cfg": {},
+  "want": [
+   false,
+   "bad position"
+  ]
+ },
+ {
+  "label": "GPS at (0, 0)",
+  "est": {
+   "source": "gps",
+   "lat": 0.0,
+   "lon": 0.0,
+   "stamp_s": 200.0
+  },
+  "now": 200.2,
+  "cfg": {},
+  "want": [
+   false,
+   "null island"
+  ]
+ },
+ {
+  "label": "GPS at latitude 95\u00b0",
+  "est": {
+   "source": "gps",
+   "lat": 95.0,
+   "lon": 10.8113,
+   "stamp_s": 200.0
+  },
+  "now": 200.2,
+  "cfg": {},
+  "want": [
+   false,
+   "bad position"
+  ]
+ },
+ {
+  "label": "valid=False AND at (0, 0)",
+  "est": {
+   "source": "gps",
+   "lat": 0.0,
+   "lon": 0.0,
+   "stamp_s": 200.0,
+   "valid": false
+  },
+  "now": 200.2,
+  "cfg": {},
+  "want": [
+   false,
+   "no position"
+  ]
+ },
+ {
+  "label": "type DIAGONAL_KNOWN, a=100 b=120 c=100",
+  "est": {
+   "source": "gps",
+   "lat": 35.7604,
+   "lon": 10.8113,
+   "stamp_s": 200.0,
+   "cov": [
+    100,
+    120,
+    0.0,
+    120,
+    100,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "cov_type": 2
+  },
+  "now": 200.2,
+  "cfg": {},
+  "want": [
+   false,
+   "not a covariance"
+  ]
+ },
+ {
+  "label": "type UNKNOWN, a=100 b=120 c=100",
+  "est": {
+   "source": "gps",
+   "lat": 35.7604,
+   "lon": 10.8113,
+   "stamp_s": 200.0,
+   "cov": [
+    100,
+    120,
+    0.0,
+    120,
+    100,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "cov_type": 0
+  },
+  "now": 200.2,
+  "cfg": {},
+  "want": [
+   true,
+   "eligible"
+  ]
+ },
+ {
+  "label": "source 'radar', fresh",
+  "est": {
+   "source": "radar",
+   "lat": 35.7604,
+   "lon": 10.8113,
+   "stamp_s": 200.0
+  },
+  "now": 200.2,
+  "cfg": {},
+  "want": [
+   false,
+   "unknown source"
+  ]
+ },
+ {
+  "label": "not a covariance AND 5 s in the future",
+  "est": {
+   "source": "gps",
+   "lat": 35.7604,
+   "lon": 10.8113,
+   "stamp_s": 205.0,
+   "cov": [
+    9,
+    10,
+    0.0,
+    10,
+    9,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "cov_type": 1
+  },
+  "now": 200.0,
+  "cfg": {},
+  "want": [
+   false,
+   "not a covariance"
+  ]
+ },
+ {
+  "label": "GPS 2.5 s old, gps_timeout_s set to 2.0",
+  "est": {
+   "source": "gps",
+   "lat": 35.7604,
+   "lon": 10.8113,
+   "stamp_s": 0.0,
+   "cov": [
+    4,
+    0,
+    0.0,
+    0,
+    4,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "cov_type": 1
+  },
+  "now": 2.5,
+  "cfg": {
+   "gps_timeout_s": 2.0
+  },
+  "want": [
+   false,
+   "stale (2.5 s > 2.0 s)"
+  ]
+ },
+ {
+  "label": "0.8 s in the future, future_tolerance_s set to 1.0",
+  "est": {
+   "source": "gps",
+   "lat": 35.7604,
+   "lon": 10.8113,
+   "stamp_s": 10.8
+  },
+  "now": 10.0,
+  "cfg": {
+   "future_tolerance_s": 1.0
+  },
+  "want": [
+   true,
+   "eligible"
+  ]
+ },
+ {
+  "label": "GPS exactly 3.0 s old",
+  "est": {
+   "source": "gps",
+   "lat": 35.7604,
+   "lon": 10.8113,
+   "stamp_s": 100.0
+  },
+  "now": 103.0,
+  "cfg": {},
+  "want": [
+   true,
+   "eligible"
+  ]
+ },
+ {
+  "label": "type KNOWN with a nan in the covariance",
+  "est": {
+   "source": "gps",
+   "lat": 35.7604,
+   "lon": 10.8113,
+   "stamp_s": 200.0,
+   "cov": [
+    4,
+    0,
+    0.0,
+    0,
+    NaN,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "cov_type": 3
+  },
+  "now": 200.2,
+  "cfg": {},
+  "want": [
+   false,
+   "not a covariance"
+  ]
+ },
+ {
+  "label": "GPS on the equator (lat 0, lon 10.6)",
+  "est": {
+   "source": "gps",
+   "lat": 0.0,
+   "lon": 10.6,
+   "stamp_s": 200.0
+  },
+  "now": 200.2,
+  "cfg": {},
+  "want": [
+   true,
+   "eligible"
+  ]
+ },
+ {
+  "label": "GPS stamped exactly 0.5 s in the future",
+  "est": {
+   "source": "gps",
+   "lat": 35.8,
+   "lon": 10.6,
+   "stamp_s": 200.5
+  },
+  "now": 200.0,
+  "cfg": {},
+  "want": [
+   true,
+   "eligible"
+  ]
+ }
+]

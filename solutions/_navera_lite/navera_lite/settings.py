@@ -1,0 +1,101 @@
+"""navera_lite/settings.py — the settings of NAVERA Lite: their default values, how to read navera_lite.yaml,
+and the rules a sane set of settings follows. Part of NAVERA Lite, the course's teaching stack (missions 09
+and 13). Written for the course; it is not NAVERA code.
+
+navera_lite.yaml is a ROS 2 parameters file (`/**:` then `ros__parameters:`), so one file feeds
+`--params-file`, the launch files and load() below. The values are the ones mission 01's settings sheet
+describes for NAVERA's arbiter, plus three that sheet does not show (future_tolerance_s,
+min_stated_sigma_m, tick_hz) and the vehicle type.
+"""
+import math
+
+import yaml
+
+from navera_lite.vehicle import VEHICLES
+
+# @part 09
+DEFAULTS = {
+    "gps_timeout_s": 3.0,          # a GPS fix older than this is stale
+    "day_timeout_s": 5.0,          # day vision
+    "night_timeout_s": 5.0,        # night vision
+    "celestial_timeout_s": 45.0,   # celestial (star) fixes are rare
+    "future_tolerance_s": 0.5,     # a stamp at most this far in the future is still accepted (clock jitter)
+    "fix_max_sigma_m": 25.0,       # FIX only if the source states a σ of at most this
+    "min_stated_sigma_m": 0.01,    # a stated σ below 1 cm is not believed (an all-zero covariance)
+    "switch_holdoff_s": 2.0,       # a higher-priority source must stay usable this long (mission 29)
+    "tick_hz": 5.0,                # the judge decides on every arrival and at this rate
+    "max_speed_mps": 100.0,        # jump gate: the fastest the vehicle can move
+    "gps_jump_margin_m": 50.0,     # jump gate: plus this margin
+    "vehicle": "drone",            # a key of vehicle.VEHICLES
+}
+
+
+# @part 09
+def load(path="navera_lite.yaml"):
+    """The settings of a navera_lite.yaml file: DEFAULTS, updated by the values of its `/**` block.
+
+    Raises ValueError for a key that is not in DEFAULTS (a typo would otherwise be ignored silently).
+    The values are returned as the file writes them: `3` stays an int (check_settings() catches it).
+    Example: load("navera_lite.yaml")["fix_max_sigma_m"] → 25.0
+    """
+    with open(path) as f:
+        doc = yaml.safe_load(f) or {}
+    block = (doc.get("/**") or {}).get("ros__parameters") or {}
+    unknown = sorted(set(block) - set(DEFAULTS))
+    if unknown:
+        raise ValueError(f"{path}: unknown setting(s) {', '.join(unknown)} (known: {', '.join(DEFAULTS)})")
+    cfg = dict(DEFAULTS)
+    cfg.update(block)
+    return cfg
+
+
+# @part 13 todo 4
+def check_settings(cfg):
+    """Every rule a set of settings breaks, as one short sentence each (an empty list: all good).
+
+    cfg: a dict like DEFAULTS. Each sentence starts with the key. The rules, in this order:
+      1. a key whose default is a float holds a float — not an int, a bool or a text (keys in DEFAULTS order):
+            "gps_timeout_s must be a float: write 3.0, not 3"          (an int)
+            "max_speed_mps must be a float, got 'fast'"               (anything else: a bool, a text…)
+      2. every key ending in _timeout_s (DEFAULTS order), then tick_hz, is > 0:   "tick_hz must be > 0, got 0.0"
+      3. min_stated_sigma_m >= 0:                                  "min_stated_sigma_m must be >= 0, got -1.0"
+      4. fix_max_sigma_m > min_stated_sigma_m:
+            "fix_max_sigma_m must be > min_stated_sigma_m (0.01), got 0.0"
+      5. vehicle is a key of VEHICLES:                             "vehicle must be one of drone, plane, boat, robot, got 'car'"
+      6. max_speed_mps is at least the vehicle's top speed (else its real fixes would be refused):
+            "max_speed_mps must be >= 100.0 for a plane, got 30.0"
+    Rules 2–6 need numbers: they skip a value that is not a number (rule 1 already reported it); an int is still a
+    number for them (an int 0 timeout breaks rules 1 and 2).
+    Example: check_settings(dict(DEFAULTS, gps_timeout_s=3)) → ["gps_timeout_s must be a float: write 3.0, not 3"]
+    """
+    problems = []
+
+    def number(key):
+        v = cfg.get(key)
+        ok = isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
+        return float(v) if ok else None
+
+    for key, default in DEFAULTS.items():
+        v = cfg.get(key)
+        if isinstance(default, float) and (isinstance(v, bool) or not isinstance(v, float)):
+            if isinstance(v, int) and not isinstance(v, bool):
+                problems.append(f"{key} must be a float: write {v}.0, not {v}")
+            else:
+                problems.append(f"{key} must be a float, got {v!r}")
+    for key in [k for k in DEFAULTS if k.endswith("_timeout_s")] + ["tick_hz"]:
+        v = number(key)
+        if v is not None and v <= 0:
+            problems.append(f"{key} must be > 0, got {v}")
+    fix, low = number("fix_max_sigma_m"), number("min_stated_sigma_m")
+    if low is not None and low < 0:
+        problems.append(f"min_stated_sigma_m must be >= 0, got {low}")
+    if fix is not None and low is not None and fix <= low:
+        problems.append(f"fix_max_sigma_m must be > min_stated_sigma_m ({low}), got {fix}")
+    vehicle = cfg.get("vehicle")
+    if vehicle not in VEHICLES:
+        problems.append(f"vehicle must be one of {', '.join(VEHICLES)}, got {vehicle!r}")
+    else:
+        speed = number("max_speed_mps")
+        if speed is not None and speed < VEHICLES[vehicle]:
+            problems.append(f"max_speed_mps must be >= {VEHICLES[vehicle]} for a {vehicle}, got {speed}")
+    return problems

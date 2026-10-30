@@ -1,0 +1,10 @@
+{
+ "corner_lat": 35.76493469084138,
+ "corner_lon": 10.60656715266152,
+ "centre_lat": 35.75379,
+ "centre_lon": 10.6203,
+ "m_per_px": 7.753918652886443,
+ "side_px": 320,
+ "note": "north-up; the top-left CORNER of the picture is at (corner_lat, corner_lon)",
+ "attribution": "\u00a9 OpenStreetMap contributors (ODbL), https://www.openstreetmap.org/copyright"
+}

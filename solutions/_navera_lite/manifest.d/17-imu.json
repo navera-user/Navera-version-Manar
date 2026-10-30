@@ -1,0 +1,2 @@
+{"parts": ["imu", "rotations"], "todo_missions": [17], "tests": ["test_rotations.py"], "extra": [],
+ "note": "Mission 17 introduces imu.py (TODO 1-7: integrate_gyro, tilt_from_accel, complementary, mag_heading, true_heading, q_true_north, StaleDetector.update; G_MPS2, declination_deg (pygeomag), StaleDetector.__init__ given). rotations.py (16) ships finished with its tests. tests/test_imu.py exists for later missions; not shipped here (it would show the answers)."}

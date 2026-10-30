@@ -1,3 +1,3 @@
-{"number": "04", "title": "Data analysis: reading a flight-test campaign", "module": 1, "duration": "6 h",
- "summary": "Clean a messy four-flight test campaign near Sousse, Tunisia with pandas, compute distances and speeds with vectorised NumPy, find every GPS outage, compare GPS and day-vision noise, plot with matplotlib and write a test report.",
- "resources": [], "open": ["flight_analysis.py", "campaign.csv", "report.md"], "check_timeout_s": 180}
+{"number": "04", "title": "Data analysis: reading a flight-test campaign", "module": 1, "duration": "5 h",
+ "summary": "A messy four-flight test campaign near Sousse: clean it by written rules, compute speeds and GPS outages per flight with pandas and numpy, find the labels that lie, measure each source's noise with robust statistics, and write the test report. You write NAVERA Lite's logbook.py.",
+ "resources": [], "open": ["navera_lite/logbook.py", "answers.py", "report.md"], "check_timeout_s": 180}

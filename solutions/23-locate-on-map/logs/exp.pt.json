@@ -1,0 +1,125 @@
+{
+ "weights": "exp.pt",
+ "sha256": "af84ca6e224feb252d51d243c920321af533c7883bc97eba1080f4d3b17240b3",
+ "n_train": 8000,
+ "epochs": 12,
+ "batch": 64,
+ "tau": 0.1,
+ "shift": 0.5,
+ "augment": false,
+ "device": "cuda",
+ "seconds": 203.0,
+ "history": [
+  {
+   "epoch": 1,
+   "train_loss": 1.8444438362121582,
+   "val_loss": 4.725626975297928,
+   "val_recall": 0.01953125
+  },
+  {
+   "epoch": 2,
+   "train_loss": 1.1467004475593567,
+   "val_loss": 4.835370063781738,
+   "val_recall": 0.03515625
+  },
+  {
+   "epoch": 3,
+   "train_loss": 0.9152531886100769,
+   "val_loss": 4.811810374259949,
+   "val_recall": 0.03125
+  },
+  {
+   "epoch": 4,
+   "train_loss": 0.7606192560195922,
+   "val_loss": 4.5102585554122925,
+   "val_recall": 0.02734375
+  },
+  {
+   "epoch": 5,
+   "train_loss": 0.6686755750179291,
+   "val_loss": 4.70753687620163,
+   "val_recall": 0.03515625
+  },
+  {
+   "epoch": 6,
+   "train_loss": 0.5871626307964325,
+   "val_loss": 4.336421072483063,
+   "val_recall": 0.03515625
+  },
+  {
+   "epoch": 7,
+   "train_loss": 0.5351303584575653,
+   "val_loss": 4.368299186229706,
+   "val_recall": 0.0546875
+  },
+  {
+   "epoch": 8,
+   "train_loss": 0.49033823919296265,
+   "val_loss": 4.459955096244812,
+   "val_recall": 0.03515625
+  },
+  {
+   "epoch": 9,
+   "train_loss": 0.4353959155082703,
+   "val_loss": 4.368863165378571,
+   "val_recall": 0.0390625
+  },
+  {
+   "epoch": 10,
+   "train_loss": 0.41992334961891176,
+   "val_loss": 4.315966844558716,
+   "val_recall": 0.04296875
+  },
+  {
+   "epoch": 11,
+   "train_loss": 0.37602263033390043,
+   "val_loss": 4.3362932205200195,
+   "val_recall": 0.02734375
+  },
+  {
+   "epoch": 12,
+   "train_loss": 0.36353777515888214,
+   "val_loss": 4.450024127960205,
+   "val_recall": 0.02734375
+  }
+ ],
+ "retrieval_400": {
+  "top1": {
+   "n": 80,
+   "accepted": 80,
+   "availability": 1.0,
+   "median_m": 813.3949520570272,
+   "p90_m": 1455.3274508591119,
+   "within_300": 0.275,
+   "wrong": 77
+  },
+  "prior": {
+   "n": 80,
+   "accepted": 80,
+   "availability": 1.0,
+   "median_m": 493.75107957924024,
+   "p90_m": 815.2307644393894,
+   "within_300": 0.1875,
+   "wrong": 80
+  },
+  "random": {
+   "n": 80,
+   "accepted": 80,
+   "availability": 1.0,
+   "median_m": 873.9140712937913,
+   "p90_m": 1573.2561065605332,
+   "within_300": 0.0875,
+   "wrong": 80
+  },
+  "best": {
+   "n": 80,
+   "accepted": 80,
+   "availability": 1.0,
+   "median_m": 99.53984677927852,
+   "p90_m": 136.84648484556627,
+   "within_300": 1.0,
+   "wrong": 70
+  }
+ },
+ "student": "_reference"
+}

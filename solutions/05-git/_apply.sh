@@ -1,30 +1,36 @@
 #!/bin/bash
-# The git steps of lab 5, as a student types them (run from ~/lessons/05-git).
+# The git steps of lab 5, as a student types them (run from ~/lessons/05-git by tools/try_lesson.py).
 set -e
 git config --global user.name "Test Student"
 git config --global user.email "test.student@example.com"
-cd ~/navera
-git status
-git log --oneline --graph --all --decorate
+tar -xzf /data/academy/05-git/navera-lite-history.tar.gz
+cd navera-lite-history
+git log --oneline --graph --all --decorate | head -n 5
 git switch -c my-first-change
-printf '\n- Test Student was here: my first commit in NAVERA!\n' >> ACADEMY_README.md
-git add ACADEMY_README.md
-git commit -m "docs(academy): add my name to the academy README"
-sed -i 's/info("Read thread started")/info("Read thread started, listening to the GPS receiver")/' gps_pkg/gps_pkg/nodes/gps_node.py
-python3 -m py_compile gps_pkg/gps_pkg/nodes/gps_node.py
-git add gps_pkg/gps_pkg/nodes/gps_node.py
-git commit -m "fix(gps): clearer start-up log message"
-git format-patch base --stdout > ~/lessons/05-git/my_changes.patch
-git apply --stat ~/lessons/05-git/review_me.patch
-git apply --check ~/lessons/05-git/review_me.patch
-git apply --exclude=navera_estimator/navera_estimator/config/estimator_params.yaml ~/lessons/05-git/review_me.patch
-python3 -m py_compile navera_common/navera_common/geo.py
-git add navera_common/navera_common/geo.py
-git commit -m "refactor(geo): use EARTH_RADIUS_M in haversine_m"
-git tag -a lab5 -m "Lab 5: two changes and a reviewed patch"
-rm navera_common/navera_common/geo.py
-git restore navera_common/navera_common/geo.py
+git diff main...kenji/fewer-refusals > ../review_me.patch
+git apply --check ../review_me.patch
+git apply --include=README.md --include=navera_lite/geo.py ../review_me.patch
+python3 -m pytest -q tests
+git add README.md
+git commit -q -m "docs(readme): fix the spelling of receive"
+git add navera_lite/geo.py
+git commit -q -m "refactor(geo): haversine_m uses EARTH_RADIUS_M"
+python3 ../probe_gate.py
+cp ../test_regression.py tests/
+python3 -m pytest -q tests || true
+git add tests/test_regression.py
+git commit -q -m "test(guard): the gate widens again after a jump"
+git bisect start main v0.1
+git bisect run ../bisect_test.sh
+git bisect log > ../bisect.log
+git bisect reset
+BAD=$(sed -n 's/^# first bad commit: \[\([0-9a-f]*\)\].*/\1/p' ../bisect.log)
+git revert --no-edit "$BAD"
+python3 -m pytest -q tests
+rm navera_lite/guard.py
+git restore navera_lite/guard.py
+git reset --hard HEAD~2
+git reflog -4
+git reset --hard "HEAD@{1}"
+git format-patch main --stdout > ../my_changes.patch
 git status
-FIRST=$(git rev-list --reverse base..my-first-change | head -n 1 | cut -c1-7)
-cd ~/lessons/05-git
-sed -i "s/^FIRST_COMMIT = \"\"/FIRST_COMMIT = \"$FIRST\"/" answers.py

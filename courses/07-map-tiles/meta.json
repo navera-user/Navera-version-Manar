@@ -1,3 +1,3 @@
-{"number": "07", "title": "Map projections and tiles: Web Mercator and MBTiles", "module": 2, "duration": "4 h",
- "summary": "Derive Web Mercator, compute tile numbers, scales and zooms from Singapore to Reykjavik, read NAVERA's MBTiles map with SQL, build mosaics and convert pixels to lat/lon — and meet a real 175 m bug.",
- "resources": [], "open": ["tiles_lab.py", "report.md", "answers.py"], "check_timeout_s": 120}
+{"number": "07", "title": "Map projections and tiles: Web Mercator and MBTiles", "module": 2, "duration": "5 h 30",
+ "summary": "Derive Web Mercator, compute tile numbers, pixel sizes and zooms from Quito to Svalbard, read the course's OpenStreetMap map of Sousse with safe SQL, build mosaics, and reproduce NAVERA's 175 m corner bug — you write NAVERA Lite's map part.",
+ "resources": [], "open": ["navera_lite/tiles.py", "answers.py"], "check_timeout_s": 120}

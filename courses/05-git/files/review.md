@@ -1,27 +1,32 @@
-# Code review — review_me.patch
+# Code review — branch kenji/fewer-refusals
 
-Reviewer: (your name)
-Patch author: Kenji Sato — "fix(estimator): fewer false GPS refusals; geo: use EARTH_RADIUS_M"
+Reviewer: (write here)
+Change: one commit by Kenji Sato, "fix: fewer false GPS refusals, tidy geo"
 
-Write 2–5 sentences under each heading. Replace every "(write here)".
+For each hunk of `review_me.patch`, write `Verdict: accept` or `Verdict: reject`, then `Why:` in one
+to three sentences: what it changes, whether it is correct, whether it is safe, whether it is measured.
+Use numbers where you can. Replace every "(write here)".
 
-## What the patch does
+## Hunk 1 — README.md
+Verdict: (write here)
+Why: (write here)
 
-(write here) Which files and which lines does it change (git apply --stat)? Does it apply
-cleanly to your branch (git apply --check)?
+## Hunk 2 — navera_lite.yaml
+Verdict: (write here)
+Why: (write here)
 
-## Applied
+## Hunk 3 — navera_lite/geo.py
+Verdict: (write here)
+Why: (write here)
 
-(write here) What did you apply, why is it safe, and how did you verify it (py_compile, diff)?
-Give the hash of the commit you made.
+## Hunk 4 — navera_lite/guard.py
+Verdict: (write here)
+Why: (write here)
 
-## Rejected
-
-(write here) What did you refuse to apply? Name the parameter, its old and new value, and
-explain what the change would do to NAVERA's protection against GPS jumps and spoofing
-(lesson 1, section 3). Is there a NAVERA rule the patch breaks?
+## Hunk 5 — tests/test_guard.py
+Verdict: (write here)
+Why: (write here)
 
 ## Advice to the author
-
-(write here) What should the author do instead (how to split the patch, what to measure,
-what to write in the commit message)?
+(write here) What should Kenji do instead? How should the change be split, what should be measured
+or tested before it is sent again?

@@ -1,0 +1,34 @@
+[INFO] [1790500000.000000000] [navera_lite_arbiter]: arbiter started: priority gps > day > night > star
+[INFO] [1790500003.000007919] [navera_lite_arbiter]: state FIX source=gps
+[INFO] [1790500006.000015838] [nmea]: fix OK, 9 satellites, hdop 1.1
+[INFO] [1790500009.000023757] [nmea]: fix OK, 10 satellites, hdop 1.1
+[INFO] [1790500012.000031676] [nmea]: fix OK, 11 satellites, hdop 1.1
+[INFO] [1790500015.000039595] [nmea]: fix OK, 12 satellites, hdop 1.1
+[INFO] [1790500018.000047514] [nmea]: fix OK, 9 satellites, hdop 1.1
+[INFO] [1790500021.000055433] [nmea]: fix OK, 10 satellites, hdop 1.1
+[INFO] [1790500024.000063352] [nmea]: fix OK, 11 satellites, hdop 1.1
+[INFO] [1790500027.000071271] [nmea]: fix OK, 12 satellites, hdop 1.1
+[INFO] [1790500030.000079190] [nmea]: fix OK, 9 satellites, hdop 1.1
+[INFO] [1790500033.000087109] [nmea]: fix OK, 10 satellites, hdop 1.1
+[INFO] [1790500036.000095028] [nmea]: fix OK, 11 satellites, hdop 1.1
+[WARN] [1790500039.000102947] [nmea]: no fix for 2.0 s (jamming simulated)
+[WARN] [1790500042.000110866] [navera_lite_arbiter]: state DEGRADED source=day (gps: stale)
+[INFO] [1790500045.000118785] [day_vision]: match OK, 20 inliers, sigma 30 m
+[INFO] [1790500048.000126704] [day_vision]: match OK, 21 inliers, sigma 30 m
+[INFO] [1790500051.000134623] [day_vision]: match OK, 22 inliers, sigma 30 m
+[INFO] [1790500054.000142542] [day_vision]: match OK, 23 inliers, sigma 30 m
+[INFO] [1790500057.000150461] [day_vision]: match OK, 24 inliers, sigma 30 m
+[INFO] [1790500060.000158380] [day_vision]: match OK, 25 inliers, sigma 30 m
+[INFO] [1790500063.000166299] [day_vision]: match OK, 26 inliers, sigma 30 m
+[INFO] [1790500066.000174218] [day_vision]: match OK, 27 inliers, sigma 30 m
+[WARN] [1790500069.000182137] [day_vision]: no match: sea, nothing to recognise
+[WARN] [1790500072.000190056] [day_vision]: no match: sea, nothing to recognise
+[WARN] [1790500075.000197975] [day_vision]: no match: sea, nothing to recognise
+[WARN] [1790500078.000205894] [day_vision]: no match: sea, nothing to recognise
+[WARN] [1790500081.000213813] [navera_lite_arbiter]: state NO_FIX: no source usable (day: stale)
+[INFO] [1790500084.000221732] [navera_lite_arbiter]: WARN threshold reached, no ERROR raised (test message)
+[INFO] [1790500087.000229651] [day_vision]: match OK, 31 inliers, sigma 30 m
+[INFO] [1790500090.000237570] [clock]: clock synchronised, no ERROR
+[WARN] [1790500093.000245489] [navera_lite_arbiter]: state DEGRADED source=day (gps: stale)
+[INFO] [1790500096.000253408] [nmea]: fix OK, 8 satellites, hdop 1.7
+[INFO] [1790500099.000261327] [navera_lite_arbiter]: state FIX source=gps

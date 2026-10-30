@@ -1,0 +1,29 @@
+#!/bin/bash
+# navera_lite_arbiter — a PRETEND arbiter for the lab-02 bench box (the real one is your mission 29).
+# Once per second it writes its decision in box/log/decisions.log, in the ROS 2 console format.
+# It listens to the GPS topic named in its settings file (--params-file FILE).
+BOX="$(cd "$(dirname "$0")/.." && pwd)"
+NAME=navera_lite_arbiter
+. "$BOX/bin/_common.sh"
+params="$2"
+pidfile="$BOX/run/arbiter-$$.pid"
+echo $$ > "$pidfile"
+topic=""
+while read -r line; do                    # pure bash: no child process shows the arbiter's command line
+    [[ $line =~ gps_topic:\ *([^ ]+) ]] && topic="${BASH_REMATCH[1]}"
+done < "$params"
+exec {tick}<> <(:)                        # a pipe nobody writes to: `read -t 1` on it waits 1 s without a
+                                          # `sleep` process (a forked sleep would briefly look like a third arbiter)
+trap 'say "received SIGTERM, shutting down cleanly"; rm -f "$pidfile"; exit 0' TERM
+trap 'say "received SIGINT, shutting down cleanly"; rm -f "$pidfile"; exit 0' INT
+say "started"
+while true; do
+    now="${EPOCHREALTIME}000"            # bash 5.1+: the time without a date process
+    if [ "$topic" = "/navera_lite/fix/gps" ]; then
+        echo "[INFO] [$now] [navera_lite_arbiter]: state FIX source=gps sigma 4.0 m" >> "$BOX/log/decisions.log"
+    else
+        echo "[WARN] [$now] [navera_lite_arbiter]: state NO_FIX: no source usable (gps: no message on ${topic:-?})" \
+            >> "$BOX/log/decisions.log"
+    fi
+    read -r -t 1 -u "$tick" _ || true
+done

@@ -61,6 +61,13 @@ RestartSec=5
 WantedBy=multi-user.target
 UNIT
 
+# 5. the QR-code library (class join QR, sticker): vendored into setup/vendor (git-ignored), never into the shared
+#    Python. Pure Python, no dependencies; kept if it is already there.
+if [ ! -d "$SETUP/vendor/segno" ]; then
+  sudo -u "$OWNER" python3 -m pip install --quiet --no-deps --target "$SETUP/vendor" "segno==1.6.6" \
+    || echo "WARNING: segno could not be installed into $SETUP/vendor (no internet?): class QR codes will be missing"
+fi
+
 systemctl daemon-reload
 # the academy may already run by hand: stop that copy so the service owns port 8300
 sudo -u "$OWNER" "$ACADEMY/academy.sh" stop >/dev/null 2>&1 || true

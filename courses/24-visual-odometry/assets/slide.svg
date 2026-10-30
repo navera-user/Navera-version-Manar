@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 270" font-family="sans-serif" font-size="13">
+<rect width="700" height="270" fill="#ffffff"/>
+<defs><marker id="a" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" refX="6" refY="6" orient="auto"><path d="M0,0 L12,6 L0,12 Z" fill="#d64545"/></marker>
+<marker id="b" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" refX="6" refY="6" orient="auto"><path d="M0,0 L12,6 L0,12 Z" fill="#0b6e8a"/></marker></defs>
+<text x="20" y="24" fill="#1d2733" font-weight="bold">Two frames, one second apart. Heading-up: the drone flies towards the top.</text>
+<g transform="translate(30,45)">
+ <rect x="0" y="0" width="200" height="150" fill="#f3efe6" stroke="#1d2733"/>
+ <rect x="40" y="30" width="40" height="28" fill="#c9b79c"/><rect x="120" y="70" width="50" height="34" fill="#a7c4cf"/>
+ <circle cx="70" cy="110" r="12" fill="#7a9a63"/>
+ <text x="70" y="172" fill="#1d2733">frame i−1</text>
+</g>
+<g transform="translate(270,45)">
+ <rect x="0" y="0" width="200" height="150" fill="#f3efe6" stroke="#1d2733"/>
+ <rect x="40" y="70" width="40" height="28" fill="#c9b79c"/><rect x="120" y="110" width="50" height="34" fill="#a7c4cf"/>
+ <path d="M58,150 A12,12 0 0,1 82,150 Z" fill="#7a9a63"/>
+ <rect x="10" y="4" width="34" height="22" fill="#d9cdb6"/>
+ <line x1="100" y1="36" x2="100" y2="72" stroke="#d64545" stroke-width="3" marker-end="url(#a)"/>
+ <text x="80" y="172" fill="#1d2733">frame i</text>
+</g>
+<text x="490" y="95" fill="#d64545">dy &gt; 0: the ground</text>
+<text x="490" y="113" fill="#d64545">slid DOWN in the picture</text>
+<line x1="520" y1="190" x2="520" y2="140" stroke="#0b6e8a" stroke-width="3" marker-end="url(#b)"/>
+<text x="535" y="160" fill="#0b6e8a">so the drone flew</text>
+<text x="535" y="178" fill="#0b6e8a">FORWARD (up)</text>
+<text x="20" y="232" fill="#1d2733">The ground moves in the picture the opposite way to the camera; new ground enters at the top.</text>
+<text x="20" y="252" fill="#1d2733">Most of frame i−1 is still in frame i: that overlap is what phase correlation measures.</text>
+</svg>

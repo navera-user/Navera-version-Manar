@@ -1,0 +1,76 @@
+"""Tests of navera_lite/tiles.py (mission 07). Written for the course; it is not NAVERA code.
+
+Run from the lesson folder:  python3 -m pytest navera_lite/tests/test_tiles.py -q
+The map tests use the course map (MAP_PATH); they are skipped when no map file is mounted.
+"""
+import math
+import os
+import sqlite3
+
+import pytest
+
+from navera_lite import tiles
+
+RIBAT = (35.8277, 10.6388)
+
+
+def test_mercator_edges_and_symmetry():
+    assert tiles.mercator_y(0.0) == pytest.approx(0.0, abs=1e-12)
+    assert tiles.mercator_y(tiles.MAX_LAT) == pytest.approx(math.pi, abs=1e-9)
+    assert tiles.mercator_y(-40.0) == pytest.approx(-tiles.mercator_y(40.0), abs=1e-12)
+
+
+def test_tile_xy_and_its_inverse():
+    x, y = tiles.tile_xy(*RIBAT, 17)
+    assert (math.floor(x), math.floor(y)) == (69409, 51547)
+    assert tiles.tile_to_latlon(x, y, 17) == pytest.approx(RIBAT, abs=1e-10)
+    assert tiles.tile_to_latlon(0, 0, 0) == pytest.approx((tiles.MAX_LAT, -180.0), abs=1e-9)
+
+
+def test_scale_and_zoom():
+    assert tiles.m_per_px(0.0, 0) == pytest.approx(156543.034, abs=1e-3)
+    assert tiles.m_per_px(RIBAT[0], 18) == pytest.approx(tiles.m_per_px(RIBAT[0], 17) / 2)
+    assert tiles.best_zoom(0.352, 1.2834) == 18
+    assert tiles.best_zoom(1e-3, 0.0) == 19 and tiles.best_zoom(1e3, 0.0) == 13
+    with pytest.raises(ValueError):
+        tiles.best_zoom(0.0, 10.0)
+
+
+def test_pixels_round_trip():
+    lat, lon = tiles.pixel_to_latlon(*tiles.latlon_to_pixel(*RIBAT, 18, 138817, 103094), 18, 138817, 103094)
+    assert (lat, lon) == pytest.approx(RIBAT, abs=1e-10)
+
+
+def test_bad_tile_addresses_are_refused():
+    db = sqlite3.connect(":memory:")
+    for z, x, y in [(31, 0, 0), (10 ** 9, 0, 0), (17, -1, 0), (17, 0, 2 ** 17), (17, 0, "0 OR 1=1")]:
+        with pytest.raises(ValueError):
+            tiles.read_tile(db, z, x, y)
+
+
+@pytest.mark.skipif(not os.path.exists(tiles.MAP_PATH), reason="no map file mounted")
+def test_map_is_read_only_and_has_the_ribat():
+    db = tiles.open_map()
+    x, y = (math.floor(v) for v in tiles.tile_xy(*RIBAT, 17))
+    assert tiles.read_tile(db, 17, x, y)[:3] == b"\xff\xd8\xff"
+    with pytest.raises(sqlite3.OperationalError):
+        db.execute("CREATE TABLE t (a)")
+    patch = tiles.map_patch(*RIBAT, 17, 300, 200)
+    assert patch.shape == (200, 300, 3) and patch.dtype.name == "uint8"
+
+
+def test_numpy_integers_are_tile_numbers():
+    np = pytest.importorskip("numpy")
+    db = sqlite3.connect(":memory:")
+    db.execute("CREATE TABLE tiles (zoom_level, tile_column, tile_row, tile_data)")
+    assert tiles.read_tile(db, np.int64(17), np.int32(69409), np.int64(51547)) is None
+    with pytest.raises(ValueError):
+        tiles.read_tile(db, 17, np.float64(69409.0), 51547)
+
+
+def test_tiles_in_circle():
+    assert tiles.tiles_in_circle(*RIBAT, 300.0, 17) == [(69408, 51547), (69409, 51546), (69409, 51547),
+                                                        (69409, 51548), (69410, 51547)]
+    assert len(tiles.tiles_in_circle(*RIBAT, 600.0, 17)) == 21
+    with pytest.raises(ValueError):
+        tiles.tiles_in_circle(*RIBAT, -1.0, 17)

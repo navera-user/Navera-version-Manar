@@ -1,0 +1,272 @@
+"""navera_lite/tiles.py — Web Mercator tiles and the MBTiles map file. Part of NAVERA Lite, the course's teaching
+stack (mission 07). Written for the course; it is not NAVERA code.
+
+Conventions (courses/_lib/CONVENTIONS.md): latitudes and longitudes in degrees at the interface, radians only
+inside trigonometric calls. Tiles use the XYZ ("slippy map") numbering: x counts columns east from −180°,
+y counts rows SOUTH from the top edge of the map (85.05° N); tile (0, 0) is the north-west corner of the world.
+A "global pixel" is a tile coordinate × 256. MBTiles files store TMS rows (counted from the south).
+The course map is rendered from OpenStreetMap data: show "© OpenStreetMap contributors" with every map picture.
+"""
+import math
+import numbers
+import os
+import sqlite3
+from urllib.parse import quote
+
+import numpy as np
+
+from navera_lite.geo import WGS84_A, haversine_m
+
+# @part 07
+TILE_PX = 256                                  # every tile is a square picture of 256 × 256 pixels
+# @part 07
+EQUATOR_M = 2.0 * math.pi * WGS84_A            # length of the equator, 40 075 016.686 m (WGS84)
+# @part 07
+MAX_LAT = 85.0511287798066                     # Web Mercator stops here: mercator_y(MAX_LAT) = π
+# @part 07
+ATTRIBUTION = "© OpenStreetMap contributors"   # show it wherever a map picture is shown (ODbL licence)
+# @part 07
+SMALL_MAP = "/data/academy/07-map-tiles/sousse_small.mbtiles"   # 88 tiles of the course map (mission 07)
+# @part 07
+MISSING_GREY = 40                              # grey level of a tile that is not in the map file
+
+
+# @part 07
+def _default_map():
+    """The course map: $NAVERA_LITE_MAP, else /data/map.mbtiles, else the small extract of mission 07."""
+    for path in (os.environ.get("NAVERA_LITE_MAP"), "/data/map.mbtiles", SMALL_MAP):
+        if path and os.path.exists(path):
+            return path
+    return "/data/map.mbtiles"
+
+
+# @part 07
+MAP_PATH = _default_map()                      # the map every function below reads when no path is given
+
+
+# ====================================================================== projection (session 1)
+
+# @part 07 todo 1
+def mercator_y(lat):
+    """Mercator ordinate of a latitude on the unit sphere: how far north of the equator the parallel is
+    drawn on a Mercator map whose equator is 2π long (lesson §1).
+
+    Input: latitude in degrees, strictly between −90 and 90. Returns a float (no unit).
+    Example: mercator_y(0.0) → 0.0 (to rounding);  mercator_y(51.5007) → about 1.052085   (London)
+             mercator_y(MAX_LAT) → about 3.141593 (π: the top edge of a web map)
+    """
+    phi = math.radians(lat)
+    return math.log(math.tan(math.pi / 4.0 + phi / 2.0))
+
+
+# @part 07 todo 2
+def tile_xy(lat, lon, z):
+    """Fractional XYZ tile coordinates of a point at zoom z: the whole parts are the tile's column and row,
+    the fractional parts × 256 the pixel inside it.
+
+    Inputs: degrees, zoom z (whole number ≥ 0). Returns (x, y), two floats.
+    Example: tile_xy(1.2834, 103.8607, 17) → about (103350.53, 65068.69)   (Marina Bay Sands, Singapore)
+             tile_xy(0.0, 0.0, 1) → (1.0, 1.0)
+    """
+    n = 2 ** z
+    x = (lon + 180.0) / 360.0 * n
+    y = (1.0 - mercator_y(lat) / math.pi) / 2.0 * n
+    return x, y
+
+
+# @part 07 todo 3
+def tile_to_latlon(x, y, z):
+    """The point at XYZ tile coordinates (x, y) at zoom z: the inverse of tile_xy. With whole numbers it is the
+    tile's NORTH-WEST corner; tile_to_latlon(x + 0.5, y + 0.5, z) is the tile's centre.
+
+    Inputs: tile coordinates (floats allowed), zoom z. Returns (lat, lon) in degrees.
+    Example: tile_to_latlon(0, 0, 0) → about (85.051129, −180.0)   (the world's north-west corner)
+             tile_to_latlon(103350.5, 65068.5, 17) → about (1.283920, 103.860626)   (centre of a Singapore tile)
+    """
+    n = 2 ** z
+    lon = x / n * 360.0 - 180.0
+    lat = math.degrees(math.atan(math.sinh(math.pi * (1.0 - 2.0 * y / n))))
+    return lat, lon
+
+
+# @part 07 todo 4
+def m_per_px(lat, z):
+    """Ground size of one map pixel (east–west), in metres, at latitude lat and zoom z (lesson §3).
+
+    Inputs: latitude in degrees, zoom z. Returns metres per pixel (float).
+    Example: m_per_px(0.0, 0) → about 156 543.03;  m_per_px(1.2834, 17) → about 1.1940   (Singapore)
+    """
+    return EQUATOR_M * math.cos(math.radians(lat)) / (TILE_PX * 2 ** z)
+
+
+# @part 07 todo 5
+def best_zoom(gsd_m, lat, zmin=13, zmax=19):
+    """The zoom to match a camera photo with: the HIGHEST zoom whose map pixel is still at least as large as
+    the photo's ground pixel gsd_m (the photo is shrunk to the map, never enlarged), kept inside
+    [zmin, zmax] (the zooms the map file holds). Raises ValueError if gsd_m ≤ 0.
+
+    Inputs: gsd_m in metres per photo pixel, latitude in degrees. Returns an int.
+    Example: best_zoom(0.352, 1.2834) → 18   (Singapore: zoom 18 has 0.597 m pixels, zoom 19 0.299 m)
+             best_zoom(100.0, 1.2834) → 13   (the coarsest zoom the map holds)
+    """
+    if not gsd_m > 0:
+        raise ValueError(f"gsd_m must be > 0, got {gsd_m}")
+    z = math.floor(math.log2(m_per_px(lat, 0) / gsd_m))
+    return int(max(zmin, min(zmax, z)))
+
+
+# ====================================================================== the map file (session 2)
+
+# @part 07 todo 6
+def open_map(path=None):
+    """Open an MBTiles map file READ-ONLY (it is shared by the whole class: no program may change it).
+    path=None opens MAP_PATH. Raises FileNotFoundError if the file does not exist.
+
+    Returns an sqlite3 connection; writing through it fails with sqlite3.OperationalError.
+    Example: db = open_map("/data/academy/07-map-tiles/sousse_small.mbtiles")
+             db.execute("SELECT COUNT(*) FROM tiles").fetchone() → (88,)
+    """
+    path = MAP_PATH if path is None else path
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"no map file at {path}")
+    return sqlite3.connect("file:" + quote(os.path.abspath(path)) + "?mode=ro", uri=True)
+
+
+# @part 07 todo 7
+def read_tile(db, z, x, y):
+    """The bytes of tile z/x/y (XYZ numbering) from an open MBTiles connection, or None when the map has no
+    such tile. The file stores TMS rows, counted from the south. Raises ValueError for an impossible tile
+    address: z, x, y must be whole numbers (a Python int or a NumPy integer — not a float, a bool or a text),
+    0 ≤ z ≤ 30, and 0 ≤ x, y < 2**z (check z BEFORE computing 2**z). Right after the whole-number test, before any
+    arithmetic, convert them with int(): sqlite3 does not know NumPy integers (2 ** np.int64(17) and n − 1 − y are
+    NumPy integers too) and sends them as 8 raw bytes, so the query would find nothing.
+
+    Inputs: db from open_map(), whole numbers z, x, y. Returns bytes (a JPEG file: b'\\xff\\xd8\\xff…') or None.
+    Example: read_tile(open_map(SMALL_MAP), 17, 69409, 51547)[:3] → b'\\xff\\xd8\\xff'   (the Ribat of Sousse)
+             read_tile(open_map(SMALL_MAP), 17, 103350, 65068) → None   (Singapore is not in the map)
+    """
+    for name, v in (("z", z), ("x", x), ("y", y)):
+        if isinstance(v, bool) or not isinstance(v, numbers.Integral):
+            raise ValueError(f"{name} must be a whole number (int), got {v!r}")
+    z, x, y = int(z), int(x), int(y)
+    if not 0 <= z <= 30:
+        raise ValueError(f"z must be in [0, 30], got {z}")
+    n = 2 ** z
+    if not (0 <= x < n and 0 <= y < n):
+        raise ValueError(f"x and y must be in [0, {n}) at zoom {z}, got ({x}, {y})")
+    row = db.execute("SELECT tile_data FROM tiles WHERE zoom_level = ? AND tile_column = ? AND tile_row = ?",
+                     (z, x, n - 1 - y)).fetchone()
+    return None if row is None else bytes(row[0])
+
+
+# @part 07 todo 8
+def latlon_to_pixel(lat, lon, z, x0, y0):
+    """Where a point is in a mosaic of tiles whose top-left tile is (x0, y0), at zoom z: pixel (px, py),
+    px to the right, py down, (0, 0) = the mosaic's top-left corner (lesson §6).
+
+    Inputs: degrees, zoom, tile numbers x0, y0 (whole or fractional). Returns (px, py), two floats.
+    Example: latlon_to_pixel(1.2834, 103.8607, 17, 103349, 65067) → about (390.88, 432.45)
+    """
+    x, y = tile_xy(lat, lon, z)
+    return (x - x0) * TILE_PX, (y - y0) * TILE_PX
+
+
+# @part 07 todo 9
+def pixel_to_latlon(px, py, z, x0, y0):
+    """The inverse of latlon_to_pixel: the (lat, lon) of pixel (px, py) of a mosaic whose top-left tile is
+    (x0, y0), at zoom z. Pixel coordinates may be fractional or negative.
+
+    Inputs: pixels, zoom, tile numbers. Returns (lat, lon) in degrees.
+    Example: pixel_to_latlon(128.0, 128.0, 17, 103350, 65068) → about (1.283920, 103.860626)
+             (the centre pixel of tile 17/103350/65068)
+    """
+    return tile_to_latlon(x0 + px / TILE_PX, y0 + py / TILE_PX, z)
+
+
+# @part 07 todo 10
+def tiles_in_circle(lat, lon, r_m, z):
+    """The tiles a vision search must compare: every zoom-z tile whose CENTRE is within r_m metres of (lat, lon)
+    (distance with geo.haversine_m). Raises ValueError if r_m < 0.
+
+    Inputs: degrees, metres, zoom. Returns a sorted list of (x, y) tuples of int.
+    Example: tiles_in_circle(35.8277, 10.6388, 300.0, 17)
+             → [(69408, 51547), (69409, 51546), (69409, 51547), (69409, 51548), (69410, 51547)]
+    """
+    if r_m < 0:
+        raise ValueError(f"r_m must be ≥ 0, got {r_m}")
+    x, y = tile_xy(lat, lon, z)
+    k = int(r_m / (TILE_PX * m_per_px(lat, z))) + 2           # tiles to look at on each side, with a margin
+    found = []
+    for ty in range(math.floor(y) - k, math.floor(y) + k + 1):
+        for tx in range(math.floor(x) - k, math.floor(x) + k + 1):
+            if 0 <= tx < 2 ** z and 0 <= ty < 2 ** z:
+                c_lat, c_lon = tile_to_latlon(tx + 0.5, ty + 0.5, z)
+                if haversine_m(lat, lon, c_lat, c_lon) <= r_m:
+                    found.append((tx, ty))
+    return sorted(found)
+
+
+# ---------------------------------------------------------------------- given helpers
+
+# @part 07
+def decode_tile(data):
+    """JPEG (or PNG) bytes → picture: a numpy array (256, 256, 3), uint8, OpenCV's BGR colour order."""
+    import cv2
+    img = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
+    if img is None:
+        raise ValueError("these bytes are not a picture OpenCV can decode")
+    return img
+
+
+# @part 07
+def patch_origin(lat, lon, z, width_px, height_px):
+    """Fractional tile coordinates (x0, y0) of the top-left corner of map_patch(lat, lon, z, width_px,
+    height_px), so that pixel_to_latlon(px, py, z, x0, y0) converts a pixel of that patch."""
+    gx, gy = (v * TILE_PX for v in tile_xy(lat, lon, z))
+    left, top = math.floor(gx) - width_px // 2, math.floor(gy) - height_px // 2
+    return left / TILE_PX, top / TILE_PX
+
+
+# @part 07
+def map_patch(lat, lon, z, width_px, height_px, path=None):
+    """A picture of the map around (lat, lon) at zoom z: width_px × height_px pixels cut from the tiles,
+    with the point inside pixel (width_px // 2, height_px // 2). Tiles missing from the map are grey
+    (MISSING_GREY). Returns a numpy array (height_px, width_px, 3), uint8, BGR. Map data © OpenStreetMap
+    contributors. Use patch_origin() and pixel_to_latlon() to turn a pixel of the patch into lat/lon."""
+    if width_px < 1 or height_px < 1:
+        raise ValueError(f"the patch must be at least 1 × 1 pixel, got {width_px} × {height_px}")
+    x0, y0 = patch_origin(lat, lon, z, width_px, height_px)
+    left, top = int(round(x0 * TILE_PX)), int(round(y0 * TILE_PX))
+    out = np.full((height_px, width_px, 3), MISSING_GREY, np.uint8)
+    db = open_map(path)
+    try:
+        for ty in range(top // TILE_PX, (top + height_px - 1) // TILE_PX + 1):
+            for tx in range(left // TILE_PX, (left + width_px - 1) // TILE_PX + 1):
+                if not (0 <= ty < 2 ** z):
+                    continue
+                data = read_tile(db, z, tx % 2 ** z, ty)
+                if data is None:
+                    continue
+                tile = decode_tile(data)
+                # the part of this tile inside the patch, in patch pixels and in tile pixels
+                ox, oy = tx * TILE_PX - left, ty * TILE_PX - top
+                a0, a1 = max(0, ox), min(width_px, ox + TILE_PX)
+                b0, b1 = max(0, oy), min(height_px, oy + TILE_PX)
+                out[b0:b1, a0:a1] = tile[b0 - oy:b1 - oy, a0 - ox:a1 - ox]
+    finally:
+        db.close()
+    return out
+
+
+# @part 07
+def stamp_attribution(img):
+    """Write "(c) OpenStreetMap contributors" in the bottom-right corner of a map picture (in place; also
+    returned). "(c)" stands for "©": OpenCV's built-in fonts have no © sign. Every picture made from the course map must carry it (OpenStreetMap's ODbL licence)."""
+    import cv2
+    text, font, scale = "(c) OpenStreetMap contributors", cv2.FONT_HERSHEY_SIMPLEX, 0.4
+    (w, h), base = cv2.getTextSize(text, font, scale, 1)
+    H, W = img.shape[:2]
+    x, y = max(0, W - w - 6), H - 5
+    cv2.rectangle(img, (x - 3, y - h - 4), (W - 1, H - 1), (255, 255, 255), -1)
+    cv2.putText(img, text, (x, y - 1), font, scale, (60, 60, 60), 1, cv2.LINE_AA)
+    return img

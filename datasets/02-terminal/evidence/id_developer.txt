@@ -1,0 +1,2 @@
+$ id
+uid=1000(dev) gid=1000(dev) groups=1000(dev),4(adm),20(dialout),27(sudo),44(video)

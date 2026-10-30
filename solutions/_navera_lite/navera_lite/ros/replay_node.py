@@ -1,0 +1,169 @@
+"""navera_lite/ros/replay_node.py — plays a scenario of position fixes on the fix topics, in real time, and
+an IMU heartbeat. Part of NAVERA Lite, the course's teaching stack (given in mission 09).
+Written for the course; it is not NAVERA code.
+
+    python3 -m navera_lite.ros.replay_node                                  the built-in 30 s demo, looping
+    python3 -m navera_lite.ros.replay_node --ros-args -p file:=faults.csv -p loop:=false
+
+A scenario file is a CSV with one fix per row (lesson 12 §5):
+    t_s,source,lat,lon,a,b,c,cov_type,valid,delay_s
+    0.0,gps,35.8256,10.6084,9.0,0.0,9.0,1,1,0.0
+  t_s       when to publish it, seconds after the start (rows are played in t_s order)
+  source    gps, day, night or celestial → published on navera_lite/fix/<source>
+  a, b, c   the horizontal covariance (m², CONVENTIONS §5); optional, 0 when missing
+  cov_type  0 unknown, 1 approximated, 2 diagonal known, 3 known; optional, 0 when missing
+  valid     1, or 0 for "alive but no position"; optional, 1 when missing
+  delay_s   how old the measurement already is when published: header.stamp = now − delay_s
+            (negative = a stamp in the future); optional, 0 when missing
+
+Parameters: file ("" = the demo), loop (true), rate (1.0 = real time, 2.0 = twice as fast),
+start_delay_s (3.0: time for the other nodes to discover this one; with less, a judge started at the same time can miss the first rows), imu_hz (10.0; 0 = no IMU).
+"""
+import csv
+
+from rclpy.node import Node
+from sensor_msgs.msg import Imu, NavSatFix
+
+from navera_lite.estimate import SOURCES, Estimate
+from navera_lite.geo import offset
+from navera_lite.ros.convert import s_to_stamp, to_navsatfix
+from navera_lite.ros.qos import FIX_QOS, SENSOR_QOS
+from navera_lite.ros.runner import run_node
+
+# @part 09
+DEMO_START = (35.8256, 10.6084)      # a point in NAVERA's test area near Sousse, Tunisia
+
+
+# @part 09
+def demo_rows():
+    """The built-in 30 s scenario (it loops without a jump: the vehicle goes 150 m east and comes back).
+      0–11 s   GPS every 1 s, σ 3 m                     → FIX on GPS
+      every 2 s day vision, σ 30 m stated
+      12–19 s  no GPS (it goes stale after 3 s)         → DEGRADED on day
+      20–21 s  GPS 5 km away (a spoofer)                → refused by the jump gate
+      22–29 s  GPS back, at the right place             → FIX on GPS again
+    Returns a list of dicts (the CSV columns, numbers as floats/ints).
+    Example: demo_rows()[0]["source"] → "gps"
+    """
+    rows = []
+    for k in range(30):
+        t = float(k)
+        east = 10.0 * t if t <= 15.0 else 10.0 * (30.0 - t)
+        lat, lon = offset(DEMO_START[0], DEMO_START[1], east, 0.0)
+        if k <= 11 or k >= 22:
+            rows.append({"t_s": t, "source": "gps", "lat": lat, "lon": lon, "a": 9.0, "b": 0.0, "c": 9.0,
+                         "cov_type": 1, "valid": 1, "delay_s": 0.0})
+        elif k in (20, 21):
+            slat, slon = offset(lat, lon, 5000.0, 0.0)
+            rows.append({"t_s": t, "source": "gps", "lat": slat, "lon": slon, "a": 9.0, "b": 0.0, "c": 9.0,
+                         "cov_type": 1, "valid": 1, "delay_s": 0.0})
+        if k % 2 == 1:
+            vlat, vlon = offset(lat, lon, 12.0, -8.0)          # vision: a few metres off, σ 30 m stated
+            rows.append({"t_s": t + 0.3, "source": "day", "lat": vlat, "lon": vlon, "a": 900.0, "b": 0.0,
+                         "c": 900.0, "cov_type": 1, "valid": 1, "delay_s": 0.8})
+    return sorted(rows, key=lambda r: r["t_s"])
+
+
+# @part 09
+def read_rows(path):
+    """The rows of a scenario CSV (format in this file's header), sorted by t_s. Raises ValueError with the
+    line number for a row it cannot use (unknown source, a missing number).
+
+    Example: read_rows("faults.csv")[0] → {"t_s": 0.0, "source": "gps", "lat": 35.8256, …}
+    """
+    rows = []
+    with open(path, newline="") as f:
+        for line_no, raw in enumerate(csv.DictReader(f), start=2):
+            try:
+                row = {"t_s": float(raw["t_s"]), "source": raw["source"].strip(),
+                       "lat": float(raw["lat"]), "lon": float(raw["lon"])}
+                for key, default, kind in (("a", 0.0, float), ("b", 0.0, float), ("c", 0.0, float),
+                                           ("cov_type", 0, int), ("valid", 1, int), ("delay_s", 0.0, float)):
+                    text = (raw.get(key) or "").strip()
+                    row[key] = kind(text) if text else default
+            except (KeyError, TypeError, ValueError) as e:
+                raise ValueError(f"{path} line {line_no}: cannot read this row ({e})") from None
+            if row["source"] not in SOURCES:
+                raise ValueError(f"{path} line {line_no}: source must be one of {', '.join(SOURCES)}, "
+                                 f"got {row['source']!r}")
+            rows.append(row)
+    return sorted(rows, key=lambda r: r["t_s"])
+
+
+# @part 09
+def row_to_estimate(row, now_s):
+    """One scenario row → the Estimate to publish at now_s (stamp = now_s − delay_s).
+
+    Example: row_to_estimate(demo_rows()[0], 100.0).stamp_s → 100.0
+    """
+    a, b, c = row["a"], row["b"], row["c"]
+    return Estimate(source=row["source"], lat=row["lat"], lon=row["lon"], stamp_s=now_s - row["delay_s"],
+                    cov=(a, b, 0.0, b, c, 0.0, 0.0, 0.0, 0.0), cov_type=row["cov_type"],
+                    valid=bool(row["valid"]))
+
+
+# @part 09
+class Replay(Node):
+    """The replay node, named "replay": publishes each row when its time comes (20 checks a second)."""
+
+    def __init__(self):
+        super().__init__("replay")
+        self.declare_parameter("file", "")
+        self.declare_parameter("loop", True)
+        self.declare_parameter("rate", 1.0)
+        self.declare_parameter("start_delay_s", 3.0)
+        self.declare_parameter("imu_hz", 10.0)
+        path = self.get_parameter("file").value
+        self.rows = read_rows(path) if path else demo_rows()
+        if not self.rows:
+            raise ValueError(f"{path}: no row to play")
+        self.period_s = self.rows[-1]["t_s"] + 1.0
+        self.rate = float(self.get_parameter("rate").value)
+        self.loop = bool(self.get_parameter("loop").value)
+        self.pubs = {name: self.create_publisher(NavSatFix, f"navera_lite/fix/{name}", FIX_QOS)
+                     for name in SOURCES}
+        self.pub_imu = self.create_publisher(Imu, "navera_lite/imu", SENSOR_QOS)
+        self.t0 = self.now_s() + float(self.get_parameter("start_delay_s").value)
+        self.next_row = 0
+        self.lap = 0
+        self.create_timer(0.05, self.on_timer)
+        imu_hz = float(self.get_parameter("imu_hz").value)
+        if imu_hz > 0:
+            self.create_timer(1.0 / imu_hz, self.on_imu)
+        self.get_logger().info(f"replaying {len(self.rows)} fixes from {path or 'the built-in demo'} "
+                               f"(loop={self.loop}, rate={self.rate})")
+
+    def now_s(self):
+        return self.get_clock().now().nanoseconds * 1e-9
+
+    def on_timer(self):
+        now = self.now_s()
+        t = (now - self.t0) * self.rate - self.lap * self.period_s
+        while self.next_row < len(self.rows) and self.rows[self.next_row]["t_s"] <= t:
+            row = self.rows[self.next_row]
+            self.pubs[row["source"]].publish(to_navsatfix(row_to_estimate(row, now)))
+            self.next_row += 1
+        if self.next_row == len(self.rows) and t >= self.period_s:
+            if self.loop:
+                self.lap += 1
+                self.next_row = 0
+            elif self.next_row == len(self.rows):
+                self.get_logger().info("scenario finished (loop:=false); stop it with kill -INT (Ctrl+C if it runs in the foreground)", once=True)
+
+    def on_imu(self):
+        msg = Imu()
+        msg.header.stamp = s_to_stamp(self.now_s())
+        msg.header.frame_id = "base_link"
+        msg.orientation.w = 1.0                        # level, nose east (ENU yaw 0): a heartbeat only
+        msg.orientation_covariance[0] = -1.0           # REP-145: -1 = no orientation estimate given
+        self.pub_imu.publish(msg)
+
+
+# @part 09
+def main(args=None):
+    """Start the replay node and spin until Ctrl+C."""
+    run_node(Replay, args)
+
+
+if __name__ == "__main__":
+    main()

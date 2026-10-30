@@ -1,55 +1,37 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 400" font-family="sans-serif" font-size="12">
-  <rect width="680" height="400" fill="#f7fafc"/>
-  <text x="340" y="24" text-anchor="middle" font-size="15" font-weight="bold" fill="#1d2733">navera_msgs/PositionEstimate — one form, five questions</text>
-  <!-- WHERE -->
-  <rect x="16" y="40" width="320" height="126" rx="10" fill="#ffffff" stroke="#0b6e8a" stroke-width="2"/>
-  <text x="28" y="60" font-weight="bold" fill="#0b6e8a">WHERE?</text>
-  <g font-family="monospace" font-size="11" fill="#1d2733">
-    <text x="28" y="82">latitude, longitude 35.8277, 10.6388</text>
-    <text xml:space="preserve" x="28" y="100">altitude            nan  (unknown)</text>
-    <text x="28" y="118">position_covariance [83.25, 81.84, …]</text>
-    <text x="28" y="136">position_covariance_type 1 (APPROXIMATED)</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 330" font-family="sans-serif" font-size="13">
+  <rect width="760" height="330" fill="#f7fafc"/>
+  <text x="380" y="26" text-anchor="middle" font-size="15" fill="#1d2733">One form, five questions: an Estimate in Python, a NavSatFix on the wire</text>
+  <defs><marker id="a" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#5a6b7b"/></marker></defs>
+  <text x="130" y="56" text-anchor="middle" font-weight="bold" fill="#0b6e8a">Estimate (estimate.py)</text>
+  <text x="380" y="56" text-anchor="middle" font-weight="bold" fill="#1d2733">question</text>
+  <text x="630" y="56" text-anchor="middle" font-weight="bold" fill="#0b6e8a">sensor_msgs/NavSatFix</text>
+  <g font-family="monospace" font-size="12.5" fill="#1d2733">
+    <rect x="20" y="68" width="220" height="34" rx="6" fill="#fff" stroke="#0b6e8a"/><text x="32" y="90">source = "day"</text>
+    <rect x="20" y="110" width="220" height="50" rx="6" fill="#fff" stroke="#0b6e8a"/><text x="32" y="131">lat, lon = 35.8301, 10.6352</text><text x="32" y="150">alt_m = nan   (unknown)</text>
+    <rect x="20" y="168" width="220" height="50" rx="6" fill="#fff" stroke="#0b6e8a"/><text x="32" y="189" font-size="11">cov = (900, 0, 0, 0, 900, …)</text><text x="32" y="208">cov_type = 1  APPROXIMATED</text>
+    <rect x="20" y="226" width="220" height="34" rx="6" fill="#fff" stroke="#0b6e8a"/><text x="32" y="248">stamp_s = 1000.0</text>
+    <rect x="20" y="268" width="220" height="34" rx="6" fill="#fff" stroke="#0b6e8a"/><text x="32" y="290">valid = True, reason = ""</text>
+    <rect x="520" y="68" width="220" height="34" rx="6" fill="#fff" stroke="#0b6e8a"/><text x="532" y="90">header.frame_id</text>
+    <rect x="520" y="110" width="220" height="50" rx="6" fill="#fff" stroke="#0b6e8a"/><text x="532" y="131">latitude, longitude</text><text x="532" y="150">altitude</text>
+    <rect x="520" y="168" width="220" height="50" rx="6" fill="#fff" stroke="#0b6e8a"/><text x="532" y="189">position_covariance</text><text x="532" y="208">position_covariance_type</text>
+    <rect x="520" y="226" width="220" height="34" rx="6" fill="#fff" stroke="#0b6e8a"/><text x="532" y="248">header.stamp</text>
+    <rect x="520" y="268" width="220" height="34" rx="6" fill="#fff" stroke="#0b6e8a"/><text x="532" y="290">status.status (−1 = none)</text>
   </g>
-  <text x="28" y="154" fill="#56606b" font-size="11">"here, ellipse 15 m × 6 m along heading 30°"</text>
-  <!-- WHO -->
-  <rect x="348" y="40" width="316" height="70" rx="10" fill="#ffffff" stroke="#3a8a4a" stroke-width="2"/>
-  <text x="360" y="60" font-weight="bold" fill="#3a8a4a">WHO?</text>
-  <g font-family="monospace" fill="#1d2733">
-    <text xml:space="preserve" x="360" y="82">source   2 (DAY_VISION)</text>
+  <g text-anchor="middle" fill="#1d2733">
+    <text x="380" y="90">who?</text>
+    <text x="380" y="140">where?</text>
+    <text x="380" y="190">how sure?</text>
+    <text x="380" y="207" font-size="11.5" fill="#56606b">variances in m², ENU</text>
+    <text x="380" y="242">when MEASURED?</text>
+    <text x="380" y="257" font-size="11.5" fill="#56606b">the photo, not the message</text>
+    <text x="380" y="290">usable?</text>
   </g>
-  <text x="360" y="100" fill="#56606b" font-size="11">GPS, day vision, night vision, stars…</text>
-  <!-- HOW -->
-  <rect x="348" y="120" width="316" height="70" rx="10" fill="#ffffff" stroke="#3a8a4a" stroke-width="2"/>
-  <text x="360" y="140" font-weight="bold" fill="#3a8a4a">HOW?</text>
-  <g font-family="monospace" fill="#1d2733">
-    <text xml:space="preserve" x="360" y="162">mode     0 (MEASURED)</text>
+  <g stroke="#5a6b7b" stroke-width="1.4" marker-end="url(#a)">
+    <line x1="244" y1="85" x2="330" y2="85"/><line x1="430" y1="85" x2="516" y2="85"/>
+    <line x1="244" y1="135" x2="340" y2="135"/><line x1="420" y1="135" x2="516" y2="135"/>
+    <line x1="244" y1="193" x2="335" y2="186"/><line x1="425" y1="186" x2="516" y2="193"/>
+    <line x1="244" y1="243" x2="318" y2="238"/><line x1="442" y1="238" x2="516" y2="243"/>
+    <line x1="244" y1="285" x2="350" y2="285"/><line x1="410" y1="285" x2="516" y2="285"/>
   </g>
-  <text x="360" y="180" fill="#56606b" font-size="11">measured, propagated, held, replayed</text>
-  <!-- WORTH -->
-  <rect x="16" y="180" width="320" height="88" rx="10" fill="#ffffff" stroke="#d64545" stroke-width="2"/>
-  <text x="28" y="200" font-weight="bold" fill="#d64545">MAY I USE IT?</text>
-  <g font-family="monospace" fill="#1d2733">
-    <text xml:space="preserve" x="28" y="222">valid       true</text>
-    <text xml:space="preserve" x="28" y="240">reason      ""   (why not, for humans)</text>
-    <text xml:space="preserve" x="28" y="258">confidence  0.0  (local, not comparable)</text>
-  </g>
-  <!-- WHEN -->
-  <rect x="348" y="200" width="316" height="86" rx="10" fill="#ffffff" stroke="#a8680d" stroke-width="2"/>
-  <text x="360" y="220" font-weight="bold" fill="#a8680d">WHEN?</text>
-  <g font-family="monospace" fill="#1d2733">
-    <text xml:space="preserve" x="360" y="242">sensor_stamp   12:00:00.000</text>
-    <text xml:space="preserve" x="360" y="260">header.stamp   12:00:00.640</text>
-  </g>
-  <text x="360" y="275" fill="#56606b" font-size="11">measured… then published 0.64 s later</text>
-  <!-- TRACE -->
-  <rect x="16" y="286" width="320" height="88" rx="10" fill="#ffffff" stroke="#56606b" stroke-width="2"/>
-  <text x="28" y="306" font-weight="bold" fill="#56606b">TRACEABILITY (never decides anything)</text>
-  <g font-family="monospace" fill="#1d2733">
-    <text xml:space="preserve" x="28" y="328">producer "day_subscriber"  model_id …</text>
-    <text x="28" y="346">frame_index 1234</text>
-    <text x="28" y="364">details_json "{...}"</text>
-  </g>
-  <text x="506" y="320" text-anchor="middle" fill="#1d2733" font-size="13">Every source fills the same form,</text>
-  <text x="506" y="338" text-anchor="middle" fill="#1d2733" font-size="13">so the arbiter judges them all</text>
-  <text x="506" y="356" text-anchor="middle" fill="#1d2733" font-size="13">with ONE rule.</text>
+  <text x="380" y="320" text-anchor="middle" font-size="12" fill="#56606b">ros/convert.py: to_navsatfix(est) and from_navsatfix(msg). Unknown stays unknown: nan, type 0 — never an invented value.</text>
 </svg>

@@ -1,21 +1,32 @@
 {
- "place": "Port El Kantaoui marina",
+ "place": "Port El Kantaoui marina, north of Sousse (Tunisia)",
  "lat": 35.8942,
  "lon": 10.5979,
  "photo": {
   "file": "drone_photo.jpg",
   "width": 640,
   "height": 480,
-  "heading_deg": 35.0,
+  "heading_imu_deg": 31.0,
+  "heading_note": "the direction of the photo's top, clockwise from north, as the drone's compass reported it",
   "m_per_px": 0.6,
-  "centre": "the photo centre is exactly (lat, lon)"
+  "centre": "the photo's centre point is (lat, lon)"
  },
  "map": {
   "file": "map_patch.png",
-  "zoom": 17,
   "size": 512,
   "m_per_px": 0.967527,
-  "centre": "pixel (256, 256) is exactly (lat, lon); north is up"
+  "centre": "the patch's centre point is (lat, lon); north is up"
  },
- "made_by": "make_dataset.py (synthetic photo from zoom-18 tiles of /data/map.mbtiles)"
+ "thermal": {
+  "file": "thermal16.png",
+  "dtype": "uint16",
+  "width": 640,
+  "height": 512,
+  "note": "synthetic thermal-like frame, raw sensor counts"
+ },
+ "real": {
+  "file": "real_frame.jpg",
+  "note": "a real aerial frame from NAVERA's day-camera test data"
+ },
+ "attribution": "\u00a9 OpenStreetMap contributors (ODbL), https://www.openstreetmap.org/copyright"
 }

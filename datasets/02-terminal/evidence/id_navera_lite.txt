@@ -1,0 +1,2 @@
+$ id navera_lite
+uid=997(navera_lite) gid=997(navera_lite) groups=997(navera_lite)

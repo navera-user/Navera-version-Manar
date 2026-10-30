@@ -1,3 +1,3 @@
-{"number": "01", "title": "Welcome: navigation without GNSS", "module": 1, "duration": "3 h",
- "summary": "How GNSS computes a position from pseudoranges, why it fails (outage, jamming, spoofing, meaconing) and how NAVERA's sources, arbiter and output keep a vehicle on track. First commands, a GNSS solver you break on purpose, and a threat analysis.",
- "resources": [], "open": ["hello_navera.py", "gnss_fix.py", "answers.py", "threats.md"], "check_timeout_s": 60}
+{"number": "01", "title": "Ghost position: navigation without GNSS", "module": 1, "duration": "5 h",
+ "summary": "Trilateration as least squares, the clock as a fourth unknown, and why a spoof goes unnoticed. You build a solver (brute force, then Gauss–Newton), spoof it, catch a spoofed flight, and attack and defend NAVERA's jump gate.",
+ "resources": [], "open": ["beacons.py", "answers.py", "flight.csv"], "check_timeout_s": 120}

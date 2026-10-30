@@ -1,220 +1,399 @@
-# Lab 8 — Images as arrays: dtypes, filters, warps, and a photo made comparable with the map
+# Lab 8 — Make a drone photo comparable with the map
 
-**Goal:** implement the core image operations yourself with numpy — safe uint8 conversion, grey,
-histogram, normalisation and equalisation, a true 2-D convolution, Gaussian and Sobel kernels, the
-rotation–scale matrix and a bilinear affine warp — verify each one against OpenCV, then use them to
-bring a drone photo to the map's orientation and scale, and measure how sensitive the comparison is.
-**Time:** 4–6 hours for this lab (about 7 h for the whole mission with the lesson; TODO 10, the warp, is the longest step: plan an hour for it).
+**Goal:** write the image part of NAVERA Lite (`navera_lite/image.py`): safe dtype conversions, a true 2-D
+convolution, the affine matrix, a bilinear warp, and `like_map`, which turns a drone photo north-up at the
+map's scale. Check each one against OpenCV, then use them to find how wrong the drone's compass was, and
+write a short engineering note.
+**Time:** 3 to 5 h (a strong programmer: about 3 h; 5 h if numpy is new to you).
+**Fast track:** if you know numpy, skip the 🧰 boxes and the "Stuck?" boxes; do "Going further" at the end.
 
-| File | Role |
-|---|---|
-| [images_lab.py](file:./images_lab.py) | **your work**: eleven functions marked `TODO` (plus `flip_horizontal`, done as an example) |
-| `explore.py` | prints a real frame as numbers (ready) |
-| `demo.py` | runs your functions on a real frame, saves `out/*.png`, prints dtype and range (ready) |
-| `like_map.py` | compares the map with the photo before/after your `make_like_map()` (ready) |
-| `analysis.py` | your filters against OpenCV, contrast methods, heading and scale sweeps → `results.json` (ready) |
-| [report.md](file:./report.md) | **your work**: the written analysis |
+Your files (📝 Code tab): [navera_lite/image.py](file:./navera_lite/image.py) (**your code**: seven
+functions, `TODO 1–7`, with numpy and math only: OpenCV is the reference you compare with, never called
+inside image.py; `to_gray`, `histogram`, `gaussian_kernel`, `sobel` and `pixel_or_zero` are given),
+[answers.py](file:./answers.py), [report.md](file:./report.md), and one ready-made tool you only run:
+[run_images.py](file:./run_images.py) (runs your functions on the lab's pictures and saves what they make
+in `out/`). Data, read only, in `/data/academy/08-images/`: `real_frame.jpg` (a real aerial frame from
+NAVERA's day-camera test data), `thermal16.png` (a synthetic 16-bit thermal-like frame), `map_patch.png` and
+`drone_photo.jpg` (both drawn from OpenStreetMap data by the same renderer — © OpenStreetMap contributors),
+`info.json`.
 
-Data (read-only): 31 real aerial frames in `/data/navera_data/camera_pkg/camera_pkg/data/day/`
-(1536 × 730, used only as pictures), and in `/data/academy/08-images/`: `map_patch.png` (512 × 512,
-zoom 17, north up, Port El Kantaoui marina in NAVERA's Sousse test map), `drone_photo.jpg` (a
-**simulated** photo of the same place: heading 35°, 0.6 m/px, darker, warmer, blurred, noisy) and
-`info.json` (its exact parameters). Every picture a script saves appears in the file list: click it.
+| Lesson | Lab | You write |
+|---|---|---|
+| (nothing to read first) | Step 0 | a prediction |
+| §1 arrays | Step 1 | (look) |
+| §2 dtypes | Step 2 | `to_uint8`, `to_float01`, `normalise` |
+| §4 convolution | Steps 3–4 | by hand, then `convolve2d` |
+| §5 the affine matrix | Step 5 | by hand, then `affine_matrix` |
+| §6 resampling | Step 6 | `warp_affine` |
+| §7 photo → map | Steps 7–9 | a hand trace, `like_map`; heading and scale sweeps; the note |
+
+> [!NOTE]
+> **Predict, then run.** Each `PREDICT_…` in `answers.py` is written **before** you run the step. It is
+> never marked right or wrong. Each function's docstring says its goal and gives an example with its
+> result; `python3 run_images.py test` tries every example. The lesson shows how; the code is yours.
+
+## Session 1 — Darkroom (about 1 h 45; 2 h 30 if numpy is new to you)
+
+## Step 0 — A 16-bit frame meets a byte
+
+No code. `thermal16.png` is a 16-bit frame (uint16) whose values run from about 7 150 (cold) to 8 430 (warm).
+Someone displays it with a plain `t.astype(np.uint8)`. NAVERA's LOC-24 was this family of bug: 16-bit thermal
+converted to 8 bits without scaling, which saturates or blanks the scene. Here you meet its worst form.
+
+> [!TASK]
+> **Predict** (`PREDICT_CAST` in `answers.py`): what will that picture look like? Save the file (`Ctrl+S`).
+> Then read lesson §1–§2 (about 25 min).
 
 ## Step 1 — A photo is an array
 
 ```bash
-python3 explore.py
+python3 run_images.py explore
 ```
 
-Read: `ndarray of uint8`, shape `(730, 1536, 3)`, the BGR values of two pixels, the range of each
-channel, and an 8 × 8 block of grey values. Open `frame.png` and `centre_8x8_zoomed.png`.
-
-Now see the uint8 arithmetic of the course with your own eyes:
+Read the type, dtype and shape, the [blue, green, red] values of two pixels, the range of each channel, and
+an 8 × 8 block of grey values. Open `out/frame_half.png` and `out/frame_8x8_zoomed.png`: the red square of
+the first is the second, pixel by pixel. Then see the uint8 arithmetic of lesson §2 with your own eyes:
 
 ```bash
 python3 -c "import numpy as np; a = np.array([250, 100], np.uint8); print(a + 10, a * 2, a / 2, (a / 2).dtype)"
 ```
 
-`[  4 110] [244 200] [125.  50.] float64`: wrap-around, then a silent change of dtype.
+## Step 2 — Safe conversions (TODO 1, TODO 2, TODO 3)
 
-## Step 2 — Safe conversion and grey (TODO 1 and TODO 2)
+Open the 📝 Code tab, then `navera_lite/image.py`. Each `TODO` function keeps its docstring and ends with
+`return None   # TODO…`: replace that line with your code.
 
-**TODO 1** `to_uint8(a)`: round (`np.rint`), clip to 0..255, then `.astype(np.uint8)` — in this order.
-**TODO 2** `to_gray(img)`: if `img.ndim == 2` return it; else compute Y = 0.299 R + 0.587 G + 0.114 B
-**yourself** in float32 (remember: channel 0 is blue) and return `to_uint8(...)`.
+<details><summary>🧰 numpy: clip, rint, iinfo, kinds of dtype</summary>
+
+```python
+x = np.array([-2.0, 3.5, 4.5, 400.0])
+np.rint(x)                          # [-2.,  4.,  4., 400.]  nearest integer (a half goes to the even one)
+np.clip(x, 0, 255)                  # [  0.,  3.5, 4.5, 255.]  limits, still float
+np.iinfo(np.uint8).max              # 255     np.iinfo(a.dtype).max works on any integer array's dtype
+np.issubdtype(np.uint16, np.integer), np.issubdtype(np.float32, np.floating)   # True True
+np.issubdtype(np.bool_, np.integer) # False: a bool array is not an integer image
+g = np.array([[3, 9]], np.uint16); g.min(), g.max()   # 3 9   (numpy scalars of dtype uint16!)
+np.zeros((2, 3), np.uint8)          # a uint8 array of zeros, shape (2, 3)
+```
+</details>
+
+**TODO 1** `to_uint8(a)`: lesson §2, the rule in the box. **TODO 2** `to_float01(a)`: integers divided by
+the largest value of their own dtype; floats only converted; anything else `raise ValueError("…")`.
+**TODO 3** `normalise(gray)`: the min–max stretch of §2, computed in float, finished with your `to_uint8`.
 
 ```bash
-python3 -c "import numpy as np; from images_lab import to_uint8; print(to_uint8(np.array([-5.6, 0.4, 99.5, 254.6, 300.0])))"
+python3 run_images.py test
 ```
 
-Expected `[  0   0 100 255 255]`. Then compare your grey with OpenCV's on the simulated photo:
+The TODO 1, 2 and 3 lines must be ✔ (the others are later TODOs).
+
+<details><summary>Stuck? Hints, one at a time</summary>
+
+1. Each of the three is 2 to 6 lines. Work in float64 or float32 from the first line:
+   `np.asarray(a, dtype=np.float64)`.
+2. `[0, 0, 100, 255, 44]`: 300 wrapped to 44 — clip before converting. `[0, 0, 99, 254, 255]`: `astype`
+   truncated 254.6 to 254 — `np.rint` first. Right numbers but dtype float64: the last step is
+   `.astype(np.uint8)`.
+3. to_float01 gives `[0, 51.4, 257]` for uint16: you divided by 255 for every dtype. Use
+   `np.iinfo(a.dtype).max`, inside `if np.issubdtype(a.dtype, np.integer):`.
+4. normalise gives a warning `invalid value encountered in divide`, or nan: the uniform picture has
+   max = min. Test it **before** dividing and return `np.zeros(shape, np.uint8)`. Values that are wrong only
+   for uint16 input: you computed in uint16 (`(g − lo) * 255` overflows) — convert to float first.
+</details>
+
+Now the thermal frame, cast naively and with your `normalise`:
 
 ```bash
-python3 -c "import cv2, numpy as np; from images_lab import to_gray; p = cv2.imread('/data/academy/08-images/drone_photo.jpg'); print(np.abs(to_gray(p).astype(int) - cv2.cvtColor(p, cv2.COLOR_BGR2GRAY)).max())"
+python3 run_images.py cast
 ```
 
-The maximum difference must be 0 or 1 (rounding).
+Open `out/thermal_naive.png` and `out/thermal_normalised.png`, and compare with your `PREDICT_CAST`.
 
 > [!TASK]
-> **TODO 1–2 done** means: `to_uint8()` rounds, clips before converting and returns uint8; `to_gray()`
-> gives 29, 150, 76 for pure blue, green, red, equals `cv2.cvtColor` to ± 1 and returns a grey
-> picture unchanged.
-
-## Step 3 — Histogram, normalisation, equalisation (TODO 3, 4, 5)
-
-- **TODO 3** `histogram(gray)`: `np.bincount(gray.ravel(), minlength=256)`.
-- **TODO 4** `normalise(gray)`: min–max stretch in float, then **`to_uint8()`** — the course explains
-  why. A uniform picture (max = min) is returned unchanged.
-- **TODO 5** `equalise(gray)`: CDF with `np.cumsum`, `cdf_min` = the first non-zero value
-  (`cdf[np.nonzero(cdf)[0][0]]`), a lookup table `lut` of 256 uint8 values, then `lut[gray]` — numpy
-  replaces every pixel value v by `lut[v]` in one operation. A uniform picture (one grey value) is
-  returned **unchanged, as a uint8 copy** (`gray.copy()`), exactly like `normalise()`: there every
-  pixel has the same value, `N == cdf_min`, and the formula would divide 0 by 0
-  (`RuntimeWarning: invalid value encountered in divide`). `analysis.py` calls `equalise()` on such a
-  picture, so you will see this warning if you forget the test.
+> `NAIVE_COLDEST` and `NAIVE_HOTTEST`: what `.astype(np.uint8)` makes of the coldest and of the hottest pixel
+> of `thermal16.png`. This prints the frame's coldest and hottest counts; then apply lesson §2's rule to each
+> (by hand, or with `np.array([…], np.uint16).astype(np.uint8)`). `EXPLAIN_CAST`: why these two values, and
+> why your `normalise` does not have the problem.
 
 ```bash
-python3 demo.py
+python3 -c "import cv2; t = cv2.imread('/data/academy/08-images/thermal16.png', cv2.IMREAD_UNCHANGED); print(t.dtype, t.min(), t.max())"
 ```
 
-Each line shows shape, **dtype**, min and max. Open `out/dark_gray.png` (a dull version of the frame:
-only 89 grey values used), `out/dark_normalised.png`, `out/dark_equalised.png`, `out/dark_clahe.png`
-and `out/histogram.png` (blue: before; red: after equalisation). The last lines of `demo.py` show the
-OpenCV error you get when CLAHE receives a float64 picture: now you know what it means.
+Careful: the darkest and brightest pixels of the cast **picture** are not what the coldest and hottest
+**pixels** became. Then open "Read this after lab Step 2" at the end of lesson §2.
+
+## Step 3 — Convolution by hand
+
+Read lesson §4 first (about 20 min). Then do its worked example again on new numbers, with pencil and paper.
 
 > [!TASK]
-> **TODO 3–5 done** means: 256 counts summing to the pixel count; `normalise()` returns uint8 with
-> [[50, 100], [150, 50]] → [[0, 128], [255, 0]]; `equalise()` equals `cv2.equalizeHist` to ± 1;
-> both return a uniform picture unchanged, without any warning.
+> `HAND_BLUR`: [2, 2, 2, 8, 8, 8] convolved with [1, 2, 1]/4, border reflect 101 (six numbers).
+> `HAND_DERIV`: [2, 2, 2, 8, 8, 8] convolved (true convolution) with [1, 0, −1].
 
-## Step 4 — Convolution, Gaussian and Sobel (TODO 6, 7, 8)
+<details><summary>Stuck? Hints</summary>
 
-- **TODO 6** `convolve2d(img, kernel)`: a **true** convolution (flip the kernel with `[::-1, ::-1]`),
-  same output size, border `np.pad(..., mode="reflect")`, result float32. Loop over the k × k
-  kernel entries only, and add whole shifted slices of the padded image: numpy does the pixels.
-- **TODO 7** `gaussian_kernel(k, sigma)`: 1-D Gaussian, normalised, `np.outer(g, g)`; OpenCV's rule
-  when `sigma <= 0`.
-- **TODO 8** `sobel(gray)`: returns `(gx, gy)` equal to `cv2.Sobel(gray, cv2.CV_32F, 1, 0)` and
-  `(0, 1)`. OpenCV correlates; your function convolves. Which kernel must you pass?
+1. Write the padded signal first: reflect 101 adds one value at each end, … c b | a b c …. Here
+   [**2**, 2, 2, 2, 8, 8, 8, **8**].
+2. With the flip, the kernel [1, 0, −1] gives out(x) = img(x + 1) − img(x − 1). Every sign reversed? That is
+   the correlation.
+3. A first value of 1.5 means you padded with 0.
+</details>
 
-Test against OpenCV:
+## Step 4 — The convolution in code (TODO 4)
+
+<details><summary>🧰 np.pad and shifted slices</summary>
+
+```python
+a = np.array([[1, 2, 3], [4, 5, 6]])
+np.pad(a, ((0, 0), (1, 1)), mode="reflect")   # [[2, 1, 2, 3, 2], [5, 4, 5, 6, 5]]  … c b | a b c …
+np.pad(a, ((1, 1), (0, 0)), mode="edge")      # repeats the edge row: not OpenCV's default
+p = np.pad(a, ((0, 0), (1, 1)), mode="reflect")
+p[:, 0:3], p[:, 2:5]                          # two slices of a's own size (2, 3): shifted left / right
+k = np.array([[1, 2], [3, 4]]); k[::-1, ::-1] # [[4, 3], [2, 1]]: turned by 180°
+out = np.zeros((2, 3)); out += 0.5 * p[:, 0:3]   # add a weighted slice to the result
+```
+</details>
+
+**TODO 4** `convolve2d(img, k)`: pad by (rows // 2, columns // 2) with reflect, flip the kernel, then one
+loop over the kernel's entries that adds `weight × slice` (lesson §4). An even-sized kernel has no centre:
+`raise ValueError("…")`. Return float32.
 
 ```bash
-python3 -c "import cv2, numpy as np; from images_lab import *; g = to_gray(cv2.imread('/data/academy/08-images/drone_photo.jpg')); k = gaussian_kernel(7, 1.5); print(np.abs(convolve2d(g, k) - cv2.GaussianBlur(g.astype(np.float32), (7, 7), 1.5)).max()); print(np.abs(sobel(g)[0] - cv2.Sobel(g, cv2.CV_32F, 1, 0)).max())"
+python3 run_images.py test
 ```
-
-Both numbers must be tiny (below 0.001). If the second is large (hundreds), look at the sign of your
-gx on a picture that gets brighter to the right.
-
-```bash
-python3 demo.py
-```
-
-Open `out/blur_own.png` (your 7 × 7 Gaussian) and `out/sobel_magnitude.png` (√(gx² + gy²)/4): every
-building outline and road edge is bright.
 
 > [!TASK]
-> **TODO 6–8 done** means: the identity kernel returns the picture, a kernel with a 1 left of the centre
-> gives out[y, x] = img[y, x + 1] (true convolution), the border is "reflect 101", a random 5 × 5
-> kernel matches `cv2.filter2D` with the flipped kernel; your Gaussian kernels equal
-> `cv2.getGaussianKernel`; your Sobel equals `cv2.Sobel`. All float32.
-
-## Step 5 — The affine matrix and the warp (TODO 9 and TODO 10)
-
-- **TODO 9** `rotation_scale_matrix(cx, cy, angle_deg, scale)`: the 2 × 3 matrix of the course
-  (`np.radians`, `np.cos`, `np.sin`), float64.
-- **TODO 10** `warp_affine(gray, M, out_w, out_h)`: inverse mapping and bilinear interpolation, as in
-  the course figure. `np.mgrid[0:out_h, 0:out_w]` gives two arrays v, u with the row and column of
-  every output pixel; compute x and y for all of them at once with A⁻¹; `np.floor` → integer arrays
-  `x0`, `y0`; read the 4 neighbours with the helper `_get(gray, ys, xs)` (it returns 0 outside). The
-  result is float32.
-
-> [!NOTE]
-> **Python note.** TODO 10 needs two numpy tools from the box "numpy in ten lines" of the course
-> (section 1): `np.mgrid` (the row and column of every output pixel) and **integer-array indexing**
-> (`gray[ys, xs]` with integer arrays `ys`, `xs` reads one pixel per pair, all at once). Try them in
-> `python3` on a 2 × 3 array before you write the warp: `v, u = np.mgrid[0:2, 0:3]`, then
-> `a = np.arange(6).reshape(2, 3)` and `a[v, u]` (the whole array again) or `a[v, 2 - u]` (mirrored).
+> **Predict** (`PREDICT_SPEED`) before the next command: your convolution is plain numpy, OpenCV's is
+> optimised C. How many times slower will yours be on the 1536 × 730 frame?
 
 ```bash
-python3 -c "import cv2, numpy as np; from images_lab import *; print(rotation_scale_matrix(320, 240, -35, 0.6201)); print(cv2.getRotationMatrix2D((320, 240), -35, 0.6201))"
+python3 run_images.py filters
 ```
 
-The two matrices must be identical. Then `python3 demo.py` and open `out/rotated_30_half.png`: the
-frame turned 30° **counter-clockwise** and halved about its centre, black outside.
+The largest differences with OpenCV must be tiny (below 0.001). Open `out/blur.png` and `out/edges.png`
+(the gradient magnitude √(gx² + gy²) × 4 of your `sobel`): every roof outline and kerb is bright.
 
 > [!TASK]
-> **TODO 9–10 done** means: `rotation_scale_matrix()` equals `cv2.getRotationMatrix2D` for four sets
-> of parameters; `warp_affine()` with the identity returns the picture, matches `cv2.warpAffine`
-> (mean difference below 0.25 grey level), and gives 0 outside the source.
+> `EXPLAIN_FLIP`: what would a correlation (no flip) give with [1, 0, −1] in Step 3, and why does the flip
+> change nothing for the Gaussian?
 
-## Step 6 — Make the drone photo look like the map (TODO 11)
+<details><summary>Stuck? Hints</summary>
 
-**TODO 11** `make_like_map(photo, heading_deg, photo_m_per_px, map_m_per_px, method)`:
+1. `test` says "every sign is reversed": you forgot `k[::-1, ::-1]` — that is a correlation. `filters` says
+   the same: "your gx is exactly MINUS OpenCV's".
+2. "the border repeats the edge pixel" or "is filled with zeros": `mode="reflect"` is the only np.pad mode
+   that matches OpenCV's default (reflect 101). `mode="symmetric"` repeats the edge pixel too.
+3. A shape smaller than the image: you did not pad, or padded on one side only. Pad by `k.shape[0] // 2` rows
+   at the top **and** bottom, `k.shape[1] // 2` columns left **and** right.
+4. In the loop, the slice for kernel entry (i, j) is `p[i:i + H, j:j + W]` with (H, W) the image's shape.
+</details>
 
-1. `to_gray()`;
-2. contrast: `normalise()` (default), `equalise()`, or CLAHE (`cv2.createCLAHE(clipLimit=2.0,
-   tileGridSize=(8, 8)).apply(g)` — needs uint8) — **before** the warp, so that the black corners the
-   rotation adds do not count as "the darkest pixel";
-3. one matrix: `rotation_scale_matrix(w / 2, h / 2, angle, s)` — which angle (sign!) and which s?
-4. shift the last column so the photo centre lands at the centre of the round(w·s) × round(h·s) output
-   (worked example in the course);
-5. `warp_affine()`, then **`to_uint8()`** — the result is a picture.
+> [!TIP] 🏅 End of session 1 — Darkroom
+> Press **✔ Check my work**. When checks 1–6 pass (TODO 1–4, Steps 0–4), you earn the **Darkroom** badge.
+> If the class session ends here, stop here.
+
+## Session 2 — Map matcher (about 2 h; 2 h 45 if numpy is new to you)
+
+Read lesson §5–§7 first.
+
+## Step 5 — The affine matrix (TODO 5)
+
+> [!TASK]
+> By hand first (lesson §5 worked example, new numbers): `CORNER_UV`, where the pixel (0, 0) goes with
+> `affine_matrix(-90.0, 0.5, (40.0, 30.0))`.
+
+**TODO 5** `affine_matrix(angle_deg, scale, centre)`: the matrix of lesson §5, as a float64 numpy array of
+shape (2, 3). Mind the argument order: the angle first.
 
 ```bash
-python3 like_map.py
+python3 run_images.py test
 ```
 
-The raw photo scores a similarity near 0.06 with the map; your prepared photo must score above 0.9
-with a mean difference below 25. Open `comparison.png` (map | raw | normalise | equalise | CLAHE):
-the marina's pontoons must line up.
+<details><summary>Stuck? Hints</summary>
 
-> [!TIP]
-> If the check says **only** that the dtype is wrong, your geometry is fine: add `to_uint8()`. If the
-> similarity is near 0 or negative, the photo is turned the wrong way (+35 instead of −35, i.e. 70°
-> from north). If the size is wrong, check s = photo_m_per_px / map_m_per_px.
+1. `math.cos` and `math.sin` take radians: `math.radians(angle_deg)`. `centre` is a pair: `cx, cy = centre`.
+2. `test` says "b has the wrong sign": your matrix turns clockwise. The top row is [a, b, …], the bottom row
+   [−b, a, …].
+3. "the last column is 0": you turned about (0, 0). tx = (1 − a)·cx − b·cy, ty = b·cx + (1 − a)·cy.
+4. CORNER_UV (25, 50): you used +90°. (0, 0): you forgot the centre.
+</details>
 
-> [!TASK]
-> **TODO 11 done** means: a grey **uint8** picture of about 397 × 298 px whose 160 × 160 middle matches
-> the map with similarity > 0.9 and a mean difference < 25 from the normalised map.
+## Step 6 — The warp (TODO 6)
 
-## Step 7 — Analysis and report
+<details><summary>🧰 every pixel at once: np.mgrid, floor, integer indexing</summary>
+
+```python
+v, u = np.mgrid[0:2, 0:3].astype(np.float64)      # row and column of every pixel of a 2 × 3 result
+x = 0.5 * u + 0.25                                # a formula on whole arrays: one value per pixel
+x0 = np.floor(x).astype(np.int64)                 # integer part, as integers (indices must be int)
+fx = x - x0                                       # the fraction, 0 <= fx < 1
+A = np.array([[2.0, 0.0], [0.0, 4.0]]); np.linalg.inv(A)   # [[0.5, 0. ], [0. , 0.25]]
+img = np.array([[5, 6], [7, 8]])
+pixel_or_zero(img, np.array([0, 1, 2]), np.array([1, 0, 0]))   # [6., 7., 0.]: (2, 0) is outside → 0
+```
+</details>
+
+**TODO 6** `warp_affine(img, M, size)`: lesson §6. `size` is (width, height), OpenCV's order; the result has
+`height` rows. For every destination pixel, the source point by A⁻¹; then the bilinear blend of its four
+neighbours, read with `pixel_or_zero`. Return float32.
 
 ```bash
-python3 analysis.py
+python3 run_images.py test
 ```
 
-It writes `results.json` and `analysis.png`: the dtype of each of your functions' outputs, your
-convolution, Sobel and warp against OpenCV (maximum and mean differences, time), the similarity and
-difference with the map for the raw photo and the three contrast methods, and two **sweeps**: the
-similarity when `make_like_map()` is given a heading from 0° to 70°, and a photo m/px from 0.50 to 0.70.
-Open `analysis.png`.
+```bash
+python3 run_images.py warp
+```
 
-Write [report.md](file:./report.md) (150–400 words, your own words, three headings):
+`warp` compares your matrix with `cv2.getRotationMatrix2D` and your warp of the real frame with
+`cv2.warpAffine` (mean difference below 0.25 grey level; OpenCV rounds its weights a little). Open
+`out/rotated.png`: the frame turned 30° counter-clockwise and halved, black outside.
 
-- **## Convolution** — how close your filters and warp are to OpenCV (numbers), why a true
-  convolution flips the kernel and what that does to Sobel, the speed difference.
-- **## Preprocessing** — similarity and difference for raw, normalise, equalise and CLAHE; why
-  equalise can keep a high similarity but a larger difference; which dtype each step must return.
-- **## Geometry** — the best heading and best photo m/px of the sweeps against `info.json`, the range of
-  headings with similarity above 0.5, and what that means for the heading and altitude accuracy
-  NAVERA needs before a pixel comparison.
+<details><summary>Stuck? Hints</summary>
+
+1. Five parts: `a_inv = np.linalg.inv(M[:, :2])`; the grid `v, u` of the result; the source `x`, `y` of
+   every pixel (subtract t first, then multiply by a_inv, written out entry by entry); `x0`, `fx`, `y0`,
+   `fy`; the blend.
+2. `test` says "the picture moved the wrong way" or "you multiplied by A, not by its INVERSE", or `warp`
+   shows a mean difference of tens of grey levels (with a ⚠ line): the source of (u, v) is A⁻¹·((u, v) − t),
+   so subtract t FIRST ("you subtracted t after multiplying" means the order is wrong).
+   Did you call `np.linalg.inv(M[:, :2])` and use **that** in the two lines for x and y?
+3. "no blending": a missing weight or `np.rint` instead of `np.floor`. The four reads are `(y0, x0)`,
+   `(y0, x0 + 1)`, `(y0 + 1, x0)`, `(y0 + 1, x0 + 1)` — rows first.
+4. `IndexError: arrays used as indices must be of integer…`: `np.floor(x).astype(np.int64)`. Shape
+   (width, height) instead of (height, width): `np.mgrid[0:height, 0:width]`.
+</details>
+
+## Step 7 — The photo made like the map (TODO 7)
+
+**TODO 7** `like_map(photo, heading_deg, gsd_photo_m, gsd_map_m)`: the least guided function. Its docstring
+gives the exact result; lesson §7 gives the steps and a worked example.
 
 > [!TASK]
-> `python3 analysis.py` runs (the check runs it again) and `report.md` has the headings
-> `## Convolution`, `## Preprocessing`, `## Geometry`, at least 150 words, and quotes the raw
-> similarity (≈ 0.06), the similarity after normalise (≈ 0.975), the best heading (35) and the best
-> photo m/px (0.60). Then press **✔ Check my work**.
+> **By hand first** (`LIKE_TRACE`): for the lab's photo (640 × 480, 0.60 m/px, map 0.967527 m/px), the tuple
+> `(s, side, dx, dy)` with s to 3 decimals and (dx, dy) = c_out − c_in, the column you add to M. Then write
+> `like_map` with your own functions.
+
+<details><summary>Check your trace (open after you wrote it)</summary>
+s = 0.60 / 0.967527 = 0.6201 → 0.620; side = round(800 × 0.6201) = 496; c_in = (319.5, 239.5);
+c_out = (247.5, 247.5); (dx, dy) = (−72, +8).
+</details>
+
+```bash
+python3 run_images.py test
+```
+
+The three TODO 7 lines check the size (s and side), the centre (a dot at the photo's centre must land at the
+result's centre) and the direction of the turn (a mark at the top of a photo whose top looks east must land
+east).
+
+> [!TASK]
+> **Predict** (`PREDICT_NCC`) before running `like`: roughly what NCC will the raw photo give against the map,
+> and your `like_map` at the compass heading? Then run it, open `out/like_map.png` (the map, the raw photo, your
+> result), and write `NCC_COMPASS`, the like_map value it prints (three decimals).
+
+```bash
+python3 run_images.py like
+```
+
+<details><summary>Stuck? Hints</summary>
+
+1. Order: `to_gray` → `normalise` → s and side → `affine_matrix` → shift the last column → `warp_affine` →
+   `to_uint8`.
+2. "the photo's top mark lands WEST" (heading 90°): you turned by +heading; the angle is −heading (lesson §7
+   figure).
+3. "the photo's centre lands at (28.69, 28.38)" or "(28.22, 27.84)" (other numbers, e.g. swapped, if your turn is
+   also wrong) instead of (28.50, 28.50): half a pixel
+   off — the centres are ((w − 1)/2, (h − 1)/2) and ((side − 1)/2, (side − 1)/2), not w/2. A centre far off: you did not add (c_out − c_in) to `M[0, 2]` and `M[1, 2]`.
+4. Shape (58, 58) expected, yours smaller: side = round(hypot(w, h) · s), `math.hypot`. A dark, flat result
+   in `like`: you normalised after the warp.
+</details>
+
+## Step 8 — How good was the compass?
+
+`info.json` gives the heading the drone's compass (its IMU) reported: `heading_imu_deg`, the "compass heading". Compasses are not perfect. If you give
+`like_map` other headings, the one whose result looks most like the map (highest NCC) is the best estimate
+of the true heading. `python3 run_images.py sweep` tries 10° either side of the compass heading in steps of
+0.5°; `python3 run_images.py sweep FROM TO STEP` tries your own range.
+
+> [!TASK]
+> **Predict** (`PREDICT_SWEEP`): where will the NCC peak, and how fast will it fall on each side? Is a 4°
+> heading error worse than a 4 % scale error?
+
+```bash
+python3 run_images.py sweep
+```
+
+Open `out/sweep.png`. Then refine around your peak with a step of 0.1°: `python3 run_images.py sweep FROM TO 0.1`,
+with FROM and TO 2° either side of your peak. For example, for a peak at 28.5°:
+
+```bash
+python3 run_images.py sweep 26.5 30.5 0.1
+```
+
+(Fine sweeps print the NCC with 4 decimals, so neighbouring headings do not tie.)
+
+> [!TASK]
+> `BEST_HEADING_DEG` (the heading of the highest NCC, to 0.1°), `COMPASS_ERROR_DEG` (true − compass, with its sign),
+> `HEADING_TOL_DEG` (how many degrees either side of the best heading the NCC stays at 0.9 or more), and
+> `EXPLAIN_SWEEP`: what does this say about the heading accuracy a pixel comparison needs, and what could a
+> system do when its compass is not that good?
+
+## Step 8b — Heading or scale?
+
+The scale comes from the height above ground and the lens (mission 18); it is never exact either. Sweep the
+photo's m/px at your best heading (this line reads `BEST_HEADING_DEG` from your `answers.py`; default range
+0.54 to 0.66 m/px, step 0.005):
+
+```bash
+python3 run_images.py scale $(python3 -c "import answers; print(answers.BEST_HEADING_DEG)")
+```
+
+> [!TASK]
+> `SCALE_TOL_PCT`: how many % either side of the best m/px the NCC stays at 0.9 or more (half the width of that
+> zone, divided by 0.60). `EXPLAIN_SCALE`: which costs more here, a 5 % scale error or a 5° heading error, and
+> which sensor sets each?
+
+<details><summary>Read this after you wrote EXPLAIN_SWEEP and EXPLAIN_SCALE</summary>
+A few degrees of heading error turn a near-perfect match into a mediocre one: the photo covers 384 m × 288 m,
+and 4° moves its edges by 10–17 m (17 m at the corners). Pixel comparison is <b>not rotation-invariant</b>, so a system that uses it
+needs a good heading (NAVERA's night vision takes it from the frame's data or the IMU) or a search over
+headings like your sweep (more time, and more chances of a wrong match). The other way is a method that
+estimates the rotation itself: NAVERA's day vision matches features and fits rotation, scale and
+translation, and only checks that the scale agrees with the altitude. Features are mission 21.
+Your peak NCC is high because this "photo" is a render of the same OpenStreetMap data as the map; a real photo
+against a satellite map peaks much lower. The sweep's grid also limits your answer: the true value can lie
+between two grid points.
+</details>
+
+## Step 9 — The engineering note
+
+Write [report.md](file:./report.md) (150–400 words, your own words, keep the three headings): the thermal
+cast, your filters against OpenCV, and the photo → map numbers with what they mean. Quote your numbers.
+
+> [!TASK]
+> report.md has the three headings, at least 150 words, and quotes the naive cast value (Step 2), the NCC
+> with the compass heading and at the best heading, the best heading, and the ± tolerance (Step 8).
+> Write a tolerance as ±0.8° or +/-0.8 deg (your own number, of course); both work.
+
+## Step 10 — Check, then look back
+
+Press **✔ Check my work**: it tests your functions on values, kernels and photos they have never seen. When
+every check passes, you earn the **Map matcher** badge. Then look back, without the lesson:
+
+1. Explain to a colleague in three sentences why a 16-bit frame must not be cast to 8 bits, and what to do
+   instead.
+2. Which of your predictions was the most wrong? What did you assume?
+3. `like_map` resamples the photo once. Why is that better than turning it, then scaling it, in two warps?
+
+Write your answers in `LOOK_BACK` in `answers.py` if you want your teacher to read them (not graded).
 
 ## Going further (optional)
 
-- **Separable convolution.** Write `convolve_separable(img, g1d)` (rows, then columns) and time it
-  against your `convolve2d()` for k = 3, 7, 15, 31. Plot the times against k: which grows like k, which
-  like k²?
-- **Aliasing.** Shrink a real frame by 0.25 with your `warp_affine()` with and without a Gaussian blur
-  of σ = 0.5/0.25 = 2 first. Compare both with `cv2.resize(..., interpolation=cv2.INTER_AREA)` using
-  `difference()`. Look at roof tiles and road markings.
-- **Edges against edges.** Compute Canny edges of the map patch and of your prepared photo
-  (`cv2.Canny` needs uint8) and their similarity. Is it more or less sensitive to the heading than the
-  grey-level similarity? Run the heading sweep on edges.
+- **Separable convolution.** A Gaussian kernel is the outer product of a 1-D kernel with itself. Write
+  `convolve_separable(img, g1d)` (rows, then columns) and time it against your `convolve2d` for k = 3, 7, 15,
+  31. Which grows like k, which like k²?
+- **Aliasing.** `like_map` shrinks the photo by 0.62 without blurring first. Blur it with
+  `gaussian_kernel(5, 0.5 / 0.62)` before the warp and rerun the sweep: does the best NCC change?
+- **Edges against edges.** Compare the Sobel magnitudes of your prepared photo and of the map instead of the
+  grey levels. Is the peak of the heading sweep sharper or wider?

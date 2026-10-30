@@ -1,0 +1,3 @@
+{"number": "30", "title": "Detecting GPS spoofing: hypothesis tests in the arbiter", "module": 6, "duration": "6 h 15 (weaker students: up to 8 h)",
+ "summary": "Spoofing detection as a hypothesis test: the χ² innovation of a GPS fix against vision, persistence, the jump gate's hole and the delay of a drift, a ROC curve measured by Monte Carlo. You build NAVERA Lite's spoofing guard, put it in front of your mission-29 judge, play nine attacks (one live over ROS 2), then attack your own guard.",
+ "resources": [], "open": ["navera_lite/spoof.py", "detection.py", "answers.py"], "check_timeout_s": 300}

@@ -1,0 +1,88 @@
+{
+ "camera": {
+  "width_px": 960,
+  "height_px": 540,
+  "hfov_deg": 90.0,
+  "f_px": 480.00000000000006
+ },
+ "pad_size_m": 12.0,
+ "map": "OpenStreetMap (render_view pseudo style), \u00a9 OpenStreetMap contributors",
+ "conventions": "ENU, origin on the ground under the drone; heading cw from north, pitch + nose up, roll + right wing down",
+ "photos": {
+  "photo_A.png": {
+   "lat": 35.8262,
+   "lon": 10.6395,
+   "height_m": 135.0,
+   "heading_deg": 0.0,
+   "pitch_deg": 0.0,
+   "roll_deg": 0.0,
+   "pad_centre_en_m": [
+    21.0,
+    13.0
+   ],
+   "pad_cols": 43,
+   "pad_centre_px": [
+    555.0,
+    224.0
+   ],
+   "ortho_res_m": 0.11249999999999998,
+   "ortho_px": 2540,
+   "mask_cols": 43,
+   "mask_centre_px": [
+    554.9489795918367,
+    224.0
+   ],
+   "mask_pixels": 1568
+  },
+  "photo_B.png": {
+   "lat": 35.819,
+   "lon": 10.631,
+   "height_m": 260.0,
+   "heading_deg": 0.0,
+   "pitch_deg": 0.0,
+   "roll_deg": 0.0,
+   "pad_centre_en_m": [
+    -41.0,
+    29.0
+   ],
+   "pad_cols": 22,
+   "pad_centre_px": [
+    404.5,
+    216.5
+   ],
+   "ortho_res_m": 0.1487384259259259,
+   "ortho_px": 3600,
+   "mask_cols": 22,
+   "mask_centre_px": [
+    404.6601941747573,
+    216.5
+   ],
+   "mask_pixels": 412
+  },
+  "photo_T.png": {
+   "lat": 35.8231,
+   "lon": 10.6352,
+   "height_m": 170.0,
+   "heading_deg": 40.0,
+   "pitch_deg": -14.0,
+   "roll_deg": 5.0,
+   "pad_centre_en_m": [
+    -18.0,
+    -66.0
+   ],
+   "pad_cols": 47,
+   "pad_centre_px": [
+    600.1026392961877,
+    321.83088954056694
+   ],
+   "ortho_res_m": 0.12289315421131501,
+   "ortho_px": 3600,
+   "mask_cols": 47,
+   "mask_centre_px": [
+    600.0968858131488,
+    321.8096885813149
+   ],
+   "mask_pixels": 867
+  }
+ }
+}

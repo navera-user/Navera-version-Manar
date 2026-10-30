@@ -1,0 +1,7 @@
+# gps.yaml — settings of the nmea node (the GPS reader), ROS 2 params-file format
+/**:
+  ros__parameters:
+    port: /dev/ttyTHS1       # the Jetson serial port wired to the GPS receiver
+    baud: 9600               # bits per second; must match the receiver
+    frame_id: gps
+    max_hdop: 5.0            # above this, the fix is published but marked doubtful

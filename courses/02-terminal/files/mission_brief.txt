@@ -1,20 +1,20 @@
-MISSION BRIEF — ground engineer, NAVERA training flights
-========================================================
+MISSION BRIEF — ground engineer, NAVERA Lite bench box and training flights
+==========================================================================
 
-The NAVERA box came back from two training flights (Sousse and the inland range).
-All their files were copied, in a mess, into the folder "inbox".
+Session 1 — the box on the bench                                (lab steps)
+  Step 0     start the bench box (./box.sh start), look at its decisions
+  Step 1-2   explore the NAVERA Lite skeleton (/data/academy/02-terminal)
+  Step 3     sort the inbox into mission/: photos, logs, docs, bin, deploy
+  Step 4     make the pre-flight script run; repair the GPS service unit
+  Step 5     record the environment of the box
+  Step 6     find the orphan arbiter, stop it cleanly; restart the camera
 
-  1. Build the mission folder:  mission/photos  mission/logs  mission/docs  mission/bin
-  2. Sort the inbox: photos, logs, the pilot's notes (renamed notes.txt),
-     the pre-flight script (in mission/bin, made executable); delete the .tmp files
-  3. Copy NAVERA's GPS settings file into mission/docs, for the record
-  4. Record the ROS environment of the box in ros_env.txt
-  5. Start fake_node.sh in the background and stop it with a signal, by its PID
-  6. Write mission/bin/log_report.sh: one summary for any NAVERA log
-  7. Use it on both flights, explore ~/navera, fill in answers.py
-  8. Write mission/docs/flight_report.md for the test team
+Session 2 — the flight logs (Sousse coast and an inland range)
+  Step 7     keep normal output and errors apart
+  Step 8     answer the questions of answers.py with pipelines
+  Step 9     write mission/bin/log_report.sh: one summary for ANY log
+  Step 10    write mission/docs/flight_report.md for the test team
 
-Every step is done in the terminal. No mouse needed.
-This brief is exactly 20 lines long (check it with: wc -l mission_brief.txt).
+Every step is done in the terminal. This brief is exactly 20 lines long.
 
 Good luck, engineer.

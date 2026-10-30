@@ -1,0 +1,5 @@
+"""navera_lite.ros — the thin ROS 2 layer of NAVERA Lite (missions 09-14): standard messages only, no build.
+
+Run a node from the lesson folder: python3 -m navera_lite.ros.<node> [--ros-args ...]
+Written for the course; it is not NAVERA code.
+"""

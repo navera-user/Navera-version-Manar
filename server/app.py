@@ -35,7 +35,9 @@ import config
 import orgs
 import simlite
 import webtools
+import netns
 import sandbox
+import sealed
 import workspaces
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -654,7 +656,7 @@ def api_courses():
     for lid in lesson_ids():
         m = lesson_meta(lid)
         m["progress"] = prog.get(lid, {})
-        m["locked_until"] = lesson_locked(name, lid)
+        m["locked_until"], m["locked_after"] = lesson_lock(name, lid)
         out.append(m)
     return jsonify(lessons=out, modules=mods)
 
@@ -663,14 +665,42 @@ def lesson_leg(lid):
     return next((i for i, m in enumerate(_load_modules()) if lid in (m.get("lessons") or [])), -1)
 
 
-def lesson_locked(name, lid):
-    """For a student whose class opens legs on dates: the date this mission opens, else ''."""
+def previous_lesson(lid):
+    """The mission before `lid` by number ('' for the first one)."""
+    ids = lesson_ids()
+    i = ids.index(lid) if lid in ids else 0
+    return ids[i - 1] if i > 0 else ""
+
+
+def lesson_lock(name, lid):
+    """(date, previous) — why a student cannot open mission `lid` yet: ("YYYY-MM-DD", "") while their
+    class's leg is not open, ("", "NN") while mission NN (the one before) is not passed, ("", "") when
+    it is open. Staff are never locked; a mission the student started or passed stays open (their own
+    work); the first mission has no previous one; a teacher can open a mission for one student
+    (users.json "open_missions", dashboard "Open mission…"): that lifts the order rule, not the leg date."""
     rec = users().get(name or "", {})
     if rec.get("role") != "student":
-        return ""
-    if _load("progress.json", {}).get(name, {}).get(lid, {}).get("status"):
-        return ""                              # already started or passed: the student keeps their own work
-    return orgs.leg_open_from(orgs.get(rec.get("class") or ""), lesson_leg(lid))
+        return "", ""
+    prog = _load("progress.json", {}).get(name, {})
+    if prog.get(lid, {}).get("status"):
+        return "", ""
+    until = orgs.leg_open_from(orgs.get(rec.get("class") or ""), lesson_leg(lid))
+    if until:
+        return until, ""
+    prev = previous_lesson(lid)
+    if prev and prog.get(prev, {}).get("status") != "passed" and lid not in (rec.get("open_missions") or []):
+        return "", lesson_meta(prev).get("number") or prev[:2]
+    return "", ""
+
+
+def lock_error(name, lid):
+    """The sentence a locked mission answers with (None when it is open)."""
+    until, after = lesson_lock(name, lid)
+    if until:
+        return f"This leg opens on {until}."
+    if after:
+        return f"Pass mission {after} first: missions open in order."
+    return None
 
 
 def _load_modules():
@@ -687,8 +717,8 @@ def api_lesson(lid):
     if lid not in lesson_ids():
         abort(404)
     name, _ = sandbox_user()
-    if lesson_locked(name, lid):
-        return jsonify(error=f"This leg opens on {lesson_locked(name, lid)}."), 403
+    if lock_error(name, lid):
+        return jsonify(error=lock_error(name, lid), locked=True), 403
     workspaces.install_lesson(name, lid)
     base = os.path.join(config.COURSES, lid)
     def read(fn):
@@ -709,6 +739,8 @@ def api_lesson(lid):
 def course_asset(lid, fn):
     if lid not in lesson_ids():
         abort(404)
+    if lock_error(request.user, lid):
+        abort(403)
     return send_from_directory(os.path.join(config.COURSES, lid, "assets"), fn)
 
 
@@ -730,14 +762,9 @@ def _default_signals():
 
 
 def _course_mounts(lid=None):
-    """The grader of ONE mission, only while its check runs: a terminal sees no check.py (quiz keys,
-    expected values) and never the missions of a leg that is not open yet."""
-    if not lid:
-        return []
-    lib = os.path.join(config.COURSES, "_lib")
-    m = [(lib, "/academy/lib")] if os.path.isdir(lib) else []
-    m.append((os.path.join(config.COURSES, lid), f"/academy/courses/{lid}"))
-    return m
+    """Public parts of ONE mission (helpers, starter files). check.py, meta.json and hidden/ are never
+    mounted: a check runs sealed (server/sealed.py) and gets them in memory."""
+    return sealed.mounts(lid) if lid else []
 
 
 @app.post("/api/lesson/<lid>/check")
@@ -746,25 +773,18 @@ def api_check(lid):
     if lid not in lesson_ids():
         abort(404)
     name, _ = sandbox_user()
-    if lesson_locked(name, lid):
-        return jsonify(error=f"This leg opens on {lesson_locked(name, lid)}."), 403
+    if lock_error(name, lid):
+        return jsonify(error=lock_error(name, lid), locked=True), 403
     workspaces.install_lesson(name, lid)               # files missing (never opened): put them in place, keep any work
     m = lesson_meta(lid)
     timeout = int(m.get("check_timeout_s", 180))
     res = [r for r in m.get("resources", []) if _holder(r) == name]
-    code, out = run_in_sandbox(name, ["bash", "-lc",
-                                      f"source ~/.bashrc >/dev/null 2>&1; cd ~/lessons/{lid} && "
-                                      f"PYTHONPATH=/academy/lib:$PYTHONPATH python3 /academy/courses/{lid}/check.py"],
-                               timeout=timeout, resources=res, heavy=bool(res), lid=lid)
-    score = None
-    mres = re.findall(r"^ACADEMY_RESULT (\{.*\})$", out, re.M)
-    if mres:
-        try:
-            score = json.loads(mres[-1])
-        except json.JSONDecodeError:
-            pass
-    out = re.sub(r"^ACADEMY_RESULT .*\n?", "", out, flags=re.M)
-    passed = code == 0 and (score is None or score.get("passed") == score.get("total"))
+    # sealed: check.py and hidden data stay in the checker's memory, the score comes on a private
+    # channel (an ACADEMY_RESULT line printed by the student's code is ignored and removed)
+    u = users()[name]
+    code, out, score = sealed.run_check(name, lid, u["index"], timeout=timeout, resources=res, heavy=bool(res),
+                                        host_net=is_staff(u))
+    passed = sealed.passed(code, score)
     if not is_staff(request.urec) or name == request.user:
         with _lock:
             p = _load("progress.json", {})
@@ -774,6 +794,9 @@ def api_check(lid):
             if score:
                 rec["best"] = max(rec.get("best", 0), score.get("passed", 0))
                 rec["total"] = score.get("total")
+                got = [m for m in (score.get("milestones") or []) if isinstance(m, str) and len(m) < 40]
+                if got:
+                    rec["milestones"] = sorted(set(rec.get("milestones", [])) | set(got))
             if passed:
                 rec["status"] = "passed"
                 rec.setdefault("passed_at", rec["last"])
@@ -789,8 +812,8 @@ def api_lesson_reset(lid):
     if lid not in lesson_ids():
         abort(404)
     name, _ = sandbox_user()
-    if lesson_locked(name, lid):
-        return jsonify(error=f"This leg opens on {lesson_locked(name, lid)}."), 403
+    if lock_error(name, lid):
+        return jsonify(error=lock_error(name, lid), locked=True), 403
     workspaces.install_lesson(name, lid, overwrite=True)
     return jsonify(ok=True)
 
@@ -812,7 +835,15 @@ def _safe(name, rel):
     p = os.path.realpath(os.path.join(home, (rel or "").lstrip("/")))
     if p != home and not p.startswith(home + os.sep):
         abort(403)
+    if _navera_path(home, p) and not config.navera_allowed(name):
+        abort(403)                       # real NAVERA is not part of the course: staff, or given access
     return home, p
+
+
+def _navera_path(home, p):
+    """Is p ~/navera or inside it (the NAVERA copy of staff and students given access)?"""
+    q = os.path.realpath(os.path.join(home, "navera"))
+    return p == q or p.startswith(q + os.sep)
 
 
 @app.get("/api/files")
@@ -823,8 +854,11 @@ def api_files():
     if not os.path.isdir(p):
         abort(404)
     items = []
+    navera = config.navera_allowed(name)
     for e in sorted(os.scandir(p), key=lambda e: (not e.is_dir(), e.name.lower())):
         if e.name in HIDDEN or (e.name.startswith(".") and e.name not in (".bashrc",)):
+            continue
+        if not navera and _navera_path(home, os.path.realpath(e.path)):
             continue
         try:
             isdir = e.is_dir()
@@ -934,7 +968,7 @@ def web_tool(tool, sub):
         abort(404)
     if not config.navera_allowed(request.user) and (config.RESOURCES["sim"].get("teacher_only") or _holder("sim") != request.user):
         return webtools.message("The full simulator is for the teacher",
-                                "You fly <b>Sim Lite</b>: open the 🛩️ <b>Simulator</b> tab. It runs your own NAVERA code, "
+                                "You fly <b>Sim Lite</b>: open the 🛩️ <b>Simulator</b> tab. It flies your own NAVERA Lite, "
                                 "and no booking is needed.", 423, lite=True)
     return webtools.proxy(app, tool, sub, request)
 
@@ -943,12 +977,14 @@ def web_tool(tool, sub):
 @app.get("/api/simlite/code")
 @login_required()
 def api_simlite_code():
-    teacher = config.navera_allowed(request.user)          # the original NAVERA: teacher, or a student given access
-    src = "original" if teacher and request.args.get("src") == "original" else "mine"
-    try:
-        return jsonify(simlite.code(request.user, src, allow_original=teacher))
-    except FileNotFoundError as e:
-        return jsonify(error=str(e)), 409
+    # NAVERA Lite for everyone (no NAVERA access needed): the student's own parts; the course's FINISHED parts only for
+    # missions the student has passed (staff and students given NAVERA access: all of them, and src=course)
+    full = is_staff(request.urec) or config.navera_allowed(request.user)
+    src = request.args.get("src", "mine")
+    src = src if src in ("mine", "safe") else ("course" if full else "safe")
+    prog = _load("progress.json", {}).get(request.user, {})
+    passed = [lid for lid, r in prog.items() if isinstance(r, dict) and r.get("status") == "passed"]
+    return jsonify(simlite.code(request.user, src, passed=passed, full=full))
 
 
 @app.get("/api/simlite/script")
@@ -970,6 +1006,12 @@ def api_simlite_script_save():
 @app.get("/api/simlite/scenario")
 @login_required()
 def api_simlite_scenario():
+    lesson = request.args.get("lesson", "")
+    if lesson in lesson_ids():
+        err = lock_error(request.user, lesson)
+        if err:
+            return jsonify(error=err, locked=True), 403
+        workspaces.install_lesson(request.user, lesson)   # an open mission's files are there before they are read
     try:
         return jsonify(simlite.scenario(request.user, request.args.get("lesson", "")))
     except FileNotFoundError:
@@ -987,6 +1029,12 @@ def api_simlite_scenario():
 @login_required()
 def api_simlite_flight():
     d = request.get_json(force=True)
+    lesson = str(d.get("lesson", ""))
+    if lesson in lesson_ids():
+        err = lock_error(request.user, lesson)
+        if err:
+            return jsonify(error=err, locked=True), 403
+        workspaces.install_lesson(request.user, lesson)   # the starter files first: never a folder holding only my_runs/
     try:
         path = simlite.save_flight(request.user, str(d.get("lesson", "")), str(d.get("run", "")),
                                    str(d.get("csv", "")), str(d.get("events", "")))
@@ -1176,7 +1224,8 @@ def api_admin_students():
         c = certs.for_user(name)
         out.append({"name": name, "display": rec.get("display", name), "index": rec["index"], "class": rec.get("class") or "",
                     "last": last or rec.get("created", ""), "certificate": c["id"] if c and not c.get("revoked") else "",
-                    "email": rec.get("email"), "navera": bool(rec.get("navera_access")), "provider": rec.get("provider", "email" if rec.get("email") else "teacher"),
+                    "email": rec.get("email"), "navera": bool(rec.get("navera_access")),
+                    "open_missions": rec.get("open_missions") or [], "provider": rec.get("provider", "email" if rec.get("email") else "teacher"),
                     "passed": sum(1 for v in pr.values() if v.get("status") == "passed"),
                     "started": sum(1 for v in pr.values() if v.get("status") == "started"),
                     "lessons": n, "progress": pr,
@@ -1270,6 +1319,20 @@ def api_admin_student(name):
             _kill_terminals(name)
             workspaces.create_student(name)                # clones ~/navera, or backs it up and removes it
             return jsonify(ok=True)
+        if action in ("open_mission", "close_mission"):    # missions open in order; the teacher can open one early
+            lid = d.get("lesson") or ""
+            if lid not in lesson_ids():
+                return jsonify(error="Choose a mission."), 400
+            opened = [x for x in (u[name].get("open_missions") or []) if x in lesson_ids() and x != lid]
+            if action == "open_mission":
+                opened.append(lid)
+            if opened:
+                u[name]["open_missions"] = sorted(opened)
+            else:
+                u[name].pop("open_missions", None)
+            _save("users.json", u)
+            until, _ = lesson_lock(name, lid)
+            return jsonify(ok=True, open_missions=opened, leg_opens=until)
         if action == "password":
             pw = secrets.token_urlsafe(8)
             u[name]["pw"] = generate_password_hash(pw)
@@ -1580,7 +1643,11 @@ def api_class_export(cid):
 @app.get("/api/classes/<cid>/qr.svg")
 @login_required("teacher")
 def api_class_qr(cid):
-    return Response(certs.qr_svg(_class_view(_my_class(cid))["join_url"]), mimetype="image/svg+xml")
+    try:
+        svg = certs.qr_svg(_class_view(_my_class(cid))["join_url"])
+    except ImportError:                       # setup/vendor/segno is missing (setup/install.sh vendors it)
+        return jsonify(error="QR library missing: run setup/install.sh (it vendors segno into setup/vendor)"), 503
+    return Response(svg, mimetype="image/svg+xml")
 
 
 @app.get("/class/<cid>/poster")
@@ -1818,11 +1885,23 @@ def no_cache(r):
     return r
 
 
+def _netns_reaper():
+    """Every minute: stop the private network of a student nobody used for netns.IDLE seconds
+    (no terminal, no check): the next sandbox of that student starts a new one."""
+    while True:
+        try:
+            netns.reap()
+        except Exception as e:                 # noqa: BLE001 — never let the reaper die
+            print("netns reaper:", e, flush=True)
+        time.sleep(60)
+
+
 if __name__ == "__main__":
     if not workspaces.base_info():
         raise SystemExit("no base yet: python3 -c 'import workspaces; workspaces.build_base(\"<commit>\")'")
     ensure_teacher()
     workspaces.create_student("teacher")
+    threading.Thread(target=_netns_reaper, daemon=True).start()
     if not orgs.configured():
         orgs.setup_code()               # printed on the sticker; asked on the first-start page
     print(f"NAVERA Academy on http://{_host_ip()}:{config.PORT}")

@@ -1,0 +1,1 @@
+{"name": "drift", "vehicle": "drone", "vision": "target", "seed": 15, "duration_s": 150, "faults": [[30, "gps", "spoof_drift"], [120, "gps", "ok"]]}

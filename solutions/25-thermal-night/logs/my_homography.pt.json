@@ -1,0 +1,15 @@
+{
+ "weights": "my_homography.pt",
+ "n_train": 16000,
+ "places": 293,
+ "epochs": 8,
+ "device": "cuda",
+ "ablation": [],
+ "seconds": 34.0,
+ "val_corner_px": 4.458,
+ "val_centre_px": 3.834,
+ "note": "reference weights (teacher copy): the runner writes this file after `python3 run_night.py train`",
+ "sha256": "3c83fbff0b8f7ff1a777e59f1af8c3617ebb1ffb62bacc02eba0c4f22bf457e7",
+ "student": "",
+ "seed": 0
+}

@@ -1,30 +1,28 @@
-# Lab 8 report — making a drone photo comparable with the map
+# Engineering note — making a drone photo comparable with the map
 
-## Convolution
+## Pixels and dtypes
 
-My convolve2d() with a 7 x 7 Gaussian differs from cv2.filter2D by less than 0.0001 grey level,
-which is float32 rounding, and my sobel() is identical to cv2.Sobel. A true convolution flips the
-kernel; OpenCV's filter2D and Sobel compute a correlation, so I had to give my function the
-flipped Sobel kernel, otherwise gx has the wrong sign: a road edge that gets brighter to the right
-would give a negative gradient. My warp_affine() differs from cv2.warpAffine by 0.05 grey level on
-average and at most 4 levels, because OpenCV rounds the source coordinates to 1/32 pixel. My
-convolution is about ten times slower than OpenCV, which is acceptable for a lab but not on a drone.
+The thermal frame holds 16-bit counts from 7150 to 8430. Cast directly with astype(np.uint8), every value
+keeps only its remainder modulo 256, so the coldest pixel (7150) and the hottest (8430) both become 238:
+they differ by 1280 = 5 × 256. The picture shows five bands of false contours and no real temperature
+order. My normalise() works in float, maps the darkest count to 0 and the brightest to 255, and only then
+rounds and converts, so nothing wraps. Rule: compute in float, then round, clip and convert to uint8, and
+say in every function which dtype it returns.
 
-## Preprocessing
+## Filters
 
-The raw photo has a similarity of 0.063 with the map: nothing in common for a computer. After
-make_like_map with normalise the similarity is 0.975 and the mean difference 18.4 grey levels.
-Equalise gives 0.964 and 29.1, CLAHE 0.970 and 24.0. Equalisation changes the shape of the
-histogram, so the pattern of light and dark stays (high correlation) but the grey values no longer
-match the map, so the difference grows. Each image step must return uint8; warp_affine returns
-float32, and forgetting to_uint8 gives float64 or float32 pictures that OpenCV refuses (CLAHE asserts
-CV_8UC1) or saves with a warning.
+My convolve2d with a 7 × 7 Gaussian (σ 1.5) matches cv2.GaussianBlur to 0.00005 grey levels on the real
+frame, and my Sobel (÷ 8) matches cv2.Sobel exactly, but my code takes about 230 ms where OpenCV takes
+about 5 ms, roughly 45 times slower. A true convolution flips the kernel; OpenCV's filters correlate. For
+the symmetric Gaussian this changes nothing, but for a derivative kernel a missing flip reverses every
+sign: an edge that gets brighter to the right would come out negative.
 
-## Geometry
+## Photo to map
 
-The heading sweep finds the best similarity at 35 degrees and the scale sweep at 0.60 m per pixel,
-exactly the true values in info.json. The similarity stays above 0.5 only between 25 and 45 degrees:
-a heading error of about 10 degrees already destroys a pixel-by-pixel comparison. NAVERA therefore
-needs the heading from its IMU and the height above ground before it prepares a frame, or it must
-use a matching method that estimates rotation and scale itself, like the feature matching of later
-lessons.
+Compared with the map as it is, the photo scores an NCC of only 0.027. After like_map with the compass
+heading (31°) it scores 0.746, and the heading sweep peaks at 35.0° with NCC 0.965, so the compass was 4°
+off. The NCC stays at 0.9 or more only within about ±1.5° of the best heading, and within about ±2.3 % of the
+best scale (0.60 m/px): a 5° heading error costs more than a 5 % scale error. A pixel comparison therefore
+needs the heading to about a degree. With a worse compass a system must search over headings, or use a method
+that estimates the rotation itself, such as feature matching. These NCC values are optimistic: the map and
+the photo were drawn by the same renderer.

@@ -1,0 +1,7 @@
+file,terrain,lat,lon,m_per_px
+terrain_city.png,city,35.8277,10.6388,0.9683
+terrain_olives.png,olives,35.7409,10.7377,0.9694
+terrain_fields.png,fields,35.7373,10.7235,0.9694
+terrain_saltpans.png,saltpans,35.7607,10.7176,0.9692
+terrain_coast.png,coast,35.8563,10.6191,0.968
+terrain_sea.png,sea,35.83,10.7,0.9683
