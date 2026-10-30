@@ -42,7 +42,7 @@ function restartWorker(why) {
 // ---------------------------------------------------------------- map
 const map = L.map('map', { zoomControl: true, attributionControl: true }).setView([35.80, 10.62], 12);
 map.attributionControl.setPrefix(false);
-map.attributionControl.addAttribution('© <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> contributors');
+map.attributionControl.addAttribution('© OpenStreetMap contributors (openstreetmap.org/copyright)');
 // the academy's map files (NAVERA's onboard map) cover only some areas, given as boxes: the Jetson is asked
 // for a tile only when it touches one of them
 const LocalTiles = L.TileLayer.extend({ _isValidTile(c) {
@@ -126,8 +126,10 @@ $('placeForm').onsubmit = async (e) => {
   lastSearch = Date.now();
   $('placeRes').innerHTML = '<div class="hint">Searching…</div>';
   try {
-    const r = await fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&limit=8&q=' + encodeURIComponent(q), { headers: { 'Accept-Language': 'en' } });
-    const raw = await r.json();
+    // offline: the box never asks an outside search service; the course's own places (inside the map) only
+    const ql = q.toLowerCase();
+    const raw = Object.entries(PLACES).filter(([n]) => n.toLowerCase().includes(ql))
+      .map(([n, ll]) => ({ display_name: n + ', Tunisia', lat: ll[0], lon: ll[1], type: 'place' }));
     // the same place often comes back twice (a town and its boundary, a node and a way): kept once
     const seen = new Set(), list = raw.filter(p => {
       const k = p.display_name + '|' + (+p.lat).toFixed(2) + '|' + (+p.lon).toFixed(2);
