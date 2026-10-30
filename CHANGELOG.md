@@ -4,6 +4,36 @@ Measured numbers come from simulation (Isaac Sim + ArduPilot/PX4 SITL), bench, o
 data from other vehicles; **no NAVERA flight yet**. Details: `docs/VALIDATION_STATUS.md`,
 requirements: `docs/certification/REQUIREMENTS.md`, known problems: the shared problems list.
 
+## 0.8.0 — 2026-10-30 (simulation/bench-validated; no real flight yet)
+- **u-blox (UBX) GPS output** for flight controllers that take a u-blox GPS
+  (`NAVERA_NMEA_PROTOCOL=ubx`): NAV-PVT and the related position messages, with the stated
+  accuracy, so the flight controller can weigh vision positions; a stateful responder answers the
+  flight controller's u-blox auto-configuration (PX4, INAV, Betaflight, ArduPilot: ACKs, port and
+  baud changes, polls). Needs at least 38400 baud (refused below). Tested against flight-controller
+  software in the loop (SITL) only. Manual §5.5.
+- **Box access:** the box joins the client's Wi-Fi when it can, else raises its own setup Wi-Fi
+  with a captive setup page (choose the client's network, type its password). Each box has its
+  own setup Wi-Fi name (`NAVERA-XXXX`), random password and hostname (`navera-xxxx`), printed on
+  its access card (QR code). Firewall rules for the hotspot (setup page from the hotspot's subnet
+  only). Control without the code only from the box's own hotspot by default; other trusted
+  networks only when added. Control requests from pages of other web sites are refused.
+- **Autopilot forwarding on/off and its accuracy on the mission page**; the operator view draws
+  the estimated-error circle and shows whether forwarding is on; in product mode "/" opens the
+  operator view. Apply restarts the output service too, and is refused (as are forwarding changes)
+  while the vehicle may be flying: armed, moving, navigating without GPS, or armed state unknown
+  while NAVERA is the flight controller's serial GPS.
+- **Fast plane in turns (Isaac Sim, 60 m/s jet):** a learned camera delay is applied above the
+  speed cap when it is surely not zero; vision fixes and dead-reckoning carries are dated
+  consistently (no odometry step used twice). A dating term for the GPS spoofing check exists but
+  ships off. Remaining spikes from frame-arrival jitter are documented as open.
+- **Celestial:** the bright planets join the all-sky (360) solver's catalogue, the same quality
+  gate deciding (unit and simulation tested; no real clear sky yet). Prior-aided star
+  identification is available to the solver but not used by the flight pipeline yet; a
+  "too cloudy / blocked" reason in the field tools; Sun/Moon line-of-position, sky cleaning, a star-segmentation network and long-exposure
+  still capture as offline/field tools only (not wired into the product pipeline).
+- Wi-Fi manager hardened (a hung network tool no longer stops it; the hotspot is checked to be up;
+  a working saved network is kept until a new one has joined).
+
 ## 0.7.2 — 2026-10-29 (second readiness review; no real flight yet)
 - Product firewall: the camera-search answers (from UDP 3702 / 3956) are accepted only on the box's
   ephemeral ports 32768–60999 (a source port alone was a way past the firewall); a GigE Vision

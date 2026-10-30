@@ -4,7 +4,7 @@ For the **integrator** who installs NAVERA on a vehicle and the **operator** who
 You do not need to be a software developer. Commands to type are shown in grey boxes. Settings
 are lines in one text file, `/etc/navera/navera.env` (appendix A lists them).
 
-Release covered: NAVERA **0.7.2** (2026-10-29), reference box Jetson Orin Nano 8 GB.
+Release covered: NAVERA **0.8.0** (2026-10-30), reference box Jetson Orin Nano 8 GB.
 The detailed engineering documents are named at the end of each section, for your technical team.
 
 > **Status of this release — read this first**
@@ -959,8 +959,8 @@ ArduPilot: `GPS_TYPE = 5` (NMEA), `SERIALn_PROTOCOL = 5` (GPS), `SERIALn_BAUD = 
 and ROS only, and NMEA says "no fix" for them. Do not turn on `NAVERA_NMEA_FORWARD_DEGRADED`.
 With NMEA the port carries no MAVLink: the vehicle link needs its own port.
 
-**u-blox (UBX) output: for flight controllers that take a u-blox GPS** (development branch, not
-in release 0.7.2):
+**u-blox (UBX) output: for flight controllers that take a u-blox GPS** (from release 0.8.0;
+tested in SITL only, no real flight controller yet):
 
 ```
 NAVERA_NMEA_PORT=/dev/ttyTHS2
