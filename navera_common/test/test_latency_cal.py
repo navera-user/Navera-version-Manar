@@ -357,7 +357,7 @@ def test_the_staged_delay_is_not_applied_when_speed_times_its_sigma_is_too_large
     """A plane at 30 m/s whose staged estimate is 1.11 +- 0.38 s (11 m along the track) keeps the
     unknown delay (Isaac Sim m1_plane30: 0.58 +- 0.44 s staged for 1.3 s, 6 wrong fixes); without the
     cap the same samples are applied. A copter at 10 m/s with a like sigma (3 m) applies it."""
-    capped = fly(LatencyCalibrator(), circle(30.0, 600.0), 1.3, 30.0, noise=8.0)
+    capped = fly(LatencyCalibrator(partial_min_z=0.0), circle(30.0, 600.0), 1.3, 30.0, noise=8.0)
     assert not capped.stable and capped.applied is None and "not applied: 30 m/s" in capped.reason
     assert capped.delay_sigma() is None                # still unknown: the stated sigma keeps the prior
     free = fly(LatencyCalibrator(partial_max_error_m=0.0), circle(30.0, 600.0), 1.3, 30.0, noise=8.0)
@@ -373,11 +373,44 @@ def test_a_stable_delay_is_applied_whatever_the_speed():
 
 
 def test_a_contradicted_stored_delay_is_not_kept_when_the_staged_one_is_capped():
-    cal = LatencyCalibrator()
+    cal = LatencyCalibrator(partial_min_z=0.0)
     assert cal.set_prior(0.2, 0.15, "stored")
     fly(cal, circle(30.0, 600.0), 1.3, 30.0, noise=8.0)
     assert cal.prior_source == "unknown delay" and "not applied" in cal.reason     # the stored 0.2 s dropped
     assert cal.applied is None and cal.delay() == 0.0
+
+
+def _staged(speed, d, sig, **kw):
+    """The staged-apply decision alone: an estimate d +- sig at ground speed `speed`."""
+    cal = LatencyCalibrator(**kw)
+    cal.speed_mps = speed
+    cal._t.append(0.0)
+    cal._apply_posterior(d, sig, True, staged=True)
+    return cal
+
+
+def test_a_staged_delay_surely_not_zero_is_applied_above_the_speed_cap():
+    """Isaac Sim p1_plane60_turns (2026-10-29): 1.25 +- 0.24 s for a true 1.3 s at 65 m/s was capped
+    (65 x 0.23 = 15 m > 10 m) and every fix stayed ~80 m behind; the posterior is 4.9 of its sigmas
+    from 0, so keeping 0 costs 5 x more than applying it. m1_plane30's 0.58 +- 0.44 s (1.2 sigma from
+    0 once shrunk) stays capped."""
+    cal = _staged(65.0, 1.25, 0.24)
+    w = 1.0 / (1.0 + 0.24 ** 2)
+    assert math.isclose(cal.applied, w * 1.25) and math.isclose(cal.applied_sigma, math.sqrt(w) * 0.24)
+    assert "applied although 65 m/s" in cal.reason and cal.delay_sigma() == cal.applied_sigma
+    assert _staged(30.0, 0.58, 0.44).applied is None
+    assert _staged(65.0, 1.25, 0.24, partial_min_z=0.0).applied is None      # the exception off: capped
+    assert _staged(65.0, 0.6, 0.45).applied is None                          # 1.2 sigma from 0: capped
+
+
+@pytest.mark.parametrize("seed", range(3))
+def test_a_fast_plane_on_a_wide_turn_gets_the_staged_delay_only_when_sure(seed):
+    """A jet at 60 m/s on a 3 km circle (~1.1 deg/s, the delay barely observable): whatever is applied
+    is the posterior within 3 sigma of the truth and closer to it than 0."""
+    cal = fly(LatencyCalibrator(), circle(60.0, 3000.0), 1.3, 40.0, noise=8.0, seed=seed)
+    if cal.applied is not None:
+        assert abs(cal.applied - 1.3) <= 3 * cal.applied_sigma and abs(cal.applied - 1.3) < 1.3
+        assert cal.applied >= 3.0 * cal.applied_sigma
 
 
 def test_the_camera_takes_the_attitude_at_the_day_nodes_dating():

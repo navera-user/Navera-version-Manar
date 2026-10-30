@@ -46,7 +46,11 @@ not, and the stated uncertainty says so (the estimate is then never applied).
   The staged value is applied only while speed x its sigma <= partial_max_error_m (the
   samples' recent ground speed): a plane at 30 m/s does not date (and straighten) its frames
   with a delay known to +- 0.44 s (13 m along the track; Isaac Sim 2026-10-22, m1_plane30: a
-  staged 0.58 +- 0.44 s for a true 1.3 s, 6 wrong fixes), a copter at 10 m/s still does.
+  staged 0.58 +- 0.44 s for a true 1.3 s, 6 wrong fixes), a copter at 10 m/s still does — unless
+  the posterior is at least partial_min_z of its sigmas away from 0: the delay is then surely not 0,
+  and keeping 0 errs by speed x the whole delay instead of speed x its sigma (Isaac Sim 2026-10-29,
+  p1_plane60_turns: 1.25 +- 0.24 s for a true 1.3 s at 65 m/s never applied, every fix 80 m behind,
+  and the turn that rotated that lag made the growth test refuse the good GPS as a slow spoof).
 * The delay also dates the ATTITUDE the camera straightens a frame with (live_camera): the day
   node publishes delay_message() on camera_delay_topic, live_camera takes the attitude at
   stamp - correction_s (attitude_shift_s). A body-fixed camera on a banked plane straightened
@@ -72,7 +76,7 @@ class LatencyCalibrator:
                  max_sigma_s: float = 0.1, stable_count: int = 3, max_samples: int = 300,
                  gps_max_gap_s: float = 1.5, nominal_s: float = 0.0, change_sigmas: float = 3.0,
                  prior_sigma_s: float = 1.0, partial_max_sigma_s: float = 0.5, partial_min_samples: int = 10,
-                 nominal_sigma_s: float = 0.1, partial_max_error_m: float = 10.0):
+                 nominal_sigma_s: float = 0.1, partial_max_error_m: float = 10.0, partial_min_z: float = 3.0):
         if max_s <= min_s:
             raise ValueError("latency bounds: max_s must exceed min_s")
         self.grid = np.arange(min_s, max_s + 1e-9, step_s)
@@ -84,6 +88,7 @@ class LatencyCalibrator:
         self.partial_max_sigma, self.partial_min_samples = float(partial_max_sigma_s), int(partial_min_samples)
         self.nominal_sigma, self.prior_sigma = float(nominal_sigma_s), float(prior_sigma_s)
         self.partial_max_error_m = float(partial_max_error_m)      # <= 0: no speed cap
+        self.partial_min_z = float(partial_min_z)                   # <= 0: the cap has no exception
         self.speed_mps: Optional[float] = None                      # the samples' recent ground speed
         # the prior of a delay nobody set: N(0, prior_sigma_s) (no prior, no staged apply: a set delay)
         self._unknown_prior = (0.0, float(prior_sigma_s)) if self.nominal == 0.0 and prior_sigma_s > 0 else None
@@ -367,7 +372,13 @@ class LatencyCalibrator:
         w = s0 * s0 / (s0 * s0 + sig * sig)
         post, psig = mu0 + w * (d - mu0), math.sqrt(w) * sig
         v = self.speed_mps or 0.0
-        if staged and self.partial_max_error_m > 0 and v * psig > self.partial_max_error_m:
+        capped = staged and self.partial_max_error_m > 0 and v * psig > self.partial_max_error_m
+        if capped and self.partial_min_z > 0 and post >= self.partial_min_z * psig:
+            # surely not 0: applying errs by v x psig, keeping 0 by v x post (z times more)
+            self.reason += (f"; applied although {v:.0f} m/s x {psig:.2f} s = {v * psig:.0f} m > "
+                            f"{self.partial_max_error_m:g} m: {post:.2f} s is {post / psig:.1f} sigma from 0")
+            capped = False
+        if capped:
             self.reason += (f"; not applied: {v:.0f} m/s x {psig:.2f} s = {v * psig:.0f} m > "
                             f"{self.partial_max_error_m:g} m")
             if dropped and apply:                    # the contradicted stored value is not kept either
@@ -477,6 +488,8 @@ def from_node(node) -> Tuple[LatencyCalibrator, bool, float]:
     node.declare_parameter("latency_partial_min_samples", 10)
     declare_float(node, "latency_partial_max_error_m", 10.0,
                   "the staged delay is applied only while ground speed x its sigma is below this (m); 0: no cap")
+    declare_float(node, "latency_partial_min_z", 3.0,
+                  "... or while the staged delay is at least this many of its sigmas from 0 (0: never)")
     node.declare_parameter("latency_store", True)
     node.declare_parameter("latency_store_key", "")
     declare_float(node, "latency_store_max_age_days", 60.0, "a stored camera delay older than this is ignored")
@@ -491,7 +504,8 @@ def from_node(node) -> Tuple[LatencyCalibrator, bool, float]:
                             prior_sigma_s=prior_sigma, partial_max_sigma_s=float(p("latency_partial_max_sigma_s")),
                             partial_min_samples=int(p("latency_partial_min_samples")),
                             nominal_sigma_s=float(p("camera_latency_sigma_s")),
-                            partial_max_error_m=float(p("latency_partial_max_error_m")))
+                            partial_max_error_m=float(p("latency_partial_max_error_m")),
+                            partial_min_z=float(p("latency_partial_min_z")))
     auto = bool(p("auto_latency"))
     if auto and bool(p("latency_store")) and cal.prior is not None:
         cal.store_key = store_key(str(p("latency_store_key")))

@@ -251,3 +251,42 @@ def test_the_watchdog_follows_the_turn_the_gyro_measures(env):
     dn = (e.latitude - snap.lat) * M
     # 3 s turning north -> east along an arc: ~19 m east and north each (straight on: 30 m north, 0 east)
     assert de > 12.0 and dn < 25.0, (de, dn)
+
+
+def test_the_no_frame_carry_is_dated_like_a_frame_and_adds_no_used_odometry(env):
+    """Isaac Sim p2_plane60_turns (2026-10-30), camera delay 1.46 s applied at 63 m/s: the 'no camera
+    frame' carry was dated now while the track runs on exposure times, and re-added the last frame's
+    odometry step: 109-160 m ahead, then the right fixes refused as too far from it."""
+    R, make = env
+    t0 = R.VClock.now
+    n = make()
+    _fly_measured(R, n, t0)
+    n.auto_latency = True
+    n.latency_cal.applied, n.latency_cal.applied_sigma = 1.5, 0.1      # the camera delay, known
+    n._vo_step = (0.0, 100.0, 1.0, 1.0)                                 # the last frame's step, already used
+    n._last_frame = (R.VClock.now, {"frame_id": 7, "image_stamp_ns": int((R.VClock.now - 1.5) * 1e9)})
+    R.VClock.now += 3.0                                                 # no camera frame for 3 s
+    n._watchdog()
+    e = n.est[-1]
+    assert e.mode == PositionEstimate.MODE_PROPAGATED and n._vo_step is None
+    t_dated = R.VClock.now - 1.5
+    assert n._anchor_time == pytest.approx(t_dated, abs=0.05)
+    assert abs(e.latitude - _truth(t_dated, t0)[0]) * M < 5.0              # where it was at that instant
+
+
+def test_a_frame_refused_before_the_odometry_does_not_reuse_the_last_step(env):
+    """Isaac Sim p3_plane60_turns (2026-10-30): a frame refused for a 120 deg/s roll-out re-added the last
+    frame's odometry step (33 m in 0.5 s) to a carry of 2.3 s at 63 m/s: 160 m behind."""
+    R, make = env
+    t0 = R.VClock.now
+    n = make()
+    _fly_measured(R, n, t0)
+    R.VClock.now += 2.0
+    n._anchor_time = R.VClock.now - 0.6                                 # within the odometry's continuity
+    n._vo_step = (0.0, -100.0, 0.5, 1.0)                                 # the last frame's step, wrong here
+    meta = {"frame_id": 9, "usable": False, "reason": "vehicle turning 120 deg/s at the exposure",
+            "image_stamp_ns": int(R.VClock.now * 1e9)}
+    n._process_frame(9, np.zeros((480, 640, 3), np.uint8), meta)
+    e = n.est[-1]
+    assert e.mode == PositionEstimate.MODE_PROPAGATED
+    assert abs(e.latitude - _truth(R.VClock.now, t0)[0]) * M < 3.0 * _sigma(e)

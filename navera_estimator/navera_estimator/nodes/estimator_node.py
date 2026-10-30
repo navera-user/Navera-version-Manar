@@ -117,7 +117,9 @@ Parameters:
     gps_trend_enabled (default true) — the growth test (slow spoofing) on top of the size rules
     gps_trend_z (6.0), gps_trend_min_growth_sigmas (1.5), gps_trend_bias_rate_mps (0.2),
     gps_trend_min_jitter_m (3.0), gps_trend_min_fixes (6), gps_trend_confirm_n (3),
-    gps_trend_windows_s ([8, 12, 16, 24, 32, 48, 64, 96, 128]) — see navera_common.gps_crosscheck.GpsDriftTrend
+    gps_trend_windows_s ([8, 12, 16, 24, 32, 48, 64, 96, 128]),
+    gps_trend_dating_s (1.0: the velocity-shaped offset of a wrongly dated fix in a turn, taken out)
+                     — see navera_common.gps_crosscheck.GpsDriftTrend
     gps_motion_enabled (default true), gps_motion_topic (/navera/vision/odometry), gps_motion_h (12),
     gps_motion_k (0.25), gps_motion_min_growth_m (12), gps_motion_bias_mps (0.5),
     gps_motion_eps_floor (0.03) — see navera_common.gps_motion_check.GpsMotionCheck
@@ -228,6 +230,8 @@ class EstimatorNode(Node):
         self.declare_parameter("gps_trend_min_fixes", 6)
         self.declare_parameter("gps_trend_confirm_n", 3)
         self.declare_parameter("gps_trend_windows_s", [8.0, 12.0, 16.0, 24.0, 32.0, 48.0, 64.0, 96.0, 128.0])
+        declare_float(self, "gps_trend_dating_s", 1.0,
+                      "a vision fix's dating error the growth test takes out when the track turns (s, 0: off)")
         # slow spoofing: GPS displacement vs visual-odometry displacement (navera_common.GpsMotionCheck)
         self.declare_parameter("gps_motion_enabled", True)
         self.declare_parameter("gps_motion_topic", "/navera/vision/odometry")
@@ -265,7 +269,8 @@ class EstimatorNode(Node):
                 bias_rate_mps=float(self.get_parameter("gps_trend_bias_rate_mps").value),
                 min_jitter_m=float(self.get_parameter("gps_trend_min_jitter_m").value),
                 min_fixes=int(self.get_parameter("gps_trend_min_fixes").value),
-                confirm_n=int(self.get_parameter("gps_trend_confirm_n").value))
+                confirm_n=int(self.get_parameter("gps_trend_confirm_n").value),
+                dating_s=float(self.get_parameter("gps_trend_dating_s").value))
         self._xcheck = GpsCrossCheck(persist_s=self._crosscheck_persist, streak_n=STREAK_N, trend=trend)
         self._map_warn = float(self.get_parameter("map_edge_warn_m").value)
         self._map_hold = float(self.get_parameter("map_hold_s").value)
@@ -566,6 +571,17 @@ class EstimatorNode(Node):
         w = (t_ns - before[0]) / (after[0] - before[0])
         return before[1] + w * (after[1] - before[1]), before[2] + w * (after[2] - before[2])
 
+    def _gps_velocity_at(self, t_ns: int, half_s: float = 1.0):
+        """(east, north) m/s of the GPS track around t_ns (interpolated +- half_s), or None."""
+        a, b = self._gps_at(t_ns - int(half_s * 1e9)), self._gps_at(t_ns + int(half_s * 1e9))
+        if b is None:                                # no GPS after it yet: the second before it
+            a, b = self._gps_at(t_ns - int(2 * half_s * 1e9)), self._gps_at(t_ns)
+        if a is None or b is None:
+            return None
+        m_lat = 111195.0
+        return ((b[1] - a[1]) * m_lat * math.cos(math.radians(a[0])) / (2 * half_s),
+                (b[0] - a[0]) * m_lat / (2 * half_s))
+
     def _gps_sigma(self) -> float:
         """The stated horizontal sigma of the latest GPS fix (0 when it states none)."""
         return (self._stated_sigma(self._gps_last) or 0.0) if self._gps_last is not None else 0.0
@@ -606,7 +622,8 @@ class EstimatorNode(Node):
                     m_lat = 111195.0                       # metres per degree (R = 6371 km)
                     sample = (t_ref.nanoseconds / 1e9,
                               (at[1] - last.longitude) * m_lat * math.cos(math.radians(last.latitude)),
-                              (at[0] - last.latitude) * m_lat, math.hypot(sigma, self._gps_sigma()))
+                              (at[0] - last.latitude) * m_lat, math.hypot(sigma, self._gps_sigma()),
+                              self._gps_velocity_at(t_ref.nanoseconds))
                 best = (_SOURCE_NAME.get(last.source, "source"),
                         _haversine_m(last.latitude, last.longitude, glat, glon), tol, t_ref.nanoseconds,
                         3.0 * sigma + self._max_speed * gap, sample)
