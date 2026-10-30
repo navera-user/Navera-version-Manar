@@ -8,6 +8,15 @@ from navera_tools.field import autolab as al
 from navera_tools.field import server as sv
 
 
+_REAL_MEM = al.mem_available_gb
+
+
+@pytest.fixture(autouse=True)
+def _plenty_of_memory(monkeypatch):
+    """The rounds' memory check reads this machine's /proc/meminfo: pinned unless a test sets it (B37)."""
+    monkeypatch.setattr(al, "mem_available_gb", lambda *a: 16.0)
+
+
 def _score(trusted, p50=2.0, p90=4.0, wrong=0, outside=0, corrected=True):
     blk = {"n": trusted, "err_km_p50_p90_max": [p50, p90, p90 + 1] if trusted else None, "wrong": wrong,
            "within_3sigma": max(0, trusted - outside)}
@@ -152,3 +161,47 @@ def test_report_only_variants_are_never_applied_live():
     assert "stack4" in [n for n, _ in al.REPORT_ONLY]
     for k in range(6):
         assert all(n not in dict(al.REPORT_ONLY) for n, _ in al.round_variants(k))
+
+
+def test_memory_guard_keeps_the_live_server_alive(tmp_path, monkeypatch):
+    """B37: END replays (2 x 2.6 GB) OOM-killed the server mid-recording."""
+    assert al.jobs_that_fit(2, 16.0) == 2 and al.jobs_that_fit(2, 5.0) == 1 and al.jobs_that_fit(2, 4.0) == 0
+    assert al.jobs_that_fit(2, None) == 2
+    mi = tmp_path / "meminfo"
+    mi.write_text("MemTotal:        7789568 kB\nMemAvailable:    2500000 kB\n")
+    assert _REAL_MEM(str(mi)) == pytest.approx(2.5)
+    assert _REAL_MEM(str(tmp_path / "none")) is None
+    monkeypatch.setattr(os, "getloadavg", lambda: (0.5, 0.5, 0.5))
+    t0 = 1_800_000_000.0
+    f = _test(tmp_path / "r", t0)
+    root = str(tmp_path / "r")
+    # a live round waits while memory is short
+    monkeypatch.setattr(al, "mem_available_gb", lambda *a: 2.0)
+    assert al.step(root, now=t0 + 11 * 60, lab=lambda *a: pytest.fail("ran with no memory")) is None
+    assert "waits: free memory" in open(os.path.join(root, "AUTOLAB.txt")).read()
+    # END: one job when only one fits, none (wait, later) when none fits
+    meta = json.load(open(f / "session.json"))
+    meta["ended"] = t0 + 30 * 60
+    json.dump(meta, open(f / "session.json", "w"))
+    assert al.step(root, now=t0 + 31 * 60, lab=lambda *a: pytest.fail("END with no memory")) is None
+    assert "END round waits" in open(os.path.join(root, "AUTOLAB.txt")).read()
+    monkeypatch.setattr(al, "mem_available_gb", lambda *a: 5.0)
+    jobs = []
+    rec = al.step(root, now=t0 + 32 * 60,
+                  lab=lambda folder, out, r, last_min, j: jobs.append(j) or {"baseline": _score(5)})
+    assert rec["action"] == "report" and jobs == [1]
+
+
+def test_a_replay_is_stopped_when_memory_runs_low(tmp_path):
+    import sys
+    import time
+    levels = iter([8.0, 8.0, 1.0])
+    t = time.time()
+    with pytest.raises(RuntimeError, match="memory left"):
+        al._run_guarded([sys.executable, "-c", "import time; time.sleep(30)"], dict(os.environ), str(tmp_path),
+                        timeout=60, mem=lambda: next(levels), poll_s=0.05)
+    assert time.time() - t < 10
+    p = al._run_guarded([sys.executable, "-c", "import sys; open('/proc/self/oom_score_adj').read() == '1000\\n' "
+                         "or sys.exit(3); sys.stderr.write('ok')"], dict(os.environ), str(tmp_path),
+                        timeout=60, mem=lambda: 8.0, poll_s=0.05)
+    assert p.returncode == 0 and p.stderr == "ok"           # the replay is the OOM killer's first choice
