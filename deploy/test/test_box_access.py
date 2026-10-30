@@ -74,6 +74,54 @@ def test_setup_page_and_wifi_request(tmp_path, monkeypatch):
     srv.shutdown()
 
 
+def test_phone_checks_captive_until_page_shown_then_online(tmp_path, monkeypatch):
+    monkeypatch.setattr(portal_mod, 'SPOOL', str(tmp_path))
+    (tmp_path / 'state.json').write_text('{"mode": "hotspot"}')
+    srv = serve(portal_mod.make_handler())
+    p = srv.server_address[1]
+    probes = [('/generate_204', 'connectivitycheck.gstatic.com'), ('/hotspot-detect.html', 'captive.apple.com'),
+              ('/connecttest.txt', 'www.msftconnecttest.com'), ('/ncsi.txt', 'www.msftncsi.com')]
+    for path, host in probes:                      # not shown yet: "captive" (the setup page), twice
+        for _ in range(2):
+            st, _, body = request(p, 'GET', path, {'Host': host})
+            assert st == 200 and 'Open NAVERA' in body
+    st, _, body = request(p, 'GET', '/', {'Host': 'captive.apple.com'})
+    assert portal_mod.SEEN_PATH in body             # the page asks the browser for its beacon
+    c = http.client.HTTPConnection('127.0.0.1', p, timeout=10)
+    c.request('GET', portal_mod.SEEN_PATH)
+    r = c.getresponse()
+    assert r.status == 200 and r.getheader('Content-Type') == 'image/gif' and r.read().startswith(b'GIF89a')
+    want = {'/generate_204': (204, ''), '/hotspot-detect.html': (200, portal_mod.APPLE_OK.decode()),
+            '/connecttest.txt': (200, 'Microsoft Connect Test'), '/ncsi.txt': (200, 'Microsoft NCSI')}
+    for path, host in probes:                      # shown: "online"
+        st, hdr, body = request(p, 'GET', path, {'Host': host})
+        assert (st, body) == want[path]
+    assert request(p, 'GET', '/hotspot-detect.html')[2] == \
+        '<HTML><HEAD><TITLE>Success</TITLE></HEAD><BODY>Success</BODY></HTML>'
+    assert 'Open NAVERA' in request(p, 'GET', '/')[2]          # the page itself still works
+    srv.shutdown()
+
+
+def test_seen_clients_expire_and_stay_bounded():
+    now = [0.0]
+    seen = portal_mod.SeenClients(ttl_s=600, max_n=3, clock=lambda: now[0])
+    seen.mark('10.42.0.5')
+    assert seen.seen('10.42.0.5') and seen.seen('::ffff:10.42.0.5') and not seen.seen('10.42.0.6')
+    now[0] = 599
+    assert seen.seen('10.42.0.5')
+    now[0] = 601
+    assert not seen.seen('10.42.0.5')               # 10 min later: captive again
+    for i in range(100):
+        seen.mark(f'10.42.0.{i}')
+    assert len(seen) == 3 and seen.seen('10.42.0.99') and not seen.seen('10.42.0.0')
+    seen.mark('10.42.0.97')                         # re-marked: youngest again
+    seen.mark('10.42.0.200')
+    assert seen.seen('10.42.0.97') and not seen.seen('10.42.0.98')
+    now[0] = 2000
+    seen.mark('10.42.0.1')                          # expired ones are dropped on the next mark
+    assert len(seen) == 1
+
+
 def test_wifi_manager_request_checks(tmp_path, monkeypatch):
     wifi = load(os.path.join(PRODUCT, 'navera_wifi.py'), 'navera_wifi')
     calls = []
