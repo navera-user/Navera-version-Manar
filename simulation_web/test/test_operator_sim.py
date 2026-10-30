@@ -19,6 +19,7 @@ class _Stub:
     _camera_warning = NaveraWebBridge._camera_warning
     _with_map = staticmethod(NaveraWebBridge._with_map)
     forwarding_state = NaveraWebBridge.forwarding_state
+    connections = NaveraWebBridge.connections
 
     def __init__(self, details=""):
         now = time.monotonic()
@@ -38,6 +39,7 @@ class _Stub:
         self._sim_truth = None
         self._sim_truth_rx = None
         self._frames = []
+        self._armed_rx = None
         self._track = TrackVelocity()
 
     def get_logger(self):
@@ -187,3 +189,19 @@ def test_mission_state_tells_the_academy_when_heavy_work_must_wait(monkeypatch):
     monkeypatch.setenv("NAVERA_NMEA_PORT", "/dev/ttyTHS1")           # serial GPS, no MAVLink link:
     b._armed, b._armed_rx = None, None                              # can't tell -> counts as flying
     assert "armed state unknown" in b.mission_state()["in_flight_refusal"]
+
+
+def test_missing_devices_are_reported_never_blocking():
+    from navera_msgs.msg import SourceHealth
+    b = _Stub()
+    b._frames, b._armed_rx = [], None
+    gps = SourceHealth(source=SourceHealth.SOURCE_GPS, alive=False)
+    b._nav_status.sources = [gps]
+    c = b.connections()
+    # nothing plugged: told, not refused
+    assert c == {"gps": False, "camera": False, "autopilot": False}
+    b._nav_status.sources = [SourceHealth(source=SourceHealth.SOURCE_GPS, alive=True)]
+    b._frames = [(time.monotonic(), True, "")]
+    b._armed_rx = time.monotonic()
+    assert b.connections() == {"gps": True, "camera": True, "autopilot": True}
+    assert b.operator_position()["connections"]["gps"] is True     # with every position poll

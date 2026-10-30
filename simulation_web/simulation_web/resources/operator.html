@@ -56,6 +56,9 @@
   #op-wifi{display:none;position:absolute;left:14px;top:96px;z-index:1000;
     background:rgba(13,17,23,.78);backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.14);
     border-radius:20px;padding:7px 14px;font:600 13px system-ui,sans-serif;color:#e6edf3;text-decoration:none}
+  #op-conn{display:none;position:absolute;left:14px;top:140px;z-index:1000;max-width:min(300px,60vw);
+    background:rgba(13,17,23,.78);backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.10);
+    border-radius:8px;padding:5px 10px;font:600 11px system-ui,sans-serif;color:#9da5ae}
   #op-mission{position:absolute;right:14px;bottom:14px;z-index:1000;
     background:rgba(13,17,23,.78);backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.14);
     border-radius:20px;padding:7px 14px;font:600 13px system-ui,sans-serif;color:#e6edf3;text-decoration:none}
@@ -91,6 +94,7 @@
 <body>
   <div id="op-map"></div>
   <a id="op-mission" href="/mission">Mission &amp; settings</a>
+  <div id="op-conn" title="Information only: NAVERA keeps running without them"></div>
   <a id="op-wifi" href="/">Wi-Fi setup</a>
   <div id="op-ap" title="Whether the autopilot navigates on NAVERA's position when GPS is lost (Mission &amp; settings)">Autopilot uses NAVERA position: <b id="op-ap-v">—</b></div>
 
@@ -157,6 +161,15 @@ function showAccuracy(lat, lon, acc, color){
   if(!accCircle) accCircle = L.circle([lat,lon], {radius:acc, color, weight:1, opacity:.8, fillColor:color,
                                                   fillOpacity:.12, interactive:false}).addTo(map);
   else { accCircle.setLatLng([lat,lon]); accCircle.setRadius(acc); accCircle.setStyle({color, fillColor:color}); }
+}
+// What is not plugged in: information for the pilot, never a blocker
+function showConnections(d){
+  const c = d && d.connections, el = document.getElementById('op-conn');
+  if(!c || !el) return;
+  const names = {gps:'GPS', camera:'camera', autopilot:'autopilot link'};
+  const off = Object.keys(names).filter(k => c[k] === false).map(k => names[k]);
+  el.style.display = off.length ? 'block' : 'none';
+  el.textContent = off.length ? `Not connected: ${off.join(' · ')} — NAVERA keeps running` : '';
 }
 function showForwarding(d){
   const f = d && d.autopilot_forwarding, el = document.getElementById('op-ap');
@@ -297,6 +310,7 @@ async function poll(){
     lastAnswer = Date.now();
     showSim(d);
     showForwarding(d);
+    showConnections(d);
     const lat = Number(d.lat), lon = Number(d.lon);
     if(d.valid === true && Number.isFinite(lat) && Number.isFinite(lon)){
       showPosition(d);

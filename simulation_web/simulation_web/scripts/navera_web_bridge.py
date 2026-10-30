@@ -463,7 +463,28 @@ class NaveraWebBridge(Node):
         if simulated:
             out["simulated"] = True
         out["autopilot_forwarding"] = self.forwarding_state()
+        out["connections"] = self.connections()
         return out
+
+    def connections(self):
+        """What is plugged in, for the pilot: True / False, or None while NAVERA cannot tell yet.
+
+        Informational only: NAVERA keeps running with any of them missing (the pilot may fly
+        without a camera, a GPS or an autopilot link); nothing is blocked here.
+        """
+        now = time.monotonic()
+        with self._state_lock:
+            st, st_rx = self._nav_status, self._nav_status_rx
+            frames = list(self._frames)
+        fresh = st is not None and st_rx is not None and now - st_rx < self._nav_status_timeout
+        gps = None
+        if fresh:
+            gps = any(getattr(h, "source", None) == NavStatus.SOURCE_GPS
+                      and getattr(h, "alive", False)
+                      for h in getattr(st, "sources", []) or [])
+        camera = any(now - t < 15.0 for t, _, _ in frames) if fresh else None
+        autopilot = self._armed_rx is not None and now - self._armed_rx < 10.0
+        return {"gps": gps, "camera": camera, "autopilot": autopilot}
 
     def _on_output_config(self, msg):
         try:
