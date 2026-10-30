@@ -654,7 +654,9 @@ class NaveraWebBridge(Node):
         cur = mission_prep.read_settings()
         return dict(settings=cur, keys={k: v[1] for k, v in mission_prep.SETTINGS.items()},
                     site={k: os.environ.get(k, "") for k in mission_prep.SETTINGS},
-                    control=bool(self._control_token), **jobs.state())
+                    control=bool(self._control_token),
+                    # null on the ground; otherwise why heavy work must wait (read by the Academy)
+                    in_flight_refusal=self._in_flight_refusal("generate"), **jobs.state())
 
     def _on_vehicle_status(self, msg):
         try:

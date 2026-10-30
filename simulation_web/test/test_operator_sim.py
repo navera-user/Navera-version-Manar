@@ -169,3 +169,18 @@ def test_without_the_running_output_the_chip_falls_back_to_the_saved_setting(mon
     bad = _Stub()
     NaveraWebBridge._on_output_config(bad, type("M", (), {"data": "not json"})())
     assert getattr(bad, "_output_config", None) is None
+
+
+def test_mission_state_tells_the_academy_when_heavy_work_must_wait(monkeypatch):
+    from types import SimpleNamespace
+    from simulation_web import mission_prep
+    monkeypatch.delenv("NAVERA_NMEA_PORT", raising=False)
+    monkeypatch.setattr(mission_prep, "read_settings", lambda *a: {})
+    b = _ActionStub()
+    b.mission_state = NaveraWebBridge.mission_state.__get__(b)
+    b._mission_jobs = lambda: SimpleNamespace(state=lambda: {})
+    b._control_token = ""
+    b._armed, b._armed_rx = False, time.monotonic()                 # on the ground, disarmed
+    assert b.mission_state()["in_flight_refusal"] is None
+    b._armed = True                                                  # armed: heavy work waits
+    assert b.mission_state()["in_flight_refusal"]
