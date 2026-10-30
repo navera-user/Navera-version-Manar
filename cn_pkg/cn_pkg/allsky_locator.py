@@ -14,8 +14,15 @@ and learns the tilt of 'up', and states the accuracy.
 Stated 1-sigma (allsky_mount.stated_sigma_km): the attitude of 'up' (the learned tilt's residual once
 calibrated, else base_sigma_deg) and the star fit in quadrature, + MOVING_ATTITUDE_SIGMA_DEG when the frame
 says the vehicle is not stopped, + the IMU timing error at the rotation rate (vehicle source).
+
+Optional second attempt (NAVERA_STARSEG=1; default off, the product unchanged): when the normal solve fails,
+the same frame is solved again with the star-segmentation network's spots (cn_pkg.starseg, spot_finder; mode
+NAVERA_STARSEG_MODE, default "detect"). Same accept() / p_chance gates (allsky.locate). Skipped when the
+network's last run took more than STARSEG_MAX_S (a slow box) or the network cannot be loaded.
 """
 import math
+import os
+import time
 from typing import Optional, Sequence, Tuple
 
 import numpy as np
@@ -23,6 +30,7 @@ import numpy as np
 from cn_pkg import allsky, allsky_mount, sky360
 
 UP_SOURCES = ("auto", "camera", "vehicle")
+STARSEG_MAX_S = 3.0               # the second attempt is skipped once a run took longer than this
 IMU_TIMING_S = 0.05               # the vehicle IMU's timing error at the exposure (cn_subscriber._sigma_m)
 
 
@@ -46,6 +54,26 @@ class AllSkyLocator:
         self.base_sigma_deg = float(base_sigma_deg)
         self.cal = allsky_mount.TiltCalibration(cal_min_samples, cal_samples)
         self.cal_still_dps = float(cal_still_dps)
+        self.starseg_on = os.environ.get("NAVERA_STARSEG", "0") == "1"
+        self.starseg_mode = os.environ.get("NAVERA_STARSEG_MODE", "detect")
+        self.starseg_last_s: Optional[float] = None
+        self._starseg = None                                 # loaded at first use; False: cannot be loaded
+
+    def _starseg_finder(self):
+        """starseg.finder for this frame, or None (off, cannot load, or the last run was too slow)."""
+        if not self.starseg_on or self._starseg is False:
+            return None
+        if self.starseg_last_s is not None and self.starseg_last_s > STARSEG_MAX_S:
+            return None
+        if self._starseg is None:
+            try:
+                from cn_pkg import starseg
+                self._starseg = starseg.StarSeg()
+            except Exception:                                # noqa: BLE001 - no torch / weights: never retried
+                self._starseg = False
+                return None
+        from cn_pkg import starseg
+        return starseg.finder(self._starseg, mode=self.starseg_mode)
 
     def lenses(self):
         return sky360.default_lenses(self.lens_file)
@@ -83,6 +111,19 @@ class AllSkyLocator:
         moving = meta.get("stopped") is False
         fs = self.f_scale_search if self.f_scale is None else (self.f_scale,)
         r = allsky.locate(frame, up, utc, self.cat, lenses=self.lenses(), f_scales=fs)
+        if not r.get("solved"):
+            find = self._starseg_finder()
+            if find is not None:
+                t0 = time.monotonic()
+                try:
+                    r2 = allsky.locate(frame, up, utc, self.cat, lenses=self.lenses(), f_scales=fs, spot_finder=find)
+                except Exception as e:                       # noqa: BLE001 - the second attempt never breaks a frame
+                    r2 = {"solved": False, "why": f"starseg: {e}"}
+                self.starseg_last_s = time.monotonic() - t0
+                out["starseg"] = {"solved": bool(r2.get("solved")), "seconds": round(self.starseg_last_s, 2),
+                                  "why": None if r2.get("solved") else str(r2.get("why") or "")[:120]}
+                if r2.get("solved"):
+                    r = r2
         out.update(up_cam=[round(float(v), 6) for v in up], moving=moving, spots=r.get("spots"),
                    **{k: r[k] for k in ("matched", "used", "rms_deg", "p_chance", "lens_disagree_deg", "sigma_fit_deg",
                                         "f_scale", "matched_per_lens", "retried_with") if k in r})
