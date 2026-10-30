@@ -228,3 +228,18 @@ def test_route_plans_kept_are_bounded_newest_first(jobs, monkeypatch):
     assert list(j.plans) == ids[-mp.MAX_PLANS:]
     j.plan([[35.80 + 20 * 0.001, 10.60], [35.85, 10.65]])          # planned again: becomes the newest
     assert next(reversed(j.plans)) == ids[20] and len(j.plans) == mp.MAX_PLANS
+
+
+def test_forwarding_settings():
+    v = mp.validate_settings({"NAVERA_FORWARD_DEGRADED": "on", "NAVERA_DEGRADED_SIGMA_M": "30"})
+    assert v == {"NAVERA_FORWARD_DEGRADED": "true", "NAVERA_DEGRADED_SIGMA_M": "30"}
+    off = mp.validate_settings({"NAVERA_FORWARD_DEGRADED": "Off"})
+    assert off["NAVERA_FORWARD_DEGRADED"] == "false"
+    with pytest.raises(ValueError):
+        mp.validate_settings({"NAVERA_FORWARD_DEGRADED": "maybe"})
+    with pytest.raises(ValueError):
+        mp.validate_settings({"NAVERA_DEGRADED_SIGMA_M": "500"})   # above ArduPilot's 100 m cap
+    with pytest.raises(ValueError):
+        mp.check_forwarding({"NAVERA_FORWARD_DEGRADED": "true"})
+    mp.check_forwarding({"NAVERA_FORWARD_DEGRADED": "true", "NAVERA_DEGRADED_SIGMA_M": "30"})
+    mp.check_forwarding({"NAVERA_FORWARD_DEGRADED": "false"})

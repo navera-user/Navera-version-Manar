@@ -442,7 +442,16 @@ class NaveraWebBridge(Node):
                 pass
         if simulated:
             out["simulated"] = True
+        out["autopilot_forwarding"] = self.forwarding_state()
         return out
+
+    def forwarding_state(self):
+        """Whether the autopilot gets NAVERA's vision / celestial positions (page first)."""
+        cur, env = mission_prep.read_settings(), os.environ
+        val = cur.get("NAVERA_FORWARD_DEGRADED", env.get("NAVERA_FORWARD_DEGRADED", "false"))
+        sigma = cur.get("NAVERA_DEGRADED_SIGMA_M", env.get("NAVERA_DEGRADED_SIGMA_M", ""))
+        on = str(val).strip().lower() in ("1", "true", "yes", "on")
+        return {"on": on, "sigma_m": sigma if on else ""}
 
     def operator_decision(self):
         """The arbiter's decision, rendered as JSON. This method decides NOTHING.
@@ -634,7 +643,18 @@ class NaveraWebBridge(Node):
             changes = d.get("changes")
             if not isinstance(changes, dict):
                 raise ValueError("changes: object expected")
-            cur = mission_prep.write_settings(mission_prep.validate_settings(changes))
+            valid = mission_prep.validate_settings(changes)
+            merged = {k: v for k, v in mission_prep.read_settings().items()}
+            for k, v in valid.items():
+                if v is None:
+                    merged.pop(k, None)
+                else:
+                    merged[k] = v
+            for k in ("NAVERA_FORWARD_DEGRADED", "NAVERA_DEGRADED_SIGMA_M"):
+                if k not in merged and os.environ.get(k):
+                    merged[k] = os.environ[k]
+            mission_prep.check_forwarding(merged)
+            cur = mission_prep.write_settings(valid)
             return {"ok": True, "settings": cur, "restart_needed": True}
         if action == "apply":
             import subprocess

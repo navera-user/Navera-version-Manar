@@ -107,6 +107,12 @@ html[dir=rtl] .form{border-inline-end:0;border-inline-start:1px solid var(--line
     <label class="lbl" for="sDecl" data-i18n="decl">Magnetic declination until the first position (optional)</label>
     <div class="in"><input id="sDecl" type="number" min="-90" max="90" step="0.1"><span class="unit">°</span></div>
     <div class="note" data-i18n="declH">East positive. Once a position is known, NAVERA computes it with the World Magnetic Model.</div>
+    <label class="lbl" for="sFwd" data-i18n="fwd">Autopilot uses NAVERA's position when GPS is lost</label>
+    <div class="in"><select id="sFwd"><option value="" data-i18n="fwdDef">Box default</option><option value="false" data-i18n="off">Off</option><option value="true" data-i18n="on">On</option></select></div>
+    <div class="note" data-i18n="fwdH">Off: on GPS loss the autopilot applies its own failsafe (return or land); NAVERA still shows the position here. On: the autopilot keeps navigating on NAVERA's position. Turn on after the calibration flights, with the accuracy measured on this vehicle.</div>
+    <label class="lbl" for="sSigma" data-i18n="sigma">Accuracy the autopilot assumes for NAVERA's position</label>
+    <div class="in"><input id="sSigma" type="number" min="1" max="100" step="1"><span class="unit">m</span></div>
+    <div class="note" data-i18n="sigmaH">Required when the autopilot uses NAVERA's position. Use the value measured on this vehicle (calibration flights). 1-100 m.</div>
     <div class="btns"><button class="btn primary" id="save" data-i18n="save">Save</button><button class="btn" id="apply" data-i18n="apply">Apply now (restarts NAVERA, ~30 s)</button></div>
     <div class="notice" id="setMsg"></div>
   </section>
@@ -238,7 +244,7 @@ const line = L.polyline([], {color:'#1d4ed8', weight:4}).addTo(map), dots = L.la
 
 /* ── state ── */
 let S = null, PLAN = null, drawn = [];
-const KEYS = {sType:'NAVERA_VEHICLE_TYPE', sVmax:'NAVERA_MAX_SPEED_KMH', sDayHfov:'NAVERA_DAY_HFOV_DEG', sHfov:'NAVERA_THERMAL_HFOV_DEG', sDecl:'NAVERA_DECLINATION_DEG'};
+const KEYS = {sType:'NAVERA_VEHICLE_TYPE', sVmax:'NAVERA_MAX_SPEED_KMH', sDayHfov:'NAVERA_DAY_HFOV_DEG', sHfov:'NAVERA_THERMAL_HFOV_DEG', sDecl:'NAVERA_DECLINATION_DEG', sFwd:'NAVERA_FORWARD_DEGRADED', sSigma:'NAVERA_DEGRADED_SIGMA_M'};
 const km = m => m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${Math.round(m)} m`;
 function fillSettings(){
   const cur = S.settings || {}, site = S.site || {};

@@ -56,6 +56,10 @@
   #op-mission{position:absolute;right:14px;bottom:14px;z-index:1000;
     background:rgba(13,17,23,.78);backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.14);
     border-radius:20px;padding:7px 14px;font:600 13px system-ui,sans-serif;color:#e6edf3;text-decoration:none}
+  #op-ap{position:absolute;right:14px;bottom:62px;z-index:1000;background:rgba(13,17,23,.78);
+    backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.10);border-radius:8px;padding:5px 10px;
+    font:600 11px system-ui,sans-serif;color:#9da5ae}
+  #op-ap b{color:#e6edf3} #op-ap.on b{color:#3fb950}
   #op-detail{position:absolute;right:14px;top:50px;z-index:1000;max-width:min(420px,70vw);
     background:rgba(13,17,23,.78);backdrop-filter:blur(10px);
     border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:6px 10px;
@@ -83,6 +87,7 @@
 <body>
   <div id="op-map"></div>
   <a id="op-mission" href="/mission">Mission &amp; settings</a>
+  <div id="op-ap" title="Whether the autopilot navigates on NAVERA's position when GPS is lost (Mission &amp; settings)">Autopilot uses NAVERA position: <b id="op-ap-v">—</b></div>
 
   <div id="op-src" class="nofix">
     <span class="dot"></span><span id="op-src-txt">NO FIX</span>
@@ -140,6 +145,20 @@ function vehIcon(color){
 }
 let vehMarker = null;
 let firstFix  = true;
+// the estimated error: a circle of the stated accuracy around the position
+let accCircle = null;
+function showAccuracy(lat, lon, acc, color){
+  if(!Number.isFinite(acc) || acc <= 0){ if(accCircle){ map.removeLayer(accCircle); accCircle = null; } return; }
+  if(!accCircle) accCircle = L.circle([lat,lon], {radius:acc, color, weight:1, opacity:.8, fillColor:color,
+                                                  fillOpacity:.12, interactive:false}).addTo(map);
+  else { accCircle.setLatLng([lat,lon]); accCircle.setRadius(acc); accCircle.setStyle({color, fillColor:color}); }
+}
+function showForwarding(d){
+  const f = d && d.autopilot_forwarding, el = document.getElementById('op-ap');
+  if(!f || !el) return;
+  el.classList.toggle('on', !!f.on);
+  document.getElementById('op-ap-v').textContent = f.on ? `ON (±${f.sigma_m} m)` : 'OFF';
+}
 function placeVehicle(lat, lon, color){
   if(!vehMarker){
     vehMarker = L.marker([lat,lon], {icon:vehIcon(color), zIndexOffset:1000}).addTo(map);
@@ -186,6 +205,7 @@ function showPosition(d){
   elCoords.classList.remove('stale');
   const color = fix ? (SRC_COLOR[d.source] || SRC_COLOR.GPS) : '#d29922';
   placeVehicle(Number(d.lat), Number(d.lon), color);
+  showAccuracy(Number(d.lat), Number(d.lon), Number(d.accuracy_m), color);
   addTrail(Number(d.lat), Number(d.lon), color);
 }
 
@@ -247,6 +267,7 @@ function showSim(d){
 }
 function showNoPosition(state, reason){
   removeVehicle();
+  showAccuracy(0, 0, NaN, '');
   elCoords.classList.add('stale');
   if(state === 'OFFLINE' || state === 'LINK LOST'){
     setBadge('offline', state);
@@ -266,6 +287,7 @@ async function poll(){
     const d = await res.json();
     lastAnswer = Date.now();
     showSim(d);
+    showForwarding(d);
     const lat = Number(d.lat), lon = Number(d.lon);
     if(d.valid === true && Number.isFinite(lat) && Number.isFinite(lon)){
       showPosition(d);
