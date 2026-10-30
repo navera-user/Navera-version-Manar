@@ -65,7 +65,7 @@ from sensor_msgs.msg import NavSatFix
 
 from navera_msgs.msg import NavStatus, PositionEstimate
 
-from simulation_web.web_common import (BridgeHandler, MBTilesReader, parse_tile_path,
+from simulation_web.web_common import (BridgeHandler, is_trusted, MBTilesReader, parse_tile_path,
                                        start_server, valid_latlon)
 from navera_common.geo import dead_reckon
 from navera_common.track import TrackVelocity
@@ -733,7 +733,8 @@ class NaveraWebBridge(Node):
                     return self.send_file(os.path.join(bridge.resources_dir, "mission.html"))
 
                 if path == "/api/mission/state":
-                    return self.send_json(200, bridge.mission_state())
+                    client = self.client_address[0] if self.client_address else ""
+                    return self.send_json(200, dict(bridge.mission_state(), trusted=is_trusted(client)))
 
                 return self.serve_static(bridge.resources_dir, path)
 
