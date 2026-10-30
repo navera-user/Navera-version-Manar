@@ -75,8 +75,10 @@ def find_engine(name: str, fp16: bool = True) -> Optional[str]:
 
 
 def build_engine(onnx_path: str, out_path: str, fp16: bool,
-                 profile: Optional[Dict[str, Tuple[tuple, tuple, tuple]]] = None, workspace_mb: int = 1024) -> str:
-    """Build (minutes) and save an engine from an ONNX file; profile: input -> (min, opt, max) shapes."""
+                 profile: Optional[Dict[str, Tuple[tuple, tuple, tuple]]] = None, workspace_mb: int = 1024,
+                 opt_level: Optional[int] = None) -> str:
+    """Build (minutes) and save an engine from an ONNX file; profile: input -> (min, opt, max) shapes;
+    opt_level: TensorRT's builder optimisation level (default 3; lower builds faster)."""
     trt = import_tensorrt()
     if trt is None:
         raise RuntimeError("TensorRT Python bindings not found (python3-libnvinfer)")
@@ -92,6 +94,8 @@ def build_engine(onnx_path: str, out_path: str, fp16: bool,
     cfg.set_memory_pool_limit(trt.MemoryPoolType.WORKSPACE, workspace_mb << 20)
     if fp16:
         cfg.set_flag(trt.BuilderFlag.FP16)
+    if opt_level is not None:
+        cfg.builder_optimization_level = int(opt_level)
     if profile:
         p = builder.create_optimization_profile()
         for name, (mn, opt, mx) in profile.items():

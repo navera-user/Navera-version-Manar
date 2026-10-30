@@ -16,6 +16,7 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 BUILD_TIMEOUT_S = 900
+BUILD_OPT_LEVEL = 1          # level 3 (default) did not finish in 10 min on the Orin Nano for this network
 
 
 def shape():
@@ -75,7 +76,7 @@ def build(net, weights: str) -> Optional[str]:
     finally:
         if was_half:
             net.half()
-    trt_engine.build_engine(onnx, path, fp16=True, workspace_mb=512)
+    trt_engine.build_engine(onnx, path, fp16=True, workspace_mb=512, opt_level=BUILD_OPT_LEVEL)
     return path
 
 
