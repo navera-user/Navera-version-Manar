@@ -133,7 +133,8 @@ def wifi_networks():
 
 def hotspot_networks():
     """The box's own hotspot subnet (NAVERA_WIFI_ADDRESS, default 10.42.0.1/24), only while that
-    address is on one of its Wi-Fi interfaces (wl*): the hotspot is up, not a client Wi-Fi."""
+    address is on one of its Wi-Fi interfaces (wl*): the hotspot is up, not a client Wi-Fi.
+    """
     addr = os.environ.get("NAVERA_WIFI_ADDRESS", "") or "10.42.0.1/24"
     try:
         iface = ipaddress.ip_interface(addr)
@@ -270,7 +271,8 @@ class BridgeHandler(BaseHTTPRequestHandler):
     def _same_origin(self) -> bool:
         """False when the request carries an Origin whose host:port is not the Host header
         (a page of another site posting through the operator's browser). No Origin: not a
-        browser cross-site request (curl, the box's own tools), accepted."""
+        browser cross-site request (curl, the box's own tools), accepted.
+        """
         origin = self.headers.get("Origin")
         if origin is None:
             return True
