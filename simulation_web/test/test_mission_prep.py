@@ -157,6 +157,10 @@ def test_services_are_not_restarted_in_flight():
     assert mp.in_flight_refusal(None, None) is None        # no vehicle link, arbiter silent
     assert "moving" in mp.in_flight_refusal(None, 2, speed_mps=12.0)   # no link, but NAVERA sees it move
     assert mp.in_flight_refusal(None, 2, speed_mps=0.3) is None
+    # NAVERA is the flight controller's GPS (NMEA / UBX port) and no MAVLink link tells "armed"
+    assert "armed state unknown" in mp.in_flight_refusal(None, 2, serial_gps_output=True)
+    assert mp.in_flight_refusal(False, 2, serial_gps_output=True) is None     # link says disarmed
+    assert mp.in_flight_refusal(None, None, action="generate", serial_gps_output=True) is None
 
 
 def test_terrain_of_a_generated_map_is_shown_in_its_plan(jobs):

@@ -98,6 +98,10 @@ SETTINGS = {
 }
 
 
+# settings that change what the autopilot is told: refused in flight like "apply"
+IN_FLIGHT_LOCKED = ("NAVERA_FORWARD_DEGRADED", "NAVERA_DEGRADED_SIGMA_M")
+
+
 def check_forwarding(merged: Dict[str, str]):
     """Forwarding on needs a stated accuracy (the output service refuses to start without)."""
     on = merged.get("NAVERA_FORWARD_DEGRADED") == "true"
@@ -217,14 +221,21 @@ MOVING_MPS = 1.5            # faster than this, the vehicle is under way
 
 
 def in_flight_refusal(armed: Optional[bool], nav_state: Optional[int],
-                      speed_mps: Optional[float] = None, action: str = "apply") -> Optional[str]:
+                      speed_mps: Optional[float] = None, action: str = "apply",
+                      serial_gps_output: bool = False) -> Optional[str]:
     """Why restarting NAVERA's services (or loading the CPU with a map generation) must
     be refused now, or None. armed: from the autopilot (None = no vehicle link);
     nav_state: the arbiter's current state (None = not heard); speed_mps: NAVERA's own
-    measured ground speed (None = unknown) — the lock without an autopilot link.
+    measured ground speed (None = unknown) — the lock without an autopilot link;
+    serial_gps_output: NAVERA feeds the flight controller as its GPS (NMEA / UBX port).
+    Restarting the output then cuts the flight controller's GPS: with no MAVLink link the
+    armed state is unknown and "apply" is refused.
     """
     if armed:
         return "the vehicle is armed: disarm it before changing NAVERA"
+    if armed is None and serial_gps_output and action == "apply":
+        return ("land and disarm first; armed state unknown (no MAVLink vehicle link) and NAVERA "
+                "is the flight controller's GPS (serial output): a restart would cut it")
     if speed_mps is not None and speed_mps > MOVING_MPS:
         return f"the vehicle is moving ({speed_mps:.0f} m/s): stop it before changing NAVERA"
     if nav_state == STATE_DEGRADED:

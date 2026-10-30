@@ -103,3 +103,35 @@ def test_operator_is_told_when_the_vehicle_nears_or_leaves_the_map():
     b._nav_status.map_area, b._nav_status.map_edge_m = NavStatus.MAP_AREA_OUTSIDE, -450.0
     d = b.operator_decision()
     assert d["valid"] is False and "450 m OUTSIDE the map" in d["map_warning"]
+
+
+class _ActionStub(_Stub):
+    mission_action = NaveraWebBridge.mission_action
+    _in_flight_refusal = NaveraWebBridge._in_flight_refusal
+
+    def __init__(self):
+        super().__init__()
+        self._armed, self._armed_rx = None, None    # no MAVLink vehicle link
+
+    def _mission_jobs(self):
+        return None
+
+
+def test_forwarding_settings_refused_with_serial_gps_and_no_link(monkeypatch):
+    import pytest
+    from simulation_web import mission_prep
+    monkeypatch.setenv("NAVERA_NMEA_PORT", "/dev/ttyTHS1")
+    writes = []
+    monkeypatch.setattr(mission_prep, "write_settings", lambda v: writes.append(v) or v)
+    monkeypatch.setattr(mission_prep, "read_settings", lambda *a: {})
+    b = _ActionStub()
+    with pytest.raises(ValueError, match="armed state unknown"):
+        b.mission_action("settings", {"changes": {"NAVERA_FORWARD_DEGRADED": "on", "NAVERA_DEGRADED_SIGMA_M": "30"}})
+    with pytest.raises(ValueError, match="armed state unknown"):
+        b.mission_action("apply", {})
+    assert writes == []
+    b.mission_action("settings", {"changes": {"NAVERA_DECLINATION_DEG": "3"}})   # not locked
+    assert writes == [{"NAVERA_DECLINATION_DEG": "3"}]
+    b._armed, b._armed_rx = False, time.monotonic()                               # the link says disarmed
+    b.mission_action("settings", {"changes": {"NAVERA_FORWARD_DEGRADED": "off"}})
+    assert writes[-1] == {"NAVERA_FORWARD_DEGRADED": "false"}

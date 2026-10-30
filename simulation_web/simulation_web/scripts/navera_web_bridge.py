@@ -632,7 +632,8 @@ class NaveraWebBridge(Node):
             v = self._track.velocity(time.time())
             if v is not None:
                 moving = math.hypot(v[0], v[1])
-        return mission_prep.in_flight_refusal(armed, state, moving, action)
+        serial = bool((os.environ.get("NAVERA_NMEA_PORT") or "").strip())
+        return mission_prep.in_flight_refusal(armed, state, moving, action, serial_gps_output=serial)
 
     def mission_action(self, action, d):
         jobs = self._mission_jobs()
@@ -645,6 +646,10 @@ class NaveraWebBridge(Node):
             if not isinstance(changes, dict):
                 raise ValueError("changes: object expected")
             valid = mission_prep.validate_settings(changes)
+            if any(k in valid for k in mission_prep.IN_FLIGHT_LOCKED):
+                why = self._in_flight_refusal("apply")    # what the autopilot is told: never in flight
+                if why:
+                    raise ValueError(f"refused: {why}")
             merged = {k: v for k, v in mission_prep.read_settings().items()}
             for k, v in valid.items():
                 if v is None:
