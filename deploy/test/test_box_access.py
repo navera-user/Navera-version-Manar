@@ -45,6 +45,8 @@ def request(port, method, path, headers=None, body=None):
 def test_setup_page_and_wifi_request(tmp_path, monkeypatch):
     monkeypatch.setattr(portal_mod, 'SPOOL', str(tmp_path))
     (tmp_path / 'scan.json').write_text('{"networks": [{"ssid": "ClientNet", "signal": 80, "secure": true}]}')
+    monkeypatch.setenv('NAVERA_WIFI_ADDRESS', '127.0.0.1/8')     # the test client is the hotspot's
+    (tmp_path / 'state.json').write_text('{"mode": "hotspot"}')
     srv = serve(portal_mod.make_handler())
     p = srv.server_address[1]
     for path in ('/generate_204', '/hotspot-detect.html', '/'):            # every address: the setup page
@@ -59,9 +61,16 @@ def test_setup_page_and_wifi_request(tmp_path, monkeypatch):
     assert req['ssid'] == 'ClientNet' and req['password'] == 'secret123'
     request(p, 'POST', '/wifi', hdr, b'ssid=ClientNet&other=Hidden+Net&password=')   # typed name wins
     assert json.loads((tmp_path / 'request.json').read_text())['ssid'] == 'Hidden Net'
+    (tmp_path / 'request.json').unlink()
+    monkeypatch.setenv('NAVERA_WIFI_ADDRESS', '10.42.0.1/24')    # a client off the hotspot's subnet
+    st, _, _ = request(p, 'POST', '/wifi', hdr, b'ssid=ClientNet&other=&password=secret123')
+    assert st == 403 and not (tmp_path / 'request.json').exists()
+    monkeypatch.setenv('NAVERA_WIFI_ADDRESS', '127.0.0.1/8')
     (tmp_path / 'state.json').write_text('{"mode": "client", "ssid": "ClientNet", "address": "192.168.1.50",'
                                          ' "hostname": "navera"}')
     assert 'http://navera.local:8181/' in request(p, 'GET', '/')[2]
+    st, _, _ = request(p, 'POST', '/wifi', hdr, b'ssid=Other&other=&password=secret123')   # on the client Wi-Fi
+    assert st == 403 and not (tmp_path / 'request.json').exists()
     srv.shutdown()
 
 
@@ -106,8 +115,13 @@ def test_firewall_opens_hotspot_services_only_with_the_hotspot():
     fw = os.path.join(PRODUCT, 'navera_firewall.sh')
     on = sh([fw, '--print'], {'NAVERA_HOTSPOT': '1'}).stdout
     assert '-i wl+ -p udp -m multiport --dports 53,67,5353 -j ACCEPT' in on
-    assert '-i wl+ -p tcp --dport 8182 -j ACCEPT' in on
-    assert '-A NAVERA-PORTAL -i wl+ -p tcp --dport 80 -j REDIRECT --to-ports 8182' in on
+    assert '-i wl+ -s 10.42.0.0/24 -p tcp --dport 8182 -j ACCEPT' in on
+    assert '-A NAVERA-PORTAL -i wl+ -s 10.42.0.0/24 -p tcp --dport 80 -j REDIRECT --to-ports 8182' in on
+    assert '-i wl+ -p tcp --dport 8182' not in on                       # never from any Wi-Fi client
+    other = sh([fw, '--print'], {'NAVERA_HOTSPOT': '1', 'NAVERA_WIFI_ADDRESS': '192.168.77.9/23'}).stdout
+    assert '-s 192.168.76.0/23 -p tcp --dport 8182 -j ACCEPT' in other
+    bad = sh([fw, '--print'], {'NAVERA_HOTSPOT': '1', 'NAVERA_WIFI_ADDRESS': '10.42.0.1'})
+    assert '8182' not in bad.stdout and '--dports 53,67,5353' in bad.stdout
     off = sh([fw, '--print'], {'NAVERA_HOTSPOT': '0'}).stdout
     assert 'wl+' not in off and 'REDIRECT' not in off
 

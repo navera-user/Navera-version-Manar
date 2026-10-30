@@ -88,6 +88,21 @@ hotspot_if=""
 [ "${NAVERA_HOTSPOT:-0}" = 1 ] && hotspot_if="${NAVERA_WIFI_IFACE:-wl+}"
 portal_port=$(ports "${NAVERA_PORTAL_PORT:-8182}"); portal_port="${portal_port:-8182}"
 [[ -z "$hotspot_if" || "$hotspot_if" =~ ^[A-Za-z0-9_.+-]{1,15}$ ]] || { echo "navera_firewall: ignored NAVERA_WIFI_IFACE '$hotspot_if'" >&2; hotspot_if=wl+; }
+# the hotspot's own subnet (NAVERA_WIFI_ADDRESS): only its clients reach the setup page, not a
+# client Wi-Fi the box joined (same wl* interface)
+hotspot_net=""
+if [ -n "$hotspot_if" ]; then
+  wa="${NAVERA_WIFI_ADDRESS:-10.42.0.1/24}"
+  if [[ "$wa" =~ ^([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})/([0-9]{1,2})$ ]] && [ "${BASH_REMATCH[5]}" -le 32 ] \
+     && [ "${BASH_REMATCH[1]}" -le 255 ] && [ "${BASH_REMATCH[2]}" -le 255 ] && [ "${BASH_REMATCH[3]}" -le 255 ] \
+     && [ "${BASH_REMATCH[4]}" -le 255 ]; then
+    n=$(( (BASH_REMATCH[1] << 24) | (BASH_REMATCH[2] << 16) | (BASH_REMATCH[3] << 8) | BASH_REMATCH[4] ))
+    len=${BASH_REMATCH[5]}; m=$(( len == 0 ? 0 : (0xFFFFFFFF << (32 - len)) & 0xFFFFFFFF )); n=$(( n & m ))
+    hotspot_net="$(( n >> 24 & 255 )).$(( n >> 16 & 255 )).$(( n >> 8 & 255 )).$(( n & 255 ))/$len"
+  else
+    echo "navera_firewall: NAVERA_WIFI_ADDRESS '$wa' is not a.b.c.d/nn: the setup page stays closed" >&2
+  fi
+fi
 
 v4=(); v6=()
 allow_from="${NAVERA_FW_ALLOW_FROM:-}"
@@ -125,7 +140,7 @@ ruleset() {   # ruleset <4|6>  → iptables-restore input
     if [ -n "$hotspot_if" ]; then   # the hotspot's own DHCP and DNS server, for its clients
       echo "-A NAVERA-IN -i $hotspot_if -p udp -m multiport --dports 53,67,5353 -j ACCEPT"
       echo "-A NAVERA-IN -i $hotspot_if -p tcp --dport 53 -j ACCEPT"
-      echo "-A NAVERA-IN -i $hotspot_if -p tcp --dport $portal_port -j ACCEPT"
+      [ -n "$hotspot_net" ] && echo "-A NAVERA-IN -i $hotspot_if -s $hotspot_net -p tcp --dport $portal_port -j ACCEPT"
     fi
   else
     echo "-A NAVERA-IN -p ipv6-icmp -j ACCEPT"
@@ -141,7 +156,7 @@ ruleset() {   # ruleset <4|6>  → iptables-restore input
     echo "*nat"
     echo ":NAVERA-PORTAL - [0:0]"
     echo "-F NAVERA-PORTAL"
-    [ -n "$hotspot_if" ] && echo "-A NAVERA-PORTAL -i $hotspot_if -p tcp --dport 80 -j REDIRECT --to-ports $portal_port"
+    [ -n "$hotspot_net" ] && echo "-A NAVERA-PORTAL -i $hotspot_if -s $hotspot_net -p tcp --dport 80 -j REDIRECT --to-ports $portal_port"
     echo "COMMIT"
   fi
 }

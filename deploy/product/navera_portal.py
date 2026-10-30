@@ -11,6 +11,7 @@ it), the box's current state, and the link to NAVERA's page. Standard library on
 """
 import html
 import http.server
+import ipaddress
 import json
 import os
 import sys
@@ -49,6 +50,21 @@ def read_json(name: str) -> dict:
 def web_url(env=os.environ) -> str:
     addr = env.get("NAVERA_WIFI_ADDRESS", "10.42.0.1/24").split("/")[0]
     return f"http://{addr}:{env.get('NAVERA_WEB_PORT', '8181')}/"
+
+
+def from_hotspot(client: str, env=os.environ) -> bool:
+    """True when the box is in hotspot mode (navera_wifi.py's state.json) and `client` is on the
+    hotspot's subnet (NAVERA_WIFI_ADDRESS): nobody on a client Wi-Fi can change the box's Wi-Fi."""
+    if read_json("state.json").get("mode") != "hotspot":
+        return False
+    try:
+        net = ipaddress.ip_interface(env.get("NAVERA_WIFI_ADDRESS", "") or "10.42.0.1/24").network
+        ip = ipaddress.ip_address(client.split("%")[0])
+    except ValueError:
+        return False
+    if ip.version == 6 and ip.ipv4_mapped:
+        ip = ip.ipv4_mapped
+    return ip.version == net.version and ip in net
 
 
 def page(body: str) -> bytes:
@@ -124,6 +140,9 @@ def make_handler():
         def do_POST(self):
             if self.path.split("?")[0] != "/wifi":
                 return self._send(303, b"", [("Location", "/")])
+            if not from_hotspot(self.client_address[0] if self.client_address else ""):
+                return self._send(403, page("<p class='bad'>The Wi-Fi is changed only from the box's setup Wi-Fi."
+                                            "</p><a href='/'>Back</a>"))
             n = int(self.headers.get("Content-Length") or 0)
             if not 0 < n <= MAX_FORM:
                 return self._send(413, page("<p>Request too large.</p>"))
