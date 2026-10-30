@@ -1319,6 +1319,29 @@ if the stars put the zenith outside the prior. Bright planets join the catalogue
 - Not yet shown on real stars: the real-sky archive (MASCOT/ALPACA) is on the data disk, not mounted on
   2026-10-30. Next: `realsky_validate` with a prior on the shallow copies, and tonight's dawn frames if it clears.
 
+**Same night, 03:40-04:30: camera-fixed junk and forced photometry (`fixedspots.py`, `forcedcheck.py`).**
+- `fixedspots build`: a spot on the same pixel (3 px) in >= 3 frames each >= 30 min apart cannot be a star (the
+  sky turns 7.5 deg x sin(polar distance) in 30 min; only Polaris moves less): 141 frames of the night, 70.5
+  spots/frame, **72 % fixed to the camera** (room, window frame, lamps, plastic). The mask (0.6 % of the frame)
+  is built from the spots only, never from the catalogue, so the chance probability stays honest.
+- Injected catalogue (heading 100, magnitude-3 amplitude A, 10 real frames of the night per A), resolve_prior
+  without / with the junk mask (`--junk-mask`), fixes / wrong, lost-in-space and prior 10 km:
+  A = 1.0 DN 0/0 -> 1/0 and 2/0 -> 1/0; 1.25 DN 0/0 -> 4/0 and 7/0 -> 7/0; 1.5 DN 3/0 -> 6/0 and 7/0 -> 7/0;
+  >= 2 DN 10/10 both. Spots given to the solver 21 -> 14 per frame; median chance probability ~10x lower for
+  the same stars (1.5 DN lost-in-space 0.049 -> 0.0032, prior 2.2e-5 -> 2.1e-6). No gate changed.
+- Real frames (every 8th of the night, 449): with the mask 0 fixes, 0 wrong (lost-in-space and prior);
+  spots/frame 13.3 -> 5.9; the best (most star-like) junk chance 0.0065 -> 0.12 (lost-in-space).
+- `forcedcheck` (no detection: the detector's SNR map read at every mag <= 3 star + planet for every heading,
+  summed over frames, vs 6 wrong places): sensitivity 1.5 DN injected in 10 saved frames -> z 10.7 at the
+  right heading (0 DN: z 3.5 < wrong places 4.6). **The whole night (676 saved frames): no starlight**
+  (true place z 1.6, wrong places up to 3.2). 12 deep stacks of 30 s (all frames, 03:00-03:35): no
+  starlight; injected 6 DN in the gained stack (~0.2 DN in one frame) -> z 13. Caveat: injection is after
+  H.264; a star fainter than ~1 DN per frame may be removed by the encoder before any stacking.
+- Seen in the night's mean / max images: the right (up) lens's sky half is the window; when the room light
+  is on (23:09) the glass/plastic mirrors the whole room over it. Jupiter and Mars (35-56 deg, east, in
+  forcedcheck's list) are not found either: no point source of the sky reaches the sensor through the window
+  + plastic (+ cloud). Tonight's limit stays physical, not the solver.
+
 ### Celestial: field-test readiness fixes (2026-10-22)
 
 Problems B11, D8/D12, D11, F10, F14, F18, F19, F27 of the problems log, before the first real-sky drive
