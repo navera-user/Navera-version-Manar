@@ -8,6 +8,9 @@
 <link rel="stylesheet" href="/leaflet/leaflet.min.css"/>
 <script src="/leaflet/leaflet.min.js"></script>
 <script>
+/* text built in code: French only when the page is set to FR, English otherwise */
+function T(fr,en){var l='en';try{l=localStorage.getItem('navera_lang')||'en';}catch(e){}return l==='fr'?fr:en;}
+
 // Text from the box (tile names, error messages) is never trusted as HTML.
 function escHtml(v){
   return String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -298,7 +301,7 @@ input[type=range]{width:100%;accent-color:var(--accent);cursor:pointer;height:4p
           <span class="mode-badge">DIURNE</span>
           <span class="mode-icon">☀️</span>
           <div class="mode-title">Day Mode</div>
-          <div class="mode-sub">DINOv2 tile matching<br>Satellite image matching<br><b style="color:#facc15">day_pkg · ROS 2</b></div>
+          <div class="mode-sub">Local feature matching<br>Satellite image matching<br><b style="color:#facc15">day_pkg · ROS 2</b></div>
         </div>
         <div class="mode-card night-card" id="mc-night" onclick="selectTimeMode('night')">
           <span class="mode-check" id="check-night" style="color:transparent">✓</span>
@@ -378,8 +381,8 @@ input[type=range]{width:100%;accent-color:var(--accent);cursor:pointer;height:4p
     <div id="cfg-step-3" style="display:none">
       <h2 style="color:white;font-size:18px;font-weight:600;margin:0 0 20px">⚙️ Paramètres de vol</h2>
       <div style="margin:-10px 0 18px;padding:10px 12px;border-radius:8px;border:1px solid rgba(245,158,11,.45);background:rgba(245,158,11,.08);color:#fbbf24;font-size:12px;line-height:1.5">
-        ⚠ Ces réglages servent à l'affichage de cette page uniquement : ils ne sont <b>pas</b> transmis au boîtier NAVERA.
-        Les seuils et limites du système se règlent dans sa configuration (paramètres ROS 2, <code>/etc/navera/navera.env</code>).
+        ⚠ These settings are for this page's display only: they are <b>not</b> sent to the NAVERA box.
+        The system's thresholds and limits are set in its configuration (Mission &amp; settings page).
       </div>
       <div style="display:flex;flex-direction:column;gap:16px">
         <div class="cfg-field"><label>Altitude maximale (m)</label>
@@ -573,7 +576,7 @@ input[type=range]{width:100%;accent-color:var(--accent);cursor:pointer;height:4p
           </div>
         </div>
         <div class="section">
-          <div class="section-label">Performance</div>
+          <div class="section-label">Performance (typical values, not live)</div>
           <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px">
             <div class="kv"><span class="kv-k">Sans cache</span><span class="kv-v" style="color:var(--red)">~13,500ms</span></div>
             <div class="kv"><span class="kv-k">Avec cache (warm)</span><span class="kv-v green">~105ms ✅</span></div>
@@ -876,7 +879,7 @@ function pApplyCoords(which){
   const lat=parseFloat(document.getElementById(`inp-lat-${s}`).value);
   const lon=parseFloat(document.getElementById(`inp-lon-${s}`).value);
   pSetPoint(which,L.latLng(lat,lon)); pMap.setView([lat,lon],Math.max(pMap.getZoom(),14));
-  toast(`Point ${which} défini : (${lat.toFixed(5)}, ${lon.toFixed(5)})`, 'green');
+  toast(T(`Point ${which} défini : (${lat.toFixed(5)}, ${lon.toFixed(5)})`,`Point ${which} set: (${lat.toFixed(5)}, ${lon.toFixed(5)})`), 'green');
 }
 function pUpdateRoute(){
   pClearRoute(); if(!ptA) return;
@@ -903,7 +906,7 @@ function pUpdateRoute(){
   document.getElementById('stats-section').style.display='block';
   document.getElementById('btn-precollect').disabled=!ptA;
   document.getElementById('btn-launch').disabled=!ptA;   // A-only: launch needs only Point A
-  document.getElementById('click-hint').textContent='✅ Route calculée — '+wps.length+' waypoints';
+  document.getElementById('click-hint').textContent=T('✅ Route calculée — ','✅ Route computed — ')+wps.length+' waypoints';
   document.getElementById('click-hint').className='click-hint';
 }
 function pClearRoute(){
@@ -937,7 +940,7 @@ function pResetClickHint(){const h=document.getElementById('click-hint');h.textC
 function pSetActivePoint(which){
   activeP=which; const h=document.getElementById('click-hint');
   if(ptA&&ptB) return;
-  h.textContent=`Cliquez sur la carte → Point ${which}`; h.className='click-hint waiting';
+  h.textContent=T(`Cliquez sur la carte → Point ${which}`,`Click the map → Point ${which}`); h.className='click-hint waiting';
 }
 function pSetMode(mode){
   inputMode=mode;
@@ -984,7 +987,7 @@ function pAddManualWP_latlng(latlng){
   const circle=L.circle([lat,lon],{radius:R,color:'rgba(37,99,235,.65)',fillColor:'rgba(37,99,235,.05)',fillOpacity:1,weight:1.5,dashArray:'5 4'}).addTo(pMap);
   circle.bindTooltip(`Zone WP ${n} · R=${R}m`,{direction:'top'}); pCircles.push(circle);
   manualWPList.push({lat,lng:lon}); pUpdateWPList();
-  if(ptA) pUpdateRoute(); toast(`WP${n} ajouté → (${lat.toFixed(4)}, ${lon.toFixed(4)})`,'green');
+  if(ptA) pUpdateRoute(); toast(T(`WP${n} ajouté → (${lat.toFixed(4)}, ${lon.toFixed(4)})`,`WP${n} added → (${lat.toFixed(4)}, ${lon.toFixed(4)})`),'green');
 }
 function pUpdateWPList(){
   const list=document.getElementById('wp-manual-list'); if(!list) return;
@@ -1328,7 +1331,7 @@ function initFlightMap(){
     fTlog('🔗 Receiver: '+RECEIVER+' (night_pkg)','info');
     document.getElementById('gps-banner').textContent='⚠ GPS SIGNAL LOST — STHN NIGHT LOCALIZATION ACTIVE';
   } else {
-    fTlog('☀️ DAY MODE — DINOv2 tile matching','info');
+    fTlog('☀️ DAY MODE — local feature matching','info');
     fTlog('🔗 Receiver: '+RECEIVER+' (vision_pkg)','info');
   }
   fTlog('📡 En attente des frames du receiver...','info');
@@ -1512,7 +1515,7 @@ function showPredictedMarker(lat,lon,score,match){
   match=escHtml(match);
   if(fPredictedMarker) fMap.removeLayer(fPredictedMarker);
   fPredictedMarker=L.marker([lat,lon],{icon:L.divIcon({html:`<svg xmlns="http://www.w3.org/2000/svg" width="44" height="44" viewBox="0 0 44 44"><circle cx="22" cy="22" r="20" fill="none" stroke="#ffd700" stroke-width="2" stroke-dasharray="6 3"><animateTransform attributeName="transform" type="rotate" dur="4s" from="0 22 22" to="360 22 22" repeatCount="indefinite"/></circle><circle cx="22" cy="22" r="13" fill="#ffd70028" stroke="#ffd700" stroke-width="1.5"/><circle cx="22" cy="22" r="6" fill="#ffd700" opacity=".9"><animate attributeName="r" values="5;7;5" dur="2s" repeatCount="indefinite"/></circle><circle cx="22" cy="22" r="2.5" fill="white" opacity=".95"/></svg>`,iconSize:[44,44],iconAnchor:[22,22],className:'f-pred-mark'}),zIndexOffset:900}).addTo(fMap);
-  const methodName=window.naveraTimeMode==='night'?'STHN Homography':'DINOv2';
+  const methodName=window.naveraTimeMode==='night'?'STHN Homography':'Local matching';
   fPredictedMarker.bindPopup(`<div style="font-family:monospace;font-size:11px;line-height:1.7"><strong style="color:#ffd700;font-size:13px">📍 PREDICTED POSITION</strong><br/><strong>LAT:</strong> ${lat.toFixed(6)}<br/><strong>LON:</strong> ${lon.toFixed(6)}<br/><strong>Score:</strong> ${(score||0).toFixed(3)}<br/><strong>Method:</strong> ${methodName}<br/><strong>Match:</strong> ${match||'N/A'}</div>`);
   fTlog(`📍 Predicted marker at (${lat.toFixed(5)}, ${lon.toFixed(5)})`,'info');
 }
@@ -1604,7 +1607,7 @@ async function pollCsv(){
 function showMissionDoneBadge(){
   const c=document.getElementById('chip-st'); if(c){ c.textContent='✅ MISSION TERMINÉE'; c.style.color='#10b981'; }
   toast('🏁 Mission terminée — toutes les frames traitées, aucun rejeu','ok');
-  fTlog('🏁 Fin de mission'+(window._dayLastFid!=null?(' — dernière frame='+window._dayLastFid):'')+' (arrêt propre, pas de rejeu)','ok');
+  fTlog(T('🏁 Fin de mission','🏁 End of mission')+(window._dayLastFid!=null?(T(' — dernière frame=',' — last frame=')+window._dayLastFid):'')+T(' (arrêt propre, pas de rejeu)',' (clean stop, no replay)'),'ok');
 }
 async function pollGpsStatus(){
   try{
@@ -1649,7 +1652,7 @@ async function pollGpsStatus(){
       fGpsLostProcessed=true;
     } else if(status.status==='generating'){
       if(status.lat&&status.lon&&!fSearchCircle) showSearchZone(status.lat,status.lon,status.search_radius_m||300);
-      setPS(1,'done','GPS LOST ✓');setPS(2,'active',`Génération (r=${status.search_radius_m||300}m · 12 threads)...`);setPS(3,'active','En attente du dataset...');setThread('ds','active');
+      setPS(1,'done','GPS LOST ✓');setPS(2,'active',T(`Génération (r=${status.search_radius_m||300}m · 12 threads)...`,`Generating (r=${status.search_radius_m||300}m · 12 threads)...`));setPS(3,'active','En attente du dataset...');setThread('ds','active');
       showLoad('GENERATING DATASET — 12 THREADS',status.message||'Extraction tiles MBTiles zoom 18...');
       animLoad([[10,'🔍 Calcul grille de points...',400],[25,'🗺️ Extraction tiles MBTiles...',700],[45,'🖼️ Assemblage mosaïques...',900],[62,'💾 Écriture images + metadata...',600],[72,'🧠 DINOv2 descriptor (GPU)...',1000],[85,'🔬 Tile ranking (cosine)...',800],[95,'📍 Calcul coordonnées GPS estimées...',400],[100,'✅ Match trouvé — position prédite !',300]]);
     } else if(status.status==='predicted'){
@@ -2528,6 +2531,48 @@ function closeStellarAndReturn() {
 'use strict';
 /* FR is the source language of the page. Keys = normalized French strings. */
 var EN = {
+"📷 Caméra :":"📷 Camera:",
+"🚁 Véhicule :":"🚁 Vehicle:",
+"Aucun":"None",
+"Coordonnées invalides":"Invalid coordinates",
+"Définissez le point A":"Set point A",
+"Démarrage cn_pkg...":"Starting cn_pkg...",
+"En attente du dataset...":"Waiting for the dataset...",
+"Exporté → mission_plan.json":"Exported → mission_plan.json",
+"Lancement collecte en arrière-plan...":"Starting background collection...",
+"NAVIGATION CÉLESTE ACTIVE ✓":"CELESTIAL NAVIGATION ACTIVE ✓",
+"Navigation céleste active...":"Celestial navigation active...",
+"Préparation zone de recherche...":"Preparing the search area...",
+"Tout effacé":"All cleared",
+"VOL EN COURS ✓":"FLIGHT IN PROGRESS ✓",
+"Waypoint supprimé":"Waypoint removed",
+"aucune réponse du boîtier":"no answer from the box",
+"localisateur pas encore prêt (chargement du modèle, ou service arrêté)":"localizer not ready yet (model loading, or service stopped)",
+"⏳ Chaîne embarquée non prête":"⏳ Onboard chain not ready",
+"☀️ Continuer en mode Day →":"☀️ Continue in Day mode →",
+"⚠ NAVERA injoignable":"⚠ NAVERA unreachable",
+"⚡ Collecte BBox en cours...":"⚡ Collecting the area...",
+"✅ Activé":"✅ On",
+"❌ Désactivé":"❌ Off",
+"✅ Cache prêt":"✅ Cache ready",
+"✅ Cache prêt !":"✅ Cache ready!",
+"✅ Cache prêt — matching ultra-rapide !":"✅ Cache ready — fast matching!",
+"✅ Dataset prêt ! Vous pouvez lancer la mission.":"✅ Dataset ready! You can launch the mission.",
+"✅ MISSION TERMINÉE":"✅ MISSION COMPLETE",
+"✅ Match trouvé — position prédite !":"✅ Match found — position predicted!",
+"✅ Point A défini — prêt pour le lancement":"✅ Point A set — ready to launch",
+"✓ Défini · modifiable":"✓ Set · editable",
+"🌙 Continuer en mode Night →":"🌙 Continue in Night mode →",
+"🌙 Mode Night — Cliquez sur la carte pour définir le Point A":"🌙 Night mode — click the map to set Point A",
+"🌟 Continuer en mode Stellar →":"🌟 Continue in Stellar mode →",
+"🌟 Stellar solver prêt":"🌟 Stellar solver ready",
+"🏁 Mission terminée — toutes les frames traitées, aucun rejeu":"🏁 Mission complete — all frames processed, no replay",
+"💾 Écriture images + metadata...":"💾 Writing images + metadata...",
+"📍 Calcul coordonnées GPS estimées...":"📍 Computing estimated GPS coordinates...",
+"📡 En attente des frames du receiver...":"📡 Waiting for frames from the receiver...",
+"🚀 Lancer Mission Planner":"🚀 Open Mission Planner",
+"Cliquez sur la carte → Point A":"Click the map → Point A",
+"Chargement catalogue d'étoiles...":"Loading the star catalogue...",
 "⚠ non raccordé à cette interface":"⚠ not wired to this UI yet",
 "Mode disponible via ros2 launch uniquement — pas encore raccordé à cette interface":"Mode available via ros2 launch only — not wired to this UI yet",
 "✅ Chaîne embarquée prête":"✅ Onboard chain ready",
@@ -2794,9 +2839,9 @@ var AR = {
 "🚁 Type de véhicule":"🚁 نوع المركبة"
 };
 var DICTS = { fr:null, en:EN, ar:AR };
-var lang = 'fr';
-try { lang = localStorage.getItem('navera_lang') || 'fr'; } catch(e){}
-if (!(lang in DICTS)) lang = 'fr';
+var lang = 'en';
+try { lang = localStorage.getItem('navera_lang') || 'en'; } catch(e){}
+if (!(lang in DICTS) && lang !== 'fr') lang = 'en';
 var applying = false;
 var ATTRS = ['title','placeholder','aria-label'];
 function norm(s){ return s.replace(/\s+/g,' ').trim(); }
@@ -2893,17 +2938,29 @@ applyAll();
 </script>
 <!-- ═══════════════ end NAVERA i18n ═══════════════ -->
 
-<!-- On the box's own setup Wi-Fi (page served from the hotspot address): a way back to the Wi-Fi
-     setup page (port 80 there), e.g. after its window was closed. -->
-<a id="nv-wifi" href="/" style="display:none;position:fixed;left:14px;bottom:14px;z-index:10000;
-  background:rgba(13,17,23,.85);border:1px solid rgba(255,255,255,.2);border-radius:20px;padding:8px 16px;
-  font:600 14px system-ui,sans-serif;color:#e6edf3;text-decoration:none">📶 Wi-Fi setup</a>
+<!-- Bottom-left: the other NAVERA pages, and on the box's own setup Wi-Fi (page served from the
+     hotspot address) a way back to the Wi-Fi setup page (port 80 there), e.g. after its window was closed. -->
+<style>
+#nv-links{position:fixed;left:14px;bottom:14px;z-index:10000;display:flex;gap:8px;flex-wrap:wrap;max-width:calc(100vw - 150px)}
+#nv-links a{background:rgba(13,17,23,.85);border:1px solid rgba(255,255,255,.2);border-radius:20px;padding:8px 14px;
+  font:600 13px system-ui,sans-serif;color:#e6edf3;text-decoration:none;white-space:nowrap}
+@media (max-width:700px){   /* phone: round icons on the left edge, clear of the page's buttons */
+  #nv-links{left:4px;bottom:auto;top:40%;flex-direction:column;max-width:none}
+  #nv-links a{width:40px;height:40px;padding:0;display:flex;align-items:center;justify-content:center;font-size:18px;border-radius:50%}
+  #nv-links a .l{display:none}
+}
+</style>
+<div id="nv-links">
+  <a href="/operator" title="Operator view">🗺<span class="l">&nbsp;Operator view</span></a>
+  <a href="/mission" title="Mission &amp; settings">⚙<span class="l">&nbsp;Mission &amp; settings</span></a>
+  <a id="nv-wifi" href="/" style="display:none" title="Wi-Fi setup">📶<span class="l">&nbsp;Wi-Fi setup</span></a>
+</div>
 <script>
 (function(){
   if(location.hostname === '10.42.0.1'){
     const a = document.getElementById('nv-wifi');
     a.href = 'http://' + location.hostname + '/';
-    a.style.display = 'block';
+    a.style.display = '';
   }
 })();
 </script>
