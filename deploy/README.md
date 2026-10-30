@@ -936,7 +936,7 @@ would take the processor vision needs`). The armed state comes from `navera-vehi
 two commands:
 
 - `systemctl restart navera-pipeline-day.service` — "Activate" a route map;
-- `systemctl try-restart navera-estimator.service navera-imu.service navera-insta360.service navera-pipeline-day.service navera-pipeline-night.service navera-pipeline-cn.service`
+- `systemctl try-restart navera-estimator.service navera-imu.service navera-insta360.service navera-pipeline-day.service navera-pipeline-night.service navera-pipeline-cn.service navera-output.service`
   — "Apply settings" (`NAVERA_UNITS` in `navera_web_bridge.py`); `try-restart` restarts only
   the units that are running.
 
