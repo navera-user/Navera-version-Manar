@@ -959,6 +959,27 @@ ArduPilot: `GPS_TYPE = 5` (NMEA), `SERIALn_PROTOCOL = 5` (GPS), `SERIALn_BAUD = 
 and ROS only, and NMEA says "no fix" for them. Do not turn on `NAVERA_NMEA_FORWARD_DEGRADED`.
 With NMEA the port carries no MAVLink: the vehicle link needs its own port.
 
+**u-blox (UBX) output: for flight controllers that take a u-blox GPS** (development branch, not
+in release 0.7.2):
+
+```
+NAVERA_NMEA_PORT=/dev/ttyTHS2
+NAVERA_NMEA_BAUD=115200
+NAVERA_NMEA_PROTOCOL=ubx
+```
+
+NAVERA then appears as a u-blox M8 GPS module (NAV-PVT and the older NAV-POSLLH / SOL /
+VELNED / STATUS / DOP). It acknowledges the flight controller's configuration messages and follows a
+baud-rate change it asks for. Unlike NMEA, UBX carries the accuracy, so vision positions go out under
+`NAVERA_FORWARD_DEGRADED` with their own stated accuracy, as over MAVLink. A vision position carries
+the last GPS height with its vertical accuracy marked unknown, so the flight controller must take
+its height from the barometer. It reports 0 satellites (`NAVERA_UBX_ESTIMATED_SATELLITES` to change).
+
+| Flight controller | Status |
+|---|---|
+| ArduPilot 4.5 (`GPS_TYPE = 2`) | **verified in SITL** with ArduPilot's own u-blox driver: detected as u-blox, 3D fix, the vision accuracy (25 m) read as stated. Needs `GPS_AUTO_CONFIG = 0` (with 1, the EKF waits for configuration answers NAVERA does not give). MAVLink (5.2) stays the recommended link |
+| PX4, INAV, Betaflight | **built for their u-blox drivers, not yet tested** on these firmwares. PX4: set the GPS port baud (`SER_GPSn_BAUD`) to NAVERA's. INAV / Betaflight refuse a position with fewer satellites than `gps_min_sats` / `gps_rescue_min_sats`, and they also need attitude and barometric height from the flight controller, which NAVERA reads over MAVLink only (INAV's MAVLink telemetry; Betaflight's is limited) or from a box IMU |
+
 ### 5.6 PX4
 
 **Tested in PX4 SITL only (v1.15.4).** PX4 does not read `GPS_INPUT`: NAVERA sends it the same

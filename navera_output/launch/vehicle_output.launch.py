@@ -50,6 +50,13 @@ def _env_overrides():
         if msg not in ('auto', 'gps_input', 'hil_gps'):
             raise ValueError(f"NAVERA_MAVLINK_MESSAGE={msg!r}: expected auto, gps_input or hil_gps")
         out['mavlink_message'] = msg
+    proto = (env.get('NAVERA_NMEA_PROTOCOL') or '').strip().lower()
+    if proto:
+        if proto not in ('nmea', 'ubx'):
+            raise ValueError(f"NAVERA_NMEA_PROTOCOL={proto!r}: expected nmea or ubx")
+        out['nmea_protocol'] = proto
+    if (env.get('NAVERA_UBX_ESTIMATED_SATELLITES') or '').strip():
+        out['ubx_estimated_satellites'] = int(env['NAVERA_UBX_ESTIMATED_SATELLITES'])
     if (env.get('NAVERA_ROS_FIX_FRAME_ID') or '').strip():
         out['ros_fix_frame_id'] = env['NAVERA_ROS_FIX_FRAME_ID'].strip()
     if 'NAVERA_ROS_FIX_TOPIC' in env:                  # set but empty: no ROS output
