@@ -149,6 +149,17 @@ def held_from_state(d, now_mono: float, now_wall: float, max_age_s: float) -> Op
     return Held(lat, lon, sig, now_mono - age, vecs[0], vecs[1])
 
 
+UBX_MIN_BAUD = 38400    # NAV-PVT + the other position messages at 5 Hz do not fit a slower port
+
+
+def check_serial_output(proto: str, port: str, baud: int) -> None:
+    """Refuse a serial GPS output that cannot work: UBX below UBX_MIN_BAUD (ValueError)."""
+    if proto == "ubx" and port and int(baud) < UBX_MIN_BAUD:
+        raise ValueError(f"NAVERA_NMEA_PROTOCOL=ubx needs NAVERA_NMEA_BAUD >= {UBX_MIN_BAUD} "
+                         f"(got {int(baud)}): the u-blox messages would not fit; use 115200 and set the "
+                         f"flight controller's GPS port to the same baud")
+
+
 def message_for_autopilot(autopilot) -> str:
     """The position message an autopilot takes: HIL_GPS for PX4 (MAV_AUTOPILOT_PX4 = 12), which has no
     GPS_INPUT handler; GPS_INPUT for ArduPilot and any other.
@@ -227,6 +238,8 @@ class VehicleOutputNode(Node):
         if self._proto not in ("nmea", "ubx"):
             raise ValueError(f"nmea_protocol must be nmea or ubx (got {self._proto!r})")
         self._ubx_sats = int(self.get_parameter("ubx_estimated_satellites").value)
+        check_serial_output(self._proto, str(self.get_parameter("nmea_port").value),
+                            int(self.get_parameter("nmea_baud").value))
         self._ubx = ubx_out.Responder(int(self.get_parameter("nmea_baud").value)) if self._proto == "ubx" else None
         port = str(self.get_parameter("nmea_port").value)
         if port:

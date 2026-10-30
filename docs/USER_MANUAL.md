@@ -968,6 +968,9 @@ NAVERA_NMEA_BAUD=115200
 NAVERA_NMEA_PROTOCOL=ubx
 ```
 
+UBX needs at least 38400 baud (115200 recommended): below, navera-output refuses to start and
+says why.
+
 NAVERA then appears as a u-blox M8 GPS module (NAV-PVT and the older NAV-POSLLH / SOL /
 VELNED / STATUS / DOP; a message the flight controller turns off is no longer sent). It answers the
 flight controller's configuration as an M8 does: every CFG message acknowledged, the configuration

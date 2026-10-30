@@ -208,3 +208,14 @@ def test_mon_gnss_follows_the_enabled_systems():
     r.feed(ubx_out.frame(ubx_out.CFG, ubx_out.CFG_GNSS, bytes((0, 32, 32, 1)) + struct.pack("<BBBBI", 6, 8, 14, 0,
                                                                                             0x01010000)))
     assert poll(r, ubx_out.MON_GNSS, cls=ubx_out.MON)[0][2][3] == 0x09                # GLONASS off
+
+
+def test_ubx_below_38400_baud_is_refused_at_start():
+    import pytest
+    from navera_output.nodes.vehicle_output_node import check_serial_output
+    with pytest.raises(ValueError, match="NAVERA_NMEA_BAUD >= 38400"):
+        check_serial_output("ubx", "/dev/ttyTHS2", 9600)
+    check_serial_output("ubx", "/dev/ttyTHS2", 38400)
+    check_serial_output("ubx", "/dev/ttyTHS2", 115200)
+    check_serial_output("nmea", "/dev/ttyTHS2", 9600)      # NMEA at 9600 is fine
+    check_serial_output("ubx", "", 9600)                    # no serial output at all
