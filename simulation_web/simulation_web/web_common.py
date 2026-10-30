@@ -268,6 +268,44 @@ class BridgeHandler(BaseHTTPRequestHandler):
         _GUARD.succeeded(client)
         return self._read_json_body(max_body)
 
+    def authorize_read(self, token: str) -> bool:
+        """Authorise a sensitive READ (GET /api/logs.tar.gz): free from a trusted network, else the
+        X-Navera-Token header (same wrong-code guard as control). Sends the error response on refusal.
+        """
+        client = self.client_address[0] if self.client_address else "?"
+        if is_trusted(client):
+            return True
+        if not token:
+            self.send_json(403, {"error": "only from a trusted network (no NAVERA_WEB_TOKEN set)"})
+            return False
+        wait = _GUARD.blocked_for(client)
+        if wait > 0:
+            self.send_json(429, {"error": f"too many wrong codes from this address: wait {wait:.0f} s"})
+            return False
+        given = self.headers.get("X-Navera-Token", "")
+        if not hmac.compare_digest(given.encode(), token.encode()):
+            _GUARD.failed(client)
+            self.send_json(401, {"error": "missing or wrong X-Navera-Token"})
+            return False
+        _GUARD.succeeded(client)
+        return True
+
+    def send_stream(self, ctype: str, f, size: int, filename: str = "") -> None:
+        """Send an open binary file of `size` bytes in 64 kB chunks (an attachment when filename is set)."""
+        self.send_response(200)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(size))
+        self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        if filename:
+            self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+        self.end_headers()
+        while True:
+            c = f.read(1 << 16)
+            if not c:
+                break
+            self.wfile.write(c)
+
     def _same_origin(self) -> bool:
         """False when the request carries an Origin whose host:port is not the Host header
         (a page of another site posting through the operator's browser). No Origin: not a

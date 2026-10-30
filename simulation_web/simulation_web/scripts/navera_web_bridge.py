@@ -33,6 +33,8 @@ This bridge serves TWO surfaces with deliberately different sources:
                                    vehicle settings, route (autopilot mission file or
                                    drawn), satellite map generation and activation
     GET  /api/mission/state      → settings, map job, active map
+    GET  /api/logs.tar.gz        → 24 h of NAVERA journal + settings, secrets removed, <= 50 MB
+                                   (simulation_web.log_bundle; trusted network, else the token)
     POST /api/mission/settings   → {changes:{KEY:value}} validated, written to the
                                    settings file (token)
     POST /api/mission/apply      → restart the running NAVERA units (token)
@@ -65,6 +67,7 @@ from sensor_msgs.msg import NavSatFix
 
 from navera_msgs.msg import NavStatus, PositionEstimate
 
+from simulation_web import log_bundle
 from simulation_web.web_common import (BridgeHandler, is_trusted, MBTilesReader, parse_tile_path,
                                        start_server, valid_latlon)
 from navera_common.geo import dead_reckon
@@ -803,6 +806,18 @@ class NaveraWebBridge(Node):
 
                 if path == "/mission":
                     return self.send_file(os.path.join(bridge.resources_dir, "mission.html"))
+
+                if path == "/api/logs.tar.gz":
+                    if not self.authorize_read(bridge._control_token):
+                        return None
+                    try:
+                        f = log_bundle.build()
+                    except (log_bundle.ArchiveTooLarge, OSError) as e:
+                        return self.send_json(500, {"error": str(e)})
+                    with f:
+                        size = os.fstat(f.fileno()).st_size
+                        name = time.strftime("navera_logs_%Y%m%d_%H%M%S.tar.gz")
+                        return self.send_stream("application/gzip", f, size, name)
 
                 if path == "/api/mission/state":
                     client = self.client_address[0] if self.client_address else ""
