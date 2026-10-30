@@ -394,11 +394,14 @@ def page_join(code):
 
 @app.post("/api/signup")
 def api_signup():
-    if config.PRODUCT:
-        return jsonify(error="Your teacher creates your account on this NAVERA box."), 403
     d = request.get_json(force=True)
     kind = "teacher" if d.get("kind") == "teacher" else "student"
     invite = re.sub(r"[^A-Z0-9]", "", (d.get("invite_code") or "").upper())
+    if config.PRODUCT and not (kind == "teacher" and invite):
+        # the NAVERA box: students get their account from their teacher; a teacher creates their own
+        # with the teacher code shown on the administrator's teacher page
+        return jsonify(error="Your teacher creates your account on this NAVERA box." if kind == "student" else
+                       "Type the teacher code: the main teacher finds it on their Teacher page."), 403
     if not settings()["allow_signup"] and not (kind == "teacher" and invite):
         return jsonify(error="Account creation is closed. Ask your teacher for an account." if kind == "student" else
                        "Account creation is closed: teachers need the invitation code from the administrator."), 403
@@ -1414,6 +1417,8 @@ def org_logo():
 @login_required("admin")
 def api_admin_org():
     o = orgs.org()
+    if not o.get("teacher_code"):          # the teacher code exists from the first visit (teachers sign up with it)
+        o = orgs.save_org()
     return jsonify(name=o.get("name", ""), teacher_code=o.get("teacher_code", ""), logo=bool(o.get("logo")),
                    logo_url=f"/org/logo.png?v={o.get('logo_v', 0)}" if o.get("logo") else "",
                    join_url=_public_url() + "/")
@@ -1636,6 +1641,32 @@ def api_admin_teachers():
                         "role": rec["role"], "status": rec.get("status", "active"), "support": bool(rec.get("support")),
                         "classes": len(orgs.owned_by(name)), "created": rec.get("created", "")})
     return jsonify(teachers=out)
+
+
+@app.post("/api/admin/teachers")
+@login_required("admin")
+def api_admin_teacher_add():
+    """The administrator creates a teacher account (on the box nobody signs up by themselves)."""
+    d = request.get_json(force=True)
+    name = (d.get("name") or "").strip().lower()
+    if not NAME_RE.match(name):
+        return jsonify(error="Login: lower-case letters, digits, _ (2–24, starts with a letter)"), 400
+    pw = d.get("password") or secrets.token_urlsafe(8)
+    if len(pw) < 8:
+        return jsonify(error="The password needs at least 8 characters."), 400
+    with _lock:
+        u = users()
+        if name in u:
+            return jsonify(error=f"'{name}' already exists."), 409
+        used = {v["index"] for v in u.values()}
+        idx = next((i for i in range(1, len(config.STUDENT_DOMAINS)) if i not in used), None)
+        if idx is None:
+            return jsonify(error="The academy is full."), 400
+        u[name] = {"role": "teacher", "status": "active", "pw": generate_password_hash(pw), "index": idx,
+                   "display": _text(d.get("display"), 60) or name, "created": time.strftime("%Y-%m-%d %H:%M")}
+        _save("users.json", u)
+    workspaces.create_student(name)
+    return jsonify(name=name, password=pw)
 
 
 @app.post("/api/admin/teacher/<name>")

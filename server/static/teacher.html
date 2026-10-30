@@ -141,13 +141,15 @@
       <div class="box" id="tInviteBox">
         <h2>Teacher invitation code</h2>
         <div class="code" id="tCode" style="font-size:26px">—</div>
-        <p>Teachers choose <b>Create account → I'm a teacher</b> and type this code. Without it, their account waits for your approval below.</p>
+        <p>Give this code to each teacher: on the login page they choose <b>Teacher account</b>, type their name, e-mail, a password and this code. Their account works at once; each teacher creates their own classes and students.</p>
         <div class="btns"><button id="tCodeNew">↻ New code</button></div>
       </div>
     </div>
     <div class="box">
       <h2>Teachers and administrators</h2>
       <div class="grid"><table id="teachTbl"></table></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><input id="newTLogin" placeholder="login, e.g. sami" style="width:150px"><input id="newTName" placeholder="Full name" style="width:200px"><button class="primary" id="newTBtn">+ Create a teacher account</button></div>
+      <p style="color:var(--muted);font-size:13px">Each teacher creates their own classes and students and sees only them. The password is shown once.</p>
     </div>
     <div class="grid2">
       <div class="box">
@@ -206,7 +208,7 @@ async function init() {
   if (ME.admin) { $('adminArea').style.display = ''; loadAdmin(); }
   if (ME.product) {          // the NAVERA box: only the teacher creates accounts (no join code, QR or poster)
     $('joinBox').style.display = 'none'; $('oJoin').closest('label').style.display = 'none';
-    $('tInviteBox').style.display = 'none'; $('signupOpt').style.display = 'none';
+    $('signupOpt').style.display = 'none';
     const d = $('names').closest('details'); d.open = true; d.querySelector('summary').textContent = 'Create student accounts';
     document.querySelector('#noClass p').textContent = 'Create a class, then create its student accounts: one line per student (login, Full name, password).';
   }
@@ -420,6 +422,10 @@ async function tAct(name, action) {
   try { const r = await api(`/api/admin/teacher/${name}`, {method: 'POST', body: {action}}); if (r.password) alert(`New password for ${name}: ${r.password}`); loadAdmin(); loadClasses(); }
   catch (e) { alert(e.message); }
 }
+$('newTBtn').onclick = async () => {
+  try { const r = await api('/api/admin/teachers', {method: 'POST', body: {name: $('newTLogin').value, display: $('newTName').value}});
+    alert(`Teacher account created.\nLogin: ${r.name}\nPassword: ${r.password}\n\nShown once: write it down and give it to the teacher.`);
+    $('newTLogin').value = ''; $('newTName').value = ''; loadAdmin(); loadClasses(); } catch (e) { alert(e.message); } };
 $('orgSave').onclick = async () => {
   try { await api('/api/admin/org', {method: 'POST', body: {name: $('orgName').value}}); $('orgSave').textContent = '✓ Saved';
     setTimeout(() => { $('orgSave').textContent = 'Save'; }, 1500); loadAdmin(); } catch (e) { alert(e.message); } };

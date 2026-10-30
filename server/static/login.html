@@ -86,7 +86,7 @@
       <label for="un">Your full name <i id="nameHint">as on your certificate</i></label><input id="un" autocomplete="name" placeholder="First and last name">
       <label for="ue">E-mail</label><input id="ue" type="email" autocomplete="email" placeholder="you@example.com">
       <label for="up">Password</label><input id="up" type="password" autocomplete="new-password" placeholder="at least 8 characters">
-      <div id="inviteRow" style="display:none"><label for="ui">Teacher invitation code <i>from your administrator</i></label><input id="ui" autocomplete="off" placeholder="e.g. T-4M9-P2XQ" style="text-transform:uppercase">
+      <div id="inviteRow" style="display:none"><label for="ui">Teacher code <i>from the main teacher (Teacher page)</i></label><input id="ui" autocomplete="off" placeholder="e.g. T-4M9-P2XQ" style="text-transform:uppercase">
         <p class="fine" style="text-align:left">No code? Your account is created and waits for the administrator's approval.</p></div>
       <button class="go" id="upGo">Join my class →</button>
       <p class="fine" id="upFine">Your progress, XP and badges are saved in your account.</p>
@@ -152,8 +152,7 @@ $('fUp').onsubmit = async (ev) => {
 };
 // 2. what this academy allows (local accounts only: no outside sign-in service)
 fetch('/api/auth/options').then(r => r.json()).then(o => {
-  if (o.product) { $('tabUp').style.display = 'none'; }   // NAVERA box: the teacher creates every account
-  else if (!o.signup) {   // closed for students; a teacher with the invitation code can still create an account
+  if (o.product || !o.signup) {   // students get their account from their teacher; a teacher creates one with the teacher code   // closed for students; a teacher with the invitation code can still create an account
     $('tabUp').textContent = 'Teacher account';
     document.querySelector('.who button[data-k="teacher"]').click();
     document.querySelector('.who').style.display = 'none';
