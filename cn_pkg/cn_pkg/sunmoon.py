@@ -555,6 +555,23 @@ class Fix:
         return float(math.sqrt(v @ np.linalg.solve(self.cov_km2, v)))
 
 
+def thin(sights: List[Sight], bin_s: float = BIN_S) -> List[Sight]:
+    """One sight (the middle one in time) per body and BIN_S window. Frames seconds apart share almost all their
+    error (bloom, cloud, the body's place in the lens); fed one by one they made the real night's fix 3.6 sigma
+    off (467 sights), one per 10 min kept it within 2.6 sigma. For a still camera a tilt of 'up' is exactly a
+    position shift (both move the altitudes as the cosine of the azimuth): crossing lines cannot beat it."""
+    if not sights:
+        return []
+    t = np.array([_utc_seconds(s.utc) for s in sights])
+    key = [(s.body, int((ti - t.min()) // bin_s)) for s, ti in zip(sights, t)]
+    out = []
+    for k in sorted(set(key), key=lambda kk: (kk[1], kk[0])):
+        idx = [i for i, kk in enumerate(key) if kk == k]
+        idx.sort(key=lambda i: t[i])
+        out.append(sights[idx[len(idx) // 2]])
+    return out
+
+
 def altitude_covariance(alts: List[Sight], sigma_common_deg: float, sigma_drift_deg: float, same_bin: np.ndarray,
                         sigma_up_deg: float = SIGMA_UP_DEG, sigma_fscale: float = SIGMA_FSCALE) -> np.ndarray:
     """Covariance (deg^2) of the altitude errors of sights: frame + common centre bias + drift per window + tilt of
@@ -584,6 +601,7 @@ def fuse(sights: List[Sight], prior: Tuple[float, float, float], sigma_bias_deg:
     from scipy.stats import chi2 as chi2_dist
     lat0, lon0, sp = prior
     sb = SIGMA_CENTRE_DEG if sigma_bias_deg is None else sigma_bias_deg
+    sights = thin(sights)
     alts = [s for s in sights if s.alt_deg is not None]
     azs = [s for s in sights if s.azimuth_deg is not None]
     if not alts:
