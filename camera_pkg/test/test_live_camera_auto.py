@@ -84,7 +84,8 @@ def test_a_lens_on_trial_alternates_with_the_lens_in_use_then_is_kept_or_dropped
 def test_a_late_frame_is_redated_from_the_camera_stamp_or_flagged(ros):
     """navera_common.frame_lateness at the grab: a frame 1.5 s later than the usual delay is moved
     back by that much when the source stamps it (GStreamer PTS), flagged for the localizer when only
-    the frame interval shows it; on-time frames give nothing."""
+    the frame interval shows it; on-time frames give nothing.
+    """
     from types import SimpleNamespace
     node = camera()
     try:

@@ -18,7 +18,8 @@ SPEED, DELAY, PERIOD, SIGMA = 60.0, 0.2, 0.1, 5.0
 
 def frames(stalls, n=600, keep_queued=True, seed=1):
     """(exposure, arrival) per delivered frame. A stall (start, length): frames exposed in it wait
-    and arrive in a burst at its end (keep_queued) or are dropped but the last one."""
+    and arrive in a burst at its end (keep_queued) or are dropped but the last one.
+    """
     rnd = random.Random(seed)
     out = []
     for k in range(n):

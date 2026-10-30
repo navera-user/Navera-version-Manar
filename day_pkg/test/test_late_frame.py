@@ -1,6 +1,7 @@
 """The day node with a late frame at 60 m/s (frame meta late_s from live_camera, frame_lateness).
 
-Unit level only: synthetic metas, no Isaac Sim, no ROS graph."""
+Unit level only: synthetic metas, no Isaac Sim, no ROS graph.
+"""
 import math
 from types import MethodType, SimpleNamespace
 

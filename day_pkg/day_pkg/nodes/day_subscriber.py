@@ -2466,11 +2466,13 @@ class DaySubscriber(Node):
 
     def _check_late_frame(self, meta) -> None:
         """A frame late beyond late_frame_s, not re-dated by the camera, and speed x lateness beyond
-        late_frame_gate_m: unusable (no fix; the localizer says why). On-time frames: untouched."""
+        late_frame_gate_m: unusable (no fix; the localizer says why). On-time frames: untouched.
+        """
         if not meta.get("late_s") or meta.get("usable") is False:
             return
-        _, why = frame_lateness.lateness_sigma(meta, DaySubscriber._ground_speed(self), 0.0,
-                                               float(getattr(self, "late_frame_gate_m", frame_lateness.DEFAULT_GATE_M)))
+        gate_m = float(getattr(self, "late_frame_gate_m", frame_lateness.DEFAULT_GATE_M))
+        _, why = frame_lateness.lateness_sigma(
+            meta, DaySubscriber._ground_speed(self), 0.0, gate_m)
         if why:
             meta.update(usable=False, reason=why)
             self.get_logger().warn(f"[day] {why}", throttle_duration_sec=10.0)
