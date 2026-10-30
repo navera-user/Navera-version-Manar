@@ -1405,7 +1405,7 @@ requirements:
 - id: NAV-TIM-04
   category: TIM
   title: 'Attitude at the exposure with an in-flight camera delay'
-  text: 'A frame shall be straightened with the attitude at the instant the day node dates it (arrival minus the set delay minus the in-flight correction, published on /day/camera_delay and applied by live_camera), never twice the set delay; a staged (not yet stable) delay estimate shall be applied only while ground speed x its sigma is at most latency_partial_max_error_m (10 m).'
+  text: 'A frame shall be straightened with the attitude at the instant the day node dates it (arrival minus the set delay minus the in-flight correction, published on /day/camera_delay and applied by live_camera), never twice the set delay; a staged (not yet stable) delay estimate shall be applied only while ground speed x its sigma is at most latency_partial_max_error_m (10 m), or while the posterior is at least latency_partial_min_z (3) of its sigmas from 0.'
   code:
     - navera_common/navera_common/latency_cal.py::delay_message
     - navera_common/navera_common/latency_cal.py::attitude_shift_s
@@ -1413,7 +1413,7 @@ requirements:
     - camera_pkg/camera_pkg/nodes/live_camera.py::LiveCamera._on_delay
     - day_pkg/day_pkg/nodes/day_subscriber.py::DaySubscriber._publish_camera_delay
   match:
-    - 'test_latency_cal\.py::test_(the_staged_delay_is_not_applied_when_speed_times_its_sigma_is_too_large|a_stable_delay_is_applied_whatever_the_speed|a_contradicted_stored_delay_is_not_kept_when_the_staged_one_is_capped|the_camera_takes_the_attitude_at_the_day_nodes_dating)'
+    - 'test_latency_cal\.py::test_(the_staged_delay_is_not_applied_when_speed_times_its_sigma_is_too_large|a_stable_delay_is_applied_whatever_the_speed|a_contradicted_stored_delay_is_not_kept_when_the_staged_one_is_capped|a_staged_delay_surely_not_zero_is_applied_above_the_speed_cap|a_fast_plane_on_a_wide_turn_gets_the_staged_delay_only_when_sure|the_camera_takes_the_attitude_at_the_day_nodes_dating)'
     - 'test_mount_id_and_camera_delay\.py::test_the_delay_estimate_is_published_for_the_camera_when_it_changes'
     - 'test_live_camera\.py::<script>'
   evidence:
