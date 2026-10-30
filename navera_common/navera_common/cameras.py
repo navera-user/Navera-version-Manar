@@ -429,7 +429,14 @@ def rtsp_describe(uri: str, user: str = "", password: str = "", timeout: float =
             return ask(auth, cseq)
         data, t_end = b"", time.monotonic() + timeout
         while time.monotonic() < t_end:
-            b = s.recv(65536)
+            try:
+                b = s.recv(65536)
+            except OSError:
+                # a reused connection the camera had closed after its last answer: reset on read
+                if not reused or data:
+                    raise
+                conn.pop("s").close()
+                return ask(auth, cseq)
             if not b:
                 conn.pop("s").close()                     # closed by the camera: a new one if asked again
                 break
