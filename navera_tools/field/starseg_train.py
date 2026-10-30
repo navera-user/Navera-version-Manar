@@ -8,7 +8,8 @@ production detector finds at a low threshold (the real junk: lamps, reflections,
 Every real pixel is labelled 'not star' (the 2026-10-29 sessions hold no starlight, measured by starcheck /
 forcedcheck). On the fly, 0-8 synthetic stars per crop: Gaussian or Moffat PSF (sigma 0.6-2.2 px), peak 0.3-4 DN
 log-uniform (30 %: 4-150 DN; v1 had faint stars only and learnt 'bright point = junk'), sub-pixel centre, half
-the crops with extra noise up to 1.5 DN, added to the 8-bit frame and rounded like a saved frame. Label: a 1.5 px
+the crops with extra noise up to 1.5 DN, added to the 8-bit frame and rounded like a saved frame, half then JPEG
+re-encoded (q 40-95: v3; v2 had no compressed star and dropped the stars of JPEG copies). Label: a 1.5 px
 disc for stars of peak >= 0.5 DN; stars below 0.5 DN are 'don't care' (neither rewarded nor punished).
 Deterministic for a given seed. Memory: ~CROPS_PER_FRAME x frames x 46 kB + the GPU batch (< 1 GB in all).
 """
@@ -32,6 +33,24 @@ SIGMA_MIN, SIGMA_MAX = 0.6, 2.2   # px: Insta360 ~1 px; wider for defocus / othe
 BRIGHT_FRAC = 0.3                 # stars drawn 4..BRIGHT_MAX DN (a bright star is a star, not junk)
 BRIGHT_MAX = 150.0
 EXTRA_NOISE_MAX = 1.5             # DN: extra Gaussian noise on half the crops (other sensors / exposures)
+JPEG_FRAC = 0.5                   # crops re-encoded (JPEG q JPEG_Q) AFTER the stars are added: a real star reaches
+JPEG_Q = (40, 95)                 # the file through the codec too (v2 had no such case and dropped compressed stars)
+
+
+def jpeg_some(inj, torch, gen, dev):
+    """JPEG_FRAC of the (n, CROP, CROP) 8-bit crops encoded and decoded at a random quality in JPEG_Q."""
+    import cv2
+    import numpy as np
+    n = inj.shape[0]
+    pick = (torch.rand(n, generator=gen, device=dev) < JPEG_FRAC).cpu().numpy()
+    qs = (JPEG_Q[0] + torch.rand(n, generator=gen, device=dev) * (JPEG_Q[1] - JPEG_Q[0])).cpu().numpy()
+    if not pick.any():
+        return inj
+    arr = inj.to(torch.uint8).cpu().numpy()
+    for i in np.nonzero(pick)[0]:
+        ok, enc = cv2.imencode(".jpg", arr[i], [cv2.IMWRITE_JPEG_QUALITY, int(qs[i])])
+        arr[i] = cv2.imdecode(enc, cv2.IMREAD_GRAYSCALE)
+    return torch.from_numpy(arr).to(dev).float()
 
 
 def collect(sessions, rng):
@@ -136,7 +155,10 @@ def main(argv=None) -> int:
         en = EXTRA_NOISE_MAX * torch.rand(a.batch, 1, 1, generator=gen, device=dev)
         en = torch.where(torch.rand(a.batch, 1, 1, generator=gen, device=dev) < 0.5, en, torch.zeros_like(en))
         extra = en * torch.randn(raw.shape, generator=gen, device=dev)
-        delta = torch.clamp(torch.round(raw + star + extra), 0, 255) - raw
+        inj = torch.clamp(torch.round(raw + star + extra), 0, 255)
+        if JPEG_FRAC > 0:
+            inj = jpeg_some(inj, torch, gen, dev)
+        delta = inj - raw
         res = ress_t[idx].float() + delta
         noise = torch.sqrt(noises_t[idx].float() ** 2 + en ** 2)
         x = torch.stack([torch.clamp(res / 4.0, -8, 16), torch.clamp(res / noise / 6.0, -4, 8)], 1)
