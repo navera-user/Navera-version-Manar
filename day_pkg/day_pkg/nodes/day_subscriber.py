@@ -1916,8 +1916,18 @@ class DaySubscriber(Node):
                 self._busy_lock.acquire(blocking=False):
             try:
                 self._drain_gps()
+                # no frame: dated as a frame arriving now would be (now - the camera delay), never now —
+                # the track and the carry are kept at the frames' exposure times, and a carry stored at
+                # now put the next frames' prediction v x delay ahead (Isaac Sim p2_plane60_turns,
+                # 2026-10-30: 1.46 s at 63 m/s, 150-160 m off, the right fixes then refused as too far)
                 m = dict(meta)
-                m.pop("image_stamp_ns", None)                   # this is no frame: stamped now
+                m.pop("image_stamp_raw_ns", None)
+                lc = self.latency_cal
+                d = lc.delay() if self.auto_latency else lc.nominal
+                m["image_stamp_ns"] = int(round((time.time() - d) * 1e9))
+                # the last frame's odometry step is in its own output already: adding it again here put the
+                # carry 109 m ahead (same run)
+                self._vo_step = None
                 self._dead_reckon(self.get_clock().now().to_msg(), m.get("frame_id", -1), m, {}, 0.0,
                                   f"no camera frame for {time.time() - t_frame:.0f} s")
             finally:
