@@ -91,6 +91,11 @@ no fix > 50 km and no more fixes outside 3 sigma; one change per round; a change
 the defaults is reverted; at END a report-only round runs and any change is removed. Each round: an `autolab`
 event, `<test>/autolab_round_N.md`, a line in `AUTOLAB.txt` (shown in STATUS.txt) and `ALERTS.log`.
 Off: `NAVERA_AUTOLAB=0` or `touch ~/navera-field/autolab_off`.
+Memory (B37: two END replays of 2.6 GB each once OOM-killed the server mid-recording): the END round runs as
+many replay jobs as fit above a 1.5 GB reserve (2, else 1, else it waits), a live round waits under 2.5 GB free,
+a replay is killed when free memory drops under the reserve, and it runs with `oom_score_adj` 1000 so the kernel
+kills it, never the server. Disk: the raw recording pauses (packets dropped, counted, alerted) under 3 GB free
+and resumes when space is freed.
 
 ## What it measures, and what it does not
 
