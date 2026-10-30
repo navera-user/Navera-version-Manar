@@ -4,9 +4,10 @@
 A phone that scans the access card's QR code joins the box's setup Wi-Fi; every web address
 then leads here (navera_hotspot.sh: DNS; navera_firewall.sh: port 80), so the phone shows this
 page by itself (its "am I online?" checks are answered "captive" until the page has been shown
-on that phone, then "online" for 10 min, so the phone keeps the setup Wi-Fi). On it: the networks the box sees, a password field to put the box on the
-client's own Wi-Fi (internet for map downloads and IRIS maintenance; navera_wifi.py applies
-it), the box's current state, and the link to NAVERA's page. Standard library only.
+on that phone, then "online" for 10 min, so the phone keeps the setup Wi-Fi). On it: the
+networks the box sees, a password field to put the box on the client's own Wi-Fi (internet for
+map downloads and IRIS maintenance; navera_wifi.py applies it), the box's current
+state, and the link to NAVERA's page. Standard library only.
 
     navera_portal.py      # NAVERA_PORTAL_PORT (default 8182), NAVERA_WIFI_SPOOL, NAVERA_WEB_PORT
 """
@@ -77,6 +78,7 @@ class SeenClients:
 
     def __len__(self):
         return len(self._t)
+
 
 STYLE = """
 :root { --ink:#13202b; --muted:#5b6b78; --line:#d5dde3; --bg:#f6f8fa; --card:#fff; --accent:#0b6bcb; --bad:#b42318; }
