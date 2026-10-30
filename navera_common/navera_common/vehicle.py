@@ -88,7 +88,7 @@ INSTA360_DEFAULT_MOUNT_AXES = "+x,+z,-y"       # lying, the LEFT lens looking do
 def sensor_topics(environ=None) -> dict:
     """Topics the live camera reads, by NAVERA_SENSOR_SOURCE:
       box      the box's own sensors: /navera/sensors/imu (imu_node: an optional BNO085 — the
-               reference kit's Insta360 One R IMU is being integrated, problem F37) and the
+               reference kit's Insta360 One R IMU is the insta360 source below) and the
                box GPS receiver (gps_node, any NMEA serial receiver)
       vehicle  the autopilot's sensors over MAVLink (vehicle_link_node): attitude,
                rangefinder, height above home (the GPS source is NAVERA_GPS_SOURCE)
