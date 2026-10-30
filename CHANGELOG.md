@@ -4,6 +4,27 @@ Measured numbers come from simulation (Isaac Sim + ArduPilot/PX4 SITL), bench, o
 data from other vehicles; **no NAVERA flight yet**. Details: `docs/VALIDATION_STATUS.md`,
 requirements: `docs/certification/REQUIREMENTS.md`, known problems: the shared problems list.
 
+## 0.8.1 — 2026-10-30 (simulation/bench-validated; no real flight yet)
+- **UBX output:** between vision measurements the last position decision is repeated at
+  `rate_hz` (its stated accuracy, measurement time kept; a bridged position with its grown
+  accuracy), so a flight controller does not drop the receiver as silent. Never past the
+  measurement-age, position-timeout and bridge limits. NMEA, MAVLink and ROS outputs unchanged.
+  Tested in SITL only.
+- **Operator view:** the forwarding chip shows the settings the output service is actually
+  running (published on `/navera/output/config`), with the saved setting beside it and a
+  "restart pending" mark when they differ.
+- **Setup Wi-Fi:** phones' online checks are answered as a captive network until the setup page
+  is shown, then as online for 10 minutes, so the phone stays on the setup Wi-Fi; the setup
+  Wi-Fi is kept while a phone was seen on it in the last 5 minutes.
+- **Late camera frames:** a frame later than the usual camera delay is re-dated from the
+  camera's own time stamp when it has one; otherwise the day fix states the extra error (ground
+  speed x lateness), or gives no fix beyond 60 m. Unit-tested on synthetic stalls; no new
+  simulator run.
+- **Celestial (all-sky):** the chance-match probability counts the focal lengths actually tried
+  and the retry attempt (stricter gate); stored real-sky results re-gated: no fix count changes.
+- **Logs download:** a "Download logs" button on the mission page gives a bounded archive of
+  the last 24 h of NAVERA logs and settings, with passwords, codes and keys removed.
+
 ## 0.8.0 — 2026-10-30 (simulation/bench-validated; no real flight yet)
 - **u-blox (UBX) GPS output** for flight controllers that take a u-blox GPS
   (`NAVERA_NMEA_PROTOCOL=ubx`): NAV-PVT and the related position messages, with the stated

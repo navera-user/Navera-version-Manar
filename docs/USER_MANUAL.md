@@ -4,7 +4,7 @@ For the **integrator** who installs NAVERA on a vehicle and the **operator** who
 You do not need to be a software developer. Commands to type are shown in grey boxes. Settings
 are lines in one text file, `/etc/navera/navera.env` (appendix A lists them).
 
-Release covered: NAVERA **0.8.0** (2026-10-30), reference box Jetson Orin Nano 8 GB.
+Release covered: NAVERA **0.8.1** (2026-10-30), reference box Jetson Orin Nano 8 GB.
 The detailed engineering documents are named at the end of each section, for your technical team.
 
 > **Status of this release — read this first**

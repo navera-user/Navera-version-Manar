@@ -1,6 +1,6 @@
 # NAVERA — Validation status and known limitations
 
-**Release 0.8.0 — field validation pending (no NAVERA flight yet).** Last updated 2026-10-30 (the
+**Release 0.8.1 — field validation pending (no NAVERA flight yet).** Last updated 2026-10-30 (the
 dated sections below give each measurement's date; the summary and the known limitations reflect
 all of them).
 
