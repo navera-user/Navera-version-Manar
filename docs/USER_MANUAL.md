@@ -1386,6 +1386,14 @@ or tablet on the vehicle's network. It shows:
 
 The dashboard is at `http://<box-ip>:8181/`. Keep port 8181 inside the vehicle's own network.
 
+**Opening NAVERA on a phone or laptop (the access card).** Scan the QR code on the box's access
+card with the phone's camera and tap "Join": the phone joins the box's Wi-Fi (`NAVERA`) and the
+NAVERA page opens by itself. If it does not, open `http://10.42.0.1:8181/`. The code is the same
+on every box and works anywhere: no internet is needed. When the box has internet (Ethernet or a
+4G USB modem) and IRIS has set up the public link, the card's second code opens the page from
+anywhere, in any browser, without installing anything — view only. Keep the card with the box:
+anyone who has it can see NAVERA.
+
 The web page is **not needed** for NAVERA to work: NAVERA runs on its own from power-on.
 
 ### 8.2 States
