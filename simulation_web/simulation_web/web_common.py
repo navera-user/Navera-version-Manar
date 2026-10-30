@@ -129,7 +129,7 @@ def wifi_networks():
 
 
 def trusted_networks(spec: str = None):
-    """The networks of NAVERA_WEB_TRUST_NETS (comma-separated CIDR, or "wifi"); bad entries ignored."""
+    """The networks of NAVERA_WEB_TRUST_NETS (CIDRs or "wifi", comma-separated)."""
     spec = os.environ.get("NAVERA_WEB_TRUST_NETS", "") if spec is None else spec
     nets = []
     for part in spec.split(","):
@@ -153,7 +153,8 @@ def is_trusted(client: str, nets=None) -> bool:
         return False
     if ip.version == 6 and ip.ipv4_mapped:
         ip = ip.ipv4_mapped
-    return any(ip in n for n in (trusted_networks() if nets is None else nets) if n.version == ip.version)
+    nets = trusted_networks() if nets is None else nets
+    return any(ip in n for n in nets if n.version == ip.version)
 
 
 class MBTilesReader:
@@ -237,7 +238,7 @@ class BridgeHandler(BaseHTTPRequestHandler):
         return self._read_json_body(max_body)
 
     def _read_json_body(self, max_body: int = None):
-        """The request's JSON object (Content-Type, size and shape checked), or None after an error."""
+        """The request's JSON object (type, size, shape checked), or None after an error."""
         if "application/json" not in self.headers.get("Content-Type", ""):
             self.send_json(415, {"error": "Content-Type must be application/json"})
             return None

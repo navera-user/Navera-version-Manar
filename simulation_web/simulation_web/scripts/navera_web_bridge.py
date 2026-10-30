@@ -734,7 +734,8 @@ class NaveraWebBridge(Node):
 
                 if path == "/api/mission/state":
                     client = self.client_address[0] if self.client_address else ""
-                    return self.send_json(200, dict(bridge.mission_state(), trusted=is_trusted(client)))
+                    state = dict(bridge.mission_state(), trusted=is_trusted(client))
+                    return self.send_json(200, state)
 
                 return self.serve_static(bridge.resources_dir, path)
 
