@@ -27,7 +27,7 @@ def _adj(name):
 
 def test_every_unit_has_a_memory_class_and_passes_it():
     found = verify_units.memory_findings(UNITS)
-    assert len(found) == len(UNITS) == 13           # navera-hotplug: non-critical; navera-insta360: pipeline
+    assert len(found) == len(UNITS) == 14           # navera-hotplug, navera-pipeline-select: non-critical; navera-insta360: pipeline
     assert [f for f in found if f[0] != 'PASS'] == []
 
 

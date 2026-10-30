@@ -295,6 +295,7 @@ input[type=range]{width:100%;accent-color:var(--accent);cursor:pointer;height:4p
     </div>
     <div id="cfg-mode-select">
       <p style="color:#64748b;font-size:13px;margin:0 0 24px">Choisissez le mode de fonctionnement</p>
+      <div id="auto-banner" style="display:none;background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.4);color:#bbf7d0;border-radius:10px;padding:10px 14px;font-size:13px;margin:-12px 0 18px;text-align:left"></div>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:24px">
         <div class="mode-card day-card" id="mc-day" onclick="selectTimeMode('day')">
           <span class="mode-check" id="check-day" style="color:transparent">✓</span>
@@ -302,6 +303,7 @@ input[type=range]{width:100%;accent-color:var(--accent);cursor:pointer;height:4p
           <span class="mode-icon">☀️</span>
           <div class="mode-title">Day Mode</div>
           <div class="mode-sub">Local feature matching<br>Satellite image matching<br><b style="color:#facc15">day_pkg · ROS 2</b></div>
+          <div class="mode-auto" id="auto-day"></div>
         </div>
         <div class="mode-card night-card" id="mc-night" onclick="selectTimeMode('night')">
           <span class="mode-check" id="check-night" style="color:transparent">✓</span>
@@ -309,7 +311,7 @@ input[type=range]{width:100%;accent-color:var(--accent);cursor:pointer;height:4p
           <span class="mode-icon">🌙</span>
           <div class="mode-title">Night Mode</div>
           <div class="mode-sub">STHN Homography Matching<br>Bias-corrected localization<br><b style="color:#a78bfa">night_pkg · STHN (bridge ROS)</b></div>
-          <div style="margin-top:8px;font-size:10px;color:#f59e0b;border:1px solid rgba(245,158,11,.4);border-radius:8px;padding:2px 8px;display:inline-block">⚠ non raccordé à cette interface</div>
+          <div class="mode-auto" id="auto-night"></div>
         </div>
         <div class="mode-card stellar-card" id="mc-stellar" onclick="selectTimeMode('stellar')">
           <span class="mode-check" id="check-stellar" style="color:transparent">✓</span>
@@ -317,7 +319,7 @@ input[type=range]{width:100%;accent-color:var(--accent);cursor:pointer;height:4p
           <span class="mode-icon">🌟</span>
           <div class="mode-title">Stellar Mode</div>
           <div class="mode-sub">Star plate solving<br>Celestial geolocation<br><b style="color:#38bdf8">cn_pkg · ROS 2</b></div>
-          <div style="margin-top:8px;font-size:10px;color:#f59e0b;border:1px solid rgba(245,158,11,.4);border-radius:8px;padding:2px 8px;display:inline-block">⚠ non raccordé à cette interface</div>
+          <div class="mode-auto" id="auto-stellar"></div>
         </div>
       </div>
       <button id="cfg-mode-btn" onclick="confirmTimeMode()" disabled style="background:#334155;color:#64748b;border:none;border-radius:8px;padding:12px 32px;font-size:14px;font-weight:600;cursor:not-allowed;width:100%;transition:all .3s">Sélectionnez un mode →</button>
@@ -575,16 +577,7 @@ input[type=range]{width:100%;accent-color:var(--accent);cursor:pointer;height:4p
             <div style="font-size:11px;color:var(--text3);margin-top:6px" id="prog-msg">Initialisation...</div>
           </div>
         </div>
-        <div class="section">
-          <div class="section-label">Performance (typical values, not live)</div>
-          <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px">
-            <div class="kv"><span class="kv-k">Sans cache</span><span class="kv-v" style="color:var(--red)">~13,500ms</span></div>
-            <div class="kv"><span class="kv-k">Avec cache (warm)</span><span class="kv-v green">~105ms ✅</span></div>
-            <div class="kv"><span class="kv-k">Gain</span><span class="kv-v green">128× plus rapide</span></div>
-            <div class="kv"><span class="kv-k">Score confiance</span><span class="kv-v blue">0.983</span></div>
-          </div>
-        </div>
-      </div>
+              </div>
     </div>
     <div class="p-map-container">
       <div id="p-map"></div>
@@ -666,6 +659,25 @@ const cfgData = {
   altMax:400, speed:10, battery:20, flightMode:'auto',
   gps:true, vision:true, confidence:0.85, searchRadius:300
 };
+/* NAVERA chooses day / night / celestial by itself (navera-pipeline-select: the sun and the
+   cameras). The cards show which one runs now and why; the choice here only sets this page's display. */
+let autoPicked=false;
+function showAutoPipeline(){
+  fetch(`${window.location.origin}/api/pipeline`).then(r=>r.json()).then(d=>{
+    const map={day:'day',night:'night',cn:'stellar'}, cur=map[d.pipeline]||'';
+    const name={day:'Day',night:'Night',stellar:'Stellar'}[cur];
+    const b=document.getElementById('auto-banner');
+    if(b){
+      b.style.display=cur?'block':'none';
+      if(cur) b.textContent=(d.auto===false?'🔒 Mode set in the settings: ':'🤖 NAVERA chooses the mode automatically. Now: ')+name+' — '+(d.reason||'')+(d.chosen&&map[d.chosen]!==cur?` (switching to ${map[d.chosen]} soon)`:'');
+    }
+    ['day','night','stellar'].forEach(m=>{const e=document.getElementById('auto-'+m); if(!e) return;
+      e.textContent=m===cur?'● ACTIVE NOW':'automatic';
+      e.style.cssText='margin-top:8px;font-size:10px;border-radius:8px;padding:2px 8px;display:inline-block;'+(m===cur?'color:#22c55e;border:1px solid rgba(34,197,94,.5);font-weight:700':'color:#94a3b8;border:1px solid rgba(148,163,184,.35)');});
+    if(cur&&!autoPicked){autoPicked=true; selectTimeMode(cur);}   // once: the operator can still pick another display
+  }).catch(()=>{});
+}
+setTimeout(showAutoPipeline,300); setInterval(showAutoPipeline,15000);
 function selectTimeMode(mode){
   cfgData.timeMode=mode;
   document.getElementById('mc-day').classList.toggle('selected',mode==='day');
@@ -692,10 +704,6 @@ function selectTimeMode(mode){
 }
 function confirmTimeMode(){
   if(!cfgData.timeMode) return;
-  if(cfgData.timeMode==='stellar' || cfgData.timeMode==='night'){
-    toast("Mode disponible via ros2 launch uniquement — pas encore raccordé à cette interface","amber");
-    return;
-  }
   document.getElementById('cfg-mode-select').style.display='none';
   document.getElementById('cfg-steps-wrapper').style.display='block';
 }
@@ -752,11 +760,9 @@ function cfgPrev(){
 }
 function launchMissionPlanner(){
   window.vehicleConfig=cfgData; window.missionMode=cfgData.missionMode;
-  RECEIVER = (cfgData.timeMode==='night')
-                ? window.location.origin             // night → MÊME ORIGINE que la page (bridge ROS, ex-Flask :5001)
-                : (cfgData.timeMode==='stellar')
-                    ? `http://${NAVERA_HOST}:5002`
-                    : `http://${NAVERA_HOST}:8181`;   // day → navera_web_bridge serves gps_status.json on 8181
+  // every mode: the box's own web bridge (it serves day, night and celestial alike; NAVERA
+  // itself chooses which pipeline runs — navera-pipeline-select)
+  RECEIVER = window.location.origin;
   window.naveraTimeMode=cfgData.timeMode;
   console.log('NAVERA mode:',cfgData.timeMode,'→ RECEIVER:',RECEIVER);
   const isNight=cfgData.timeMode==='night';

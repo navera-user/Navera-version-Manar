@@ -69,7 +69,7 @@ CRITICAL_UNITS = ('navera-estimator', 'navera-output', 'navera-gps', 'navera-imu
                   'navera-vehicle-link')                 # small; the output to the vehicle needs them
 PIPELINE_UNITS = ('navera-pipeline-day', 'navera-pipeline-night', 'navera-pipeline-cn',
                   'navera-insta360')                     # big, needed
-NONCRITICAL_UNITS = ('navera-web', 'navera-discover', 'navera-hotplug')     # not needed to navigate
+NONCRITICAL_UNITS = ('navera-web', 'navera-discover', 'navera-hotplug', 'navera-pipeline-select')     # not needed to navigate
 
 results = []
 

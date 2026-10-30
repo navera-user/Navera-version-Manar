@@ -1,0 +1,31 @@
+[Unit]
+Description=NAVERA automatic pipeline choice (day / night / celestial from the sun and the cameras)
+# Runs as root: it starts the chosen vision pipeline and stops the others. It reads the
+# settings and the camera roles; it opens no port (it only asks the local web page for
+# the vehicle's last position).
+After=local-fs.target navera-discover.service
+Wants=navera-discover.service
+StartLimitIntervalSec=0
+
+[Service]
+EnvironmentFile=-/etc/navera/navera.env
+EnvironmentFile=-/var/lib/navera/settings.env
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/home/navera/isaac_ros_common
+ExecStart=/home/navera/navera_boot_pipeline_select.sh
+Restart=always
+RestartSec=10
+# small and not needed to navigate (the running pipeline keeps going without it)
+OOMScoreAdjust=200
+MemoryHigh=80M
+MemoryMax=150M
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=read-only
+ProtectSystem=full
+ReadWritePaths=/var/lib/navera
+
+[Install]
+WantedBy=multi-user.target

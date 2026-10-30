@@ -39,7 +39,7 @@ set -euo pipefail
 
 SRC="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
 WS=/home/navera/isaac_ros_common
-UNITS="navera-discover navera-hotplug navera-estimator navera-gps navera-imu navera-insta360 navera-rtc navera-vehicle-link navera-pipeline-day navera-output navera-web"
+UNITS="navera-discover navera-hotplug navera-estimator navera-gps navera-imu navera-insta360 navera-rtc navera-vehicle-link navera-pipeline-day navera-pipeline-select navera-output navera-web"
 DRY=0; PIP=1; APT=1; START=0; HEADLESS=0; BUILD=1; SWAP=1; PRODUCT="${NAVERA_PRODUCT_MODE:-0}"
 R="${DESTDIR:-}"
 # never copied to the box (both modes): git data and the other worktrees of a working repository

@@ -33,6 +33,7 @@ This bridge serves TWO surfaces with deliberately different sources:
                                    vehicle settings, route (autopilot mission file or
                                    drawn), satellite map generation and activation
     GET  /api/mission/state      → settings, map job, active map
+    GET  /api/pipeline           → the automatic pipeline choice (day / night / celestial) and why
     GET  /api/logs.tar.gz        → 24 h of NAVERA journal + settings, secrets removed, <= 50 MB
                                    (simulation_web.log_bundle; trusted network, else the token)
     POST /api/mission/settings   → {changes:{KEY:value}} validated, written to the
@@ -74,6 +75,7 @@ from navera_common.geo import dead_reckon
 from navera_common.track import TrackVelocity
 from simulation_web import mission_prep
 
+PIPELINE_STATE = "/var/lib/navera/pipeline.json"     # written by navera_tools/pipeline_select.py
 MISSION_FILE_MAX = 512 * 1024       # bytes: an imported autopilot mission file
 # NAVERA units restarted by "Apply settings" (try-restart: only those running)
 _LOGS_BUSY = threading.Lock()   # one log archive at a time (memory)
@@ -826,6 +828,13 @@ class NaveraWebBridge(Node):
                 if path == "/mission":
                     return self.send_file(os.path.join(bridge.resources_dir, "mission.html"))
 
+                if path == "/api/pipeline":
+                    # the automatic day / night / celestial choice (navera-pipeline-select)
+                    try:
+                        with open(PIPELINE_STATE) as f:
+                            return self.send_json(200, json.load(f))
+                    except (OSError, ValueError):
+                        return self.send_json(200, {"pipeline": "", "reason": "automatic choice not running"})
                 if path == "/api/logs.tar.gz":
                     if not self.authorize_read(bridge._control_token):
                         return None
