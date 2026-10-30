@@ -66,6 +66,9 @@ J = {"Content-Type": "application/json", "X-Navera-Token": TOKEN}
     (J, "[1, 2]", 400),                                                        # not an object
     (J, " " * (MAX_BODY + 1), 413),
     (J, '{"a": 1}', 200),
+    ({**J, "Content-Type": "application/json; charset=utf-8"}, '{"a": 1}', 200),
+    ({**J, "Content-Type": "text/plain; x=application/json"}, "{}", 415),     # substring is not enough
+    ({**J, "Content-Type": "application/jsonx"}, "{}", 415),
 ])
 def test_control_requests(server, headers, body, status):
     code, _, _ = _request(server, "POST", "/api/x", body, headers)
@@ -182,3 +185,51 @@ def test_the_code_guard_forgets_old_addresses(monkeypatch):
     g.failed("10.9.9.9")
     assert set(g._until) == set() and set(g._fails) == {"10.9.9.9"}
     assert g.blocked_for("10.0.1.249") == 0
+
+
+def _port(server):
+    return server.server_address[1]
+
+
+@pytest.mark.parametrize("origin, status", [
+    (None, 200),                                   # no browser cross-site request (curl, tools)
+    ("http://127.0.0.1:{p}", 200),                 # the box's own page
+    ("http://evil.example", 403),                  # another site, through the operator's browser
+    ("http://127.0.0.1:9999", 403),                # another port of the same host
+    ("null", 403),                                 # sandboxed / file page
+])
+def test_cross_site_control_is_refused(server, origin, status):
+    h = dict(J)
+    if origin is not None:
+        h["Origin"] = origin.format(p=_port(server))
+    code, _, _ = _request(server, "POST", "/api/x", '{"a": 1}', h)
+    assert code == status
+
+
+def test_cross_site_refused_on_a_trusted_network_too(server, monkeypatch):
+    monkeypatch.setenv("NAVERA_WEB_TRUST_NETS", "127.0.0.0/8")
+    h = {"Content-Type": "application/json", "Origin": "http://evil.example"}
+    assert _request(server, "POST", "/api/x", "{}", h)[0] == 403
+    h["Origin"] = f"http://127.0.0.1:{_port(server)}"
+    assert _request(server, "POST", "/api/x", "{}", h)[0] == 200    # trusted, no token needed
+
+
+def test_hotspot_keyword_only_while_the_hotspot_address_is_up(monkeypatch):
+    from simulation_web import web_common as wc
+
+    class _R:
+        def __init__(self, out):
+            self.stdout = out
+    monkeypatch.setattr(wc.os, "listdir", lambda p: ["eth0", "wlan0"])
+    monkeypatch.setenv("NAVERA_WIFI_ADDRESS", "10.42.0.1/24")
+    up = "3: wlan0    inet 10.42.0.1/24 brd 10.42.0.255 scope global wlan0\n"
+    monkeypatch.setattr(wc.subprocess, "run", lambda *a, **k: _R(up))
+    assert [str(n) for n in wc.trusted_networks("hotspot")] == ["10.42.0.0/24"]
+    assert wc.is_trusted("10.42.0.17", wc.trusted_networks("hotspot"))
+    client = "3: wlan0    inet 192.168.1.40/24 brd 192.168.1.255 scope global wlan0\n"   # joined a client Wi-Fi
+    monkeypatch.setattr(wc.subprocess, "run", lambda *a, **k: _R(client))
+    assert wc.trusted_networks("hotspot") == []
+    assert [str(n) for n in wc.trusted_networks("wifi")] == ["192.168.1.0/24"]
+    wired = "2: eth0    inet 10.42.0.1/24 scope global eth0\n"                         # same address, not Wi-Fi
+    monkeypatch.setattr(wc.subprocess, "run", lambda *a, **k: _R(wired))
+    assert wc.trusted_networks("hotspot") == []

@@ -7,9 +7,12 @@ API on the vehicle's network, so the security rules live here, once:
     other web sites must not be able to script it;
   * control endpoints need the X-Navera-Token header (shared secret); with no
     token configured, control is disabled. Clients on a trusted network
-    (NAVERA_WEB_TRUST_NETS: CIDRs, and "wifi" = the network(s) of the box's Wi-Fi
-    card — its setup hotspot or the client's Wi-Fi it joined) need no token:
-    joining that network already took its password;
+    (NAVERA_WEB_TRUST_NETS: CIDRs; "hotspot" = the box's own hotspot subnet
+    (NAVERA_WIFI_ADDRESS), only while that address is on its Wi-Fi card; "wifi" = every
+    network of the box's Wi-Fi card, the client's Wi-Fi it joined included) need no
+    token: joining that network already took its password;
+  * control POSTs from a browser page of another site are refused (an Origin header
+    whose host:port is not the Host header: cross-site request forgery);
   * request bodies are JSON objects of at most MAX_BODY bytes;
   * map tile coordinates are bounded before any arithmetic on them;
   * static files are confined to the resources directory;
@@ -28,7 +31,7 @@ import subprocess
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Optional, Tuple
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 MAX_BODY = 4096          # bytes accepted in a POST body
 MAX_ZOOM = 22            # deepest zoom level any MBTiles map is expected to hold
@@ -128,14 +131,38 @@ def wifi_networks():
     return nets
 
 
+def hotspot_networks():
+    """The box's own hotspot subnet (NAVERA_WIFI_ADDRESS, default 10.42.0.1/24), only while that
+    address is on one of its Wi-Fi interfaces (wl*): the hotspot is up, not a client Wi-Fi."""
+    addr = os.environ.get("NAVERA_WIFI_ADDRESS", "") or "10.42.0.1/24"
+    try:
+        iface = ipaddress.ip_interface(addr)
+    except ValueError:
+        return []
+    try:
+        names = [n for n in os.listdir("/sys/class/net") if n.startswith("wl")]
+        out = subprocess.run(["ip", "-o", "-4", "addr", "show"], capture_output=True, text=True,
+                             timeout=5).stdout
+    except (OSError, subprocess.SubprocessError):
+        return []
+    for line in out.splitlines():
+        parts = line.split()
+        if len(parts) >= 4 and parts[1] in names and parts[3].split("/")[0] == str(iface.ip):
+            return [iface.network]
+    return []
+
+
 def trusted_networks(spec: str = None):
-    """The networks of NAVERA_WEB_TRUST_NETS (CIDRs or "wifi", comma-separated)."""
+    """The networks of NAVERA_WEB_TRUST_NETS (CIDRs, "hotspot" or "wifi", comma-separated)."""
     spec = os.environ.get("NAVERA_WEB_TRUST_NETS", "") if spec is None else spec
     nets = []
     for part in spec.split(","):
         part = part.strip()
         if part == "wifi":
             nets.extend(wifi_networks())
+            continue
+        if part == "hotspot":
+            nets.extend(hotspot_networks())
             continue
         try:
             if part:
@@ -222,6 +249,9 @@ class BridgeHandler(BaseHTTPRequestHandler):
         if not token:
             self.send_json(403, {"error": "control disabled: set NAVERA_WEB_TOKEN"})
             return None
+        if not self._same_origin():
+            self.send_json(403, {"error": "cross-site request refused (Origin is not this box)"})
+            return None
         client = self.client_address[0] if self.client_address else "?"
         if is_trusted(client):
             return self._read_json_body(max_body)
@@ -237,9 +267,32 @@ class BridgeHandler(BaseHTTPRequestHandler):
         _GUARD.succeeded(client)
         return self._read_json_body(max_body)
 
+    def _same_origin(self) -> bool:
+        """False when the request carries an Origin whose host:port is not the Host header
+        (a page of another site posting through the operator's browser). No Origin: not a
+        browser cross-site request (curl, the box's own tools), accepted."""
+        origin = self.headers.get("Origin")
+        if origin is None:
+            return True
+        host = (self.headers.get("Host") or "").strip().lower()
+        o = urlsplit(origin.strip().lower())
+        if not o.scheme or not o.hostname or not host:
+            return False
+        default = {"http": 80, "https": 443}.get(o.scheme)
+        try:
+            oport = o.port or default
+        except ValueError:
+            return False
+        h = urlsplit("//" + host)
+        try:
+            hport = h.port or default
+        except ValueError:
+            return False
+        return o.hostname == h.hostname and oport == hport
+
     def _read_json_body(self, max_body: int = None):
         """The request's JSON object (type, size, shape checked), or None after an error."""
-        if "application/json" not in self.headers.get("Content-Type", ""):
+        if self.headers.get("Content-Type", "").split(";")[0].strip().lower() != "application/json":
             self.send_json(415, {"error": "Content-Type must be application/json"})
             return None
         try:
