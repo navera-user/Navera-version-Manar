@@ -32,11 +32,11 @@
 #   NAVERA_FW_ALLOW_TCP / NAVERA_FW_ALLOW_UDP   more ports or ranges, comma-separated (5600, 9000-9010)
 #   NAVERA_FW_ALLOW_FROM     restrict all the above to these sources (comma-separated
 #                            addresses / CIDR, IPv4 or IPv6: the vehicle network); empty = any
-#   NAVERA_HOTSPOT           1: the box's own Wi-Fi (navera_hotspot.sh) — DHCP and DNS for the
-#                            phones that join it, on the Wi-Fi interfaces only (NAVERA_WIFI_IFACE,
-#                            default every wl* interface), and the captive portal: the hotspot's
-#                            web port 80 sent to the portal (NAVERA_PORTAL_PORT, default 8182), so
-#                            a phone that joins opens NAVERA's page by itself
+#   NAVERA_HOTSPOT           1: the box's Wi-Fi access (navera_wifi.py) — on the Wi-Fi interfaces only
+#                            (NAVERA_WIFI_IFACE, default every wl* interface): DHCP and DNS for the
+#                            phones on its setup hotspot, mDNS (<hostname>.local on the client's
+#                            Wi-Fi), and the setup page: web port 80 sent to it (NAVERA_PORTAL_PORT,
+#                            default 8182), so a phone that joins opens it by itself
 # Always allowed: loopback, replies to NAVERA's own connections, ICMP echo, ICMPv6 (neighbour
 # discovery: IPv6 link-local cameras), DHCP replies.
 set -euo pipefail
@@ -123,13 +123,14 @@ ruleset() {   # ruleset <4|6>  → iptables-restore input
     echo "-A NAVERA-IN -p icmp --icmp-type echo-request -j ACCEPT"
     echo "-A NAVERA-IN -p udp --sport 67 --dport 68 -j ACCEPT"
     if [ -n "$hotspot_if" ]; then   # the hotspot's own DHCP and DNS server, for its clients
-      echo "-A NAVERA-IN -i $hotspot_if -p udp -m multiport --dports 53,67 -j ACCEPT"
+      echo "-A NAVERA-IN -i $hotspot_if -p udp -m multiport --dports 53,67,5353 -j ACCEPT"
       echo "-A NAVERA-IN -i $hotspot_if -p tcp --dport 53 -j ACCEPT"
       echo "-A NAVERA-IN -i $hotspot_if -p tcp --dport $portal_port -j ACCEPT"
     fi
   else
     echo "-A NAVERA-IN -p ipv6-icmp -j ACCEPT"
     echo "-A NAVERA-IN -p udp --sport 547 --dport 546 -j ACCEPT"
+    [ -n "$hotspot_if" ] && echo "-A NAVERA-IN -i $hotspot_if -p udp --dport 5353 -j ACCEPT"
   fi
   rules "$1" tcp "$tcp"
   rules "$1" udp "$udp"

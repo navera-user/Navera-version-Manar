@@ -1,7 +1,7 @@
 [Unit]
-Description=NAVERA captive portal: phones joining the box's Wi-Fi open NAVERA's page by themselves
+Description=NAVERA setup page (captive portal): put the box on the client's Wi-Fi, open NAVERA
 # Installed by deploy/install.sh --product (deploy/product/). The firewall sends the hotspot's port 80 here.
-After=network.target navera-hotspot.service
+After=network.target navera-wifi.service
 
 [Service]
 User=navera
@@ -13,6 +13,7 @@ NoNewPrivileges=yes
 ProtectSystem=strict
 ProtectHome=yes
 PrivateTmp=yes
+ReadWritePaths=/var/lib/navera/wifi
 
 [Install]
 WantedBy=multi-user.target

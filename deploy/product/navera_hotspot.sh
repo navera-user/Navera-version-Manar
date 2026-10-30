@@ -1,22 +1,23 @@
 #!/usr/bin/env bash
 #
-# navera_hotspot.sh — the box's own Wi-Fi: phones and laptops join it (QR code on the access card,
-# navera_tools/access_card.py) and open the web page at http://10.42.0.1:8181/.
+# navera_hotspot.sh — the box's setup Wi-Fi: phones join it (QR code on the access card,
+# navera_tools/access_card.py) and get the setup page (navera_portal.py): put the box on the
+# client's Wi-Fi, or open NAVERA's page right there (http://10.42.0.1:8181/). Brought up and down
+# by navera_wifi.py (navera-wifi.service) when the box is not on a client network.
 #
 #   navera_hotspot.sh --print     # the NetworkManager settings for the current env (no root)
 #   sudo navera_hotspot.sh        # create / update the hotspot connection and bring it up
-#   sudo navera_hotspot.sh --stop # take it down (the connection is kept, autoconnect off)
+#   sudo navera_hotspot.sh --stop # take it down (the connection is kept)
 #
-# Installed by deploy/install.sh --product as /usr/local/sbin/navera_hotspot.sh and run at boot
-# by navera-hotspot.service. Settings from /etc/navera/navera.env (root-owned):
+# Installed by deploy/install.sh --product as /usr/local/sbin/navera_hotspot.sh. Settings from
+# /etc/navera/navera.env (root-owned):
 #   NAVERA_HOTSPOT           1 (default in product mode): on; 0: off
 #   NAVERA_WIFI_SSID         network name (default NAVERA)
 #   NAVERA_WIFI_PASSWORD     WPA2 password, 8-63 characters (default navera-iris)
 #   NAVERA_WIFI_IFACE        the Wi-Fi interface (default: the first one NetworkManager lists)
 #   NAVERA_WIFI_ADDRESS      the box's address on it (default 10.42.0.1/24; DHCP for the clients)
 #   NAVERA_WIFI_CHANNEL      2.4 GHz channel (default 6)
-# The hotspot uses the box's Wi-Fi card: the box can then not ALSO join another Wi-Fi network.
-# No internet is needed: NAVERA and its page work offline.
+# The hotspot uses the box's Wi-Fi card: while it is up the box is on no other Wi-Fi network.
 # Captive portal: the hotspot's DNS answers every name with the box's address
 # (/etc/NetworkManager/dnsmasq-shared.d/navera-portal.conf) and the firewall sends port 80 to the
 # portal (navera_portal.py): a phone that joins opens NAVERA's page by itself.
@@ -47,7 +48,7 @@ settings() {   # the nmcli "connection modify" arguments (the password is not pr
   echo "802-11-wireless.mode ap 802-11-wireless.ssid $SSID 802-11-wireless.band bg"
   echo "802-11-wireless.channel $CHAN ipv4.method shared ipv4.addresses $ADDR ipv6.method disabled"
   echo "wifi-sec.key-mgmt wpa-psk wifi-sec.proto rsn wifi-sec.pairwise ccmp wifi-sec.group ccmp"
-  echo "connection.autoconnect yes connection.autoconnect-priority 100"
+  echo "connection.autoconnect no"
 }
 
 case "$MODE" in
@@ -55,7 +56,6 @@ case "$MODE" in
     echo "connection $CON on $(iface || true) (password: ${#PASS} characters, not shown)"
     settings ;;
   stop)
-    nmcli con modify "$CON" connection.autoconnect no 2>/dev/null || true
     nmcli con down "$CON" 2>/dev/null || true
     echo "hotspot $CON down" ;;
   apply)

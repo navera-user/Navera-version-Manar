@@ -1198,18 +1198,43 @@ sudo deploy/install.sh --product
 A key pair (once, kept offline): `openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 -out iris-release.key.pem`
 and `openssl pkey -in iris-release.key.pem -pubout -out iris-release.pub.pem`.
 
-## 14. Access: the box's Wi-Fi and its QR code
+## 14. Access: the QR code, the client's Wi-Fi, and IRIS maintenance
 
-**Near the box (no internet needed).** `apply_product.sh` step 7 turns the box's Wi-Fi card into
-a hotspot (`navera_hotspot.sh`, `navera-hotspot.service`): name `NAVERA`, password `navera-iris`
-(`NAVERA_WIFI_SSID` / `NAVERA_WIFI_PASSWORD`), the **same on every box**, so the access card's QR
-code is the same everywhere. A phone that scans it joins, and the captive portal
-(`navera_portal.py`, `navera-portal.service`; the hotspot's DNS answers every name
-with 10.42.0.1 and the firewall sends its port 80 to the portal) opens NAVERA's page
-(`http://10.42.0.1:8181/`) by itself. Anyone near the box who has the card can then view and,
-with the web control token, control NAVERA: keep the card with the box. The hotspot uses the
-Wi-Fi card, so the box cannot also join another Wi-Fi network.
+The box has one Wi-Fi card: it is either on the client's Wi-Fi or its own setup Wi-Fi, never both
+(`navera_wifi.py`, `navera-wifi.service`, installed by `apply_product.sh` step 7).
+
+1. **First time (or no known Wi-Fi in range):** the setup Wi-Fi comes up — name `NAVERA`,
+   password `navera-iris` (`NAVERA_WIFI_SSID` / `NAVERA_WIFI_PASSWORD`), **the same on every box**,
+   so the access card's QR code is the same everywhere. A phone that scans it joins, and the setup
+   page opens by itself (captive portal: `navera_portal.py`; the hotspot's DNS answers every name
+   with 10.42.0.1 and the firewall sends its port 80 to the page). On it: the networks the box
+   sees, a password field (**Connect**), and **Open NAVERA** (`http://10.42.0.1:8181/`, for the
+   field where there is no other Wi-Fi).
+2. **Connect:** the box saves the client's Wi-Fi, leaves the setup Wi-Fi and joins it (~30 s).
+   From then on it joins it by itself at every start. Everyone on that Wi-Fi opens NAVERA at
+   `http://navera.local:8181/` (hostname `NAVERA_HOSTNAME`, default navera; mDNS) and the box has
+   internet: map downloads, IRIS maintenance. Wrong password or out of range: the setup Wi-Fi
+   comes back and its page says why. Away from the client's Wi-Fi (in the field) the setup Wi-Fi
+   comes back after `NAVERA_WIFI_JOIN_S` (45 s); with nobody on it, the saved networks are tried
+   again every `NAVERA_WIFI_RETRY_S` (300 s).
+3. **Changes from the page:** on the box's Wi-Fi networks (`NAVERA_WEB_TRUST_NETS=wifi,...`:
+   the setup Wi-Fi and the client's Wi-Fi it joined) and on IRIS's maintenance VPN, settings
+   and missions can be changed without the control code: joining those networks already took
+   their password. Elsewhere the code (`NAVERA_WEB_TOKEN`) is still asked. Changes are refused
+   in flight either way.
+4. **IRIS maintenance from the office (Tailscale, nothing for the client to install):** once
+   per box, at provisioning, with internet:
+
+   ```bash
+   curl -fsSL https://tailscale.com/install.sh | sh
+   sudo NAVERA_TAILSCALE_AUTHKEY=tskey-auth-... deploy/product/apply_product.sh   # step 8: joins IRIS's tailnet
+   ```
+
+   The box then appears in IRIS's Tailscale admin console as `navera-<id>` whenever it has
+   internet (the client's Wi-Fi): open `http://navera-<id>:8181/` or `ssh navera@navera-<id>`
+   (Tailscale SSH) from an IRIS computer on the tailnet. The auth key is not stored on the box;
+   remove the box from the tailnet in the admin console to end access.
 
 **The access card:** `python3 navera_tools/access_card.py --out DIR` (made by step 7 in
-`/var/lib/navera/access_card/`): the Wi-Fi QR code, the same for every box. Print it as the
-box's label. Off: `NAVERA_HOTSPOT=0`, then rerun step 7. No internet is involved.
+`/var/lib/navera/access_card/`): the setup Wi-Fi's QR code, the same for every box. Print it as
+the box's label. Off: `NAVERA_HOTSPOT=0`, then rerun step 7.

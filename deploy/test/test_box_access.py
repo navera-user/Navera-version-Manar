@@ -2,6 +2,7 @@
 import http.client
 import http.server
 import importlib.util
+import json
 import os
 import subprocess
 import sys
@@ -41,12 +42,54 @@ def request(port, method, path, headers=None, body=None):
     return r.status, dict(r.getheaders()), r.read().decode()
 
 
-def test_portal_sends_every_address_to_the_page():
-    srv = serve(portal_mod.make_handler(portal_mod.page_url({})))
-    for path in ('/generate_204', '/hotspot-detect.html', '/anything?x=1'):
-        st, h, _ = request(srv.server_address[1], 'GET', path, {'Host': 'connectivitycheck.gstatic.com'})
-        assert st == 302 and h['Location'] == 'http://10.42.0.1:8181/'
+def test_setup_page_and_wifi_request(tmp_path, monkeypatch):
+    monkeypatch.setattr(portal_mod, 'SPOOL', str(tmp_path))
+    (tmp_path / 'scan.json').write_text('{"networks": [{"ssid": "ClientNet", "signal": 80, "secure": true}]}')
+    srv = serve(portal_mod.make_handler())
+    p = srv.server_address[1]
+    for path in ('/generate_204', '/hotspot-detect.html', '/'):            # every address: the setup page
+        st, _, body = request(p, 'GET', path, {'Host': 'connectivitycheck.gstatic.com'})
+        assert st == 200 and 'ClientNet' in body and 'Open NAVERA' in body
+    hdr = {'Content-Type': 'application/x-www-form-urlencoded'}
+    st, _, body = request(p, 'POST', '/wifi', hdr, b'ssid=ClientNet&other=&password=short')
+    assert st == 400 and not (tmp_path / 'request.json').exists()
+    st, _, body = request(p, 'POST', '/wifi', hdr, b'ssid=ClientNet&other=&password=secret123')
+    assert st == 200 and 'Connecting to ClientNet' in body
+    req = json.loads((tmp_path / 'request.json').read_text())
+    assert req['ssid'] == 'ClientNet' and req['password'] == 'secret123'
+    request(p, 'POST', '/wifi', hdr, b'ssid=ClientNet&other=Hidden+Net&password=')   # typed name wins
+    assert json.loads((tmp_path / 'request.json').read_text())['ssid'] == 'Hidden Net'
+    (tmp_path / 'state.json').write_text('{"mode": "client", "ssid": "ClientNet", "address": "192.168.1.50",'
+                                         ' "hostname": "navera"}')
+    assert 'http://navera.local:8181/' in request(p, 'GET', '/')[2]
     srv.shutdown()
+
+
+def test_wifi_manager_request_checks(tmp_path, monkeypatch):
+    wifi = load(os.path.join(PRODUCT, 'navera_wifi.py'), 'navera_wifi')
+    calls = []
+    monkeypatch.setattr(wifi, 'nmcli', lambda *a, **k: (calls.append(a), (0, ''))[1])
+    monkeypatch.setattr(wifi, 'hotspot', lambda on: calls.append(('hotspot', on)))
+    assert wifi.apply_request('wlan0', {'ssid': '', 'password': ''}) == 'invalid network name'
+    assert 'password' in wifi.apply_request('wlan0', {'ssid': 'X', 'password': 'short'})
+    assert calls == []
+    assert wifi.apply_request('wlan0', {'ssid': 'Client Net', 'password': 'secret123'}) == ''
+    add = [c for c in calls if c[:2] == ('con', 'add')][0]
+    assert 'navera-wifi-Client_Net' in add and 'secret123' in add and ('hotspot', False) in calls
+    # a link planted in place of the request is not followed
+    monkeypatch.setattr(wifi, 'REQUEST', str(tmp_path / 'request.json'))
+    os.symlink('/etc/hostname', tmp_path / 'request.json')
+    assert wifi.read_request() == {} and not os.path.lexists(tmp_path / 'request.json')
+
+
+def test_trusted_networks():
+    sys.path.insert(0, os.path.join(REPO, 'simulation_web'))
+    from simulation_web import web_common
+    nets = web_common.trusted_networks('10.42.0.0/24, 100.64.0.0/10, junk')
+    assert web_common.is_trusted('10.42.0.7', nets) and web_common.is_trusted('100.101.1.2', nets)
+    assert web_common.is_trusted('::ffff:10.42.0.9', nets)
+    assert not web_common.is_trusted('192.168.1.5', nets) and not web_common.is_trusted('x', nets)
+    assert not web_common.is_trusted('10.42.0.7', web_common.trusted_networks(''))
 
 
 def test_hotspot_settings_and_checks():
@@ -62,7 +105,7 @@ def test_hotspot_settings_and_checks():
 def test_firewall_opens_hotspot_services_only_with_the_hotspot():
     fw = os.path.join(PRODUCT, 'navera_firewall.sh')
     on = sh([fw, '--print'], {'NAVERA_HOTSPOT': '1'}).stdout
-    assert '-i wl+ -p udp -m multiport --dports 53,67 -j ACCEPT' in on
+    assert '-i wl+ -p udp -m multiport --dports 53,67,5353 -j ACCEPT' in on
     assert '-i wl+ -p tcp --dport 8182 -j ACCEPT' in on
     assert '-A NAVERA-PORTAL -i wl+ -p tcp --dport 80 -j REDIRECT --to-ports 8182' in on
     off = sh([fw, '--print'], {'NAVERA_HOTSPOT': '0'}).stdout
@@ -92,8 +135,10 @@ def test_apply_product_sets_up_access(tmp_path):
     assert p.returncode == 0, p.stdout + p.stderr
     env = (r / 'etc/navera/navera.env').read_text()
     assert '\nNAVERA_HOTSPOT=1\n' in env and '\nNAVERA_WIFI_SSID=NAVERA\n' in env
-    for u in ('navera-hotspot', 'navera-portal'):
+    for u in ('navera-wifi', 'navera-portal'):
         assert (r / f'etc/systemd/system/multi-user.target.wants/{u}.service').is_symlink()
     assert os.access(r / 'usr/local/lib/navera/navera_portal.py', os.X_OK)
+    assert os.access(r / 'usr/local/lib/navera/navera_wifi.py', os.X_OK)
+    assert '\nNAVERA_WEB_TRUST_NETS=wifi,100.64.0.0/10\n' in env
     p2 = sh([os.path.join(PRODUCT, 'apply_product.sh'), '--root', str(r)])
     assert p2.returncode == 0 and (r / 'etc/navera/navera.env').read_text().count('\nNAVERA_HOTSPOT=') == 1

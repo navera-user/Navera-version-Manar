@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""access_card.py — the box's printable access card: one QR code that joins the box's Wi-Fi
-(the same name and password on every box, so the same code everywhere); the box's captive
-portal then opens NAVERA's page by itself.
+"""access_card.py — the box's printable access card: one QR code that joins the box's setup Wi-Fi
+(the same name and password on every box, so the same code everywhere); its setup page then
+opens by itself: put the box on the client's Wi-Fi, or open NAVERA's page right there.
 
 Works offline (QR codes by OpenCV, already on the box). The card holds the Wi-Fi password and
 is the same for every box: print it as the box's label.
@@ -110,9 +110,12 @@ def main() -> int:
     with open(os.path.join(a.out, "qr_wifi.png"), "wb") as f:
         f.write(wifi_png)
     e = html.escape
-    cards = [("Scan → NAVERA opens", "<ol><li>Phone camera on this code</li><li>Tap “Join”</li>"
-              "<li>The NAVERA page opens by itself (if not: open the address below)</li></ol>",
-              wifi_png, f"Wi-Fi: {e(ssid)}<br>Password: {e(password)}<br>Page: {e(local)}")]
+    cards = [("Scan → NAVERA setup opens", "<ol><li>Phone camera on this code, tap “Join”</li>"
+              "<li>The setup page opens by itself</li>"
+              "<li><b>Your Wi-Fi:</b> choose it, type its password, Connect — then everyone on your Wi-Fi "
+              "opens <b>http://navera.local:8181/</b></li>"
+              "<li><b>No Wi-Fi around:</b> tap “Open NAVERA” right there</li></ol>",
+              wifi_png, f"Setup Wi-Fi: {e(ssid)}<br>Password: {e(password)}<br>Page: {e(local)}")]
     with open(os.path.join(a.out, "access_card.html"), "w") as f:
         f.write(card_html(cards))
     print(f"access card: {os.path.join(a.out, 'access_card.html')}")
