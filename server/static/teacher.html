@@ -138,7 +138,7 @@
           <input type="file" id="logoFile" accept="image/png,image/jpeg" style="display:none"></div>
         <p style="margin-top:10px">The logo is printed on certificates and class posters next to IRIS.</p>
       </div>
-      <div class="box">
+      <div class="box" id="tInviteBox">
         <h2>Teacher invitation code</h2>
         <div class="code" id="tCode" style="font-size:26px">—</div>
         <p>Teachers choose <b>Create account → I'm a teacher</b> and type this code. Without it, their account waits for your approval below.</p>
@@ -152,7 +152,7 @@
     <div class="grid2">
       <div class="box">
         <h2>Accounts and sign-in</h2>
-        <label class="opt"><input type="checkbox" id="allowSignup"> Students and teachers can create their own accounts</label>
+        <label class="opt" id="signupOpt"><input type="checkbox" id="allowSignup"> Students and teachers can create their own accounts</label>
         <p style="color:var(--muted);font-size:14px">Local accounts only: no outside sign-in service. Passwords are stored hashed on this box.</p>
       </div>
     </div>
@@ -204,6 +204,12 @@ async function init() {
   ME = await api('/api/me');
   $('roleLbl').textContent = ME.admin ? '· Administrator' : '· Teacher';
   if (ME.admin) { $('adminArea').style.display = ''; loadAdmin(); }
+  if (ME.product) {          // the NAVERA box: only the teacher creates accounts (no join code, QR or poster)
+    $('joinBox').style.display = 'none'; $('oJoin').closest('label').style.display = 'none';
+    $('tInviteBox').style.display = 'none'; $('signupOpt').style.display = 'none';
+    const d = $('names').closest('details'); d.open = true; d.querySelector('summary').textContent = 'Create student accounts';
+    document.querySelector('#noClass p').textContent = 'Create a class, then create its student accounts: one line per student (login, Full name, password).';
+  }
   await loadClasses();
   loadCerts(); loadFullSim(); setInterval(loadFullSim, 15000); setInterval(() => loadStudents(), 15000);
 }
@@ -230,7 +236,8 @@ function showClass() {
   if (c) {
     $('cTitle').textContent = c.name;
     $('cSub').textContent = `${c.students} of ${c.seats} seats · teacher ${c.teacher_name}${c.starts ? ' · from ' + c.starts : ''}${c.ends ? ' to ' + c.ends : ''}`;
-    $('cCode').textContent = c.code; $('cQr').src = `/api/classes/${c.id}/qr.svg?code=${encodeURIComponent(c.code)}`;
+    $('cCode').textContent = c.code;
+    if (!ME.product) $('cQr').src = `/api/classes/${c.id}/qr.svg?code=${encodeURIComponent(c.code)}`;   // QR made by the server (segno)
     $('oJoin').checked = c.join; $('oRank').checked = c.ranking; $('oCert').checked = c.cert_class !== false;
     $('oName').value = c.name; $('oStart').value = c.starts || ''; $('oEnd').value = c.ends || ''; $('oSeats').value = c.seats;
     $('oTeachWrap').style.display = ME.admin ? '' : 'none';
@@ -266,7 +273,7 @@ async function loadStudents() {
         <option value="">More ▾</option><option value="open_mission">Open mission…</option>${(s.open_missions || []).length ? '<option value="close_mission">Close an opened mission…</option>' : ''}<option value="password">New password</option>${moveOpts}
         <option value="kill">Stop terminals</option><option value="delete">Delete…</option></select></td></tr>`;
   }
-  if (!DATA.students.length) h += `<tr><td colspan="7" style="color:var(--muted);white-space:normal">${curClass() ? 'No student yet — print the poster or give them the join code: they appear here as soon as they create their account.' : 'No student here.'}</td></tr>`;
+  if (!DATA.students.length) h += `<tr><td colspan="7" style="color:var(--muted);white-space:normal">${curClass() ? (ME.product ? 'No student yet — create their accounts below.' : 'No student yet — print the poster or give them the join code: they appear here as soon as they create their account.') : 'No student here.'}</td></tr>`;
   $('tbl').innerHTML = h;
   let g = '<table><tr><th>Student</th>' + DATA.lessons.map(l => `<th title="${esc(l)}">${esc(l.slice(0, 2))}</th>`).join('') + '</tr>';
   for (const s of DATA.students) {

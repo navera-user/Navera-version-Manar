@@ -345,7 +345,8 @@ def new_student(display, email=None, password=None, klass=None, role="student", 
 @app.get("/api/auth/options")
 def api_auth_options():
     o = orgs.org()
-    return jsonify(signup=settings()["allow_signup"], need_class=bool(orgs.classes()), org=o.get("name", ""),
+    return jsonify(signup=settings()["allow_signup"] and not config.PRODUCT, product=config.PRODUCT,
+                   need_class=bool(orgs.classes()) and not config.PRODUCT, org=o.get("name", ""),
                    logo=f"/org/logo.png?v={o.get('logo_v', 0)}" if o.get("logo") else "")
 
 
@@ -370,6 +371,8 @@ _peeks = {}
 @app.get("/api/class-info")
 def api_class_info():
     """What a class code opens, shown before the student confirms (no login; a few tries per minute)."""
+    if config.PRODUCT:                   # on the NAVERA box only the teacher creates accounts: no join code / QR
+        abort(404)
     ip = request.remote_addr or "?"
     now = time.time()
     _peeks[ip] = [t for t in _peeks.get(ip, []) if now - t < 60][-40:] + [now]
@@ -384,11 +387,15 @@ def api_class_info():
 
 @app.get("/join/<code>")
 def page_join(code):
+    if config.PRODUCT:                   # on the NAVERA box only the teacher creates accounts: no join code / QR
+        abort(404)
     return redirect("/?join=" + re.sub(r"[^A-Za-z0-9-]", "", code)[:20])
 
 
 @app.post("/api/signup")
 def api_signup():
+    if config.PRODUCT:
+        return jsonify(error="Your teacher creates your account on this NAVERA box."), 403
     d = request.get_json(force=True)
     kind = "teacher" if d.get("kind") == "teacher" else "student"
     invite = re.sub(r"[^A-Z0-9]", "", (d.get("invite_code") or "").upper())
@@ -517,7 +524,7 @@ def api_me():
     o = orgs.org()
     return jsonify(name=request.user, role=request.urec["role"], status=request.urec.get("status", "active"),
                    staff=is_staff(request.urec), admin=is_admin(request.urec), org=o.get("name", ""),
-                   navera=config.navera_allowed(request.user),
+                   navera=config.navera_allowed(request.user), product=config.PRODUCT,
                    klass={"id": c["id"], "name": c["name"], "ranking": c.get("ranking", False)} if c else None,
                    display=request.urec.get("display", request.user),
                    email=request.urec.get("email"), prefs=request.urec.get("prefs", {}),
@@ -1583,6 +1590,8 @@ def api_class_export(cid):
 @app.get("/api/classes/<cid>/qr.svg")
 @login_required("teacher")
 def api_class_qr(cid):
+    if config.PRODUCT:                   # on the NAVERA box only the teacher creates accounts: no join code / QR
+        abort(404)
     try:
         svg = certs.qr_svg(_class_view(_my_class(cid))["join_url"])
     except ImportError:                       # setup/vendor/segno is missing (setup/install.sh vendors it)
@@ -1593,6 +1602,8 @@ def api_class_qr(cid):
 @app.get("/class/<cid>/poster")
 @login_required("teacher")
 def page_class_poster(cid):
+    if config.PRODUCT:                   # on the NAVERA box only the teacher creates accounts: no join code / QR
+        abort(404)
     c = _class_view(_my_class(cid))
     o = orgs.org()
     return render_template("poster.html", c=c, org=o.get("name", ""), qr=certs.qr_svg(c["join_url"]),

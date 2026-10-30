@@ -11,7 +11,10 @@ D="$TMP/navera-academy-$V"; mkdir -p "$D"
 git archive --format=tar HEAD | tar x -C "$D"
 rm -rf "$D/reviews" "$D/setup/install.sh" "$D/setup/uninstall.sh" "$D/setup/netkeeper.py" "$D/tools/set_oauth.py"
 SEGNO="${SEGNO_DIR:-}"
-if [ -n "$SEGNO" ] && [ -d "$SEGNO/segno" ]; then mkdir -p "$D/setup/vendor"; cp -a "$SEGNO/segno" "$D/setup/vendor/"; fi
+[ -n "$SEGNO" ] || SEGNO="$ROOT/setup/vendor"
+[ -d "$SEGNO/segno" ] || { echo "segno missing (SEGNO_DIR=DIR holding segno/): certificate QR codes need it" >&2; exit 1; }
+mkdir -p "$D/setup/vendor"; cp -a "$SEGNO/segno" "$D/setup/vendor/"
+[ -f "$D/setup/vendor/segno/__init__.py" ] || { echo "setup/vendor/segno not in the release" >&2; exit 1; }
 echo "$V $(git rev-parse --short HEAD) $(date +%F)" > "$D/VERSION"
 # never ship a secret or dev data
 if grep -rIl -E "BEGIN [A-Z ]*PRIVATE KEY|client_secre[t]|tskey-[a-z]" "$D" | grep -v '/vendor/' ; then echo "secret-looking file above: refused" >&2; exit 1; fi

@@ -408,3 +408,59 @@ print(json.dumps({'codes': r, 'navera_access': 'navera_access' in u['s1']}))
     assert d["codes"][:6] == [410] * 6 and d["codes"][6] == 404 and not d["navera_access"], d
     t = open(os.path.join(STATIC, "teacher.html")).read()
     assert "navera_on" not in t and "Give full NAVERA access" not in t and "NAVERA version" not in t
+
+
+# ----------------------------------------------------------------------------------------- 6. no join code on the box
+def test_no_join_code_or_qr_in_product(tmp_path):
+    code = """
+import orgs
+A._save('users.json', {'teacher': {'role': 'admin', 'index': 0, 'pw': 'x'}})
+c = A.app.test_client()
+o = c.get('/api/auth/options').get_json()
+r = {'opts': o, 'join': c.get('/join/ABC123').status_code, 'info': c.get('/api/class-info?code=ABC123').status_code,
+     'signup': c.post('/api/signup', json={'kind': 'teacher', 'display': 'Tt', 'email': 't@x.org', 'password': 'p' * 10,
+                                            'invite_code': 'X'}, headers={'Origin': 'http://localhost'}).status_code}
+with c.session_transaction() as s: s['user'] = 'teacher'
+me = c.get('/api/me').get_json()
+cl = c.post('/api/classes', json={'name': 'Class A', 'seats': 10}, headers={'Origin': 'http://localhost'}).get_json() or {}
+cid = (cl.get('class') or cl).get('id') or (orgs.classes()[0]['id'] if orgs.classes() else 'none')
+r.update(me_product=me.get('product'), qr=c.get(f'/api/classes/{cid}/qr.svg').status_code,
+         poster=c.get(f'/class/{cid}/poster').status_code, cid=cid)
+print(json.dumps(r))
+"""
+    d = json.loads(run_app(tmp_path, code).strip().splitlines()[-1])
+    assert d["opts"]["product"] is True and d["opts"]["signup"] is False and d["opts"]["need_class"] is False, d
+    assert d["join"] == 404 and d["info"] == 404 and d["signup"] == 403, d
+    assert d["me_product"] is True and d["cid"] != "none", d
+    assert d["qr"] == 404 and d["poster"] == 404, d
+    t = open(os.path.join(STATIC, "teacher.html")).read()
+    hide = t[t.index("if (ME.product) {"):t.index("}", t.index("if (ME.product) {"))]
+    for el in ("joinBox", "oJoin", "tInviteBox", "signupOpt"):
+        assert el in hide, el
+    assert "if (!ME.product) $('cQr').src" in t
+    assert "if (o.product) { $('tabUp').style.display = 'none'; }" in open(os.path.join(STATIC, "login.html")).read()
+
+
+def test_no_broken_local_images_or_assets():
+    """Every /static/… file a page or template names exists (a missing one is a broken image offline)."""
+    bad = []
+    tops = [STATIC, os.path.join(SERVER, "templates")]
+    for top in tops:
+        for d, _, fs in os.walk(top):
+            if os.sep + "vendor" in d:
+                continue
+            for f in fs:
+                if not f.endswith((".html", ".js", ".css")):
+                    continue
+                t = open(os.path.join(d, f), encoding="utf-8", errors="replace").read()
+                for m in re.findall(r"""["'(](/static/[A-Za-z0-9_./-]+)""", t):
+                    if "${" in m:
+                        continue
+                    if not os.path.exists(os.path.join(SERVER, m.lstrip("/"))):
+                        bad.append(f"{f}: {m}")
+    assert not bad, bad
+
+
+def test_release_vendors_the_qr_library():
+    """Certificates keep a QR code (verify link): made on the box by segno, shipped in setup/vendor."""
+    assert "setup/vendor/segno" in open(os.path.join(ACADEMY, "deploy", "make_release.sh")).read()

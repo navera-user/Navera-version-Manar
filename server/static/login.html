@@ -152,7 +152,8 @@ $('fUp').onsubmit = async (ev) => {
 };
 // 2. what this academy allows (local accounts only: no outside sign-in service)
 fetch('/api/auth/options').then(r => r.json()).then(o => {
-  if (!o.signup) {   // closed for students; a teacher with the invitation code can still create an account
+  if (o.product) { $('tabUp').style.display = 'none'; }   // NAVERA box: the teacher creates every account
+  else if (!o.signup) {   // closed for students; a teacher with the invitation code can still create an account
     $('tabUp').textContent = 'Teacher account';
     document.querySelector('.who button[data-k="teacher"]').click();
     document.querySelector('.who').style.display = 'none';
