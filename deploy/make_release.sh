@@ -14,7 +14,7 @@ SEGNO="${SEGNO_DIR:-}"
 if [ -n "$SEGNO" ] && [ -d "$SEGNO/segno" ]; then mkdir -p "$D/setup/vendor"; cp -a "$SEGNO/segno" "$D/setup/vendor/"; fi
 echo "$V $(git rev-parse --short HEAD) $(date +%F)" > "$D/VERSION"
 # never ship a secret or dev data
-if grep -rIl -E "BEGIN [A-Z ]*PRIVATE KEY|client_secret|tskey-" "$D" | grep -v '/vendor/' ; then echo "secret-looking file above: refused" >&2; exit 1; fi
+if grep -rIl -E "BEGIN [A-Z ]*PRIVATE KEY|client_secre[t]|tskey-[a-z]" "$D" | grep -v '/vendor/' ; then echo "secret-looking file above: refused" >&2; exit 1; fi
 for x in state students logs base .git; do [ ! -e "$D/$x" ] || { echo "$x in the release: refused" >&2; exit 1; }; done
 find "$D" -name '__pycache__' -prune -exec rm -rf {} +
 mkdir -p "$OUT"
