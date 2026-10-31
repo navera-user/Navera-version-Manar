@@ -29,6 +29,7 @@ This bridge serves TWO surfaces with deliberately different sources:
     GET/POST /api/set_mission    → store Point A (map centring)
     GET  /api/cache_status, /api/precollect_progress, POST /api/precollect → benign stubs
     GET  /health                 → {ok:true}
+    GET  /planner                → planner.html — the Mission Planner (the delivered box's first page)
     GET  /mission                → mission.html — mission preparation on the box:
                                    vehicle settings, route (autopilot mission file or
                                    drawn), satellite map generation and activation
@@ -797,10 +798,11 @@ class NaveraWebBridge(Node):
                         else self.send_json(404, {"error": "tile not found"})
 
                 if path in ("", "/") and os.environ.get("NAVERA_PRODUCT_MODE") == "1":
-                    # the delivered box: Mission & settings first (owner, 2026-10-31); its "Operator
-                    # view" link opens the map; the older dashboard stays at /navera.html
+                    # the delivered box: the Mission Planner first (owner, 2026-10-31: search a place,
+                    # start and destination, satellite map, launch); Mission & settings and the operator
+                    # view are linked from it; the older dashboard stays at /navera.html
                     self.send_response(302)
-                    self.send_header("Location", "/mission")
+                    self.send_header("Location", "/planner")
                     self.send_header("Content-Length", "0")
                     self.end_headers()
                     return None
@@ -835,6 +837,8 @@ class NaveraWebBridge(Node):
 
                 if path == "/mission":
                     return self.send_file(os.path.join(bridge.resources_dir, "mission.html"))
+                if path == "/planner":
+                    return self.send_file(os.path.join(bridge.resources_dir, "planner.html"))
 
                 if path == "/api/pipeline":
                     # the automatic day / night / celestial choice (navera-pipeline-select)

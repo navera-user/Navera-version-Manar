@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NAVERA Mission Planner</title>
+<link rel="stylesheet" href="/leaflet/leaflet.min.css"/>
+<script src="/leaflet/leaflet.min.js"></script>
+<!-- The box's first page (owner, 2026-10-31): the mission simulator's planner (navera_tools/sim/sim.html)
+     adapted to the real NAVERA — search a place or click the map for the start (A) and the destination
+     (B), download the satellite map of the route, launch. It uses the same box functions as
+     Mission & settings (/api/mission/*, /api/set_mission); every other setting stays there. -->
+<style>
+:root{
+  --bg:#eef2f7; --panel:#ffffff; --card:#f8fafc; --line:#e2e8f0; --text:#0f172a; --mute:#64748b;
+  --accent:#2563eb; --accent2:#6366f1; --ok:#16a34a; --warn:#d97706; --bad:#dc2626; --a:#16a34a; --b:#dc2626;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:var(--bg);color:var(--text);font:14px/1.45 Inter,'Segoe UI',system-ui,-apple-system,sans-serif}
+button,input,select{font:inherit;color:inherit}
+.hidden{display:none!important}
+#app{display:grid;grid-template-rows:56px 1fr;height:100%}
+header{display:flex;align-items:center;gap:10px;padding:0 16px;background:var(--panel);border-bottom:1px solid var(--line);z-index:10}
+.logo{display:flex;align-items:center;gap:10px;font-weight:800;font-size:16px;letter-spacing:.5px}
+.logo .ic{width:32px;height:32px;border-radius:9px;background:linear-gradient(135deg,var(--accent),var(--accent2));display:grid;place-items:center;color:#fff;font-size:17px}
+.badge{font-size:11px;font-weight:700;padding:3px 9px;border-radius:12px;background:#dbeafe;color:var(--accent);white-space:nowrap}
+.sp{flex:1}
+.hbtn{border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:7px 12px;cursor:pointer;font-weight:600;white-space:nowrap;
+  display:inline-flex;align-items:center;gap:6px;text-decoration:none;color:var(--text)}
+.hbtn:hover{background:#f1f5f9}
+main{display:grid;grid-template-columns:400px 1fr;min-height:0}
+aside{background:var(--panel);border-right:1px solid var(--line);overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:12px}
+.card{border:1px solid var(--line);border-radius:12px;padding:12px;background:var(--panel)}
+.card h3{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:var(--mute);margin-bottom:10px}
+.card h3 .n{width:22px;height:22px;border-radius:50%;background:var(--accent);color:#fff;display:grid;place-items:center;font-size:12px}
+.card.done h3 .n{background:var(--ok)}
+.note{font-size:12.5px;color:var(--mute)}
+.vt{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.vt button{border:1px solid var(--line);background:var(--card);border-radius:10px;padding:8px 4px;cursor:pointer;font-size:12px;font-weight:600}
+.vt button .e{display:block;font-size:20px}
+.vt button.on{border-color:var(--accent);background:#eff6ff;color:var(--accent)}
+.fld{margin-top:8px}
+.fld label{display:flex;align-items:center;gap:6px;font-weight:700;font-size:13px;margin-bottom:4px}
+.pin{width:18px;height:18px;border-radius:50%;color:#fff;font-size:11px;font-weight:800;display:grid;place-items:center}
+.inrow{display:flex;gap:6px;position:relative}
+input[type=text],input[type=number],input[type=password]{width:100%;border:1px solid var(--line);border-radius:9px;padding:9px 11px;background:#fff}
+.small{border:1px solid var(--line);background:var(--card);border-radius:9px;padding:0 10px;cursor:pointer;white-space:nowrap;font-weight:600;font-size:12.5px}
+.drop{position:absolute;left:0;right:0;top:100%;margin-top:4px;background:#fff;border:1px solid var(--line);border-radius:10px;
+  box-shadow:0 8px 24px rgba(15,23,42,.15);z-index:2000;max-height:260px;overflow:auto}
+.drop div{padding:8px 11px;cursor:pointer;border-bottom:1px solid #f1f5f9}
+.drop div:hover{background:#eff6ff}
+.drop small{display:block;color:var(--mute);font-size:11.5px}
+.big{width:100%;border:0;border-radius:10px;padding:12px;font-weight:700;font-size:15px;cursor:pointer;color:#fff;background:var(--accent);margin-top:10px}
+.big.go{background:var(--ok)}
+.big:disabled{opacity:.45;cursor:not-allowed}
+.facts{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:8px}
+.facts div{background:var(--card);border-radius:8px;padding:6px 8px}
+.facts small{display:block;color:var(--mute);font-size:11px}
+.msg{font-size:13px;margin-top:8px}
+.msg.ok{color:var(--ok)} .msg.bad{color:var(--bad)} .msg.warn{color:var(--warn)}
+.bar{height:8px;border-radius:4px;background:#e2e8f0;overflow:hidden;margin-top:8px}
+.bar div{height:100%;width:0;background:var(--accent);transition:width .4s}
+.auto{border-radius:10px;padding:9px 11px;background:#ecfdf5;border:1px solid #a7f3d0;color:#065f46;font-size:13px}
+#mapwrap{position:relative;min-height:0}
+#map{position:absolute;inset:0}
+.float{position:absolute;z-index:1000}
+#searchBox{left:56px;top:12px;width:min(440px,calc(100% - 230px))}
+#search{width:100%;padding:11px 14px;border-radius:10px;border:1px solid var(--line);box-shadow:0 2px 8px rgba(15,23,42,.12);background:#fff}
+#layers{right:12px;top:12px;display:flex;background:#fff;border-radius:10px;box-shadow:0 2px 8px rgba(15,23,42,.12);overflow:hidden}
+#layers button{border:0;background:none;padding:8px 12px;cursor:pointer;font-weight:600;color:var(--mute)}
+#layers button.on{background:var(--accent);color:#fff}
+#hint{left:50%;bottom:18px;transform:translateX(-50%);background:rgba(15,23,42,.82);color:#fff;border-radius:20px;padding:7px 14px;font-size:13px;white-space:nowrap}
+@media (max-width:820px){
+  main{grid-template-columns:1fr;grid-template-rows:46vh auto}
+  #mapwrap{order:-1}
+  aside{border-right:0}
+  #searchBox{left:10px;width:calc(100% - 20px);top:58px}
+  .badge.opt,.hbtn .l{display:none}
+}
+</style>
+</head>
+<body>
+<div id="app">
+<header>
+  <div class="logo"><div class="ic">✈</div>NAVERA</div>
+  <span class="badge">Mission Planner</span>
+  <div class="sp"></div>
+  <a class="hbtn" href="/operator" title="Operator view">🗺<span class="l"> Operator view</span></a>
+  <a class="hbtn" href="/mission" title="Mission & settings">⚙<span class="l"> Mission &amp; settings</span></a>
+  <a class="hbtn hidden" id="wifiBtn" href="/" title="Wi-Fi setup">📶<span class="l"> Wi-Fi setup</span></a>
+</header>
+<main>
+<aside>
+  <div class="auto hidden" id="auto"></div>
+  <div class="card hidden" id="authCard">
+    <h3>🔑 Control code</h3>
+    <input type="password" id="token" autocomplete="off" placeholder="The box's control code">
+    <div class="note" id="authSt" style="margin-top:6px"></div>
+  </div>
+
+  <div class="card" id="c1">
+    <h3><span class="n">1</span>Vehicle</h3>
+    <div class="vt" id="vt">
+      <button data-v="drone"><span class="e">🚁</span>Drone</button>
+      <button data-v="plane"><span class="e">✈️</span>Plane</button>
+      <button data-v="boat"><span class="e">🚤</span>Boat</button>
+      <button data-v="robot"><span class="e">🚙</span>Ground</button>
+    </div>
+    <div class="fld"><label>Maximum speed (km/h)</label>
+      <div class="inrow"><input type="number" id="vmax" min="4" max="1890" step="1" placeholder="e.g. 80"><button class="small" id="vSave">Save</button></div>
+      <div class="note">Cruise speed + 50 %, tailwind included. NAVERA refuses any position the vehicle could not have reached.</div>
+    </div>
+    <div class="msg" id="vMsg"></div>
+  </div>
+
+  <div class="card" id="c2">
+    <h3><span class="n">2</span>Route</h3>
+    <div class="note">Type a city, an address or coordinates (latitude, longitude) and choose it in the list — or click the map: first click = start, second click = destination.</div>
+    <div class="fld"><label><span class="pin" style="background:var(--a)">A</span>Start</label>
+      <div class="inrow"><input type="text" id="inA" autocomplete="off" placeholder="e.g. Sousse"><button class="small" id="myPos" title="The box's GPS position">◎ My position</button>
+        <div class="drop hidden" id="dropA"></div></div></div>
+    <div class="fld"><label><span class="pin" style="background:var(--b)">B</span>Destination</label>
+      <div class="inrow"><input type="text" id="inB" autocomplete="off" placeholder="e.g. Monastir"><button class="small" id="swap" title="Swap start and destination">⇅</button>
+        <div class="drop hidden" id="dropB"></div></div></div>
+    <div class="facts"><div><small>Distance</small><b id="fLen">—</b></div><div><small>Map tiles</small><b id="fTiles">—</b></div><div><small>Download</small><b id="fNeed">—</b></div></div>
+    <button class="big" id="usePlan" disabled>Use this route →</button>
+    <div class="msg" id="rMsg"></div>
+  </div>
+
+  <div class="card" id="c3">
+    <h3><span class="n">3</span>Satellite map</h3>
+    <div class="note">Day and night vision compare the camera with satellite images of the route. Download them before departure (internet needed; a few minutes). In flight NAVERA works offline.</div>
+    <div class="msg" id="cov"></div>
+    <button class="big" id="gen" disabled>⬇ Download the satellite map</button>
+    <div class="bar hidden" id="bar"><div></div></div>
+    <div class="note" id="prog"></div>
+    <button class="big hidden" id="act">✓ Use this map for the flight</button>
+    <div class="msg" id="mMsg"></div>
+  </div>
+
+  <div class="card" id="c4">
+    <h3><span class="n">4</span>Launch</h3>
+    <div class="note">Sends the start point to NAVERA and starts the mission. Then follow the flight in the Operator view.</div>
+    <button class="big go" id="launch" disabled>🚀 Launch mission</button>
+    <div class="msg" id="lMsg"></div>
+  </div>
+</aside>
+<div id="mapwrap">
+  <div id="map"></div>
+  <div class="float" id="searchBox"><input type="text" id="search" autocomplete="off" placeholder="🔍 Search a place or type lat, lon"><div class="drop hidden" id="dropS"></div></div>
+  <div class="float" id="layers"><button data-v="sat">Satellite</button><button data-v="offline">Offline</button></div>
+  <div class="float" id="hint">Click the map: start (A)</div>
+</div>
+</main>
+</div>
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const km = m => m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${Math.round(m)} m`;
+const fmtLL = p => `${p[0].toFixed(5)}, ${p[1].toFixed(5)}`;
+const dist = (a, b) => { const R = 6371000, r = Math.PI / 180, dl = (b[0] - a[0]) * r, dn = (b[1] - a[1]) * r;
+  const h = Math.sin(dl / 2) ** 2 + Math.cos(a[0] * r) * Math.cos(b[0] * r) * Math.sin(dn / 2) ** 2; return 2 * R * Math.asin(Math.sqrt(h)); };
+
+/* ── box state and control ── */
+let S = null, PLAN = null, A = null, B = null, VT = '';
+try{ $('token').value = sessionStorage.getItem('navera.token') || ''; }catch(e){}
+$('token').oninput = () => { try{ sessionStorage.setItem('navera.token', $('token').value); }catch(e){} render(); };
+const hdr = () => ({'Content-Type':'application/json', 'X-Navera-Token':$('token').value});
+async function post(path, body){
+  const r = await fetch(path, {method:'POST', headers:hdr(), body:JSON.stringify(body || {})});
+  let d = {}; try{ d = await r.json(); }catch(e){}
+  if(!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+  return d;
+}
+const say = (id, cls, msg) => { $(id).className = 'msg ' + (cls || ''); $(id).textContent = msg || ''; };
+const coded = () => !!(S && S.control && (S.trusted || $('token').value.length));
+if(location.hostname === '10.42.0.1'){ $('wifiBtn').href = 'http://10.42.0.1/'; $('wifiBtn').classList.remove('hidden'); }
+
+/* ── map ── */
+const map = L.map('map', {zoomControl:true, worldCopyJump:true}).setView([35.83, 10.62], 10);
+const LAYERS = {
+  sat: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {maxZoom:19, attribution:'Imagery © Esri, Maxar'}),
+  offline: L.tileLayer('/tiles/{z}/{x}/{y}.png', {maxZoom:20, maxNativeZoom:18, attribution:'Onboard map',
+    errorTileUrl:'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'}),
+};
+function setLayer(v){ for(const l of Object.values(LAYERS)) map.removeLayer(l); LAYERS[v].addTo(map);
+  document.querySelectorAll('#layers button').forEach(b => b.classList.toggle('on', b.dataset.v === v)); }
+document.querySelectorAll('#layers button').forEach(b => b.onclick = () => setLayer(b.dataset.v));
+setLayer(navigator.onLine ? 'sat' : 'offline');
+LAYERS.sat.on('tileerror', () => { if(!setLayer.fell){ setLayer.fell = true; setLayer('offline'); } });   // no internet: the onboard map
+const pinIcon = (l, c) => L.divIcon({className:'', iconSize:[26, 26], iconAnchor:[13, 13],
+  html:`<div style="width:26px;height:26px;border-radius:50%;background:${c};color:#fff;font-weight:800;display:grid;place-items:center;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4)">${l}</div>`});
+const mA = L.marker([0, 0], {icon:pinIcon('A', '#16a34a'), draggable:true}), mB = L.marker([0, 0], {icon:pinIcon('B', '#dc2626'), draggable:true});
+const routeLine = L.polyline([], {color:'#2563eb', weight:4, dashArray:'8 6'}).addTo(map);
+const corridor = L.polyline([], {color:'#2563eb', weight:4}).addTo(map);
+mA.on('dragend', () => setPoint('A', [mA.getLatLng().lat, mA.getLatLng().lng]));
+mB.on('dragend', () => setPoint('B', [mB.getLatLng().lat, mB.getLatLng().lng]));
+map.on('click', e => setPoint(!A ? 'A' : 'B', [e.latlng.lat, e.latlng.lng]));
+
+async function nameOf(p){
+  try{
+    const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&zoom=10&accept-language=en&lat=${p[0]}&lon=${p[1]}`);
+    const ad = ((await r.json()) || {}).address || {};
+    return ad.city || ad.town || ad.village || ad.municipality || ad.county || null;
+  }catch(e){ return null; }
+}
+function setPoint(which, p, name){
+  if(which === 'A') A = p; else B = p;
+  $(which === 'A' ? 'inA' : 'inB').value = name || fmtLL(p);
+  if(!name) nameOf(p).then(n => { if(n && (which === 'A' ? A : B) === p) $(which === 'A' ? 'inA' : 'inB').value = `${n} (${fmtLL(p)})`; });
+  routeChanged();
+}
+function routeChanged(){
+  if(A) mA.setLatLng(A).addTo(map); else mA.remove();
+  if(B) mB.setLatLng(B).addTo(map); else mB.remove();
+  routeLine.setLatLngs(A && B ? [A, B] : []); corridor.setLatLngs([]);
+  PLAN = null; say('rMsg'); say('mMsg'); $('cov').textContent = '';
+  $('fLen').textContent = A && B ? km(dist(A, B)) : '—'; $('fTiles').textContent = '—'; $('fNeed').textContent = '—';
+  $('hint').textContent = !A ? 'Click the map: start (A)' : !B ? 'Click the map: destination (B)' : 'Drag A or B to adjust';
+  if(A && B) map.fitBounds(L.latLngBounds([A, B]).pad(0.3)); else if(A || B) map.setView(A || B, Math.max(map.getZoom(), 12));
+  render();
+}
+
+/* ── place search (OpenStreetMap; coordinates work offline) ── */
+function searchField(inp, drop, onPick){
+  let timer = null;
+  const show = (list, err) => {
+    drop.innerHTML = err ? `<div>${esc(err)}</div>` : '';
+    list.forEach(p => { const d = document.createElement('div');
+      d.innerHTML = `${esc(p.name)}<small>${esc(p.detail || '')}</small>`;
+      d.onmousedown = e => { e.preventDefault(); drop.classList.add('hidden'); onPick([+p.lat, +p.lon], p.name); };
+      drop.appendChild(d); });
+    drop.classList.toggle('hidden', !list.length && !err);
+  };
+  inp.oninput = () => {
+    clearTimeout(timer);
+    const q = inp.value.trim();
+    if(q.length < 2) return show([]);
+    const ll = q.match(/^\s*(-?\d+(?:\.\d+)?)\s*[,; ]\s*(-?\d+(?:\.\d+)?)\s*$/);
+    if(ll && Math.abs(+ll[1]) <= 90 && Math.abs(+ll[2]) <= 180)
+      return show([{lat:ll[1], lon:ll[2], name:`${(+ll[1]).toFixed(5)}, ${(+ll[2]).toFixed(5)}`, detail:'coordinates'}]);
+    timer = setTimeout(async () => {
+      show([], 'Searching…');
+      try{
+        const r = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=6&accept-language=en&q=${encodeURIComponent(q)}`);
+        const res = (await r.json()).map(p => { const parts = String(p.display_name).split(',');
+          return {lat:p.lat, lon:p.lon, name:parts[0].trim(), detail:parts.slice(1).join(',').trim()}; });
+        if(inp.value.trim() === q) show(res, res.length ? null : 'No place found');
+      }catch(e){ show([], 'The place search needs internet; type coordinates instead (e.g. 35.8256, 10.6084).'); }
+    }, 400);
+  };
+  inp.onblur = () => setTimeout(() => drop.classList.add('hidden'), 150);
+}
+searchField($('inA'), $('dropA'), (p, n) => setPoint('A', p, n));
+searchField($('inB'), $('dropB'), (p, n) => setPoint('B', p, n));
+searchField($('search'), $('dropS'), (p, n) => { $('search').value = ''; setPoint(!A ? 'A' : 'B', p, n); });
+$('swap').onclick = () => { const a = A, na = $('inA').value; A = B; B = a; $('inA').value = $('inB').value; $('inB').value = na; routeChanged(); };
+$('myPos').onclick = async () => {
+  try{
+    const d = await (await fetch('/api/operator_position', {cache:'no-store'})).json();
+    if(d && isFinite(d.lat) && isFinite(d.lon)) return setPoint('A', [+d.lat, +d.lon], `My position (${fmtLL([+d.lat, +d.lon])})`);
+    say('rMsg', 'warn', 'The box has no position yet (GPS not connected or no fix): search or click the start instead.');
+  }catch(e){ say('rMsg', 'bad', e.message); }
+};
+
+/* ── 1 vehicle (the same settings as Mission & settings) ── */
+document.querySelectorAll('#vt button').forEach(b => b.onclick = () => { VT = b.dataset.v; renderVt(); saveVehicle(); });
+function renderVt(){ document.querySelectorAll('#vt button').forEach(b => b.classList.toggle('on', b.dataset.v === VT)); }
+async function saveVehicle(){
+  if(!coded()) return say('vMsg', 'warn', 'Enter the control code to change the vehicle.');
+  const changes = {NAVERA_VEHICLE_TYPE: VT, NAVERA_MAX_SPEED_KMH: $('vmax').value.trim()};
+  try{ await post('/api/mission/settings', {changes}); await post('/api/mission/apply', {});
+    say('vMsg', 'ok', '✓ Saved — NAVERA uses it now.'); }
+  catch(e){ say('vMsg', 'bad', e.message); }
+}
+$('vSave').onclick = saveVehicle;
+
+/* ── 2 → 3 route plan and satellite map ── */
+$('usePlan').onclick = async () => {
+  say('rMsg', '', '…');
+  try{
+    const d = await post('/api/mission/plan', {route: [A, B]});
+    PLAN = d.plan; corridor.setLatLngs(PLAN.route || [A, B]);
+    $('fTiles').textContent = PLAN.tiles; $('fNeed').textContent = PLAN.missing_n ? (PLAN.need_mb < 1024 ? Math.ceil(PLAN.need_mb) + ' MB' : (PLAN.need_mb / 1024).toFixed(1) + ' GB') : 'none';
+    say('rMsg', 'ok', '✓ Route ready — now the satellite map (step 3).');
+  }catch(e){ PLAN = null; say('rMsg', 'bad', e.message); }
+  render();
+};
+$('gen').onclick = async () => { try{ await post('/api/mission/generate', {id: PLAN.id}); say('mMsg'); }catch(e){ say('mMsg', 'bad', e.message); } };
+$('act').onclick = async () => {
+  try{ await post('/api/mission/activate', {id: PLAN.id}); PLAN.active = true; say('mMsg', 'ok', '✓ Map in use: vision restarted with it.'); }
+  catch(e){ say('mMsg', 'bad', e.message); } render();
+};
+
+/* ── 4 launch ── */
+$('launch').onclick = async () => {
+  $('launch').disabled = true;
+  try{
+    await post('/api/set_mission', {point_a: {lat: A[0], lon: A[1]}});
+    say('lMsg', 'ok', '✓ Mission started. Opening the Operator view…');
+    setTimeout(() => { location.href = '/operator'; }, 1500);
+  }catch(e){ say('lMsg', 'bad', e.message); render(); }
+};
+
+function render(){
+  const can = coded();
+  $('authCard').classList.toggle('hidden', !S || !!S.trusted);
+  $('authSt').textContent = !S ? '' : !S.control ? 'Read-only: no control code is configured on the box.' : can ? '' : 'Enter the code to make changes.';
+  $('vSave').disabled = !can;
+  $('usePlan').disabled = !can || !A || !B || !!PLAN;
+  const job = S && S.job, running = !!(job && job.status === 'running' && PLAN && job.id === PLAN.id);
+  $('gen').disabled = !can || !PLAN || PLAN.prepared || PLAN.no_space || running;
+  $('gen').classList.toggle('hidden', !!(PLAN && PLAN.prepared));
+  $('act').classList.toggle('hidden', !(PLAN && PLAN.prepared && !PLAN.active));
+  $('act').disabled = !can;
+  $('bar').classList.toggle('hidden', !running);
+  if(running){
+    const f = job.total ? job.done / job.total : 0;
+    const pct = job.stage === 'download' ? 45 * f : job.stage === 'tiles' ? 45 + 10 * f : job.stage === 'descriptors' ? 55 + 43 * f : job.stage === 'terrain' ? 98 : 2;
+    $('bar').firstElementChild.style.width = pct.toFixed(0) + '%';
+    $('prog').textContent = `Downloading… ${pct.toFixed(0)} %`;
+  } else $('prog').textContent = job && job.status === 'failed' && PLAN && job.id === PLAN.id ? '✗ ' + (job.error || 'failed') : '';
+  if(PLAN){
+    const parts = [`${PLAN.tiles} tiles`, PLAN.missing_n ? `${PLAN.missing_n} to download` : 'all on the box already'];
+    let html = esc(parts.join(' · '));
+    if(PLAN.missing_n && !PLAN.can_download) html += '<br><b style="color:var(--warn)">⚠ No download source configured on the box.</b>';
+    if(PLAN.no_space) html += '<br><b style="color:var(--bad)">⚠ Not enough free disk space for this route.</b>';
+    const tr = PLAN.terrain;
+    if(tr && tr.featureless_km > 0) html += `<br><b style="color:var(--warn)">⚠ ${tr.featureless_km} km without landmarks for vision (sea, lakes, uniform ground): NAVERA carries on along its measured course for up to 2 minutes there.</b>`;
+    $('cov').innerHTML = html;
+    if(PLAN.prepared && !PLAN.active && !$('mMsg').textContent) say('mMsg', 'ok', '✓ Map downloaded: use it for the flight.');
+    if(!PLAN.missing_n && !PLAN.prepared) { PLAN.prepared = true; }      // nothing to download: ready
+  }
+  const mapOk = !!(PLAN && (PLAN.active || (PLAN.prepared && !PLAN.missing_n)));
+  $('c2').classList.toggle('done', !!PLAN); $('c3').classList.toggle('done', mapOk);
+  $('launch').disabled = !can || !A || !PLAN || !mapOk;
+  $('lMsg').textContent ||= !PLAN ? 'Set the route first (step 2).' : !mapOk ? 'Download and use the satellite map first (step 3).' : '';
+  if($('lMsg').textContent && !$('lMsg').className.includes('ok') && !$('lMsg').className.includes('bad')) $('lMsg').className = 'msg note';
+  if(mapOk && /^Set the route|^Download and use/.test($('lMsg').textContent)) say('lMsg');
+}
+
+async function poll(){
+  try{
+    S = await (await fetch('/api/mission/state', {cache:'no-store'})).json();
+    if(!poll.filled){
+      const cur = S.settings || {}, site = S.site || {};
+      VT = cur.NAVERA_VEHICLE_TYPE || site.NAVERA_VEHICLE_TYPE || ''; renderVt();
+      $('vmax').value = cur.NAVERA_MAX_SPEED_KMH || ''; $('vmax').placeholder = site.NAVERA_MAX_SPEED_KMH || 'e.g. 80';
+      poll.filled = true;
+    }
+    if(PLAN && S.job && S.job.id === PLAN.id && S.job.status === 'done') PLAN.prepared = true;
+  }catch(e){}
+  try{
+    const d = await (await fetch('/api/pipeline', {cache:'no-store'})).json();
+    const name = {day:'Day', night:'Night', cn:'Stellar'}[d.pipeline];
+    $('auto').classList.toggle('hidden', !name);
+    if(name) $('auto').textContent = (d.auto === false ? '🔒 Mode set in the settings: ' : '🤖 NAVERA chooses the mode automatically. Now: ') + name + (d.reason ? ' — ' + d.reason : '');
+  }catch(e){}
+  render();
+  setTimeout(poll, 2000);
+}
+poll();
+</script>
+</body>
+</html>
