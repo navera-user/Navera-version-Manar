@@ -796,6 +796,14 @@ class NaveraWebBridge(Node):
                     return self.send_body(200, "image/jpeg", data) if data \
                         else self.send_json(404, {"error": "tile not found"})
 
+                if path in ("", "/") and os.environ.get("NAVERA_PRODUCT_MODE") == "1":
+                    # the delivered box: Mission & settings first (owner, 2026-10-31); its "Operator
+                    # view" link opens the map; the older dashboard stays at /navera.html
+                    self.send_response(302)
+                    self.send_header("Location", "/mission")
+                    self.send_header("Content-Length", "0")
+                    self.end_headers()
+                    return None
                 if path in ("", "/", "/navera.html"):
                     if os.path.exists(bridge.navera_html):
                         return self.send_file(bridge.navera_html)
