@@ -56,10 +56,17 @@ journalctl -b -u navera-rtc --no-pager -o cat 2>/dev/null | grep -iE "valid|lost
 if [ -f "$WS/install/setup.bash" ]; then
   echo
   # shellcheck disable=SC1091
-  ( set +u; source /opt/ros/humble/setup.bash; source "$WS/install/setup.bash"   # ROS scripts use unset variables
+  # as the services run: NAVERA's settings, ROS sourced (its scripts use unset variables) and, when
+  # run with sudo, as the service user navera (root does not see the services' ROS topics)
+  run_check='set +u; source /opt/ros/humble/setup.bash; source "$1/install/setup.bash"
     set -a; . /etc/navera/navera.env 2>/dev/null; . /var/lib/navera/settings.env 2>/dev/null
     . /var/lib/navera/discovered.env 2>/dev/null; set +a
-    python3 "$WS/navera_tools/check_box.py" --seconds 10 ) || fail=1
+    python3 "$1/navera_tools/check_box.py" --seconds 10'
+  if [ "$(id -u)" = 0 ] && getent passwd navera >/dev/null; then
+    (cd "$WS" && runuser -u navera -- env HOME="$(getent passwd navera | cut -d: -f6)" bash -c "$run_check" _ "$WS") || fail=1
+  else
+    bash -c "$run_check" _ "$WS" || fail=1
+  fi
 fi
 echo
 echo "reboot test: $([ $fail = 0 ] && echo PASS || echo FAIL)"
