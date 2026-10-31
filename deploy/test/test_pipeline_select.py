@@ -38,7 +38,9 @@ def test_rules():
     assert P.choose(-20, cams(day=True, star=True))[0] == 'cn'               # dark, star camera
     assert P.choose(-20, cams(day=True, thermal=True, star=True))[0] == 'night'
     assert P.choose(-20, cams(day=True))[0] == 'day'                         # best effort
-    assert P.choose(None, cams())[0] == 'day'                                # nothing plugged in
+    assert P.choose(None, cams())[0] == 'day'                                # nothing plugged in, sun unknown
+    assert P.choose(-30, cams())[0] == 'night'                               # night: by the time alone
+    assert P.choose(30, cams())[0] == 'day'
     assert P.choose(40, cams(day=True), 'cn')[0] == 'cn'
 
 
@@ -149,3 +151,15 @@ def test_check_boot_skips_the_pipeline_the_automatic_choice_stopped(tmp_path, mo
     st.write_text('{"pipeline": "night"}')
     monkeypatch.setattr(cb.subprocess, 'run', lambda *a, **k: type('R', (), {'returncode': 3})())
     assert cb.check('navera-pipeline-day.service', p, p, set())[0] == 'FAIL'      # choice not running: stale file
+
+
+def test_map_centre(tmp_path):
+    import sqlite3
+    f = tmp_path / 'm.mbtiles'
+    con = sqlite3.connect(f)
+    con.execute('CREATE TABLE metadata (name TEXT, value TEXT)')
+    con.execute("INSERT INTO metadata VALUES ('bounds', '10.0,35.0,11.0,36.0')")
+    con.commit()
+    con.close()
+    assert P.map_centre(str(f)) == (35.5, 10.5)
+    assert P.map_centre(str(tmp_path / 'missing.mbtiles')) is None

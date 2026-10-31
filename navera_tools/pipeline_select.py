@@ -4,14 +4,16 @@
 Run by navera-pipeline-select.service (root: it starts and stops the pipeline units). Every
 NAVERA_PIPELINE_CHECK_S seconds (default 60) it looks at:
   - the sun: its elevation at the vehicle's position (the operator view's last position;
-    NAVERA always starts with GPS; the last one is kept for a reboot) and the box clock;
+    NAVERA always starts with GPS; the last one is kept for a reboot; before any, the centre of
+    the downloaded satellite map) and the box clock;
   - the cameras plugged in and their roles (navera-discover / navera-hotplug, or navera.env):
     day (ground, colour), thermal (ground) and star (looking up, NAVERA_STAR_CAMERA_*).
 and chooses:
   sun above -3 deg (day)          day camera -> day     | else thermal -> night
   sun -3 .. -12 deg (twilight)    thermal -> night      | else day camera -> day
   sun below -12 deg (dark)        thermal -> night      | else star camera -> celestial | else day
-  no camera at all                day (the pipeline waits for a camera; nothing to choose)
+  no camera yet                   by the sun alone: day, or night after dusk (the pipeline waits
+                                  for its camera; one plugged in later is used at once)
 A new choice must hold for NAVERA_PIPELINE_HOLD checks in a row (default 3) and is never applied
 while the vehicle flies (the web page's in-flight rule): a switch stops the running pipeline. The
 first choice after boot applies at once. A pipeline that fails to start is replaced by the one
@@ -113,7 +115,10 @@ def choose(sun_deg, cams: dict, forced: str = "auto"):
     if forced in UNITS:
         return forced, f"forced in the settings (NAVERA_PIPELINE_MODE={forced})"
     if not any(cams.values()):
-        return "day", "no camera found yet"
+        if sun_deg is None:
+            return "day", "no camera found yet"
+        return ("day", f"daylight (sun {sun_deg:+.0f}°), waiting for a camera") if sun_deg > SUN_DAY_DEG else \
+               ("night", f"night (sun {sun_deg:+.0f}°), waiting for a thermal camera")
     if sun_deg is None:
         return ("day", "position not known yet, day camera") if cams["day"] else \
                ("night", "position not known yet, thermal camera") if cams["thermal"] else \
@@ -166,6 +171,28 @@ def flying(port: str) -> bool:
     """True when the web page says the vehicle flies (armed or moving): no switch then."""
     d = _get_json(port, "/api/mission/state")
     return bool(d and d.get("in_flight_refusal"))
+
+
+def map_centre(mbtiles: str):
+    """(lat, lon) of the downloaded satellite map's centre (MBTiles metadata), or None."""
+    import sqlite3
+    if not mbtiles or not os.path.isfile(mbtiles):
+        return None
+    try:
+        con = sqlite3.connect(f"file:{mbtiles}?mode=ro", uri=True, timeout=2)
+        try:
+            meta = dict(con.execute("SELECT name, value FROM metadata WHERE name IN ('center', 'bounds')"))
+        finally:
+            con.close()
+        if meta.get("center"):
+            lon, lat = (float(x) for x in meta["center"].split(",")[:2])
+            return valid_pos(lat, lon)
+        if meta.get("bounds"):
+            w, s, e, n = (float(x) for x in meta["bounds"].split(",")[:4])
+            return valid_pos((s + n) / 2, (w + e) / 2)
+    except Exception:
+        pass
+    return None
 
 
 def stored_position():
@@ -261,7 +288,8 @@ def main(argv=None) -> int:
         pos = position(port)
         if pos:
             last_pos, pos_time = pos, time.time()
-        sun = sun_elevation(last_pos[0], last_pos[1], dt.datetime.now(dt.timezone.utc)) if last_pos else None
+        where = last_pos or map_centre(written.get("NAVERA_MBTILES", ""))
+        sun = sun_elevation(where[0], where[1], dt.datetime.now(dt.timezone.utc)) if where else None
         cams = cameras(written, found)
         want, why = choose(sun, cams, forced)
         active = running()
