@@ -50,7 +50,7 @@ printf '%s\nrevision %s\ndate %s\n' "$version" "$sha" "$date" > "$tmp/$name/VERS
     | xargs -0 sha256sum > RELEASE_MANIFEST.sha256)
 
 mkdir -p "$out"
-tar -C "$tmp" -czf "$out/$name.tar.gz" "$name"
+tar -C "$tmp" -czf "$out/$name.tar.gz" --owner=0 --group=0 --numeric-owner "$name"   # root-owned once unpacked by root (never the packer's account)
 (cd "$out" && sha256sum "$name.tar.gz" > "$name.tar.gz.sha256")
 sign="${NAVERA_RELEASE_SIGN:-}"
 case "$sign" in
